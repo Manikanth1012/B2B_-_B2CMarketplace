@@ -180,3 +180,66 @@ export interface LoyaltyLedgerEntry {
   value: number
   note: string
 }
+
+export interface ConsumerProfile {
+  id: string
+  name: string
+  customer_id: string
+  msisdn: string
+  city: string
+  since: string
+  tier: string
+  wallet: number
+  points: number
+  payment_method: string
+  email: string
+}
+
+export interface ConsumerNotification {
+  id: string
+  name: string
+  event: string
+  channels: string[]
+  who: string
+  on_state: boolean
+  last_sent: string | null
+  severity: string
+  mandatory: boolean
+}
+
+export interface ConsumerAuditEntry {
+  id: string
+  when_date: string
+  action: string
+  label: string
+  category: string
+  severity: string
+  detail: string | null
+}
+
+export interface ConsumerHouseholdMember {
+  id: string
+  name: string
+  email: string
+  role_id: string
+  role_name: string
+  status: string
+  last_active: string | null
+  mfa: boolean
+  joined: string
+  cap: number | null
+  spent: number
+  is_you: boolean
+}
+
+export interface ConsumerRefund {
+  id: string
+  order_ref: string
+  item: string
+  seller: string
+  amount: number
+  reason: string
+  state: string
+  decided: string | null
+  note: string | null
+}

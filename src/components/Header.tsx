@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, ShoppingCart, Menu, X, ChevronDown } from 'lucide-react'
+import { Search, ShoppingCart, Menu, X, ChevronDown, User, Bell, Shield, Lock, LogOut, Settings, Star } from 'lucide-react'
 import type { Category } from '../types'
 import { supabase } from '../lib/supabase'
 
@@ -16,6 +16,7 @@ export function Header({ cartCount, onCartClick, onNavigate }: HeaderProps) {
   const [search, setSearch] = useState('')
   const [mobileOpen, setMobileOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
+  const [acctOpen, setAcctOpen] = useState(false)
 
   useEffect(() => {
     supabase.from('categories').select('*').order('sort_order').then(({ data }) => {
@@ -25,6 +26,13 @@ export function Header({ cartCount, onCartClick, onNavigate }: HeaderProps) {
     window.addEventListener('scroll', onScroll)
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
+
+  useEffect(() => {
+    if (!acctOpen) return
+    const close = () => setAcctOpen(false)
+    window.addEventListener('click', close)
+    return () => window.removeEventListener('click', close)
+  }, [acctOpen])
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault()
@@ -125,6 +133,53 @@ export function Header({ cartCount, onCartClick, onNavigate }: HeaderProps) {
             >
               Rewards
             </button>
+            {/* Account avatar */}
+            <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+              <button
+                onClick={() => setAcctOpen(!acctOpen)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  padding: '4px 8px 4px 4px', borderRadius: 'var(--radius-full)',
+                  background: acctOpen ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.08)',
+                  border: 'none', color: 'white', cursor: 'pointer',
+                  transition: 'background 150ms ease',
+                }}
+              >
+                <div style={{
+                  width: '32px', height: '32px', borderRadius: '50%',
+                  background: 'var(--brand-accent)', color: 'white',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontWeight: 700, fontSize: 'var(--text-xs)',
+                }}>
+                  PR
+                </div>
+                <ChevronDown size={14} style={{ opacity: 0.6 }} />
+              </button>
+              {acctOpen && (
+                <div style={{
+                  position: 'absolute', top: '100%', right: 0, marginTop: '8px',
+                  background: 'white', borderRadius: 'var(--radius-lg)',
+                  boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)',
+                  minWidth: '240px', zIndex: 200, overflow: 'hidden',
+                }}>
+                  <div style={{ padding: '16px', borderBottom: '1px solid var(--border-light)' }}>
+                    <div style={{ fontWeight: 800, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>Priya Raman</div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                      Gold member · 3,180 pts
+                    </div>
+                  </div>
+                  <div style={{ padding: '4px' }}>
+                    <AcctItem icon={<User size={16} />} label="My details" onClick={() => { onNavigate('account'); setAcctOpen(false) }} />
+                    <AcctItem icon={<Bell size={16} />} label="Notification preferences" onClick={() => { onNavigate('account'); setAcctOpen(false) }} />
+                    <AcctItem icon={<Shield size={16} />} label="Sign-in & security" onClick={() => { onNavigate('account'); setAcctOpen(false) }} />
+                    <AcctItem icon={<Star size={16} />} label="My permissions" onClick={() => { onNavigate('account'); setAcctOpen(false) }} />
+                  </div>
+                  <div style={{ padding: '4px', borderTop: '1px solid var(--border-light)' }}>
+                    <AcctItem icon={<LogOut size={16} />} label="Sign out" onClick={() => setAcctOpen(false)} />
+                  </div>
+                </div>
+              )}
+            </div>
             <button
               onClick={onCartClick}
               style={{
@@ -247,6 +302,7 @@ export function Header({ cartCount, onCartClick, onNavigate }: HeaderProps) {
               <button onClick={() => { onNavigate('orders'); setMobileOpen(false) }} style={mobileLinkStyle}>My Orders</button>
               <button onClick={() => { onNavigate('subscriptions'); setMobileOpen(false) }} style={mobileLinkStyle}>Subscriptions</button>
               <button onClick={() => { onNavigate('rewards'); setMobileOpen(false) }} style={mobileLinkStyle}>Rewards</button>
+              <button onClick={() => { onNavigate('account'); setMobileOpen(false) }} style={mobileLinkStyle}>My Account</button>
             </div>
           </div>
         )}
@@ -264,4 +320,24 @@ const mobileLinkStyle: React.CSSProperties = {
   fontSize: 'var(--text-sm)',
   fontWeight: 500,
   borderRadius: 'var(--radius)',
+}
+
+function AcctItem({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        display: 'flex', alignItems: 'center', gap: '10px', width: '100%',
+        padding: '10px 12px', borderRadius: 'var(--radius)', border: 'none',
+        background: 'none', color: 'var(--text-secondary)',
+        fontSize: 'var(--text-sm)', fontWeight: 500, cursor: 'pointer',
+        textAlign: 'left', transition: 'background 150ms ease',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg-alt)' }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'none' }}
+    >
+      <span style={{ color: 'var(--text-tertiary)' }}>{icon}</span>
+      {label}
+    </button>
+  )
 }

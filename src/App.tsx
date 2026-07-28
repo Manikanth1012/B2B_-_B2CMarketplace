@@ -13,6 +13,7 @@ import { Footer } from './components/Footer'
 import { OrdersView } from './components/OrdersView'
 import { SubscriptionsView } from './components/SubscriptionsView'
 import { RewardsView } from './components/RewardsView'
+import { AccountView } from './components/AccountView'
 
 export default function App() {
   const [view, setView] = useState<View>('home')
@@ -115,6 +116,7 @@ export default function App() {
         {view === 'orders' && <OrdersView />}
         {view === 'subscriptions' && <SubscriptionsView />}
         {view === 'rewards' && <RewardsView />}
+        {view === 'account' && <AccountView />}
       </main>
       <Footer onNavigate={navigate} />
 
