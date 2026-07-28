@@ -104,10 +104,17 @@ export async function clearGate(
     if (error) return { ok: false, reason: `Gate cleared, but its open tasks could not be closed: ${error.message}` }
   }
 
-  /* Clearing the final gate publishes the storefront. */
+  /* Clearing the final gate publishes the storefront.
+     PostgREST reports an UPDATE that matches zero rows as success — RLS
+     denial and "no such row" both come back as `error: null, data: []`.
+     A state-changing write has to check what it actually changed, not
+     just whether the request errored. */
   if (!next) {
-    const { error } = await supabase.from('partners').update({ status: 'live' }).eq('id', partnerId)
+    const { data, error } = await supabase.from('partners').update({ status: 'live' }).eq('id', partnerId).select()
     if (error) return { ok: false, reason: `Gate cleared, but the partner could not be published live: ${error.message}` }
+    if (!data || data.length === 0) {
+      return { ok: false, reason: 'Gate cleared, but the partner could not be published live: no row was updated (check that the partner exists and that write access is permitted).' }
+    }
   }
 
   /* The audit insert is handled differently from the writes above: by this
@@ -150,8 +157,9 @@ export async function registerEndpoint(
 }
 
 export async function setEndpointAuth(endpointId: string, auth: string): Promise<ActionResult> {
-  const { error } = await supabase.from('partner_endpoints').update({ auth }).eq('id', endpointId)
+  const { data, error } = await supabase.from('partner_endpoints').update({ auth }).eq('id', endpointId).select()
   if (error) return { ok: false, reason: error.message }
+  if (!data || data.length === 0) return { ok: false, reason: `No endpoint matched id ${endpointId}; auth was not updated.` }
   return { ok: true }
 }
 
