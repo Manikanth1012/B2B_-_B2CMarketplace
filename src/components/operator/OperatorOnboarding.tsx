@@ -3,6 +3,10 @@ import { supabase } from '../../lib/supabase'
 import type { OnboardingGate } from '../../types'
 import { SectionCard, StatusPill, fmtDate, EmptyState, Btn, Modal, FormField, TextArea, TextInput, toast } from './shared'
 import { CircleCheck as CheckCircle, Clock, Circle, Lock, ChevronRight } from 'lucide-react'
+import { clearGate, loadOnboarding } from '../../lib/onboardingRepo'
+import { canClearGate, gateIdFor } from '../../lib/onboarding'
+import type { TechStatus } from '../../lib/onboarding'
+import { TechChecklist } from '../TechChecklist'
 
 const GATE_NAMES = ['Application', 'KYC & due diligence', 'Agreements', 'Bank & tax', 'Technical readiness', 'Compliance review', 'Go-live']
 
@@ -15,6 +19,7 @@ export function OperatorOnboarding() {
   const [gateModal, setGateModal] = useState<OnboardingGate | null>(null)
   const [addPartnerModal, setAddPartnerModal] = useState(false)
   const [newPartner, setNewPartner] = useState({ name: '', contact: '', email: '', country: '' })
+  const [tech, setTech] = useState<TechStatus | null>(null)
 
   useEffect(() => {
     supabase.from('onboarding_gates').select('*, partner:partners(id,name,status)').order('sort_order').then(({ data }) => {
@@ -27,28 +32,35 @@ export function OperatorOnboarding() {
     })
   }, [])
 
-  if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
-
   const partners = [...new Set(gates.map(partnerNameOf))]
   const activePartner = selectedPartner || partners[0] || ''
   const partnerGates = gates.filter(g => partnerNameOf(g) === activePartner).sort((a, b) => a.gate_order - b.gate_order)
   const currentGate = partnerGates.find(g => g.status === 'current')
+
+  useEffect(() => {
+    const pid = gates.find(g => (g.partner?.name ?? g.partner_id) === activePartner)?.partner_id
+    if (!pid) return
+    loadOnboarding(pid).then(s => setTech(s.tech))
+  }, [activePartner, gates])
+
+  if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
   const refreshGates = async () => {
     const { data } = await supabase.from('onboarding_gates').select('*, partner:partners(id,name,status)').order('sort_order')
     if (data) setGates(data as OnboardingGate[])
   }
 
-  const handleClearGate = async (gate: OnboardingGate) => {
-    const nextGate = partnerGates.find(g => g.gate_order === gate.gate_order + 1)
-    await supabase.from('onboarding_gates').update({
-      status: 'cleared', reviewed_by: 'Onboarding Desk', reviewed_at: new Date().toISOString(),
-    }).eq('id', gate.id)
-    if (nextGate) {
-      await supabase.from('onboarding_gates').update({ status: 'current' }).eq('id', nextGate.id)
-    }
+  const handleClearGate = async (gate: OnboardingGate, evidence: string) => {
+    const res = await clearGate({
+      gateId: gate.id, partnerId: gate.partner_id, evidence,
+      actor: 'Marketplace onboarding desk',
+    })
+    if (!res.ok) { toast(res.reason, 'error'); return }
     toast(`${gate.gate_name} cleared for ${activePartner}`)
+    if (res.auditWarning) toast(res.auditWarning, 'error')
     await refreshGates()
+    const s = await loadOnboarding(gate.partner_id)
+    setTech(s.tech)
     setGateModal(null)
   }
 
@@ -170,8 +182,10 @@ export function OperatorOnboarding() {
       {gateModal && (
         <GateModal
           gate={gateModal}
+          allGates={partnerGates}
+          tech={tech}
           onClose={() => setGateModal(null)}
-          onClear={() => handleClearGate(gateModal)}
+          onClear={(evidence) => handleClearGate(gateModal, evidence)}
           onAddNote={(note) => handleAddNote(gateModal, note)}
         />
       )}
@@ -197,43 +211,73 @@ export function OperatorOnboarding() {
   )
 }
 
-function GateModal({ gate, onClose, onClear, onAddNote }: {
+function GateModal({ gate, allGates, tech, onClose, onClear, onAddNote }: {
   gate: OnboardingGate
+  allGates: OnboardingGate[]
+  tech: TechStatus | null
   onClose: () => void
-  onClear: () => void
+  onClear: (evidence: string) => void
   onAddNote: (note: string) => void
 }) {
   const [note, setNote] = useState(gate.notes || '')
-  const canClear = gate.status === 'current'
+  const [evidence, setEvidence] = useState('')
+
+  const emptyTech: TechStatus =
+    { checks: { registered: false, auth: false, tested: false, sandbox: false }, missing: [], noAuth: [], untested: [] }
+  const verdict = canClearGate(gate, allGates, tech ?? emptyTech)
+  const isTech = gateIdFor(gate) === 'tech'
 
   return (
     <Modal open onClose={onClose} title={`Gate: ${gate.gate_name}`}
       footer={
         <>
           <Btn variant="secondary" size="sm" onClick={onClose}>Close</Btn>
-          {canClear && <Btn variant="success" size="sm" onClick={onClear}>Clear gate</Btn>}
           <Btn size="sm" onClick={() => onAddNote(note)} disabled={!note.trim() || note === gate.notes}>Save note</Btn>
+          <Btn variant="success" size="sm" disabled={!verdict.ok || !evidence.trim()}
+               onClick={() => onClear(evidence)}>Clear gate</Btn>
         </>
       }>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
           <StatusPill status={gate.status} />
-          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>Owner: {gate.owner} · Target: {gate.target_days} working days</span>
+          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
+            Owner: {gate.owner} · Target: {gate.target_days} working days
+          </span>
         </div>
-        {gate.dual_control && <div style={{ fontSize: 'var(--text-sm)', color: 'var(--warning)' }}>This gate requires dual control — two people must approve.</div>}
-        {!gate.waivable && <div style={{ fontSize: 'var(--text-sm)', color: 'var(--danger)' }}>This gate cannot be waived.</div>}
-        {gate.submitted_by && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>Submitted by {gate.submitted_by} on {fmtDate(gate.submitted_at)}</div>}
-        {gate.reviewed_by && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>Reviewed by {gate.reviewed_by} on {fmtDate(gate.reviewed_at)}</div>}
-        {gate.evidence.length > 0 && (
-          <div>
-            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: '6px' }}>Evidence</div>
-            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>{gate.evidence.map((e, i) => <span key={i} className="pill">{e}</span>)}</div>
+
+        {!verdict.ok && (
+          <div style={{
+            padding: '12px', borderRadius: 'var(--radius-md)',
+            background: 'var(--danger-bg)', border: '1px solid var(--danger)',
+            fontSize: 'var(--text-sm)', color: 'var(--danger)',
+          }}>
+            {verdict.reason}
           </div>
         )}
+
+        {isTech && tech && <TechChecklist tech={tech} mode="operator" />}
+
+        {gate.reviewed_by && (
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+            Reviewed by {gate.reviewed_by} on {fmtDate(gate.reviewed_at)}
+          </div>
+        )}
+
         <FormField label="Notes">
           <TextArea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Add a note for this gate..." />
         </FormField>
-        {canClear && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--success)' }}>Click "Clear gate" to advance this partner to the next step.</div>}
+
+        {verdict.ok && (
+          <FormField label="Evidence reviewed" required>
+            <TextArea value={evidence} onChange={(e) => setEvidence(e.target.value)}
+                      placeholder="What you checked and where the evidence sits" />
+          </FormField>
+        )}
+
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+          Gates cannot be un-cleared. A partner that should not have progressed must be suspended instead.
+          {isTech && ' No override exists for this gate.'}
+        </div>
       </div>
     </Modal>
   )
