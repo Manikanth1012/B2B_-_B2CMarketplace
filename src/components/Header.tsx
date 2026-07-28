@@ -133,6 +133,29 @@ export function Header({ cartCount, onCartClick, onNavigate, onSwitchToOperator 
             >
               Rewards
             </button>
+            {/* Operator console button */}
+            {onSwitchToOperator && (
+              <button
+                onClick={onSwitchToOperator}
+                className="hide-mobile"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '8px 14px',
+                  borderRadius: 'var(--radius)',
+                  background: 'rgba(0,166,166,0.25)',
+                  border: '1px solid rgba(0,166,166,0.4)',
+                  color: 'white',
+                  fontSize: 'var(--text-sm)', fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 150ms ease',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(0,166,166,0.4)' }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(0,166,166,0.25)' }}
+              >
+                <Settings size={16} />
+                Operator Console
+              </button>
+            )}
             {/* Account avatar */}
             <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
               <button
