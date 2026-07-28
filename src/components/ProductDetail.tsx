@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Star, Minus, Plus, Shield, Truck, Zap, Check } from 'lucide-react'
 import type { Product } from '../types'
+import { getProductImage } from '../lib/images'
 
 import type { View } from '../types/view'
 
@@ -60,27 +61,27 @@ export function ProductDetail({ product, onAddToCart, onNavigate }: ProductDetai
           <div>
             <div
               style={{
-                background: `linear-gradient(135deg, ${color}15, ${color}05)`,
                 borderRadius: 'var(--radius-lg)',
                 height: '420px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
                 marginBottom: '16px',
                 border: '1px solid var(--border)',
+                overflow: 'hidden',
+                position: 'relative',
               }}
             >
-              <div style={{
-                width: '120px',
-                height: '120px',
-                borderRadius: 'var(--radius-xl)',
-                background: `${color}30`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}>
-                <div style={{ width: '60px', height: '60px', borderRadius: '16px', background: color }} />
-              </div>
+              <img
+                src={getProductImage(product.id)}
+                alt={product.name}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
+              {product.badge && (
+                <span
+                  className={`badge badge-${product.badge.toLowerCase().includes('best') ? 'bestseller' : 'bundle'}`}
+                  style={{ position: 'absolute', top: '16px', left: '16px' }}
+                >
+                  {product.badge}
+                </span>
+              )}
             </div>
             {/* Thumbnails */}
             <div style={{ display: 'flex', gap: '12px' }}>
@@ -91,15 +92,16 @@ export function ProductDetail({ product, onAddToCart, onNavigate }: ProductDetai
                     width: '72px',
                     height: '72px',
                     borderRadius: 'var(--radius)',
-                    background: `${color}10`,
                     border: n === 1 ? `2px solid ${color}` : '1px solid var(--border)',
                     cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    overflow: 'hidden',
                   }}
                 >
-                  <div style={{ width: '24px', height: '24px', borderRadius: '6px', background: `${color}40` }} />
+                  <img
+                    src={getProductImage(product.id)}
+                    alt={`${product.name} view ${n}`}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
                 </div>
               ))}
             </div>

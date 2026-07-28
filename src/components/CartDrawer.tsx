@@ -1,5 +1,6 @@
 import { X, Minus, Plus, Trash2, ShoppingBag } from 'lucide-react'
 import type { CartItem } from '../types'
+import { getProductImage } from '../lib/images'
 
 interface CartDrawerProps {
   open: boolean
@@ -93,13 +94,15 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
                   width: '64px',
                   height: '64px',
                   borderRadius: 'var(--radius)',
-                  background: 'var(--bg-alt)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
+                  overflow: 'hidden',
                   flexShrink: 0,
+                  border: '1px solid var(--border-light)',
                 }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'var(--brand-accent)' }} />
+                  <img
+                    src={getProductImage(item.product_id)}
+                    alt={item.product?.name || ''}
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                  />
                 </div>
 
                 {/* Info */}

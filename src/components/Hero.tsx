@@ -1,4 +1,5 @@
 import { Sparkles, Shield, Truck, Headphones } from 'lucide-react'
+import { HERO_IMAGE, getCategoryImage } from '../lib/images'
 
 import type { View } from '../types/view'
 
@@ -9,11 +10,19 @@ interface HeroProps {
 export function Hero({ onNavigate }: HeroProps) {
   return (
     <section style={{ background: 'var(--brand-navy)', color: 'white', overflow: 'hidden', position: 'relative' }}>
-      {/* Decorative gradient overlay */}
+      {/* Background image with overlay */}
       <div style={{
         position: 'absolute',
         inset: 0,
-        background: 'radial-gradient(ellipse at top right, rgba(0,166,166,0.15), transparent 60%)',
+        backgroundImage: `url(${HERO_IMAGE})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        opacity: '0.15',
+      }} />
+      <div style={{
+        position: 'absolute',
+        inset: 0,
+        background: 'radial-gradient(ellipse at top right, rgba(0,166,166,0.2), transparent 60%)',
       }} />
 
       <div className="container" style={{
@@ -70,40 +79,49 @@ export function Hero({ onNavigate }: HeroProps) {
         {/* Hero visual */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
           {[
-            { icon: 'smartphone', label: 'Mobile Plans', cat: 'consumer', color: '#00A6A6' },
-            { icon: 'play', label: 'Streaming', cat: 'content', color: '#F5A623' },
-            { icon: 'shield', label: 'Security', cat: 'security', color: '#2563EB' },
-            { icon: 'cpu', label: 'IoT Fleet', cat: 'iot', color: '#16A34A' },
+            { label: 'Mobile Plans', cat: 'consumer', color: '#00A6A6' },
+            { label: 'Streaming', cat: 'content', color: '#F5A623' },
+            { label: 'Security', cat: 'security', color: '#2563EB' },
+            { label: 'IoT Fleet', cat: 'iot', color: '#16A34A' },
           ].map((item) => (
             <button
               key={item.label}
               onClick={() => onNavigate('category', { category: item.cat })}
               style={{
-                background: 'rgba(255,255,255,0.05)',
                 border: '1px solid rgba(255,255,255,0.1)',
                 borderRadius: 'var(--radius-lg)',
-                padding: '24px',
+                padding: '0',
                 textAlign: 'left',
                 transition: 'all 200ms ease',
                 backdropFilter: 'blur(10px)',
+                overflow: 'hidden',
+                cursor: 'pointer',
+                background: 'rgba(255,255,255,0.05)',
               }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
               onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.transform = 'translateY(0)' }}
             >
               <div style={{
-                width: '40px',
-                height: '40px',
-                borderRadius: 'var(--radius)',
-                background: `${item.color}33`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: '12px',
+                height: '100px',
+                overflow: 'hidden',
+                position: 'relative',
               }}>
-                <div style={{ width: '20px', height: '20px', borderRadius: '4px', background: item.color }} />
+                <img
+                  src={getCategoryImage(item.cat)}
+                  alt={item.label}
+                  loading="lazy"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
+                <div style={{
+                  position: 'absolute',
+                  inset: 0,
+                  background: `linear-gradient(to top, ${item.color}80, transparent)`,
+                }} />
               </div>
-              <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', marginBottom: '4px' }}>{item.label}</div>
-              <div style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.5)' }}>Explore →</div>
+              <div style={{ padding: '12px 16px' }}>
+                <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', marginBottom: '2px' }}>{item.label}</div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.5)' }}>Explore →</div>
+              </div>
             </button>
           ))}
         </div>

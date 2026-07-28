@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Category, Product } from '../types'
+import { getCategoryImage } from '../lib/images'
 
 import type { View } from '../types/view'
 
@@ -58,51 +59,48 @@ export function CategoryStrip({ onNavigate }: CategoryStripProps) {
                 background: 'white',
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-lg)',
-                padding: '24px',
+                padding: '0',
                 textAlign: 'left',
                 transition: 'all 200ms ease',
                 position: 'relative',
                 overflow: 'hidden',
+                cursor: 'pointer',
               }}
               onMouseEnter={(e) => { e.currentTarget.style.boxShadow = 'var(--shadow-lg)'; e.currentTarget.style.transform = 'translateY(-4px)' }}
               onMouseLeave={(e) => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'translateY(0)' }}
             >
+              {/* Image header */}
               <div style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                height: '4px',
-                background: catColors[cat.id] || 'var(--brand-accent)',
-              }} />
-              <div style={{
-                width: '48px',
-                height: '48px',
-                borderRadius: 'var(--radius-md)',
-                background: `${catColors[cat.id] || '#00A6A6'}15`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginBottom: '16px',
+                height: '120px',
+                overflow: 'hidden',
+                position: 'relative',
               }}>
+                <img
+                  src={getCategoryImage(cat.id)}
+                  alt={cat.name}
+                  loading="lazy"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
                 <div style={{
-                  width: '24px',
-                  height: '24px',
-                  borderRadius: '6px',
-                  background: catColors[cat.id] || 'var(--brand-accent)',
+                  position: 'absolute',
+                  inset: 0,
+                  background: `linear-gradient(to bottom, transparent, ${catColors[cat.id] || '#00A6A6'}40)`,
                 }} />
               </div>
-              <h3 style={{ fontWeight: 700, fontSize: 'var(--text-base)', marginBottom: '4px' }}>
-                {cat.name}
-              </h3>
-              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '12px', lineHeight: 1.5 }}>
-                {cat.blurb}
-              </p>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span className="pill">{counts[cat.id] || 0} products</span>
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--brand-accent)', fontWeight: 600 }}>
-                  Browse →
-                </span>
+              {/* Content */}
+              <div style={{ padding: '20px' }}>
+                <h3 style={{ fontWeight: 700, fontSize: 'var(--text-base)', marginBottom: '4px' }}>
+                  {cat.name}
+                </h3>
+                <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '12px', lineHeight: 1.5 }}>
+                  {cat.blurb}
+                </p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span className="pill">{counts[cat.id] || 0} products</span>
+                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--brand-accent)', fontWeight: 600 }}>
+                    Browse →
+                  </span>
+                </div>
               </div>
             </button>
           ))}

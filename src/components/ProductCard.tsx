@@ -1,5 +1,6 @@
 import { Star, Plus } from 'lucide-react'
 import type { Product } from '../types'
+import { getProductImage } from '../lib/images'
 
 interface ProductCardProps {
   product: Product
@@ -30,20 +31,18 @@ export function ProductCard({ product, onClick, onAddToCart }: ProductCardProps)
       {/* Image area */}
       <div
         style={{
-          background: `linear-gradient(135deg, ${color}10, ${color}05)`,
-          height: '180px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          height: '200px',
           position: 'relative',
+          overflow: 'hidden',
           borderBottom: '1px solid var(--border-light)',
+          background: `linear-gradient(135deg, ${color}10, ${color}05)`,
         }}
       >
         {/* Badge */}
         {product.badge && (
           <span
             className={`badge badge-${product.badge.toLowerCase().includes('best') ? 'bestseller' : 'bundle'}`}
-            style={{ position: 'absolute', top: '12px', left: '12px' }}
+            style={{ position: 'absolute', top: '12px', left: '12px', zIndex: 2 }}
           >
             {product.badge}
           </span>
@@ -52,23 +51,24 @@ export function ProductCard({ product, onClick, onAddToCart }: ProductCardProps)
         {hasDiscount && (
           <span
             className="badge badge-stock-out"
-            style={{ position: 'absolute', top: '12px', right: '12px', background: 'var(--danger)', color: 'white' }}
+            style={{ position: 'absolute', top: '12px', right: '12px', background: 'var(--danger)', color: 'white', zIndex: 2 }}
           >
             -{Math.round((1 - product.price / (product.was_price || product.price)) * 100)}%
           </span>
         )}
-        {/* Category icon placeholder */}
-        <div style={{
-          width: '56px',
-          height: '56px',
-          borderRadius: 'var(--radius-md)',
-          background: `${color}20`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}>
-          <div style={{ width: '28px', height: '28px', borderRadius: '8px', background: color }} />
-        </div>
+        <img
+          src={getProductImage(product.id)}
+          alt={product.name}
+          loading="lazy"
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            transition: 'transform 400ms ease',
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.08)'}
+          onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+        />
       </div>
 
       {/* Content */}
