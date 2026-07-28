@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Enterprise Self-Care — persona prototypes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --nim-primary-500:#0099FF; --nim-primary-600:#0578BE; --nim-primary-50:#F1F8FF;
+  --nim-ink-900:#1D1D1D; --nim-ink-700:#4A4A4A; --nim-ink-600:#666666; --nim-ink-400:#8D8D8D;
+  --nim-surface-0:#FFFFFF; --nim-surface-50:#F9F9F9; --nim-surface-100:#F4F4F4;
+  --nim-line-100:#EDEDED; --nim-line-200:#DCDCDC;
+  --nim-ai-orange-500:#EE743B; --nim-ai-surface:#FEF3EC;
+  --nim-success-fg:#146C43; --nim-success-bg:#E7F4EC; --nim-success-line:#BFE0CD;
+  --nim-info-fg:#0B5FA5;    --nim-info-bg:#E9F3FC;    --nim-info-line:#C3DEF5;
+  --nim-partial-fg:#00676B; --nim-partial-bg:#E3F3F3; --nim-partial-line:#BEDFDF;
+  --nim-warning-fg:#8A5300; --nim-warning-bg:#FFF3E0; --nim-warning-line:#F0DCBB;
+}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--nim-surface-100);color:var(--nim-ink-900);letter-spacing:0;
+  font-family:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.45}
+:focus-visible{outline:none;box-shadow:0 0 0 2px #FFF,0 0 0 4px var(--nim-primary-500);border-radius:6px}
+.head{background:#0E1B26;color:#E7EDF2;padding:26px 32px}
+.head .inner{max-width:1180px;margin:0 auto}
+.brandrow{display:flex;align-items:center;gap:12px;margin-bottom:16px}
+.brandrow img{height:24px}
+.brandrow .word{font-size:13px;font-weight:600;color:#FFF}
+.brandrow .tier{font-size:11px;color:#93A6B5}
+h1{font-size:24px;font-weight:600;margin:0 0 6px;color:#FFF}
+.sub{font-size:13px;color:#A9BCC9;max-width:820px;margin:0}
+.meta{display:flex;gap:22px;flex-wrap:wrap;margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,.12)}
+.meta div{min-width:0}
+.meta .k{font-size:11px;color:#7E93A3}
+.meta .v{font-size:12px;color:#DCE6ED;font-weight:500;margin-top:2px}
+main{max-width:1180px;margin:0 auto;padding:26px 32px 60px}
+h2{font-size:15px;font-weight:600;margin:0 0 12px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:900px){.grid{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--nim-surface-0);border:1px solid var(--nim-line-200);border-radius:8px;display:flex;flex-direction:column;
+  text-decoration:none;color:inherit;overflow:hidden}
+.card:hover{border-color:var(--nim-primary-500)}
+.card-head{padding:14px 16px;border-bottom:1px solid var(--nim-line-100);display:flex;gap:12px;align-items:flex-start}
+.badge{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;flex:0 0 auto;
+  background:var(--nim-primary-50);color:var(--nim-primary-600);border:1px solid #CFE7FA}
+.badge.op{background:var(--nim-partial-bg);color:var(--nim-partial-fg);border-color:var(--nim-partial-line)}
+.card-head h3{margin:0;font-size:14px;font-weight:600}
+.card-head .who{font-size:11px;color:var(--nim-ink-600);margin-top:2px}
+.card-body{padding:14px 16px;flex:1 1 auto}
+.card-body p{margin:0 0 12px;font-size:12px;color:var(--nim-ink-700)}
+.feats{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px}
+.feats li{font-size:11px;color:var(--nim-ink-700);display:flex;gap:6px;align-items:flex-start}
+.feats li::before{content:"+";color:var(--nim-primary-500);font-weight:700;flex:0 0 auto}
+.card-foot{padding:11px 16px;border-top:1px solid var(--nim-line-100);background:var(--nim-surface-50);
+  display:flex;align-items:center;gap:10px}
+.count{font-size:11px;color:var(--nim-ink-600)}
+.open{margin-left:auto;height:30px;padding:0 13px;border-radius:6px;border:1px solid var(--nim-primary-600);
+  background:var(--nim-primary-600);color:#FFF;font:inherit;font-size:12px;font-weight:500;display:inline-flex;align-items:center;gap:7px;text-decoration:none}
+.open:hover{filter:brightness(.92)}
+.note{margin-top:22px;background:var(--nim-surface-0);border:1px solid var(--nim-line-200);border-radius:8px;padding:16px 18px}
+.note h2{margin-bottom:10px}
+.note ul{margin:0;padding-left:18px}
+.note li{font-size:12px;color:var(--nim-ink-700);margin:5px 0}
+.pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;line-height:16px;
+  border-radius:4px;padding:1px 6px;border:1px solid}
+.pill-info{color:var(--nim-info-fg);background:var(--nim-info-bg);border-color:var(--nim-info-line)}
+.pill-partial{color:var(--nim-partial-fg);background:var(--nim-partial-bg);border-color:var(--nim-partial-line)}
+.pill-success{color:var(--nim-success-fg);background:var(--nim-success-bg);border-color:var(--nim-success-line)}
+.pill-ai{color:#8A3D12;background:var(--nim-ai-surface);border-color:#F6C7AC}
+.foot{max-width:1180px;margin:0 auto;padding:0 32px 40px;font-size:11px;color:var(--nim-ink-600)}
+</style>
+</head>
+<body>
+
+<header class="head">
+  <div class="inner">
+    <div class="brandrow">
+      <!-- Official 6D mark loads from the approved asset only; it is never reconstructed. -->
+      <img src="assets/brand/6d-logo-white.png" alt="6D Technologies" onerror="this.remove()">
+      <div><div class="word">Enterprise Self-Care</div><div class="tier">6D ONE UI · working prototype</div></div>
+    </div>
+    <h1>Persona prototypes</h1>
+    <p class="sub">Working HTML for every persona in the Enterprise Self-Care PRD, built to the <strong>nim-ui-design-system-v2</strong> visual contract
+    and populated with a single consistent synthetic account. Each file is self-contained — open it straight from disk, no server needed.</p>
+    <div class="meta">
+      <div><div class="k">Source</div><div class="v">Enterprise Self-Care PRD + UI/UX delivery tracker</div></div>
+      <div><div class="k">Account</div><div class="v">Meridian Logistics Group · ENT-100482</div></div>
+      <div><div class="k">Operator</div><div class="v">Kestrel Telecom (white-label)</div></div>
+      <div><div class="k">Coverage</div><div class="v">36 agreed features · 46 screens</div></div>
+      <div><div class="k">Viewports</div><div class="v">1920 · 1440 · 1280 · 1024</div></div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <h2>Choose a persona</h2>
+  <div class="grid">
+
+    <div class="card">
+      <div class="card-head">
+        <span class="badge"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg></span>
+        <div><h3>Enterprise admin</h3><div class="who">Anneke Visser · manages the whole account</div></div>
+      </div>
+      <div class="card-body">
+        <p>The power user. Runs users, access, services, pooled data, billing and support for 148 identities across 26 connectivity sites.</p>
+        <ul class="feats">
+          <li>Dashboard and AI insights</li><li>Users, roles, teams</li>
+          <li>Mobile lines, SIM and eSIM</li><li>SD-WAN and MPLS</li>
+          <li>Plans, add-ons, shared pools</li><li>Usage and cost allocation</li>
+          <li>Invoices and payments</li><li>Orders and support</li>
+          <li>Alerts and reports</li><li>Profile and audit log</li>
+        </ul>
+      </div>
+      <div class="card-foot"><span class="count">19 features · 19 screens</span>
+        <span class="pill pill-ai">AI insights</span>
+        <a class="open" href="admin.html">Open</a></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <span class="badge"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg></span>
+        <div><h3>Enterprise user</h3><div class="who">Joost Bakker · field operations, one line</div></div>
+      </div>
+      <div class="card-body">
+        <p>Scoped to a single line. Sees their own service, usage and charges, requests what they need, and gets help without calling anyone.</p>
+        <ul class="feats">
+          <li>Personal dashboard</li><li>My services</li>
+          <li>Usage against allowance</li><li>SIM and device</li>
+          <li>Self-service add-ons</li><li>My charges</li>
+          <li>Raise and track tickets</li><li>My notifications</li>
+          <li>Profile and preferences</li><li>AI assistant</li>
+        </ul>
+      </div>
+      <div class="card-foot"><span class="count">10 features · 9 screens</span>
+        <span class="pill pill-ai">AI assistant</span>
+        <a class="open" href="user.html">Open</a></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <span class="badge"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/></svg></span>
+        <div><h3>Team leader</h3><div class="who">Ruben Oyelaran · fleet &amp; dispatch, 30 members</div></div>
+      </div>
+      <div class="card-body">
+        <p>Hierarchy-based scope. Sees their own line plus everything for their own team, and holds a delegated €50 approval limit.</p>
+        <ul class="feats">
+          <li>Team dashboard</li><li>Member activity</li>
+          <li>Team usage and pool draw</li><li>Team spend</li>
+          <li>Approve member requests</li><li>Team-level alerts</li>
+          <li>Team reports and export</li><li>Team support queue</li>
+          <li>My own line</li>
+        </ul>
+      </div>
+      <div class="card-foot"><span class="count">7 team features + own line · 9 screens</span>
+        <span class="pill pill-info">Delegated approvals</span>
+        <a class="open" href="team-lead.html">Open</a></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <span class="badge op"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4"/><path d="M10 10h4"/><path d="M10 14h4"/></svg></span>
+        <div><h3>Operator admin</h3><div class="who">Lena Fischer · Kestrel Telecom care desk</div></div>
+      </div>
+      <div class="card-body">
+        <p>Deliberately narrow. Support staff see exactly what the customer sees and nothing more; contracts and pricing hand off to the Enterprise CRM.</p>
+        <ul class="feats">
+          <li>Portfolio of accounts</li><li>Self-care adoption</li>
+          <li>Account in support context</li><li>Users and account state</li>
+          <li>Service state</li><li>Usage oversight</li>
+          <li>Billing oversight (read-only)</li><li>Support queue</li>
+          <li>Operator access log</li>
+        </ul>
+      </div>
+      <div class="card-foot"><span class="count">Self-care scope only · 9 screens</span>
+        <span class="pill pill-partial">CRM boundary enforced</span>
+        <a class="open" href="operator.html">Open</a></div>
+    </div>
+
+  </div>
+
+  <div class="note">
+    <h2>What to point at during the demo</h2>
+    <ul>
+      <li><strong>Scope is real, not cosmetic.</strong> The same account looks different to each persona because each file only holds what that role is allowed to see. The operator view refuses payment and plan changes with a hand-off to the CRM rather than a permissions error.</li>
+      <li><strong>Missing data is declared, never invented.</strong> Two sites stopped reporting on 18 July and one usage record fell outside the retention window. Those appear as <em>Not measured</em>, hatched chart bars and an unattributed €1,840 in chargeback — never as zero.</li>
+      <li><strong>Lifecycle actions carry impact context.</strong> Deactivating a user, swapping a SIM, paying an invoice and approving a request each state what changes, what it costs and what cannot be undone before the confirm button becomes live.</li>
+      <li><strong>AI is confined and sourced.</strong> Orange appears only on AI surfaces. Every insight carries a confidence label and every assistant answer cites which record sets it read — and says so plainly when the evidence is not there.</li>
+      <li><strong>State is never colour alone.</strong> Status pills carry a glyph, capacity meters carry a pattern, and topology links differ by dash style, so the screens survive a monochrome projector and a colour-blind audience.</li>
+    </ul>
+  </div>
+</main>
+
+<div class="foot">
+  Synthetic data throughout — no real customer, user or billing records. Built to the nim-ui-design-system-v2 visual contract.
+  The official 6D mark renders only from the approved brand asset; it is never reconstructed in text, CSS or SVG.
+</div>
+
+</body>
+</html>

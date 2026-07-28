@@ -1,0 +1,1600 @@
+/* ===========================================================================
+   6D ONE UI — visual contract implementation
+   Governed by skill: nim-ui-design-system-v2
+   Dense operational workspace. No marketing-page patterns.
+   =========================================================================== */
+
+/* ---- Portable colour tokens (canonical values from the visual contract) ---- */
+:root{
+  --nim-primary-500:#0099FF;
+  --nim-primary-600:#0578BE;
+  --nim-primary-50:#F1F8FF;
+
+  --nim-ink-900:#1D1D1D;
+  --nim-ink-700:#4A4A4A;
+  --nim-ink-600:#666666;
+  --nim-ink-400:#8D8D8D;
+
+  --nim-surface-0:#FFFFFF;
+  --nim-surface-50:#F9F9F9;
+  --nim-surface-100:#F4F4F4;
+
+  --nim-line-100:#EDEDED;
+  --nim-line-200:#DCDCDC;
+
+  /* AI-only accent. Never a primary CTA. Never dominant. */
+  --nim-ai-orange-500:#EE743B;
+  --nim-ai-surface:#FEF3EC;
+  /* The accent is a stroke colour. Text on the AI surface needs its own,
+     darker value or it fails contrast at the size it is actually used. */
+  --nim-ai-ink:#8A3D12;
+  --nim-ai-line:#F6C7AC;
+
+  /* ---- Separate semantic state tokens, each WCAG 2.2 AA on its surface ---- */
+  --nim-danger-fg:#B3261E;      --nim-danger-bg:#FCEEED;   --nim-danger-line:#F0C8C5;
+  --nim-warning-fg:#8A5300;     --nim-warning-bg:#FFF3E0;  --nim-warning-line:#F0DCBB;
+  --nim-success-fg:#146C43;     --nim-success-bg:#E7F4EC;  --nim-success-line:#BFE0CD;
+  --nim-info-fg:#0B5FA5;        --nim-info-bg:#E9F3FC;     --nim-info-line:#C3DEF5;
+  --nim-stale-fg:#5E4B9B;       --nim-stale-bg:#EFEBFA;    --nim-stale-line:#D5CBEE;
+  --nim-partial-fg:#00676B;     --nim-partial-bg:#E3F3F3;  --nim-partial-line:#BEDFDF;
+  --nim-unavailable-fg:#5F5F5F; --nim-unavailable-bg:#F0F0F0; --nim-unavailable-line:#DCDCDC;
+
+  /* ---- Density + geometry ---- */
+  --nim-radius-card:8px;
+  --nim-radius-control:6px;
+  --nim-radius-badge:4px;
+  --nim-row-h:34px;
+  --nim-control-h:32px;
+  --nim-nav-w:238px;
+  --nim-topbar-h:52px;
+
+  /* The inner ring of the focus halo has to match the surface behind it, or
+     the halo reads as a white outline on a dark screen. */
+  /* Label colour for anything sitting on a primary fill. White works on the
+     light theme's deeper blue and fails badly on the brighter dark one, so it
+     is a token rather than a constant. */
+  --nim-on-primary:#FFFFFF;
+  --nim-focus-ring:#FFFFFF;
+  --nim-focus:0 0 0 2px var(--nim-focus-ring), 0 0 0 4px var(--nim-primary-500);
+  --nim-shadow-pop:0 6px 20px rgba(29,29,29,.14);
+  --nim-scrim:rgba(14,27,38,.34);
+  --nim-paper:#FFFFFF;
+  color-scheme:light;
+}
+
+/* ---------------------------------------------------------------------------
+   Dark theme.
+
+   Not an inversion. Inverting a palette produces pure black behind pure white,
+   which on an operational screen read for hours is worse than the light one.
+   The surfaces lift from a near-black base so elevation still reads, the ink
+   stops short of pure white to cut halation, and every semantic pair was
+   re-picked against its own dark background rather than dimmed — a warning
+   that fails contrast in the dark is a warning nobody sees at night.
+   --------------------------------------------------------------------------- */
+html[data-theme="dark"]{
+  color-scheme:dark;
+
+  --nim-primary-500:#4CB4FF;
+  --nim-primary-600:#2F9FF0;
+  --nim-primary-50:#12222E;
+
+  --nim-ink-900:#E9EDF1;
+  --nim-ink-700:#C4CCD4;
+  --nim-ink-600:#9AA5B0;
+  --nim-ink-400:#8B96A2;
+
+  --nim-surface-0:#161B21;
+  --nim-surface-50:#1D232A;
+  --nim-surface-100:#242B33;
+
+  --nim-line-100:#2A323B;
+  --nim-line-200:#3A434E;
+
+  --nim-ai-orange-500:#FF9257;
+  --nim-ai-surface:#2A2019;
+  --nim-ai-ink:#FFC29A;
+  --nim-ai-line:#5A3A26;
+
+  --nim-danger-fg:#FF9B93;      --nim-danger-bg:#2E1A18;   --nim-danger-line:#5A312D;
+  --nim-warning-fg:#F2B65C;     --nim-warning-bg:#2C2317;  --nim-warning-line:#57432A;
+  --nim-success-fg:#6FD79B;     --nim-success-bg:#132821;  --nim-success-line:#2C4E3D;
+  --nim-info-fg:#7CC0F5;        --nim-info-bg:#132433;      --nim-info-line:#2A4560;
+  --nim-stale-fg:#B7A8EE;       --nim-stale-bg:#211E31;    --nim-stale-line:#3E3960;
+  --nim-partial-fg:#63C9CD;     --nim-partial-bg:#122729;  --nim-partial-line:#26494C;
+  --nim-unavailable-fg:#9AA5B0; --nim-unavailable-bg:#22282F; --nim-unavailable-line:#3A434E;
+
+  --nim-on-primary:#0B1218;
+  --nim-focus-ring:#0E1218;
+  --nim-shadow-pop:0 6px 22px rgba(0,0,0,.55);
+  --nim-scrim:rgba(4,7,10,.62);
+  /* A document preview is meant to look like paper. Paper is not dark, so it
+     stays light and only its frame follows the theme. */
+  --nim-paper:#F4F5F7;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+
+html,body{height:100%}
+body{
+  margin:0;
+  font-family:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  font-size:13px;
+  line-height:1.45;
+  letter-spacing:0;               /* contract: tracking is 0, never negative */
+  color:var(--nim-ink-900);
+  background:var(--nim-surface-100);
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ---- Semantic type roles. Fixed sizes — type never scales with viewport. ---- */
+.t-page{font-size:20px;font-weight:600;line-height:1.25;margin:0}
+.t-section{font-size:15px;font-weight:600;line-height:1.3;margin:0}
+.t-sub{font-size:13px;font-weight:600;margin:0}
+.t-label{font-size:12px;font-weight:500;color:var(--nim-ink-600)}
+.t-body{font-size:13px;font-weight:400}
+.t-small{font-size:12px}
+.t-tiny{font-size:11px}
+.t-num{font-variant-numeric:tabular-nums}
+.muted{color:var(--nim-ink-600)}
+.dim{color:var(--nim-ink-400)}
+.strong{font-weight:600}
+
+/* ---- Focus + motion ---- */
+:focus{outline:none}
+:focus-visible{box-shadow:var(--nim-focus);border-radius:var(--nim-radius-control)}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;transition-duration:.001ms !important}
+}
+
+.skip-link{position:absolute;left:-9999px;top:0;z-index:200;background:var(--nim-surface-0);
+  padding:8px 12px;border:1px solid var(--nim-primary-500);border-radius:var(--nim-radius-control)}
+.skip-link:focus{left:8px;top:8px}
+
+/* ===========================  APPLICATION SHELL  ========================== */
+.app{display:grid;grid-template-columns:var(--nim-nav-w) 1fr;min-height:100vh}
+
+.rail{
+  background:#0E1B26;color:#E7EDF2;display:flex;flex-direction:column;
+  position:sticky;top:0;height:100vh;overflow:hidden;
+}
+.rail-brand{
+  height:var(--nim-topbar-h);display:flex;align-items:center;gap:10px;padding:0 14px;
+  border-bottom:1px solid rgba(255,255,255,.10);flex:0 0 auto;
+}
+/* Official 6D logo slot. The mark is never reconstructed in CSS/SVG/text —
+   if the approved asset is absent the slot stays empty and the product
+   wordmark alone identifies the app. */
+.rail-brand img.brand-mark{height:22px;width:auto;display:block}
+.brand-word{font-size:13px;font-weight:600;color:#FFFFFF}
+.brand-tier{font-size:11px;color:#93A6B5;margin-top:-2px}
+
+.rail-scroll{flex:1 1 auto;overflow-y:auto;padding:10px 0 18px}
+.rail-scroll::-webkit-scrollbar{width:8px}
+.rail-scroll::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:4px}
+
+.nav-group{margin:2px 0 10px}
+.nav-group-label{font-size:11px;font-weight:600;color:#7E93A3;padding:8px 16px 4px}
+.nav-item{
+  display:flex;align-items:center;gap:10px;width:100%;background:none;border:0;
+  color:#D4DFE8;font:inherit;font-size:13px;text-align:left;cursor:pointer;
+  padding:0 14px;height:32px;position:relative;
+}
+.nav-item .ico{flex:0 0 16px;color:#8FA5B6}
+.nav-item:hover{background:rgba(255,255,255,.06);color:#FFFFFF}
+.nav-item:hover .ico{color:#CFE0EC}
+.nav-item[aria-current="page"]{background:rgba(0,153,255,.16);color:#FFFFFF;font-weight:500}
+.nav-item[aria-current="page"] .ico{color:var(--nim-primary-500)}
+.nav-item[aria-current="page"]::before{
+  content:"";position:absolute;left:0;top:4px;bottom:4px;width:3px;background:var(--nim-primary-500);
+}
+.nav-item .nav-count{margin-left:auto;font-size:11px;color:#9FB3C2;font-variant-numeric:tabular-nums}
+.nav-item[aria-current="page"] .nav-count{color:#CFE0EC}
+
+.rail-foot{flex:0 0 auto;border-top:1px solid rgba(255,255,255,.10);padding:10px 14px;font-size:11px;color:#8FA5B6}
+
+/* ---- Top bar: breadcrumb, global search, freshness, persona context ---- */
+.main{display:flex;flex-direction:column;min-width:0}
+.topbar{
+  height:var(--nim-topbar-h);background:var(--nim-surface-0);border-bottom:1px solid var(--nim-line-200);
+  display:flex;align-items:center;gap:14px;padding:0 16px;position:sticky;top:0;z-index:40;
+}
+.crumbs{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--nim-ink-600);min-width:0}
+.crumbs .sep{color:var(--nim-ink-400)}
+.crumbs .here{color:var(--nim-ink-900);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.gsearch{margin-left:auto;position:relative;width:300px}
+.gsearch input{
+  width:100%;height:var(--nim-control-h);border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-control);
+  background:var(--nim-surface-50);padding:0 30px 0 30px;font:inherit;font-size:12px;color:var(--nim-ink-900);
+}
+.gsearch input::placeholder{color:var(--nim-ink-400)}
+.gsearch input:focus{background:var(--nim-surface-0);border-color:var(--nim-primary-500);box-shadow:var(--nim-focus)}
+.gsearch .ico{position:absolute;left:9px;top:8px;color:var(--nim-ink-400)}
+.gsearch kbd{
+  position:absolute;right:8px;top:7px;font:inherit;font-size:10px;color:var(--nim-ink-400);
+  border:1px solid var(--nim-line-200);border-radius:3px;padding:1px 4px;background:var(--nim-surface-0);
+}
+.gres{
+  position:absolute;top:38px;left:0;right:0;background:var(--nim-surface-0);border:1px solid var(--nim-line-200);
+  border-radius:var(--nim-radius-card);box-shadow:var(--nim-shadow-pop);max-height:340px;overflow:auto;z-index:60;
+}
+.gres[hidden]{display:none}
+.gres-item{display:flex;gap:8px;align-items:center;padding:7px 10px;cursor:pointer;border-bottom:1px solid var(--nim-line-100)}
+.gres-item:last-child{border-bottom:0}
+.gres-item:hover,.gres-item.sel{background:var(--nim-primary-50)}
+.gres-kind{font-size:10px;color:var(--nim-ink-600);border:1px solid var(--nim-line-200);border-radius:3px;padding:0 4px;flex:0 0 auto}
+.gres-empty{padding:14px;color:var(--nim-ink-600);font-size:12px}
+
+.envstate{display:flex;align-items:center;gap:8px;padding-left:14px;border-left:1px solid var(--nim-line-100)}
+.env-chip{
+  display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;
+  border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-badge);padding:2px 6px;color:var(--nim-ink-700);
+  background:var(--nim-surface-50);
+}
+.env-chip .dot{width:6px;height:6px;border-radius:50%;background:var(--nim-success-fg)}
+.env-chip.is-stale{background:var(--nim-stale-bg);border-color:var(--nim-stale-line);color:var(--nim-stale-fg)}
+.env-chip.is-stale .dot{background:var(--nim-stale-fg)}
+
+.persona{display:flex;align-items:center;gap:8px;padding-left:12px;border-left:1px solid var(--nim-line-100)}
+.avatar{
+  width:26px;height:26px;border-radius:50%;background:var(--nim-primary-50);color:var(--nim-primary-600);
+  display:grid;place-items:center;font-size:11px;font-weight:600;border:1px solid #CFE7FA;flex:0 0 auto;
+}
+.persona-meta{line-height:1.15}
+.persona-name{font-size:12px;font-weight:500}
+.persona-role{font-size:11px;color:var(--nim-ink-600)}
+
+.iconbtn{
+  width:var(--nim-control-h);height:var(--nim-control-h);border:1px solid transparent;background:none;border-radius:var(--nim-radius-control);
+  display:grid;place-items:center;cursor:pointer;color:var(--nim-ink-700);position:relative;
+}
+.iconbtn:hover{background:var(--nim-surface-100);border-color:var(--nim-line-200)}
+.iconbtn .bell-dot{position:absolute;top:5px;right:6px;width:7px;height:7px;border-radius:50%;
+  background:var(--nim-danger-fg);border:1.5px solid var(--nim-surface-0)}
+
+/* ---- Page ---- */
+.page{padding:16px 18px 40px;min-width:0}
+.pagehead{display:flex;align-items:flex-start;gap:16px;margin-bottom:14px}
+.pagehead .grow{min-width:0}
+.pagesub{font-size:12px;color:var(--nim-ink-600);margin-top:3px}
+.pageacts{margin-left:auto;display:flex;gap:8px;flex:0 0 auto;align-items:center}
+
+/* ---- Command hierarchy: one primary, then secondary, then quiet ---- */
+.btn{
+  height:var(--nim-control-h);border-radius:var(--nim-radius-control);border:1px solid var(--nim-line-200);
+  background:var(--nim-surface-0);color:var(--nim-ink-900);font:inherit;font-size:12px;font-weight:500;
+  padding:0 12px;cursor:pointer;display:inline-flex;align-items:center;gap:7px;white-space:nowrap;
+}
+.btn:hover{background:var(--nim-surface-50);border-color:var(--nim-ink-400)}
+.btn:disabled{color:var(--nim-ink-400);background:var(--nim-surface-50);cursor:not-allowed;border-color:var(--nim-line-200)}
+.btn-primary{background:var(--nim-primary-600);border-color:var(--nim-primary-600);color:var(--nim-on-primary)}
+.btn-primary:hover{filter:brightness(.92)}
+.btn-danger{background:var(--nim-surface-0);border-color:var(--nim-danger-line);color:var(--nim-danger-fg)}
+.btn-danger:hover{background:var(--nim-danger-bg);border-color:var(--nim-danger-fg)}
+.btn-quiet{border-color:transparent;background:none;color:var(--nim-ink-700)}
+.btn-quiet:hover{background:var(--nim-surface-100);border-color:var(--nim-line-200)}
+.btn-sm{height:26px;padding:0 8px;font-size:11px}
+.btn .ico{flex:0 0 auto}
+
+.linkbtn{background:none;border:0;color:var(--nim-primary-600);font:inherit;font-size:12px;cursor:pointer;padding:0;text-align:left}
+.linkbtn:hover{text-decoration:underline}
+
+/* ---- Segmented control (modes) ---- */
+.seg{display:inline-flex;border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-control);overflow:hidden;background:var(--nim-surface-0)}
+.seg button{
+  border:0;background:none;font:inherit;font-size:12px;color:var(--nim-ink-700);height:30px;padding:0 11px;cursor:pointer;
+  border-right:1px solid var(--nim-line-200);
+}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed="true"]{background:var(--nim-primary-50);color:var(--nim-primary-600);font-weight:500;box-shadow:inset 0 -2px 0 var(--nim-primary-500)}
+.seg button:hover{background:var(--nim-surface-100)}
+
+/* ---- Toggle (binary setting) ---- */
+.toggle{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-size:12px}
+.toggle input{position:absolute;opacity:0;width:0;height:0}
+.toggle .track{width:32px;height:18px;border-radius:9px;background:var(--nim-line-200);position:relative;transition:background .12s;flex:0 0 auto}
+.toggle .track::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#FFF;transition:transform .12s;box-shadow:0 1px 2px rgba(0,0,0,.25)}
+.toggle input:checked + .track{background:var(--nim-primary-500)}
+.toggle input:checked + .track::after{transform:translateX(14px)}
+.toggle input:focus-visible + .track{box-shadow:var(--nim-focus)}
+
+/* ---- Inputs, selects, steppers ---- */
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field > label{font-size:12px;font-weight:500;color:var(--nim-ink-700)}
+.field .hint{font-size:11px;color:var(--nim-ink-600)}
+.field .err{font-size:11px;color:var(--nim-danger-fg);display:flex;gap:5px;align-items:flex-start}
+input.inp,select.inp,textarea.inp{
+  height:var(--nim-control-h);border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-control);
+  background:var(--nim-surface-0);padding:0 9px;font:inherit;font-size:12px;color:var(--nim-ink-900);width:100%;
+}
+textarea.inp{height:auto;padding:7px 9px;resize:vertical;min-height:64px;line-height:1.45}
+select.inp{padding-right:26px;appearance:none;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23666' stroke-width='2.5'><path d='M6 9l6 6 6-6'/></svg>");
+  background-repeat:no-repeat;background-position:right 8px center}
+input.inp:focus,select.inp:focus,textarea.inp:focus{border-color:var(--nim-primary-500);box-shadow:var(--nim-focus)}
+input.inp[aria-invalid="true"],select.inp[aria-invalid="true"]{border-color:var(--nim-danger-fg);background:var(--nim-danger-bg)}
+input.inp:disabled,select.inp:disabled{background:var(--nim-surface-100);color:var(--nim-ink-400)}
+
+.stepper{display:inline-flex;align-items:center;border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-control);overflow:hidden;background:var(--nim-surface-0)}
+.stepper button{width:28px;height:30px;border:0;background:var(--nim-surface-50);cursor:pointer;color:var(--nim-ink-700);font-size:14px;line-height:1}
+.stepper button:hover{background:var(--nim-surface-100)}
+.stepper input{width:56px;height:30px;border:0;border-left:1px solid var(--nim-line-200);border-right:1px solid var(--nim-line-200);
+  text-align:center;font:inherit;font-size:12px;font-variant-numeric:tabular-nums}
+/* Unit shown inside the control, so the number is never read bare */
+.stepper .steppfx{height:30px;display:grid;place-items:center;padding:0 7px;font-size:12px;font-weight:600;
+  color:var(--nim-ink-600);background:var(--nim-surface-50);border-left:1px solid var(--nim-line-200)}
+.stepper .steppfx+input{border-left:0}
+
+.checkline{display:flex;align-items:flex-start;gap:8px;font-size:12px;cursor:pointer}
+.checkline input[type=checkbox],.checkline input[type=radio]{margin:2px 0 0;accent-color:var(--nim-primary-500);width:14px;height:14px;flex:0 0 auto}
+
+/* Swatch — colour is chosen by swatch, never by free text */
+.swatches{display:flex;gap:6px;flex-wrap:wrap}
+.swatch{width:24px;height:24px;border-radius:var(--nim-radius-badge);border:1px solid var(--nim-line-200);cursor:pointer;position:relative}
+.swatch[aria-pressed="true"]::after{content:"";position:absolute;inset:-3px;border:2px solid var(--nim-primary-500);border-radius:6px}
+
+/* ---- Cards: radius <= 8px, reserved for repeated records / framed tools. Never nested. ---- */
+.card{background:var(--nim-surface-0);border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-card)}
+.card-head{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--nim-line-100)}
+.card-body{padding:12px}
+.card-body.flush{padding:0}
+
+/* Panels are the default surface for sections — sections are not all cards */
+.panel{background:var(--nim-surface-0);border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-card)}
+.panel + .panel{margin-top:14px}
+.panel-head{display:flex;align-items:center;gap:10px;padding:10px 12px;border-bottom:1px solid var(--nim-line-100);flex-wrap:wrap}
+.panel-head .grow{min-width:0;flex:1 1 auto}
+.panel-body{padding:12px}
+.panel-body.flush{padding:0}
+/* A flush panel that still needs one padded block under the table. */
+.panel-body.flush > .pad{padding:12px}
+
+.grid{display:grid;gap:14px}
+.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.g6{grid-template-columns:repeat(6,minmax(0,1fr))}
+@media (max-width:1200px){.g6{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.g-2-1{grid-template-columns:minmax(0,2fr) minmax(0,1fr)}
+.g-1-3{grid-template-columns:minmax(0,1fr) minmax(0,3fr)}
+.g-1-2{grid-template-columns:minmax(0,1fr) minmax(0,2fr)}
+.stack{display:flex;flex-direction:column;gap:14px}
+.row{display:flex;align-items:center;gap:10px}
+.row.wrap{flex-wrap:wrap}
+.grow{flex:1 1 auto;min-width:0}
+.spacer{flex:1 1 auto}
+
+/* ---- Metric tiles ---- */
+.metric{background:var(--nim-surface-0);border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-card);padding:11px 12px}
+.metric .m-label{font-size:12px;color:var(--nim-ink-600);display:flex;align-items:center;gap:6px}
+.metric .m-value{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:5px;line-height:1.1}
+.metric .m-value.unavailable{font-size:13px;font-weight:500;color:var(--nim-unavailable-fg);padding-top:7px}
+.metric .m-foot{font-size:11px;color:var(--nim-ink-600);margin-top:5px;display:flex;align-items:center;gap:5px}
+.delta{display:inline-flex;align-items:center;gap:3px;font-weight:500;font-variant-numeric:tabular-nums}
+.delta.up{color:var(--nim-success-fg)}
+.delta.down{color:var(--nim-danger-fg)}
+.delta.flat{color:var(--nim-ink-600)}
+
+/* ---- Status pills. Shape + glyph carry meaning, colour only reinforces. ---- */
+.pill{
+  display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;line-height:16px;
+  border-radius:var(--nim-radius-badge);padding:1px 6px;border:1px solid;white-space:nowrap;
+}
+.pill .gl{font-size:10px;line-height:1}
+.pill-success{color:var(--nim-success-fg);background:var(--nim-success-bg);border-color:var(--nim-success-line)}
+.pill-danger{color:var(--nim-danger-fg);background:var(--nim-danger-bg);border-color:var(--nim-danger-line)}
+.pill-warning{color:var(--nim-warning-fg);background:var(--nim-warning-bg);border-color:var(--nim-warning-line)}
+.pill-info{color:var(--nim-info-fg);background:var(--nim-info-bg);border-color:var(--nim-info-line)}
+.pill-stale{color:var(--nim-stale-fg);background:var(--nim-stale-bg);border-color:var(--nim-stale-line)}
+.pill-partial{color:var(--nim-partial-fg);background:var(--nim-partial-bg);border-color:var(--nim-partial-line)}
+.pill-neutral{color:var(--nim-unavailable-fg);background:var(--nim-unavailable-bg);border-color:var(--nim-unavailable-line)}
+.pill-ai{color:var(--nim-ai-ink);background:var(--nim-ai-surface);border-color:var(--nim-ai-line)}
+
+/* Explicit "no evidence" treatment — never a fabricated value, never zero */
+.nodata{color:var(--nim-unavailable-fg);font-size:12px;display:inline-flex;align-items:center;gap:5px}
+.nodata::before{content:"—";color:var(--nim-ink-400);font-weight:600}
+
+/* ---- Tables: compact, repeated inventory operations ---- */
+.tablewrap{overflow-x:auto}
+table.tbl{width:100%;border-collapse:separate;border-spacing:0;font-size:12px}
+table.tbl th,table.tbl td{padding:0 10px;height:var(--nim-row-h);text-align:left;border-bottom:1px solid var(--nim-line-100);vertical-align:middle}
+table.tbl thead th{
+  position:sticky;top:0;background:var(--nim-surface-50);z-index:2;font-weight:600;font-size:11px;color:var(--nim-ink-700);
+  border-bottom:1px solid var(--nim-line-200);white-space:nowrap;
+}
+table.tbl thead th.sortable{cursor:pointer;user-select:none}
+table.tbl thead th.sortable:hover{background:var(--nim-surface-100)}
+table.tbl thead th .sortglyph{color:var(--nim-ink-400);margin-left:4px;font-size:9px}
+table.tbl thead th[aria-sort] .sortglyph{color:var(--nim-primary-600)}
+table.tbl tbody tr:hover{background:var(--nim-primary-50)}
+table.tbl tbody tr.is-selected{background:var(--nim-primary-50)}
+table.tbl td.num,table.tbl th.num{text-align:right;font-variant-numeric:tabular-nums}
+table.tbl td.acts{text-align:right;white-space:nowrap}
+table.tbl .cellmain{font-weight:500;color:var(--nim-ink-900)}
+table.tbl .cellsub{font-size:11px;color:var(--nim-ink-600)}
+table.tbl tbody tr:last-child td{border-bottom:0}
+.tbl-toolbar{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--nim-line-100);flex-wrap:wrap}
+.tbl-foot{display:flex;align-items:center;gap:10px;padding:8px 12px;border-top:1px solid var(--nim-line-100);
+  background:var(--nim-surface-50);font-size:11px;color:var(--nim-ink-600);border-radius:0 0 var(--nim-radius-card) var(--nim-radius-card)}
+
+.filterchip{
+  display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 8px;font-size:11px;
+  border:1px solid var(--nim-line-200);border-radius:13px;background:var(--nim-surface-0);cursor:pointer;color:var(--nim-ink-700);
+}
+.filterchip[aria-pressed="true"]{background:var(--nim-primary-50);border-color:var(--nim-primary-500);color:var(--nim-primary-600);font-weight:500}
+
+/* ---- Distinct non-happy states ---- */
+.state{padding:26px 18px;text-align:center;color:var(--nim-ink-700)}
+.state .state-ico{display:grid;place-items:center;width:40px;height:40px;border-radius:50%;margin:0 auto 10px}
+.state h4{margin:0 0 4px;font-size:13px;font-weight:600}
+.state p{margin:0 auto;max-width:460px;font-size:12px;color:var(--nim-ink-600)}
+.state .state-act{margin-top:12px}
+.state-empty .state-ico{background:var(--nim-surface-100);color:var(--nim-ink-600)}
+.state-filtered .state-ico{background:var(--nim-info-bg);color:var(--nim-info-fg)}
+.state-error .state-ico{background:var(--nim-danger-bg);color:var(--nim-danger-fg)}
+.state-forbidden .state-ico{background:var(--nim-warning-bg);color:var(--nim-warning-fg)}
+.state-unavailable .state-ico{background:var(--nim-unavailable-bg);color:var(--nim-unavailable-fg)}
+
+.banner{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;border:1px solid;border-radius:var(--nim-radius-card);font-size:12px}
+.banner .ico{flex:0 0 auto;margin-top:1px}
+.banner .grow{min-width:0}
+.banner-info{background:var(--nim-info-bg);border-color:var(--nim-info-line);color:var(--nim-info-fg)}
+.banner-warning{background:var(--nim-warning-bg);border-color:var(--nim-warning-line);color:var(--nim-warning-fg)}
+.banner-danger{background:var(--nim-danger-bg);border-color:var(--nim-danger-line);color:var(--nim-danger-fg)}
+.banner-success{background:var(--nim-success-bg);border-color:var(--nim-success-line);color:var(--nim-success-fg)}
+.banner-stale{background:var(--nim-stale-bg);border-color:var(--nim-stale-line);color:var(--nim-stale-fg)}
+.banner-partial{background:var(--nim-partial-bg);border-color:var(--nim-partial-line);color:var(--nim-partial-fg)}
+.banner strong{font-weight:600}
+
+/* Skeleton loading — distinct from empty */
+.skel{background:linear-gradient(90deg,var(--nim-surface-100) 25%,#ECECEC 37%,var(--nim-surface-100) 63%);
+  background-size:400% 100%;animation:skel 1.2s ease-in-out infinite;border-radius:4px;height:11px}
+@keyframes skel{0%{background-position:100% 50%}100%{background-position:0 50%}}
+
+/* ---- Meters / capacity: pattern + label, never colour alone ---- */
+.meter{height:6px;border-radius:3px;background:var(--nim-surface-100);overflow:hidden;position:relative;border:1px solid var(--nim-line-100)}
+.meter > span{display:block;height:100%;background:var(--nim-primary-500)}
+.meter.lvl-warning > span{background:var(--nim-warning-fg);
+  background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.34) 0 3px,transparent 3px 6px)}
+.meter.lvl-danger > span{background:var(--nim-danger-fg);
+  background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.4) 0 2px,transparent 2px 5px)}
+.meter.lvl-unavailable{background:repeating-linear-gradient(45deg,#EFEFEF 0 4px,#E4E4E4 4px 8px)}
+.meterline{display:flex;align-items:center;gap:8px}
+.meterline .meter{flex:1 1 auto;min-width:60px}
+.meterline .mv{font-size:11px;font-variant-numeric:tabular-nums;color:var(--nim-ink-700);flex:0 0 auto;min-width:52px;text-align:right}
+
+/* ---- Inspector (right-side detail) ---- */
+.inspector{
+  position:fixed;top:0;right:0;bottom:0;width:470px;max-width:92vw;background:var(--nim-surface-0);
+  border-left:1px solid var(--nim-line-200);box-shadow:-8px 0 24px rgba(29,29,29,.10);z-index:90;
+  display:flex;flex-direction:column;
+}
+.inspector[hidden]{display:none}
+.insp-head{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-bottom:1px solid var(--nim-line-200)}
+.insp-body{flex:1 1 auto;overflow-y:auto;padding:14px}
+.insp-foot{border-top:1px solid var(--nim-line-200);padding:10px 14px;display:flex;gap:8px;align-items:center;background:var(--nim-surface-50);flex-wrap:wrap}
+.scrim{position:fixed;inset:0;background:var(--nim-scrim);z-index:80}
+.scrim[hidden]{display:none}
+
+.deflist{display:grid;grid-template-columns:138px minmax(0,1fr);gap:7px 12px;font-size:12px;align-items:baseline}
+.deflist dt{color:var(--nim-ink-600);margin:0}
+.deflist dd{margin:0;color:var(--nim-ink-900);word-break:break-word}
+
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--nim-line-200);padding:0 12px;overflow-x:auto}
+.tabs button{
+  border:0;background:none;font:inherit;font-size:12px;color:var(--nim-ink-700);height:36px;padding:0 10px;cursor:pointer;
+  border-bottom:2px solid transparent;white-space:nowrap;
+}
+.tabs button[aria-selected="true"]{color:var(--nim-primary-600);border-bottom-color:var(--nim-primary-500);font-weight:500}
+.tabs button:hover{color:var(--nim-ink-900)}
+
+/* ---- Timeline (audit / ticket history) ---- */
+.timeline{list-style:none;margin:0;padding:0 0 0 6px}
+.timeline li{position:relative;padding:0 0 14px 20px;border-left:1px solid var(--nim-line-200)}
+.timeline li:last-child{border-left-color:transparent;padding-bottom:0}
+.timeline li::before{content:"";position:absolute;left:-4px;top:4px;width:7px;height:7px;border-radius:50%;
+  background:var(--nim-surface-0);border:2px solid var(--nim-ink-400)}
+.timeline li.tl-primary::before{border-color:var(--nim-primary-500)}
+.timeline li.tl-danger::before{border-color:var(--nim-danger-fg)}
+.timeline li.tl-success::before{border-color:var(--nim-success-fg)}
+.timeline .tl-when{font-size:11px;color:var(--nim-ink-600)}
+.timeline .tl-what{font-size:12px;margin-top:1px}
+.timeline .tl-who{font-size:11px;color:var(--nim-ink-600)}
+
+/* ---- Modal + risk-appropriate confirmation ---- */
+.modal{
+  position:fixed;z-index:100;top:50%;left:50%;transform:translate(-50%,-50%);width:540px;max-width:94vw;
+  max-height:88vh;overflow:auto;background:var(--nim-surface-0);border:1px solid var(--nim-line-200);
+  border-radius:var(--nim-radius-card);box-shadow:var(--nim-shadow-pop);
+}
+.modal[hidden]{display:none}
+.modal.wide{width:760px}
+.modal-head{display:flex;align-items:flex-start;gap:10px;padding:13px 15px;border-bottom:1px solid var(--nim-line-100)}
+.modal-body{padding:15px}
+.modal-foot{padding:11px 15px;border-top:1px solid var(--nim-line-100);display:flex;gap:8px;align-items:center;background:var(--nim-surface-50);
+  border-radius:0 0 var(--nim-radius-card) var(--nim-radius-card)}
+.impact{border:1px solid var(--nim-warning-line);background:var(--nim-warning-bg);border-radius:var(--nim-radius-control);padding:10px 11px;font-size:12px;color:var(--nim-warning-fg)}
+.impact ul{margin:6px 0 0;padding-left:17px}
+.impact li{margin:2px 0}
+.impact.impact-danger{border-color:var(--nim-danger-line);background:var(--nim-danger-bg);color:var(--nim-danger-fg)}
+
+/* ---- Toast ---- */
+.toasts{position:fixed;right:16px;bottom:16px;z-index:120;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.toast{
+  background:#152634;color:#EAF1F6;border-radius:var(--nim-radius-control);padding:9px 13px;font-size:12px;
+  box-shadow:var(--nim-shadow-pop);display:flex;gap:8px;align-items:center;max-width:400px;
+}
+.toast .ico{flex:0 0 auto}
+.toast.ok .ico{color:#63D598}
+.toast.warn .ico{color:#FFC46B}
+.toast.err .ico{color:#FF8A82}
+
+/* ---- Charts (hand-drawn SVG, no external chart runtime) ---- */
+/* Clip, do not spill. overflow:visible meant an axis label too wide for its
+   gutter was drawn outside the SVG and over the card edge instead of being
+   caught. The gutter is now measured in CH._gutter, and this is the backstop. */
+.chart{width:100%;height:auto;display:block;overflow:hidden}
+.chart .axis{stroke:var(--nim-line-200);stroke-width:1}
+.chart .gridline{stroke:var(--nim-line-100);stroke-width:1}
+.chart .lbl{font-size:10px;fill:var(--nim-ink-600)}
+.chart .bar{fill:var(--nim-primary-500)}
+.chart .bar.alt{fill:#7FCBFF}
+.chart .bar:hover{fill:var(--nim-primary-600)}
+.chart .lineA{fill:none;stroke:var(--nim-primary-500);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.chart .lineB{fill:none;stroke:var(--nim-ink-400);stroke-width:1.5;stroke-dasharray:4 3}
+.chart .pt{fill:var(--nim-surface-0);stroke:var(--nim-primary-500);stroke-width:2}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--nim-ink-700);padding-top:6px}
+.legend i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:5px;vertical-align:-1px}
+.legend .dash{width:12px;height:0;border-top:2px dashed var(--nim-ink-400);display:inline-block;margin-right:5px;vertical-align:3px}
+.chart-empty{display:grid;place-items:center;height:150px;border:1px dashed var(--nim-line-200);border-radius:var(--nim-radius-control);
+  background:repeating-linear-gradient(45deg,#FBFBFB 0 6px,#F5F5F5 6px 12px);color:var(--nim-unavailable-fg);font-size:12px;text-align:center;padding:10px}
+
+/* ---- AI surfaces. Orange is used here and nowhere else. ---- */
+.ai-panel{border:1px solid var(--nim-ai-line);border-radius:var(--nim-radius-card);background:var(--nim-surface-0)}
+.ai-panel .panel-head{background:var(--nim-ai-surface);border-bottom-color:var(--nim-ai-line);border-radius:8px 8px 0 0}
+.ai-mark{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:var(--nim-radius-badge);
+  background:var(--nim-ai-surface);border:1px solid var(--nim-ai-orange-500);color:var(--nim-ai-ink);flex:0 0 auto}
+.ai-insight{display:flex;gap:10px;padding:11px 12px;border-bottom:1px solid var(--nim-line-100);align-items:flex-start}
+.ai-insight:last-child{border-bottom:0}
+.ai-insight .ai-body{min-width:0;flex:1 1 auto}
+/* Title and confidence share a row. The confidence chip is pinned to the top,
+   never stretched to the height of the card. */
+.ai-insight .ai-top{display:flex;align-items:flex-start;gap:10px;margin-bottom:3px}
+.ai-insight h5{margin:0;font-size:12px;font-weight:600;flex:1 1 auto;min-width:0;line-height:1.35}
+.ai-insight p{margin:0;font-size:12px;color:var(--nim-ink-700);line-height:1.5}
+.ai-insight .ai-acts{margin-top:8px;display:flex;gap:7px;flex-wrap:wrap}
+.ai-insight .ai-src{margin-top:7px;display:flex;align-items:center;gap:5px;
+  font-size:10px;color:var(--nim-ink-600)}
+
+/* Confidence chip: a filled meter plus the word, so the level reads without
+   colour and without reading a sentence. */
+.ai-conf{
+  display:inline-flex;align-items:center;gap:5px;align-self:flex-start;flex:0 0 auto;
+  height:20px;padding:0 7px;border-radius:10px;white-space:nowrap;
+  font-size:10px;font-weight:500;line-height:1;
+  border:1px solid var(--nim-line-200);background:var(--nim-surface-0);color:var(--nim-ink-700);
+}
+.ai-conf .confmeter rect.on{fill:currentColor}
+.ai-conf .confmeter rect.off{fill:currentColor;opacity:.22}
+.ai-conf .conf-why{
+  max-width:150px;overflow:hidden;text-overflow:ellipsis;
+  font-weight:400;color:var(--nim-ink-600);
+  border-left:1px solid var(--nim-line-200);padding-left:6px;
+}
+.ai-conf.conf-3{border-color:#9DBF9E;background:#F2F7F2;color:#2E5B33}
+.ai-conf.conf-2{border-color:#D6C089;background:#FBF7EC;color:#6E5312}
+.ai-conf.conf-1{border-color:#C9CDD3;background:var(--nim-surface-50);color:#4A4A4A}
+.ai-conf.conf-0{border-style:dashed;color:var(--nim-ink-600)}
+@media (max-width:1240px){ .ai-conf .conf-why{display:none} }
+
+.ai-dock{position:fixed;right:16px;bottom:16px;z-index:70}
+.ai-fab{
+  display:inline-flex;align-items:center;gap:8px;height:38px;padding:0 14px;border-radius:19px;cursor:pointer;
+  background:var(--nim-surface-0);color:var(--nim-ai-ink);border:1px solid var(--nim-ai-orange-500);font:inherit;font-size:12px;font-weight:500;
+  box-shadow:0 4px 14px rgba(238,116,59,.28);
+}
+.ai-fab .ico{color:var(--nim-ai-orange-500)}
+.ai-fab:hover{background:var(--nim-ai-surface)}
+.ai-chat{
+  position:fixed;right:16px;bottom:16px;width:396px;max-width:94vw;height:566px;max-height:84vh;z-index:71;
+  background:var(--nim-surface-0);border:1px solid var(--nim-ai-line);border-radius:var(--nim-radius-card);
+  box-shadow:var(--nim-shadow-pop);display:flex;flex-direction:column;overflow:hidden;
+}
+.ai-chat[hidden]{display:none}
+.ai-chat-head{display:flex;align-items:center;gap:9px;padding:10px 12px;background:var(--nim-ai-surface);border-bottom:1px solid var(--nim-ai-line)}
+.ai-log{flex:1 1 auto;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;background:var(--nim-surface-50)}
+.msg{max-width:90%;font-size:12px;line-height:1.5;padding:8px 11px;border-radius:10px}
+.msg.me{align-self:flex-end;background:var(--nim-primary-600);color:var(--nim-on-primary);border-bottom-right-radius:3px}
+.msg.ai{align-self:flex-start;background:var(--nim-surface-0);border:1px solid var(--nim-line-200);border-bottom-left-radius:3px}
+.msg.ai .src{margin-top:6px;font-size:10px;color:var(--nim-ink-600);border-top:1px dashed var(--nim-line-200);padding-top:5px}
+.msg.ai table{width:100%;border-collapse:collapse;margin-top:6px;font-size:11px}
+.msg.ai table th,.msg.ai table td{border:1px solid var(--nim-line-100);padding:3px 5px;text-align:left}
+.ai-sugg{display:flex;gap:6px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid var(--nim-line-100);background:var(--nim-surface-0)}
+.ai-compose{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--nim-line-100);background:var(--nim-surface-0)}
+.ai-compose input{flex:1 1 auto;height:var(--nim-control-h);border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-control);
+  padding:0 10px;font:inherit;font-size:12px}
+.ai-compose input:focus{border-color:var(--nim-ai-orange-500);box-shadow:0 0 0 2px var(--nim-focus-ring),0 0 0 4px var(--nim-ai-orange-500)}
+.typing{display:inline-flex;gap:3px;align-items:center}
+.typing i{width:5px;height:5px;border-radius:50%;background:var(--nim-ink-400);animation:blip 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}
+.typing i:nth-child(3){animation-delay:.3s}
+@keyframes blip{0%,60%,100%{opacity:.3}30%{opacity:1}}
+
+/* ---- Topology (stable dimensions, no reflow) ---- */
+.topo{background:var(--nim-surface-50);border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-card);position:relative;height:340px;overflow:hidden}
+.topo svg{display:block;width:100%;height:100%}
+.topo .node rect{fill:var(--nim-surface-0);stroke:var(--nim-line-200)}
+.topo .node.sel rect{stroke:var(--nim-primary-500);stroke-width:2}
+.topo .node text{font-size:10px;fill:var(--nim-ink-900)}
+.topo .link{stroke:var(--nim-ink-400);stroke-width:1.5;fill:none}
+.topo .link.deg{stroke:var(--nim-warning-fg);stroke-dasharray:5 3}
+.topo .link.down{stroke:var(--nim-danger-fg);stroke-dasharray:2 3}
+.topo-legend{position:absolute;left:10px;bottom:10px;background:rgba(255,255,255,.94);border:1px solid var(--nim-line-200);
+  border-radius:var(--nim-radius-control);padding:7px 9px;font-size:11px;display:flex;flex-direction:column;gap:4px}
+
+/* ---- Tree (org / team hierarchy) ---- */
+.tree{list-style:none;margin:0;padding:0;font-size:12px}
+.tree ul{list-style:none;margin:0;padding-left:16px;border-left:1px solid var(--nim-line-100)}
+.tree .tnode{display:flex;align-items:center;gap:7px;padding:5px 7px;border-radius:var(--nim-radius-control);cursor:pointer}
+.tree .tnode:hover{background:var(--nim-surface-100)}
+.tree .tnode[aria-selected="true"]{background:var(--nim-primary-50);color:var(--nim-primary-600);font-weight:500}
+.tree .tcount{margin-left:auto;font-size:11px;color:var(--nim-ink-600);font-variant-numeric:tabular-nums}
+
+/* ---- Wizard rail ---- */
+.wizrail{display:flex;border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-control);overflow:hidden;background:var(--nim-surface-0)}
+.wizrail .st{flex:1 1 0;padding:8px 11px;font-size:12px;color:var(--nim-ink-600);border-right:1px solid var(--nim-line-200);display:flex;gap:8px;align-items:center}
+.wizrail .st:last-child{border-right:0}
+.wizrail .st .n{width:18px;height:18px;border-radius:50%;border:1px solid var(--nim-line-200);display:grid;place-items:center;font-size:10px;flex:0 0 auto}
+.wizrail .st.done{color:var(--nim-success-fg)}
+.wizrail .st.done .n{background:var(--nim-success-bg);border-color:var(--nim-success-line)}
+.wizrail .st.now{color:var(--nim-primary-600);font-weight:500;background:var(--nim-primary-50)}
+.wizrail .st.now .n{background:var(--nim-primary-600);border-color:var(--nim-primary-600);color:var(--nim-on-primary)}
+
+/* ---- Misc ---- */
+.kv{display:flex;gap:6px;font-size:12px}
+.kv .k{color:var(--nim-ink-600)}
+.divider{height:1px;background:var(--nim-line-100);margin:12px 0}
+.tagset{display:flex;gap:5px;flex-wrap:wrap}
+.tag{font-size:11px;border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-badge);padding:1px 5px;color:var(--nim-ink-700);background:var(--nim-surface-50)}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.tt[data-tip]{position:relative}
+.tt[data-tip]:hover::after{
+  content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);
+  background:#152634;color:#FFF;font-size:11px;padding:4px 7px;border-radius:4px;white-space:nowrap;z-index:130;pointer-events:none;
+}
+
+/* ---- Approved viewports: 1920x1080, 1440x900, 1280x800, 1024x768 ---- */
+@media (max-width:1440px){
+  .g4{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:1280px){
+  :root{--nim-nav-w:212px}
+  .gsearch{width:230px}
+  .g-2-1,.g-1-2{grid-template-columns:minmax(0,1fr)}
+}
+@media (max-width:1120px){
+  .g3{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:1024px){
+  :root{--nim-nav-w:60px}
+  .rail-brand{justify-content:center;padding:0 6px}
+  .brand-word,.brand-tier,.nav-group-label,.nav-item .nav-txt,.nav-item .nav-count,.rail-foot{display:none}
+  .nav-item{justify-content:center;padding:0}
+  .gsearch{width:186px}
+  .g2,.g3,.g4{grid-template-columns:minmax(0,1fr)}
+  .persona-meta{display:none}
+}
+
+/* ===========================================================================
+   BRAND THEMES
+   The nim visual contract governs structure, density, type and state colour.
+   Brand identity is applied only to the application chrome, so the workspace
+   surface stays contract-compliant whichever brand is in play.
+   =========================================================================== */
+:root{
+  --brand-rail:#0E1B26;          /* neutral / white-label default */
+  --brand-rail-line:rgba(255,255,255,.10);
+  --brand-rail-text:#D4DFE8;
+  --brand-rail-muted:#7E93A3;
+  --brand-rail-ico:#8FA5B6;
+  --brand-mark:var(--nim-primary-500);
+}
+body[data-brand="6d"]{
+  --brand-rail:#0D1B4B;          /* 6D brand navy */
+  --brand-rail-line:rgba(255,255,255,.14);
+  --brand-rail-text:#D6DEF2;
+  --brand-rail-muted:#9FB0D4;
+  --brand-rail-ico:#9FB0D4;
+  --brand-mark:#00B4D8;          /* 6D infinity teal — chrome accent only */
+}
+.rail{background:var(--brand-rail)}
+.rail-brand{border-bottom-color:var(--brand-rail-line)}
+.rail-foot{border-top-color:var(--brand-rail-line);color:var(--brand-rail-muted)}
+.nav-group-label{color:var(--brand-rail-muted)}
+.nav-item{color:var(--brand-rail-text)}
+.nav-item .ico{color:var(--brand-rail-ico)}
+.brand-tier{color:var(--brand-rail-muted)}
+.brand-dot{width:7px;height:7px;border-radius:50%;background:var(--brand-mark);flex:0 0 auto}
+
+/* ===========================================================================
+   COMMERCE / MARKETPLACE COMPONENTS
+   =========================================================================== */
+
+/* ---- Categorical tokens. Categorical, not semantic: these identify a
+   marketplace vertical, they never signal state. Each badge also carries an
+   icon, so the category is never conveyed by colour alone. ---- */
+:root{
+  --cat-consumer-fg:#0B5FA5; --cat-consumer-bg:#E9F3FC; --cat-consumer-ln:#C3DEF5;
+  --cat-partner-fg:#8A5300;  --cat-partner-bg:#FFF3E0;  --cat-partner-ln:#F0DCBB;
+  --cat-iot-fg:#00676B;      --cat-iot-bg:#E3F3F3;      --cat-iot-ln:#BEDFDF;
+  --cat-security-fg:#146C43; --cat-security-bg:#E7F4EC; --cat-security-ln:#BFE0CD;
+  --cat-device-fg:#5E4B9B;   --cat-device-bg:#EFEBFA;   --cat-device-ln:#D5CBEE;
+  --cat-content-fg:#9B2C6F;  --cat-content-bg:#FBEAF3;  --cat-content-ln:#EFC9DE;
+}
+.cat{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:500;line-height:16px;
+  border-radius:var(--nim-radius-badge);padding:1px 6px;border:1px solid;white-space:nowrap}
+.cat-consumer{color:var(--cat-consumer-fg);background:var(--cat-consumer-bg);border-color:var(--cat-consumer-ln)}
+.cat-partner{color:var(--cat-partner-fg);background:var(--cat-partner-bg);border-color:var(--cat-partner-ln)}
+.cat-iot{color:var(--cat-iot-fg);background:var(--cat-iot-bg);border-color:var(--cat-iot-ln)}
+.cat-security{color:var(--cat-security-fg);background:var(--cat-security-bg);border-color:var(--cat-security-ln)}
+.cat-device{color:var(--cat-device-fg);background:var(--cat-device-bg);border-color:var(--cat-device-ln)}
+.cat-content{color:var(--cat-content-fg);background:var(--cat-content-bg);border-color:var(--cat-content-ln)}
+
+/* ---- Product grid + card. Cards are the one place the contract allows them:
+   individual repeated records. Never nested. ---- */
+.pgrid{display:grid;gap:14px;grid-template-columns:repeat(4,minmax(0,1fr))}
+.pgrid.cols3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.pgrid.cols2{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:1440px){.pgrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:1120px){.pgrid,.pgrid.cols3{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width:1024px){.pgrid,.pgrid.cols3,.pgrid.cols2{grid-template-columns:minmax(0,1fr)}}
+
+.pcard{background:var(--nim-surface-0);border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-card);
+  display:flex;flex-direction:column;overflow:hidden;text-align:left}
+.pcard:hover{border-color:var(--nim-primary-500)}
+.pmedia{height:118px;position:relative;display:grid;place-items:center;border-bottom:1px solid var(--nim-line-100);
+  background:var(--nim-surface-50)}
+.pmedia .glyph{opacity:.9}
+.pmedia .flag{position:absolute;top:8px;left:8px}
+.pmedia .fav{position:absolute;top:6px;right:6px;width:26px;height:26px;border-radius:50%;border:1px solid var(--nim-line-200);
+  background:var(--nim-surface-0);display:grid;place-items:center;cursor:pointer;color:var(--nim-ink-400)}
+.pmedia .fav[aria-pressed="true"]{color:var(--nim-danger-fg);border-color:var(--nim-danger-line);background:var(--nim-danger-bg)}
+.pbody{padding:11px 12px;flex:1 1 auto;display:flex;flex-direction:column;gap:5px}
+.pcard .ptitle{font-size:13px;font-weight:600;line-height:1.3;margin:0}
+.pcard .pseller{font-size:11px;color:var(--nim-ink-600)}
+.pcard .pdesc{font-size:11px;color:var(--nim-ink-700);line-height:1.4}
+.pfoot{padding:10px 12px;border-top:1px solid var(--nim-line-100);background:var(--nim-surface-50);
+  display:flex;align-items:center;gap:9px;flex-wrap:wrap;row-gap:8px;justify-content:space-between}
+/* The price line is not a fixed width — a sale adds a struck-through figure and
+   a tax note beside it. With nothing allowed to shrink, the action was pushed
+   past the edge of the card on exactly those products. */
+.pfoot > .row{min-width:0;flex:1 1 auto;flex-wrap:wrap}
+.pfoot .btn{flex:0 0 auto;white-space:nowrap;margin-left:auto}
+
+.price{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.1}
+.price .per{font-size:11px;font-weight:400;color:var(--nim-ink-600)}
+.price-was{font-size:11px;color:var(--nim-ink-400);text-decoration:line-through;font-variant-numeric:tabular-nums}
+.price-from{font-size:11px;color:var(--nim-ink-600)}
+
+.rating{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--nim-ink-700)}
+.rating .stars{letter-spacing:0;color:var(--nim-warning-fg);font-size:11px}
+.rating .n{color:var(--nim-ink-600)}
+
+.stock{font-size:11px;display:inline-flex;align-items:center;gap:5px}
+.stock.in,.stock-in{color:var(--nim-success-fg)}
+.stock.low,.stock-low{color:var(--nim-warning-fg)}
+.stock.out,.stock-out{color:var(--nim-unavailable-fg)}
+
+/* ---- Facet rail ---- */
+.facets{background:var(--nim-surface-0);border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-card);
+  align-self:start;position:sticky;top:calc(var(--nim-topbar-h) + 16px)}
+.facet{border-bottom:1px solid var(--nim-line-100);padding:11px 12px}
+.facet:last-child{border-bottom:0}
+.facet h4{margin:0 0 8px;font-size:12px;font-weight:600}
+.facet .opts{display:flex;flex-direction:column;gap:6px}
+.facet .cnt{margin-left:auto;font-size:11px;color:var(--nim-ink-600);font-variant-numeric:tabular-nums}
+.facet .checkline{align-items:center}
+
+/* ---- Order / onboarding pipeline ---- */
+.pipe{display:flex;align-items:flex-start;gap:0;overflow-x:auto;padding:4px 0}
+.pipe .step{flex:1 1 0;min-width:118px;position:relative;padding:4px 8px 6px;text-align:center;
+  font:inherit;color:inherit;background:none;border:0;border-radius:var(--nim-radius-control)}
+/* Only a stage that opens something is allowed to look like it opens something. */
+.pipe button.step{cursor:pointer}
+.pipe button.step:hover{background:var(--nim-surface-50)}
+.pipe button.step:focus-visible{outline:none;box-shadow:var(--nim-focus)}
+.pipe .step::before,.pipe .step::after{top:15px}
+.pipe .step::before{content:"";position:absolute;top:11px;left:0;right:50%;height:2px;background:var(--nim-line-200)}
+.pipe .step::after{content:"";position:absolute;top:11px;left:50%;right:0;height:2px;background:var(--nim-line-200)}
+.pipe .step:first-child::before,.pipe .step:last-child::after{display:none}
+.pipe .dot{position:relative;z-index:1;width:24px;height:24px;border-radius:50%;margin:0 auto 6px;
+  display:grid;place-items:center;background:var(--nim-surface-0);border:2px solid var(--nim-line-200);
+  font-size:10px;font-weight:600;color:var(--nim-ink-600)}
+.pipe .lbl,.pipe .when{display:block}
+.pipe .step.done .dot{background:var(--nim-success-bg);border-color:var(--nim-success-fg);color:var(--nim-success-fg)}
+.pipe .step.done::before,.pipe .step.done::after{background:var(--nim-success-fg)}
+.pipe .step.now .dot{background:var(--nim-primary-600);border-color:var(--nim-primary-600);color:var(--nim-on-primary)}
+.pipe .step.now::before{background:var(--nim-success-fg)}
+.pipe .step.fail .dot{background:var(--nim-danger-bg);border-color:var(--nim-danger-fg);color:var(--nim-danger-fg)}
+.pipe .step.fail::before{background:var(--nim-danger-fg)}
+.pipe .lbl{font-size:11px;font-weight:500;line-height:1.3}
+.pipe .when{font-size:10px;color:var(--nim-ink-600);margin-top:2px}
+.pipe .step.todo .lbl{color:var(--nim-ink-600);font-weight:400}
+
+/* ---- Cart ---- */
+.cartline{display:flex;gap:11px;padding:11px 0;border-bottom:1px solid var(--nim-line-100);align-items:flex-start}
+.cartline:last-child{border-bottom:0}
+.cartthumb{width:52px;height:52px;border-radius:var(--nim-radius-control);border:1px solid var(--nim-line-200);
+  background:var(--nim-surface-50);display:grid;place-items:center;flex:0 0 auto}
+.cartline .cinfo{flex:1 1 auto;min-width:0}
+.cartline .cname{font-size:12px;font-weight:600}
+.cartline .cmeta{font-size:11px;color:var(--nim-ink-600);margin-top:2px}
+.cartline .cprice{text-align:right;flex:0 0 auto;font-variant-numeric:tabular-nums}
+.totals{display:grid;grid-template-columns:1fr auto;gap:6px 12px;font-size:12px;align-items:baseline}
+.totals .lbl{color:var(--nim-ink-600)}
+.totals .val{text-align:right;font-variant-numeric:tabular-nums}
+.totals .grand{font-size:15px;font-weight:600;padding-top:7px;border-top:1px solid var(--nim-line-200)}
+.totals .grand-lbl{font-size:13px;font-weight:600;padding-top:7px;border-top:1px solid var(--nim-line-200)}
+
+/* ---- Money split (commission / settlement) ---- */
+.splitbar{display:flex;height:26px;border-radius:var(--nim-radius-control);overflow:hidden;
+  border:1px solid var(--nim-line-200);background:var(--nim-surface-100)}
+.splitbar span{display:grid;place-items:center;font-size:11px;font-weight:500;color:#FFF;min-width:0;overflow:hidden;white-space:nowrap}
+.splitbar .s-partner{background:var(--nim-primary-600)}
+.splitbar .s-operator{background:#0D1B4B}
+.splitbar .s-tax{background:var(--nim-ink-600)}
+.splitbar .s-fee{background:#7FCBFF;color:var(--nim-ink-900)}
+
+/* ---- Storefront hero strip (dense, not a marketing banner) ---- */
+.verticals{display:grid;gap:10px;grid-template-columns:repeat(6,minmax(0,1fr))}
+@media (max-width:1280px){.verticals{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:900px){.verticals{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.vtile{background:var(--nim-surface-0);border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-card);
+  padding:11px;cursor:pointer;text-align:left;font:inherit;display:flex;flex-direction:column;gap:6px}
+.vtile:hover{border-color:var(--nim-primary-500);background:var(--nim-primary-50)}
+.vtile .vico{width:28px;height:28px;border-radius:var(--nim-radius-control);display:grid;place-items:center;border:1px solid}
+.vtile .vname{font-size:12px;font-weight:600;line-height:1.25}
+.vtile .vcount{font-size:11px;color:var(--nim-ink-600)}
+
+/* ---- Seat / licence allocation ---- */
+.seatbar{display:flex;height:10px;border-radius:5px;overflow:hidden;border:1px solid var(--nim-line-100);background:var(--nim-surface-100)}
+.seatbar .used{background:var(--nim-primary-600)}
+.seatbar .pend{background:#7FCBFF;background-image:repeating-linear-gradient(45deg,rgba(255,255,255,.5) 0 3px,transparent 3px 6px)}
+
+/* ---- Compact star input ---- */
+.starpick{display:inline-flex;gap:2px}
+.starpick button{border:0;background:none;cursor:pointer;color:var(--nim-line-200);font-size:15px;padding:0 1px}
+.starpick button[aria-pressed="true"]{color:var(--nim-warning-fg)}
+
+
+/* ---------------------------------------------------------------------------
+   Status shapes and partner tiers
+   Glyphs are SVG, not Unicode dingbats — Poppins has no glyph for the box-
+   drawing symbols we were using, and they fell back to "?" on some machines.
+   --------------------------------------------------------------------------- */
+.pill .gl, .tier .gl, .delta .gl, .sortglyph .gl{flex:0 0 auto;display:block}
+.pill, .tier{align-items:center}
+.delta{align-items:center}
+.sortglyph{display:inline-flex;vertical-align:-1px;margin-left:4px;color:var(--nim-ink-400)}
+table.tbl thead th[aria-sort] .sortglyph{color:var(--nim-primary-600)}
+
+/* Partner tier is a category, not a state — its own palette so Gold never
+   reads as a warning and Bronze never reads as disabled. */
+:root{
+  --tier-platinum-fg:#2F4A7A; --tier-platinum-bg:#EAEFF8; --tier-platinum-ln:#C6D3EA;
+  --tier-gold-fg:#8A5300;     --tier-gold-bg:#FFF3E0;     --tier-gold-ln:#F0DCBB;
+  --tier-silver-fg:#4A4A4A;   --tier-silver-bg:#F0F0F0;   --tier-silver-ln:#DCDCDC;
+  --tier-bronze-fg:#8A4B1F;   --tier-bronze-bg:#FBEDE3;   --tier-bronze-ln:#EED6C2;
+}
+.tier{
+  display:inline-flex;gap:5px;font-size:11px;font-weight:500;line-height:16px;
+  border-radius:var(--nim-radius-badge);padding:1px 6px;border:1px solid;white-space:nowrap;
+}
+.tier-platinum{color:var(--tier-platinum-fg);background:var(--tier-platinum-bg);border-color:var(--tier-platinum-ln)}
+.tier-gold{color:var(--tier-gold-fg);background:var(--tier-gold-bg);border-color:var(--tier-gold-ln)}
+.tier-silver{color:var(--tier-silver-fg);background:var(--tier-silver-bg);border-color:var(--tier-silver-ln)}
+.tier-bronze{color:var(--tier-bronze-fg);background:var(--tier-bronze-bg);border-color:var(--tier-bronze-ln)}
+
+/* Rating stars are SVG for the same reason */
+.rating .stars{display:inline-flex;gap:1px;color:var(--nim-warning-fg)}
+.rating .stars svg{display:block}
+
+/* --------------------------- brand mark in the rail ----------------------- */
+/* The approved asset only. Shown on 6D-branded portals; the white-label
+   enterprise portal carries no 6D mark at all. */
+.rail-brand{flex-direction:column;align-items:flex-start;justify-content:center;gap:3px}
+.rail-brand img.brand-mark{height:17px;width:auto;max-width:100%;display:block}
+.rail-brand .brand-word{font-size:11px;font-weight:500;color:var(--brand-rail-text);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+body[data-brand="6d"] .rail-brand{padding-left:14px}
+@media (max-width:1024px){
+  /* The rail collapses to icons here; a 420x77 wordmark cannot shrink into 60px
+     without becoming illegible, so it is hidden rather than squashed. */
+  .rail-brand img.brand-mark{display:none}
+  .rail-brand{align-items:center}
+}
+
+/* ===========================================================================
+   TOP BAR — corrected alignment
+   The bar is a fixed-height single row. Everything in it truncates rather than
+   wraps, and items drop out in priority order as width runs out: environment
+   name first, then the persona's text, then the breadcrumb trail, then search.
+   =========================================================================== */
+.topbar{
+  height:var(--nim-topbar-h);
+  display:flex;
+  align-items:center;
+  gap:10px;
+  padding:0 14px;
+  flex-wrap:nowrap;                 /* nothing in the bar may wrap to a second line */
+  overflow:hidden;
+}
+.topbar > *{flex:0 0 auto}
+
+/* Breadcrumb: one line, shrinks from the left, current page always readable */
+.crumbs{
+  display:flex; align-items:center; gap:6px;
+  flex:0 1 auto; min-width:0; overflow:hidden;
+  font-size:12px; color:var(--nim-ink-600); line-height:1;
+}
+.crumbs .crumb{white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.crumbs .org{flex:0 1 auto; max-width:160px}
+.crumbs .grp{flex:0 1 auto; max-width:150px}
+.crumbs .here{flex:0 1 auto; max-width:260px; color:var(--nim-ink-900); font-weight:500}
+.crumbs .sep{flex:0 0 auto; color:var(--nim-ink-400)}
+
+/* Search takes the slack, and gives it back before anything else breaks */
+.gsearch{flex:0 1 300px; min-width:150px; margin-left:auto}
+.gsearch input{height:var(--nim-control-h)}
+
+/* Environment and freshness sit together and never wrap */
+.envstate{
+  display:flex; align-items:center; gap:6px;
+  padding-left:10px; border-left:1px solid var(--nim-line-100);
+  flex:0 0 auto;
+}
+.env-chip{
+  display:inline-flex; align-items:center; gap:5px;
+  height:26px; padding:0 8px; white-space:nowrap;
+  font-size:11px; font-weight:500; line-height:1;
+  border:1px solid var(--nim-line-200); border-radius:var(--nim-radius-badge);
+  color:var(--nim-ink-700); background:var(--nim-surface-50);
+  max-width:190px; overflow:hidden; text-overflow:ellipsis;
+}
+.env-chip.is-btn{cursor:pointer; font:inherit; font-size:11px; font-weight:500}
+.env-chip.is-btn:hover{background:var(--nim-surface-100); border-color:var(--nim-ink-400)}
+.env-chip .dot{width:6px; height:6px; border-radius:50%; background:var(--nim-success-fg); flex:0 0 auto}
+.env-chip.is-stale{background:var(--nim-stale-bg); border-color:var(--nim-stale-line); color:var(--nim-stale-fg)}
+.env-chip.is-stale .dot{background:var(--nim-stale-fg)}
+
+/* Persona block: fixed height, two tight lines, both truncating */
+.persona{
+  display:flex; align-items:center; gap:8px;
+  padding-left:10px; border-left:1px solid var(--nim-line-100);
+  flex:0 0 auto; max-width:220px;
+}
+.persona-meta{min-width:0; line-height:1.2}
+.persona-name{
+  font-size:12px; font-weight:500;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+.persona-role{
+  font-size:11px; color:var(--nim-ink-600);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
+
+/* Priority order as the viewport narrows */
+@media (max-width:1500px){ .persona{max-width:180px} }
+@media (max-width:1380px){ .env-chip.env-name{display:none} .crumbs .org{max-width:110px} }
+@media (max-width:1240px){ .crumbs .org, .crumbs .sep:first-of-type{display:none} }
+@media (max-width:1120px){ .persona-meta{display:none} .persona{max-width:none; padding-left:8px} }
+@media (max-width:1024px){ .crumbs .grp, .crumbs .sep{display:none} .gsearch{flex:0 1 200px;min-width:120px} }
+@media (max-width:900px){ .crumbs{display:none} }
+
+/* ---------------------------------------------------------------------------
+   Document preview — what a bill actually looks like when it lands.
+   Deliberately paper-like so it reads as a document, not another panel.
+   --------------------------------------------------------------------------- */
+.doc-preview{
+  background:var(--nim-paper);
+  border:1px solid var(--nim-line-200);
+  border-radius:6px;
+  padding:16px 16px 14px;
+  box-shadow:0 1px 2px rgba(29,29,29,.06);
+  font-size:11px;
+  line-height:1.45;
+  /* Paper is a light island whatever the rest of the screen is doing, so the
+     ink inside it is fixed here rather than inherited from the theme. */
+  --nim-ink-900:#1D1D1D;
+  --nim-ink-600:#666666;
+  --nim-border:#DCDCDC;
+  --nim-surface-3:#EDEDED;
+  color:var(--nim-ink-900);
+}
+.doc-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
+  padding-bottom:10px;border-bottom:2px solid var(--nim-ink-900)}
+.doc-logo{font-weight:600;font-size:12px;letter-spacing:0}
+.doc-title{font-weight:600;font-size:13px;text-align:right}
+.doc-meta{display:flex;flex-wrap:wrap;gap:4px 16px;padding:9px 0;
+  border-bottom:1px solid var(--nim-border);color:var(--nim-ink-600)}
+.doc-meta strong{color:var(--nim-ink-900);font-weight:600}
+.doc-line{display:grid;grid-template-columns:1fr auto auto;gap:10px;
+  padding:6px 0;border-bottom:1px solid var(--nim-surface-3)}
+.doc-line span:nth-child(2){min-width:52px;text-align:right;color:var(--nim-ink-600)}
+.doc-line span:last-child{min-width:78px;text-align:right}
+.doc-tot{display:flex;justify-content:space-between;gap:10px;padding:6px 0}
+.doc-tot.grand{border-top:2px solid var(--nim-ink-900);margin-top:2px;font-weight:600;font-size:12px}
+.doc-foot{margin-top:10px;padding-top:9px;border-top:1px solid var(--nim-border);
+  color:var(--nim-ink-600);font-size:10px}
+
+/* Simple proportional bar used in configuration summaries. */
+.bar{display:block;height:6px;border-radius:3px;background:var(--nim-surface-3);overflow:hidden}
+.bar>span{display:block;height:100%;border-radius:3px;background:var(--nim-primary-600);min-width:3px}
+
+/* The AARYA mark. An approved raster asset — never reconstructed in CSS. */
+.aarya-mark{display:block;flex:0 0 auto;object-fit:contain}
+.ai-fab{padding-left:10px}
+.ai-chat-head .aarya-mark{margin-right:2px}
+
+/* ---------------------------------------------------------------------------
+   Account menu. The avatar was the most-clicked dead control in the prototype.
+   --------------------------------------------------------------------------- */
+.persona{
+  background:none;font:inherit;cursor:pointer;text-align:left;border:0;
+  border-left:1px solid var(--nim-line-100);border-radius:0;
+}
+.persona:hover{background:var(--nim-surface-50)}
+.persona[aria-expanded="true"]{background:var(--nim-surface-100)}
+.persona>.ico{color:var(--nim-ink-600);flex:0 0 auto}
+.avatar-lg{width:38px;height:38px;font-size:13px}
+
+.profile-menu{
+  /* fixed, not absolute — the top bar clips its overflow so the menu cannot live inside it */
+  position:fixed;top:var(--nim-topbar-h);right:12px;width:314px;z-index:80;
+  background:var(--nim-surface-0);border:1px solid var(--nim-border);
+  border-radius:var(--nim-radius-card);box-shadow:var(--nim-shadow-pop);overflow:hidden;
+}
+.profile-menu[hidden]{display:none}
+.pm-head{display:flex;gap:11px;align-items:center;padding:13px 14px;background:var(--nim-surface-50);
+  border-bottom:1px solid var(--nim-line-100)}
+.pm-alert{display:flex;gap:7px;align-items:flex-start;padding:9px 14px;font-size:11px;line-height:1.45;
+  background:var(--nim-danger-bg);color:var(--nim-danger-fg);border-bottom:1px solid var(--nim-line-100)}
+.pm-body{padding:5px 0}
+.pm-item{
+  display:flex;gap:11px;align-items:flex-start;width:100%;padding:9px 14px;
+  background:none;border:0;font:inherit;text-align:left;cursor:pointer;color:var(--nim-ink-900);
+}
+.pm-item:hover:not(:disabled){background:var(--nim-surface-50)}
+.pm-item:disabled{opacity:.45;cursor:not-allowed}
+.pm-item>.ico{color:var(--nim-ink-600);margin-top:1px;flex:0 0 auto}
+.pm-item .grow{display:block;min-width:0}
+.pm-label{display:block;font-size:12px;font-weight:500}
+.pm-sub{display:block;font-size:11px;color:var(--nim-ink-600);margin-top:1px}
+.pm-foot{display:flex;align-items:center;gap:9px;padding:10px 14px;
+  border-top:1px solid var(--nim-line-100);background:var(--nim-surface-50)}
+@media (max-width:520px){ .profile-menu{right:6px;left:6px;width:auto} }
+
+/* A permission / policy cell is a button that looks like a chip. */
+.permcell{background:none;border:0;padding:2px;cursor:pointer;border-radius:5px;font:inherit;line-height:1}
+.permcell:hover{background:var(--nim-surface-100)}
+.permcell:focus-visible{outline:2px solid var(--nim-primary-600);outline-offset:1px}
+.inp-sm{height:30px;padding:0 8px;font-size:12px}
+
+/* Whether a shelf price already includes tax. Small, but the difference
+   between a correct checkout and an argument. */
+.taxnote{font-size:10px;color:var(--nim-ink-600);white-space:nowrap}
+
+/* Channel tabs inside a dialog. Reuses the existing .tabs container styling;
+   only the active-state hook is new, so the two kinds of tab stay identical. */
+.tab.is-on{color:var(--nim-primary-600);border-bottom-color:var(--nim-primary-500);font-weight:500}
+
+.tag-btn{background:var(--nim-surface-50);cursor:pointer;font-family:var(--nim-mono,inherit)}
+.tag-btn:hover{background:var(--nim-primary-50);border-color:var(--nim-primary-500)}
+.tag-bad{border-color:var(--nim-danger-line);background:var(--nim-danger-bg);color:var(--nim-danger-fg)}
+.hint-bad{color:var(--nim-danger-fg)}
+
+/* Message previews. Deliberately unlike a panel so they read as the thing
+   the recipient will actually see. */
+.phone-preview{background:var(--nim-surface-50);border:1px solid var(--nim-border);border-radius:8px;padding:12px}
+.phone-preview .bubble{
+  background:#E7F1FB;border:1px solid #C7DDF2;border-radius:12px 12px 12px 3px;
+  padding:9px 11px;font-size:11px;line-height:1.5;white-space:pre-wrap;color:var(--nim-ink-900);
+}
+.inapp-preview{
+  display:flex;gap:10px;align-items:flex-start;background:var(--nim-surface-0);
+  border:1px solid var(--nim-border);border-radius:8px;padding:11px 12px;box-shadow:0 2px 8px rgba(29,29,29,.07);
+}
+
+/* A checklist where each line states whether the evidence was actually seen. */
+.ticklist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.ticklist li{display:flex;gap:7px;align-items:flex-start;font-size:12px;line-height:1.45;color:var(--nim-ink-800,var(--nim-ink-900))}
+.ticklist li .gl{margin-top:3px;flex:0 0 auto;color:var(--nim-ink-600)}
+
+/* Gate steps are buttons now, so they need to look pressable. */
+.pipe .step{background:none;border:0;font:inherit;text-align:center;cursor:pointer;padding:0}
+.pipe .step:hover .lbl{color:var(--nim-ink-900);text-decoration:underline}
+.pipe .step:focus-visible{outline:2px solid var(--nim-primary-600);outline-offset:3px;border-radius:5px}
+
+/* Catalogue picker rows — selecting components for a first-party bundle. */
+.pickrow{
+  display:flex;align-items:center;gap:10px;width:100%;padding:9px 11px;
+  background:none;border:0;border-bottom:1px solid var(--nim-line-100);
+  font:inherit;text-align:left;cursor:pointer;color:var(--nim-ink-900);
+}
+.pickrow:last-child{border-bottom:0}
+.pickrow:hover{background:var(--nim-surface-50)}
+.pickrow.is-picked{background:var(--nim-primary-50)}
+.pickrow:focus-visible{outline:2px solid var(--nim-primary-600);outline-offset:-2px}
+.pickmark{
+  display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;flex:0 0 auto;
+  border:1px solid var(--nim-line-200);border-radius:5px;color:var(--nim-ink-600);background:var(--nim-surface-0);
+}
+.pickrow.is-picked .pickmark{background:var(--nim-primary-600);border-color:var(--nim-primary-600);color:var(--nim-on-primary)}
+
+/* ---------------------------------------------------------------------------
+   Product media manager. Placeholders are labelled rather than fake photos —
+   a stock image pretending to be the seller's product is worse than a gap.
+   --------------------------------------------------------------------------- */
+.medialist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.mediaitem{
+  display:flex;gap:11px;align-items:flex-start;padding:10px 11px;
+  border:1px solid var(--nim-line-200);border-radius:7px;background:var(--nim-surface-0);
+}
+.mediaitem.is-primary{border-color:var(--nim-primary-500);background:var(--nim-primary-50)}
+.mthumb{
+  display:grid;place-items:center;width:52px;height:52px;flex:0 0 auto;border-radius:5px;
+  background:var(--nim-surface-100);border:1px solid var(--nim-line-200);color:var(--nim-ink-600);
+  position:relative;overflow:hidden;
+}
+.mthumb-video{background:#EDF3F8;color:#2B5876}
+.mthumb-doc{background:#F6F2EA;color:#6E5312}
+.mshot{
+  position:absolute;bottom:0;left:0;right:0;font-size:8px;line-height:12px;text-align:center;
+  background:rgba(29,29,29,.72);color:#FFF;letter-spacing:0;
+}
+.mediaacts{display:flex;gap:3px;align-items:center;flex:0 0 auto;flex-wrap:wrap;justify-content:flex-end;max-width:190px}
+.dropzone{
+  border:1px dashed var(--nim-line-200);border-radius:7px;padding:16px;text-align:center;
+  background:var(--nim-surface-50);color:var(--nim-ink-700);
+}
+.dropzone.is-full{border-style:solid;background:var(--nim-surface-0);color:var(--nim-ink-600)}
+
+/* Endpoint health, and the raw payload preview on an integration. */
+.codeblock{
+  background:#1D2430;color:#D8E1EC;border-radius:6px;padding:11px 12px;font-size:11px;line-height:1.55;
+  overflow:auto;max-height:220px;white-space:pre;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+}
+.codeblock .k{color:#8FD0FF}
+.codeblock .s{color:#C3E88D}
+.codeblock .n{color:#F7A56B}
+.epurl{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;word-break:break-all}
+
+/* A category the reader's role does not carry. */
+.tag-off{opacity:.55;border-style:dashed}
+
+/* ---------------------------------------------------------------------------
+   Storefront promotional banner. A labelled, branded frame rather than stock
+   photography — the same honesty rule the media manager follows.
+   --------------------------------------------------------------------------- */
+.adbanner{
+  display:flex;align-items:center;gap:16px;padding:16px 18px;border-radius:var(--nim-radius-card);
+  background:linear-gradient(100deg, var(--ad-accent) 0%, color-mix(in srgb, var(--ad-accent) 76%, #000) 100%);
+  color:#FFF;position:relative;overflow:hidden;
+}
+.adbanner-sm{padding:12px 14px;gap:12px}
+.adart{
+  flex:0 0 auto;width:88px;height:64px;border-radius:7px;display:grid;place-items:center;
+  background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.26);color:#FFF;overflow:hidden;
+}
+.adbanner-sm .adart{width:64px;height:48px}
+.adartsvg{display:block;width:auto;max-width:100%}
+.artpick{border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-control);
+  padding:8px 10px;font-size:11px;line-height:1.5;color:var(--nim-ink-600);
+  background:var(--nim-surface-50);min-height:var(--nim-control-h);display:flex;align-items:center}
+.adbody{flex:1 1 auto;min-width:0}
+.adtag{
+  display:inline-block;font-size:9px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;
+  background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.3);border-radius:3px;padding:1px 6px;margin-bottom:6px;
+}
+.adhead{margin:0;font-size:17px;font-weight:600;line-height:1.25;color:#FFF}
+.adbanner-sm .adhead{font-size:14px}
+.adsub{margin:4px 0 0;font-size:12px;line-height:1.5;color:rgba(255,255,255,.9)}
+.adcta{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:5px}
+.adcta .btn-primary{background:#FFF;border-color:#FFF;color:var(--ad-accent)}
+.adcta .btn-primary:hover{background:rgba(255,255,255,.9);border-color:rgba(255,255,255,.9)}
+.adcta .linkbtn{color:rgba(255,255,255,.82);text-decoration:underline}
+.adcta .linkbtn:hover{color:#FFF}
+@media (max-width:900px){
+  .adbanner{flex-wrap:wrap}
+  .adcta{align-items:flex-start;flex-direction:row;width:100%}
+}
+/* The preview frame in the operator console. */
+.adpreview{max-width:620px}
+
+/* A dashboard card the seller may not hide. */
+.checkline.is-locked{opacity:.72}
+.checkline.is-locked input{cursor:not-allowed}
+/* Partner console dark theme, applied only inside their own portal. */
+body[data-partner-theme="dark"]{--nim-surface-50:#F3F5F7}
+
+/* Ticket conversation. Requester and agent are visually distinct so a glance
+   answers "who said that". */
+.tktmsg{padding:9px 11px;border-radius:9px;border:1px solid var(--nim-line-200);background:var(--nim-surface-0)}
+.tktmsg-requester{background:var(--nim-surface-50);border-bottom-left-radius:3px}
+.tktmsg-agent{background:var(--nim-primary-50);border-color:#C7DDF2;border-bottom-right-radius:3px}
+.tktmsg-internal{background:#FBF7EC;border-color:#E4D3A8;border-style:dashed}
+
+/* Reviews. */
+.reviewcard{border:1px solid var(--nim-line-200);border-radius:8px;padding:11px 12px;background:var(--nim-surface-0)}
+.reviewreply{margin-top:9px;padding:9px 11px;border-left:3px solid var(--nim-primary-500);
+  background:var(--nim-surface-50);border-radius:0 6px 6px 0}
+.starpick{display:flex;align-items:center;gap:2px}
+.starbtn{background:none;border:0;padding:2px;cursor:pointer;color:var(--nim-line-200);line-height:0;border-radius:4px}
+.starbtn.is-on{color:#C8860D}
+.starbtn:hover{color:#C8860D}
+.starbtn:focus-visible{outline:2px solid var(--nim-primary-600);outline-offset:1px}
+
+/* Comparison tray, pinned above the results. */
+.comparetray{
+  display:flex;align-items:center;gap:11px;flex-wrap:wrap;
+  padding:9px 12px;border:1px solid var(--nim-primary-500);border-radius:8px;
+  background:var(--nim-primary-50);margin-bottom:12px;
+}
+.tbl tfoot td{padding:9px 10px;border-top:1px solid var(--nim-line-200)}
+
+/* Compare toggle on a product card. */
+.pcard{position:relative}
+.comparebtn{
+  position:absolute;top:8px;right:8px;display:inline-flex;align-items:center;gap:4px;
+  height:22px;padding:0 7px;border-radius:11px;cursor:pointer;font:inherit;font-size:10px;font-weight:500;
+  background:rgba(255,255,255,.92);border:1px solid var(--nim-line-200);color:var(--nim-ink-700);
+}
+.comparebtn:hover{border-color:var(--nim-primary-500);color:var(--nim-primary-600)}
+.comparebtn.is-on{background:var(--nim-primary-600);border-color:var(--nim-primary-600);color:var(--nim-on-primary)}
+.comparebtn:focus-visible{outline:2px solid var(--nim-primary-600);outline-offset:1px}
+
+/* ---------------------------------------------------------- Login gate --- */
+.loginshell{min-height:100vh;display:flex;align-items:center;justify-content:center;
+  padding:32px 24px;background:var(--nim-surface-sunken,#f4f6fa)}
+.loginwrap{display:grid;grid-template-columns:minmax(320px,404px);gap:24px;width:100%;
+  max-width:404px;align-items:start}
+@media (min-width:1100px){
+  .loginwrap{grid-template-columns:404px minmax(320px,520px);max-width:none;width:auto}
+}
+.logincard{background:var(--nim-surface-0);border:1px solid var(--nim-line-200);
+  border-radius:8px;overflow:hidden;box-shadow:0 1px 2px rgba(16,24,40,.05)}
+.lghead{padding:28px 28px 8px;text-align:left}
+.lglogo{height:30px;width:auto;max-width:180px;object-fit:contain;display:block;margin-bottom:18px}
+.lghead .t-h2{margin:0 0 2px}
+.lgbody .field{margin:0}
+.lgor{display:flex;align-items:center;gap:12px;margin:4px 0;
+  color:var(--nim-text-muted,#667085);font-size:12px}
+.lgor:before,.lgor:after{content:"";flex:1;height:1px;background:var(--nim-border,#dde3ec)}
+.lgfoot{padding-top:4px}
+.btn-block{width:100%;justify-content:center}
+.lgbody{padding:16px 28px 26px}
+.loginad{align-self:center}
+
+/* ---- Action buttons inside a table cell --------------------------------
+   Cell renderers concatenate buttons with no separator, so without this they
+   sit edge-to-edge and read as one overlapped control. A sibling rule fixes
+   every occurrence, including ones added later, rather than relying on each
+   renderer to remember a wrapper. */
+.tbl td > .btn + .btn,
+.tbl td > .btn + .linkbtn,
+.tbl td > .linkbtn + .btn{margin-left:6px}
+.tbl td > .btn{margin-bottom:2px;vertical-align:middle}
+.tbl td:has(> .btn + .btn){white-space:nowrap}
+
+/* ---- Trailing action groups -------------------------------------------
+   Buttons at the end of a panel or a table cell. Without this they butt
+   against each other and, in a narrow cell, overlap the column beside them. */
+.rowend{display:flex;flex-wrap:wrap;gap:8px;justify-content:flex-end;align-items:center}
+/* A table cell must NOT become a flex container: it leaves the table layout
+   algorithm, so the buttons stop tracking their own row and drift over the
+   ones above and below — which is how a click on Configure landed on Preview.
+   Inside a cell the buttons stay inline and are spaced by the sibling rule. */
+.tbl td.rowend{display:table-cell;text-align:right;white-space:nowrap;vertical-align:middle}
+.tbl td.rowend > .btn{display:inline-flex;vertical-align:middle;float:none}
+.tbl td.rowend > .btn + .btn{margin-left:6px}
+.insp-body .rowend,.panel-body>.rowend{margin-top:4px}
+
+/* Inline warning text inside a list row. */
+.warntext{color:var(--nim-warning-fg);display:inline-flex;align-items:flex-start;gap:5px}
+
+/* Signpost card inside the inspector — the rules table sits far below the
+   fold in a 470px panel, so the settings above it have to say it is there. */
+.jumpcard{display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:10px 12px;border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-card);
+  background:var(--nim-surface-50)}
+.jumpcard .grow{min-width:180px}
+.permcell.is-locked{display:inline-flex;opacity:.85;cursor:not-allowed}
+
+/* ---- Knowledge base ------------------------------------------------------ */
+.chip{border:1px solid var(--nim-line-200);background:var(--nim-surface-0);border-radius:999px;
+  padding:4px 11px;font:inherit;font-size:11px;font-weight:500;color:var(--nim-ink-900);
+  cursor:pointer;display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.chip:hover{background:var(--nim-surface-50);border-color:var(--nim-ink-400)}
+/* primary-500 under white text is 3.0:1, which fails at chip size. */
+.chip.is-on{background:var(--nim-primary-600);border-color:var(--nim-primary-600);color:var(--nim-on-primary)}
+.chip.is-on .muted{color:rgba(255,255,255,.82)}
+
+.kbgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(238px,1fr));gap:10px}
+.kbcard{display:flex;flex-direction:column;gap:4px;text-align:left;font:inherit;cursor:pointer;
+  background:var(--nim-surface-0);border:1px solid var(--nim-line-200);
+  border-radius:var(--nim-radius-card);padding:11px 12px;color:var(--nim-ink-900)}
+.kbcard:hover{border-color:var(--nim-primary-500);background:var(--nim-surface-50)}
+.kbcard .kbtop{display:flex;align-items:center;gap:6px}
+.kbcard.is-tour{border-left:3px solid var(--nim-primary-500)}
+
+.kbrow{display:flex;align-items:flex-start;gap:9px;width:100%;text-align:left;font:inherit;cursor:pointer;
+  background:var(--nim-surface-0);border:1px solid var(--nim-line-200);
+  border-radius:var(--nim-radius-card);padding:10px 11px;color:var(--nim-ink-900)}
+.kbrow:hover{border-color:var(--nim-primary-500);background:var(--nim-surface-50)}
+.kbrow .grow{display:flex;flex-direction:column;gap:2px;min-width:0}
+
+.tourdots{display:flex;gap:6px;align-items:center}
+.tourdot{width:9px;height:9px;border-radius:50%;background:var(--nim-line-200);flex:0 0 auto}
+.tourdot.is-done{background:var(--nim-ink-400)}
+.tourdot.is-now{background:var(--nim-primary-500);box-shadow:0 0 0 3px var(--nim-primary-100,rgba(0,110,200,.18))}
+
+/* Dunning ladder timeline — day position carried by placement, meaning by shape. */
+.ladtl{position:relative;height:26px;min-width:140px}
+.ladtl:before{content:"";position:absolute;left:0;right:0;top:9px;height:2px;background:var(--nim-line-200)}
+.ladstep{position:absolute;top:0;transform:translateX(-50%);text-align:center}
+.ladstep .laddot{display:block;width:9px;height:9px;border-radius:50%;margin:5px auto 0;
+  background:var(--nim-primary-500)}
+.ladstep.is-hard .laddot{background:var(--nim-warning-fg);border-radius:2px}
+.ladstep.is-term .laddot{background:var(--nim-danger-fg);border-radius:2px;transform:rotate(45deg)}
+.ladstep .ladday{display:block;font-size:8px;color:var(--nim-ink-600);margin-top:2px}
+tr.is-dim td{opacity:.6}
+
+/* ---- Ladder profile card (M36) ---- */
+.lprof{border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-control);padding:10px 12px}
+.lprof p{margin:5px 0 6px}
+.lprof .t-tiny{margin:2px 0}
+/* ---- Channel toggle chips (M35) ---- */
+.chiprow{display:flex;flex-wrap:wrap;gap:5px}
+.chiptog{display:inline-flex;align-items:center;gap:5px;font-size:11px;line-height:1.3;
+  border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-control);padding:3px 7px;
+  background:var(--nim-surface-0);cursor:pointer;white-space:nowrap}
+.chiptog input{margin:0;width:12px;height:12px;flex:none}
+.chiptog.is-on{border-color:var(--nim-info-line);background:var(--nim-info-bg);
+  color:var(--nim-info-fg);font-weight:600}
+.chiptog:focus-within{box-shadow:var(--nim-focus)}
+
+/* ---- Seller review distribution (M38) ---- */
+.revbar{display:flex;align-items:center;gap:8px;min-height:18px}
+.revbar-n{width:9px;font-size:11px;color:var(--nim-ink-600);text-align:right;flex:none}
+.revbar svg{flex:none;color:#C8860D}
+.revbar .bar{min-width:0}
+.revbar-c{width:26px;text-align:right;font-size:11px;color:var(--nim-ink-600);flex:none}
+
+/* ---- Plain-language alert preferences (M39) ---- */
+.prefrow{display:flex;align-items:center;gap:12px;padding:9px 2px;border-bottom:1px solid var(--nim-line-100)}
+.prefrow:last-child{border-bottom:0}
+.prefrow .cellsub{display:block}
+.prefrow .tagset{flex:0 0 auto}
+.prefrow .toggle{flex:0 0 auto}
+
+/* ---- Saved for later, inside the basket (M39) ---- */
+.cartline.is-saved{opacity:.9}
+.cartline.is-saved .cartthumb{background:var(--nim-surface-100);color:var(--nim-ink-400)}
+.cartline.is-saved .cname{font-weight:500}
+
+/* ---------------------------------------------------------------------------
+   Moderation card (M41). One bordered unit per review awaiting a decision:
+   header strip, the review, the two actions. Previously the panel was flush
+   (no padding), the review carried its own border inside it, and the buttons
+   floated in the gap underneath — three separate reasons it read as broken.
+   --------------------------------------------------------------------------- */
+.modcard{
+  border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-card);
+  background:var(--nim-surface-0);overflow:hidden;
+}
+.modcard.is-flagged{border-color:var(--nim-warning-line)}
+.modcard-head{
+  display:flex;align-items:center;gap:8px;padding:9px 12px;
+  background:var(--nim-surface-50);border-bottom:1px solid var(--nim-line-100);
+}
+.modcard.is-flagged .modcard-head{background:var(--nim-warning-bg);border-bottom-color:var(--nim-warning-line)}
+.modcard-head .grow{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.modcard-head .pill,.modcard-head .cat{flex:0 0 auto}
+.modcard-body{padding:11px 12px}
+.modcard-foot{
+  display:flex;align-items:center;gap:8px;padding:9px 12px;
+  border-top:1px solid var(--nim-line-100);background:var(--nim-surface-50);
+}
+.modcard-foot .grow{min-width:0}
+.modcard-foot .btn{flex:0 0 auto}
+/* Nested inside a container that already has a border. */
+.reviewcard.is-bare{border:0;border-radius:0;padding:0;background:transparent}
+@media (max-width:720px){
+  .modcard-foot{flex-wrap:wrap}
+  .modcard-foot .grow{flex:1 0 100%;margin-bottom:6px}
+}
+
+
+/* ---- Rewards: tier ladder and redemption cards ------------------------- */
+.tierlad{display:flex;gap:0;align-items:flex-start;overflow-x:auto;padding:2px 0}
+.tiernode{flex:1 1 0;min-width:112px;position:relative;text-align:center;padding:2px 8px 4px}
+.tiernode::before,.tiernode::after{content:"";position:absolute;top:13px;height:2px;
+  background:var(--nim-line-200)}
+.tiernode::before{left:0;right:50%}
+.tiernode::after{left:50%;right:0}
+.tiernode:first-child::before,.tiernode:last-child::after{display:none}
+.tiermark{position:relative;z-index:1;width:26px;height:26px;border-radius:50%;margin:0 auto 6px;
+  display:grid;place-items:center;background:var(--nim-surface-0);border:2px solid var(--nim-line-200);
+  font-size:10px;font-weight:700;color:var(--nim-ink-600)}
+.tiernode.is-past .tiermark{background:var(--nim-success-bg);border-color:var(--nim-success-fg);
+  color:var(--nim-success-fg)}
+.tiernode.is-past::before,.tiernode.is-past::after{background:var(--nim-success-fg)}
+.tiernode.is-here .tiermark{background:var(--nim-primary-600);border-color:var(--nim-primary-600);color:var(--nim-on-primary)}
+.tiernode.is-here::before{background:var(--nim-success-fg)}
+.tiername{font-size:12px;font-weight:700;line-height:1.3}
+.tiernode.is-ahead .tiername{font-weight:500;color:var(--nim-ink-600)}
+
+.rdmcard{border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-card);padding:11px 12px;
+  background:var(--nim-surface-0);display:flex;flex-direction:column;gap:2px}
+.rdmcard.is-short{background:var(--nim-surface-50)}
+.rdmcard .divider{margin:9px 0 8px}
+.rdmico{width:34px;height:34px;border-radius:var(--nim-radius-control);flex:0 0 auto;display:grid;
+  place-items:center;background:var(--nim-surface-50);border:1px solid var(--nim-line-200);
+  color:var(--nim-primary-600)}
+.rdmcard.is-short .rdmico{color:var(--nim-ink-600)}
+.negnum{color:var(--nim-danger-fg)}
+/* A positive confirmation carries a tick as well as a colour */
+.okmark{color:var(--nim-success-fg);display:inline-flex;align-items:flex-start;gap:5px}
+/* Drawn product artwork. The illustration fills the tile; the badge sits over it. */
+.pmedia > .partsvg{position:absolute;inset:0;width:100%;height:100%}
+.pmedia{position:relative;overflow:hidden}
+.pthumb{display:inline-block;border-radius:var(--nim-radius-control);overflow:hidden;flex:0 0 auto;
+  border:1px solid var(--nim-line-200);line-height:0}
+.pthumb > .partsvg{width:100%;height:100%}
+/* Document capture rows — a tick is a claim, a file is evidence */
+.docrow{display:flex;align-items:center;gap:10px;padding:9px 11px;border:1px solid var(--nim-line-200);
+  border-radius:var(--nim-radius-control);background:var(--nim-surface-0)}
+.docrow.is-held{background:var(--nim-success-bg);border-color:var(--nim-success-line)}
+.docrow .docico{flex:0 0 auto;color:var(--nim-ink-400);display:grid;place-items:center}
+.docrow.is-held .docico{color:var(--nim-success-fg)}
+/* Per-topic channel picker — state carried by a tick, not only by fill */
+.chanpick{display:inline-flex;gap:5px;flex-wrap:wrap;flex:0 0 auto}
+.chanchip{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;font:inherit;
+  font-size:11px;border-radius:999px;border:1px solid var(--nim-line-200);background:var(--nim-surface-0);
+  color:var(--nim-ink-600);cursor:pointer;white-space:nowrap}
+.chanchip:hover{border-color:var(--nim-primary-500)}
+.chanchip.is-on{background:var(--nim-primary-600);border-color:var(--nim-primary-600);
+  color:var(--nim-on-primary);font-weight:500}
+.chanchip:disabled{cursor:not-allowed;opacity:.75}
+.chanchip:focus-visible{outline:none;box-shadow:var(--nim-focus)}
+
+/* ---- Action columns: the primary slot is always there ------------------- */
+.actcell{display:inline-flex;align-items:center;gap:8px;justify-content:flex-end;width:100%;
+  flex-wrap:nowrap}
+/* Holds its width where there is room, so the secondary action lines up down
+   the column — and gives that width back rather than wrapping when a narrow
+   table would otherwise stack the two actions on top of each other. */
+.actslot{width:var(--slot,150px);min-width:0;flex:0 1 auto;
+  display:inline-flex;justify-content:flex-end;white-space:nowrap}
+/* Filled but inert. Same box metrics as a button so the column lines up, but
+   no border, no fill and no pointer — there is nothing here to press. */
+.actghost{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 4px;font-size:11px;
+  color:var(--nim-ink-600);white-space:nowrap;cursor:default}
+/* Narrow column: the pair stays together and right-aligned, wrapping as one
+   group rather than being pushed apart by a slot the column cannot afford. */
+.actcell.is-compact{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;
+  gap:4px 8px;width:100%;text-align:right}
+.actcell.is-compact > *{flex:0 0 auto}
+.actghost .gl{color:var(--nim-success-fg);flex:0 0 auto}
+.actghost.is-held .gl{color:var(--nim-ink-400)}
+.actghost .agsub{color:var(--nim-ink-400)}
+
+/* ---- A grid of choices, not one clickable row --------------------------- */
+/* `.pickrow` is a single full-width row. A list of checkboxes is a different
+   thing and was borrowing it, inheriting a nowrap flex that pushed the last
+   items off the page. They wrap onto as many rows as they need, in even
+   columns so the labels line up rather than staggering. */
+.checkgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));
+  gap:8px 14px;align-items:start;width:100%}
+.checkgrid .checkline{align-items:flex-start;line-height:1.35}
+.checkgrid .checkline > span{min-width:0}
+.checkgrid .checkline .t-tiny{display:block}
+@media (max-width:720px){ .checkgrid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr))} }
+/* Label inside a filled action slot */
+.actghost .agl{display:inline-flex;align-items:baseline;gap:4px;min-width:0}
+/* Extra blocks in the document sketch, so a section that is ticked is visible */
+.doc-hero{display:flex;align-items:baseline;gap:9px;padding:9px 0;border-bottom:1px solid var(--nim-border)}
+.doc-hero strong{font-size:17px;margin-left:auto}
+.doc-block{padding:7px 0;border-bottom:1px solid var(--nim-surface-3);font-size:10.5px;line-height:1.45}
+.doc-block:last-of-type{border-bottom:0}
+.doc-block.is-ad{background:#FFF8E1;padding:7px 8px;border-radius:4px;margin:6px 0}
+.doc-block.is-terms{column-count:2;column-gap:14px}
+.doc-slip{margin-top:9px;padding-top:8px;border-top:1px dashed var(--nim-border);text-align:center}
+.doc-slip .row{margin-top:5px;text-align:left}
+/* A switch that cannot change anything in the current mode */
+.toggle.is-moot{opacity:.62}
+.toggle.is-moot .track{cursor:not-allowed}
+/* A media thumbnail that carries the drawn artwork rather than a glyph */
+.mthumb.has-art{padding:0;overflow:hidden;position:relative}
+.mthumb.has-art > .partsvg{width:100%;height:100%;display:block}
+.mthumb.has-art .mshot{position:absolute;left:0;bottom:0}
+
+/* ---- Permission matrix: wide, scrollable, with the row label pinned ------ */
+.permgrid .pinned{position:sticky;left:0;z-index:2;background:var(--nim-surface-0);
+  box-shadow:1px 0 0 var(--nim-line-200)}
+.permgrid thead .pinned{background:var(--nim-surface-50);z-index:3}
+.permgrid tbody tr:hover .pinned{background:var(--nim-surface-50)}
+/* Media viewer stage */
+.mediastage{position:relative;border:1px solid var(--nim-line-200);border-radius:var(--nim-radius-card);
+  overflow:hidden;line-height:0}
+.mediastage > .partsvg{width:100%;display:block}
+.mediaplay{position:absolute;inset:0;display:grid;place-items:center;color:#FFF;
+  background:rgba(14,27,38,.28);pointer-events:none}
+.mediashot{position:absolute;left:8px;bottom:8px;background:rgba(29,29,29,.72);color:#FFF;
+  font-size:10px;padding:2px 7px;border-radius:4px;line-height:1.4}
+
+/* ---- Out of stock: the tile recedes, and says why in words --------------- */
+/* Not colour alone. The band names the state and the card is dimmed, so it
+   reads at a glance and still reads without colour at all. */
+.pcard.is-out{background:var(--nim-surface-50);border-color:var(--nim-line-100)}
+.pcard.is-out .pmedia{filter:grayscale(1);opacity:.55}
+.pcard.is-out .ptitle,.pcard.is-out .price{color:var(--nim-ink-600)}
+.pcard.is-out .pseller,.pcard.is-out .pdesc{color:var(--nim-ink-400)}
+.pcard.is-out:hover{border-color:var(--nim-line-200)}
+.outband{display:flex;align-items:center;gap:6px;padding:5px 12px;font-size:11px;font-weight:600;
+  color:var(--nim-warning-fg);background:var(--nim-warning-bg);
+  border-bottom:1px solid var(--nim-warning-line)}
+.outband .gl{flex:0 0 auto}
+
+/* ---- Task row: one right-hand rail, fixed slots -------------------------- */
+/* State and action used to size themselves independently, so the right edge
+   of every row landed somewhere different and the owner line hung under
+   whichever of the two happened to be wider. */
+.taskrail{flex:0 0 auto;display:grid;grid-template-columns:auto 92px;gap:4px 10px;
+  align-items:center;justify-items:end}
+.taskrail .trstate,.taskrail .tract{display:inline-flex;justify-content:flex-end}
+.taskrail .tract > .btn{width:100%;justify-content:center}
+.taskrail .trowner{grid-column:1 / -1;font-size:10.5px;color:var(--nim-ink-600)}
+@media (max-width:720px){ .taskrail{grid-template-columns:auto} }
+
+/* ---- What a product depends on ------------------------------------------
+   State is carried by the icon and the words. The tint is a third signal,
+   never the only one. */
+.depnote{display:flex;align-items:flex-start;gap:5px;margin-top:7px;padding:5px 7px;
+  border-radius:var(--nim-radius-control);font-size:11px;line-height:1.35;
+  border:1px solid var(--nim-line-200);background:var(--nim-surface-50);color:var(--nim-ink-600)}
+.depnote svg{flex:0 0 auto;margin-top:1px}
+.depnote.is-need{border-color:var(--nim-warning-line);background:var(--nim-warning-bg);
+  color:var(--nim-warning-fg)}
+.depnote.is-clash{border-color:var(--nim-danger-line);background:var(--nim-danger-bg);
+  color:var(--nim-danger-fg)}
+.depnote.is-met{border-color:var(--nim-success-line);background:var(--nim-success-bg);
+  color:var(--nim-success-fg)}
+.deprule{margin-top:9px;padding:9px 10px;border-radius:var(--nim-radius-control);
+  border:1px solid var(--nim-line-200);background:var(--nim-surface-50)}
+.deprule.is-block{border-color:var(--nim-warning-line);background:var(--nim-warning-bg)}
+.deprule.is-ok{border-color:var(--nim-success-line);background:var(--nim-success-bg)}
+.deprule .depico{flex:0 0 auto;display:grid;place-items:center;margin-top:2px}
+.deprule.is-block .depico{color:var(--nim-warning-fg)}
+.deprule.is-ok .depico{color:var(--nim-success-fg)}
+.deprule.is-quiet .depico{color:var(--nim-ink-400)}
+.deplist{margin-top:7px;display:flex;flex-direction:column;gap:0}
+.deprow{display:flex;align-items:center;gap:10px;padding:8px 0;
+  border-bottom:1px solid var(--nim-line-100)}
+.deprow:last-child{border-bottom:0}
+.depstate{flex:0 0 132px;display:flex;justify-content:flex-end}
+.depstate > .btn{white-space:nowrap}
+@media (max-width:640px){ .depstate{flex:0 0 auto} }
+
+/* ---- Which marketplaces a seller is in ---------------------------------- */
+.mktstrip{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:9px}
+.mktcard{display:flex;align-items:center;gap:10px;padding:10px 11px;border-radius:var(--nim-radius-control);
+  border:1px solid var(--nim-line-200);background:var(--nim-surface-0)}
+.mktcard.is-held{border-color:var(--nim-success-line);background:var(--nim-success-bg)}
+.mktcard.is-pending{border-color:var(--nim-warning-line);background:var(--nim-warning-bg)}
+.mktcard.is-out{background:var(--nim-surface-50);border-style:dashed}
+.mktico{flex:0 0 auto;display:grid;place-items:center;color:var(--nim-ink-600)}
+.mktcard.is-held .mktico{color:var(--nim-success-fg)}
+.mktcard.is-pending .mktico{color:var(--nim-warning-fg)}
+.mktstate{display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex:0 0 auto;text-align:right}

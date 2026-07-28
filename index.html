@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>6D Marketplace — telecom marketplace platform</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --nim-primary-500:#0099FF; --nim-primary-600:#0578BE; --nim-primary-50:#F1F8FF;
+  --nim-ink-900:#1D1D1D; --nim-ink-700:#4A4A4A; --nim-ink-600:#666666; --nim-ink-400:#8D8D8D;
+  --nim-surface-0:#FFFFFF; --nim-surface-50:#F9F9F9; --nim-surface-100:#F4F4F4;
+  --nim-line-100:#EDEDED; --nim-line-200:#DCDCDC;
+  --nim-ai-orange-500:#EE743B; --nim-ai-surface:#FEF3EC;
+  --cat-consumer-fg:#0B5FA5; --cat-consumer-bg:#E9F3FC; --cat-consumer-ln:#C3DEF5;
+  --cat-partner-fg:#8A5300;  --cat-partner-bg:#FFF3E0;  --cat-partner-ln:#F0DCBB;
+  --cat-iot-fg:#00676B;      --cat-iot-bg:#E3F3F3;      --cat-iot-ln:#BEDFDF;
+  --cat-security-fg:#146C43; --cat-security-bg:#E7F4EC; --cat-security-ln:#BFE0CD;
+  --cat-device-fg:#5E4B9B;   --cat-device-bg:#EFEBFA;   --cat-device-ln:#D5CBEE;
+  --cat-content-fg:#9B2C6F;  --cat-content-bg:#FBEAF3;  --cat-content-ln:#EFC9DE;
+}
+*,*::before,*::after{box-sizing:border-box}
+body{margin:0;background:var(--nim-surface-100);color:var(--nim-ink-900);letter-spacing:0;
+  font-family:'Poppins',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;font-size:13px;line-height:1.45}
+:focus-visible{outline:none;box-shadow:0 0 0 2px #FFF,0 0 0 4px var(--nim-primary-500);border-radius:6px}
+.head{background:#0D1B4B;color:#D6DEF2;padding:26px 32px}
+.head .inner{max-width:1200px;margin:0 auto}
+.brandrow{display:flex;align-items:center;gap:11px;margin-bottom:16px}
+.brandrow img{height:24px}
+.brandrow .dot{width:7px;height:7px;border-radius:50%;background:#00B4D8}
+.brandrow .word{font-size:13px;font-weight:600;color:#FFF}
+.brandrow .tier{font-size:11px;color:#9FB0D4}
+h1{font-size:24px;font-weight:600;margin:0 0 6px;color:#FFF}
+.sub{font-size:13px;color:#B7C3E0;max-width:860px;margin:0}
+.meta{display:flex;gap:22px;flex-wrap:wrap;margin-top:18px;padding-top:16px;border-top:1px solid rgba(255,255,255,.16)}
+.meta .k{font-size:11px;color:#9FB0D4}
+.meta .v{font-size:12px;color:#E4EAF7;font-weight:500;margin-top:2px}
+main{max-width:1200px;margin:0 auto;padding:24px 32px 60px}
+h2{font-size:15px;font-weight:600;margin:0 0 12px}
+.vgrid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px;margin-bottom:26px}
+@media (max-width:1180px){.vgrid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (max-width:720px){.vgrid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.vtile{background:var(--nim-surface-0);border:1px solid var(--nim-line-200);border-radius:8px;padding:11px;
+  display:flex;flex-direction:column;gap:6px}
+.vtile .vico{width:28px;height:28px;border-radius:6px;display:grid;place-items:center;border:1px solid currentColor}
+.vtile .vname{font-size:12px;font-weight:600;line-height:1.25}
+.vtile .vaud{font-size:11px;color:var(--nim-ink-600)}
+.vtile .vwho{font-size:10px;color:var(--nim-ink-400);margin-top:2px}
+.c-consumer{color:var(--cat-consumer-fg);background:var(--cat-consumer-bg)}
+.c-partner{color:var(--cat-partner-fg);background:var(--cat-partner-bg)}
+.c-iot{color:var(--cat-iot-fg);background:var(--cat-iot-bg)}
+.c-security{color:var(--cat-security-fg);background:var(--cat-security-bg)}
+.c-device{color:var(--cat-device-fg);background:var(--cat-device-bg)}
+.c-content{color:var(--cat-content-fg);background:var(--cat-content-bg)}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+@media (max-width:960px){.grid{grid-template-columns:minmax(0,1fr)}}
+.card{background:var(--nim-surface-0);border:1px solid var(--nim-line-200);border-radius:8px;display:flex;flex-direction:column;overflow:hidden}
+.card:hover{border-color:var(--nim-primary-500)}
+.card-head{padding:14px 16px;border-bottom:1px solid var(--nim-line-100);display:flex;gap:12px;align-items:flex-start}
+.badge{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;flex:0 0 auto;
+  background:var(--nim-primary-50);color:var(--nim-primary-600);border:1px solid #CFE7FA}
+.badge.neu{background:var(--nim-surface-100);color:var(--nim-ink-700);border-color:var(--nim-line-200)}
+.card-head h3{margin:0;font-size:14px;font-weight:600}
+.card-head .who{font-size:11px;color:var(--nim-ink-600);margin-top:2px}
+.card-body{padding:14px 16px;flex:1 1 auto}
+.card-body p{margin:0 0 12px;font-size:12px;color:var(--nim-ink-700)}
+.feats{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px 12px}
+.feats li{font-size:11px;color:var(--nim-ink-700);display:flex;gap:6px;align-items:flex-start}
+.feats li::before{content:"+";color:var(--nim-primary-500);font-weight:700;flex:0 0 auto}
+.covers{display:flex;gap:5px;flex-wrap:wrap;margin-top:12px}
+.card-foot{padding:11px 16px;border-top:1px solid var(--nim-line-100);background:var(--nim-surface-50);display:flex;align-items:center;gap:10px}
+.count{font-size:11px;color:var(--nim-ink-600)}
+.open{margin-left:auto;height:30px;padding:0 13px;border-radius:6px;border:1px solid var(--nim-primary-600);
+  background:var(--nim-primary-600);color:#FFF;font:inherit;font-size:12px;font-weight:500;display:inline-flex;align-items:center;gap:7px;text-decoration:none}
+.open:hover{filter:brightness(.92)}
+.cat{display:inline-flex;align-items:center;font-size:10px;font-weight:500;line-height:15px;border-radius:4px;padding:0 5px;border:1px solid}
+.cat-consumer{color:var(--cat-consumer-fg);background:var(--cat-consumer-bg);border-color:var(--cat-consumer-ln)}
+.cat-partner{color:var(--cat-partner-fg);background:var(--cat-partner-bg);border-color:var(--cat-partner-ln)}
+.cat-iot{color:var(--cat-iot-fg);background:var(--cat-iot-bg);border-color:var(--cat-iot-ln)}
+.cat-security{color:var(--cat-security-fg);background:var(--cat-security-bg);border-color:var(--cat-security-ln)}
+.cat-device{color:var(--cat-device-fg);background:var(--cat-device-bg);border-color:var(--cat-device-ln)}
+.cat-content{color:var(--cat-content-fg);background:var(--cat-content-bg);border-color:var(--cat-content-ln)}
+.brandtag{font-size:10px;border:1px solid var(--nim-line-200);border-radius:4px;padding:0 5px;color:var(--nim-ink-600);background:var(--nim-surface-0)}
+.brandtag.sixd{color:#0D1B4B;border-color:#C3CCE6;background:#EEF1F9;font-weight:500}
+.note{margin-top:22px;background:var(--nim-surface-0);border:1px solid var(--nim-line-200);border-radius:8px;padding:16px 18px}
+.note ul{margin:0;padding-left:18px}
+.note li{font-size:12px;color:var(--nim-ink-700);margin:6px 0}
+.foot{max-width:1200px;margin:0 auto;padding:0 32px 40px;font-size:11px;color:var(--nim-ink-600)}
+.prior{margin-top:16px;font-size:12px;color:var(--nim-ink-600)}
+.prior a{color:var(--nim-primary-600)}
+</style>
+</head>
+<body>
+
+<header class="head">
+  <div class="inner">
+    <div class="brandrow">
+      <img src="assets/brand/6d-logo-white.png" alt="6D Technologies" onerror="this.remove()">
+      <span class="dot" aria-hidden="true"></span>
+      <div><div class="word">6D Marketplace</div><div class="tier">Telecom marketplace platform</div></div>
+    </div>
+    <h1>Choose a persona</h1>
+    <p class="sub">Working HTML for a telecom marketplace platform spanning six marketplace categories — consumer, partner, IoT, security, device and digital content — with more definable in the console.
+    Built to the <strong>nim-ui-design-system-v2</strong> visual contract on one reconciling dataset — the four portals agree with each other on every figure. Each file is self-contained; open it straight from disk.</p>
+    <div class="meta">
+      <div><div class="k">Operator</div><div class="v">Aventa Telecom (white-label)</div></div>
+      <div><div class="k">Catalogue</div><div class="v">39 listings · 15 partners · 4 admin surfaces</div></div>
+      <div><div class="k">Trade</div><div class="v">2,600 orders · $711K GMV · 9.3% take rate</div></div>
+      <div><div class="k">Settlement</div><div class="v">30 statements · 8 commission plans</div></div>
+      <div><div class="k">Out of scope</div><div class="v">No SD-WAN, MPLS or CPQ</div></div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <h2>The marketplace categories</h2>
+  <div class="vgrid">
+    <div class="vtile"><span class="vico c-consumer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg></span>
+      <span class="vname">Consumer</span><span class="vaud">B2C</span>
+      <span class="vwho">Mobile plans · devices · OTT · insurance</span></div>
+    <div class="vtile"><span class="vico c-partner"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 21a8 8 0 0 0-16 0"/><circle cx="10" cy="8" r="5"/><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"/></svg></span>
+      <span class="vname">Partner</span><span class="vaud">B2B2X</span>
+      <span class="vwho">Partner onboarding &amp; selling</span></div>
+    <div class="vtile"><span class="vico c-iot"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/></svg></span>
+      <span class="vname">IoT</span><span class="vaud">Enterprises</span>
+      <span class="vwho">SIMs · sensors · device bundles</span></div>
+    <div class="vtile"><span class="vico c-security"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg></span>
+      <span class="vname">Security</span><span class="vaud">Enterprise</span>
+      <span class="vwho">Firewall · MDR · VPN</span></div>
+    <div class="vtile"><span class="vico c-device"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/></svg></span>
+      <span class="vname">Device</span><span class="vaud">Consumer &amp; Enterprise</span>
+      <span class="vwho">Phones · routers · CPE</span></div>
+    <div class="vtile"><span class="vico c-content"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg></span>
+      <span class="vname">Digital content</span><span class="vaud">Consumer</span>
+      <span class="vwho">OTT · gaming · music</span></div>
+  </div>
+
+  <h2>Choose a persona</h2>
+  <div class="grid">
+
+    <div class="card">
+      <div class="card-head">
+        <span class="badge"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg></span>
+        <div><h3>Consumer shopper</h3><div class="who">Priya Raman · B2C storefront</div></div>
+        <span class="brandtag sixd">6D brand</span>
+      </div>
+      <div class="card-body">
+        <p>The retail front door. Browse and buy plans, devices, streaming, gaming, music and insurance in one basket, on one bill, with subscriptions she can pause or cancel herself.</p>
+        <ul class="feats">
+          <li>Storefront and marketplace tiles</li><li>Faceted browse and search</li>
+          <li>Mobile plans and eSIM compare</li><li>Devices and trade-in</li>
+          <li>Digital content by category</li><li>Basket and checkout</li>
+          <li>Order and delivery tracking</li><li>Subscription pause and cancel</li>
+          <li>Account, payment, privacy</li><li>Shopping assistant</li>
+          <li>Account access and spend caps</li><li>What each person can do</li>
+          <li>Notification preferences</li><li>Password and sign-in security</li>
+        </ul>
+        <div class="covers"><span class="cat cat-consumer">Consumer</span><span class="cat cat-device">Device</span><span class="cat cat-content">Digital content</span></div>
+      </div>
+      <div class="card-foot"><span class="count">11 screens</span><a class="open" href="consumer.html">Open</a></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <span class="badge"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/></svg></span>
+        <div><h3>Partner / seller</h3><div class="who">Nimbus Sensors · B2B2X supply side</div></div>
+        <span class="brandtag sixd">6D brand</span>
+      </div>
+      <div class="card-body">
+        <p>The seller console. A live partner mid-way through a second onboarding — the seven-gate journey, a six-step product onboarding wizard, order fulfilment, and settlement they can actually reconcile.</p>
+        <ul class="feats">
+          <li>Seven-gate onboarding journey</li><li>Gate tasks, documents, blockers</li>
+          <li>Listings and review status</li><li>Product onboarding wizard</li>
+          <li>Orders and fulfilment stages</li><li>Settlement statements</li>
+          <li>Commission tiers and split</li><li>Reconciliation to the penny</li>
+          <li>Performance and reviews</li><li>Disputes and evidence</li>
+          <li>Team directory and security</li><li>Roles configuration matrix</li>
+          <li>Integrations — fulfilment APIs</li>
+          <li>Cost, list and sale pricing</li>
+          <li>Self-billing invoice detail</li><li>Withholding and tax certificate</li>
+          <li>Notification rules</li><li>My details and cover</li>
+        </ul>
+        <div class="covers"><span class="cat cat-partner">Partner</span><span class="cat cat-iot">IoT</span><span class="cat cat-device">Device</span></div>
+      </div>
+      <div class="card-foot"><span class="count">14 screens</span><a class="open" href="partner.html">Open</a></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <span class="badge"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"/><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"/><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"/></svg></span>
+        <div><h3>Marketplace operator</h3><div class="who">Ananya Krishnan · platform governance</div></div>
+        <span class="brandtag sixd">6D brand</span>
+      </div>
+      <div class="card-body">
+        <p>The platform side. Runs the onboarding funnel, polices the catalogue, designs commission and settlement plans, approves payout runs and adjudicates disputes across every marketplace category.</p>
+        <ul class="feats">
+          <li>GMV, take rate, revenue mix</li><li>Marketplace categories, configurable</li>
+          <li>Onboarding queue and gates</li><li>Funnel drop-off analysis</li>
+          <li>Partner directory and tiers</li><li>Listing review with policy checks</li>
+          <li>Commission plan design</li><li>Settlement runs and approval</li>
+          <li>Order exceptions</li><li>Disputes and cost allocation</li>
+          <li>Promotions and discount rules</li>
+          <li>Define a marketplace category</li><li>Listing policy across categories</li>
+          <li>First-party products and bundles</li><li>Commercial models and plans</li>
+          <li>Partner bills, view and download</li>
+          <li>Onboarding gate policy</li><li>Invoice detail before approval</li>
+          <li>Bill formatting and cycles</li><li>Tax and merchant of record</li>
+          <li>Operator users and security</li><li>Roles configuration matrix</li>
+          <li>Notification rules</li>
+        </ul>
+        <div class="covers"><span class="cat cat-consumer">All six</span><span class="cat cat-partner">marketplaces</span></div>
+      </div>
+      <div class="card-foot"><span class="count">16 screens</span><a class="open" href="operator.html">Open</a></div>
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <span class="badge neu"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"/><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"/><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/><path d="M10 6h4M10 10h4M10 14h4"/></svg></span>
+        <div><h3>Enterprise buyer</h3><div class="who">Brightline Foods · procurement</div></div>
+        <span class="brandtag">Neutral brand</span>
+      </div>
+      <div class="card-body">
+        <p>The B2B demand side, deliberately unbranded, so it carries the buyer's own livery rather than the marketplace's. Catalogue buying with a real approval workflow — requisitions, thresholds, seat management, consolidated billing. No CPQ anywhere.</p>
+        <ul class="feats">
+          <li>Budget and commitment view</li><li>Business catalogue with facets</li>
+          <li>IoT — SIMs, sensors, bundles</li><li>Security — firewall, MDR, VPN</li>
+          <li>Devices — phones, routers, CPE</li><li>Requisition and approval policy</li>
+          <li>Orders and provisioning status</li><li>Licence seat management</li>
+          <li>Consolidated billing</li><li>Procurement assistant</li>
+          <li>Invoice format and tax registration</li><li>Approval policy editor</li>
+          <li>Users, security and policy</li>
+          <li>Roles configuration matrix</li><li>Notification rules</li>
+        </ul>
+        <div class="covers"><span class="cat cat-iot">IoT</span><span class="cat cat-security">Security</span><span class="cat cat-device">Device</span></div>
+      </div>
+      <div class="card-foot"><span class="count">13 screens</span><a class="open" href="enterprise.html">Open</a></div>
+    </div>
+
+  </div>
+
+  <div class="note">
+    <h2>Journeys you can drive to completion</h2>
+    <p style="font-size:12px;color:var(--nim-ink-700);margin:0 0 12px">
+      These are not click-throughs. Every action below changes the underlying records, and the change shows up wherever it should —
+      including in the other three portals, which share one dataset.</p>
+    <ul>
+      <li><strong>Partner onboarding, seven gates.</strong> Open <code>partner.html</code>, Onboarding. Resolve the failing webhook, then the sandbox order —
+      the technical gate only closes when <em>both</em> are done, at which point compliance review opens and the security questionnaire unlocks by itself.
+      Answer it, then publish. The partner goes live, gains the Security Marketplace, and it becomes selectable in the listing wizard.</li>
+      <li><strong>Product onboarding.</strong> <code>partner.html</code>, New listing. Six steps; the commission split recalculates as you type a price.
+      Submitting creates a real product and puts it in the operator's review queue — open <code>operator.html</code>, Catalogue and it is there.
+      Submitting without a name or price is refused and sends you back to the step that is missing.</li>
+      <li><strong>Catalogue governance.</strong> <code>operator.html</code>, Catalogue. Approving publishes the listing live; rejecting sends it back with your reason.
+      The listing that breaches content policy 7.4 has Approve disabled — you can only reject it or ask the partner.</li>
+      <li><strong>Consumer purchase.</strong> <em>consumer.html</em>. Add a handset and a streaming subscription, check out.
+      Two orders are created on their correct pipelines — shipped for the handset, instant for the subscription — and the subscription starts and appears under Subscriptions.
+      Cancel it and access runs to the paid-to date; pause it and billing stops; restart it and it comes back.</li>
+      <li><strong>Enterprise requisition.</strong> <em>enterprise.html</em>. A basket becomes a requisition, not an order.
+      Add MDR seats and it needs IT sign-off; add a €2,450 bundle and it needs finance. Approve in <em>Approvals</em> and the order is placed, seats are added to the existing subscription, and budget consumed moves.
+      Decline it and nothing is ordered. Something under the threshold with no security in it orders straight away.</li>
+      <li><strong>Operator onboarding queue.</strong> <code>operator.html</code>, Partner onboarding. Clear Northwind Mobility's gates one at a time; on the last one the partner becomes live and joins the partner directory.</li>
+      <li><strong>Settlement run.</strong> <code>operator.html</code>, Settlement runs. Approving requires typing APPROVE. Statements move to approved — and stay unpaid until the cycle date, because approving is not paying.</li>
+      <li><strong>My details is fully working.</strong> <code>consumer.html</code>, My details. Add a card and the number, expiry and security code are validated and only the last four digits are kept. Exactly one payment method and one address is always the default, and the last working one cannot be removed. Top up the wallet, redeem points into credit, add and edit addresses with a PIN check, request your data, or schedule account closure 30 days out and stop it again from the banner.</li>
+      <li><strong>Storefront tools are real.</strong> Coverage returns a survey for known PIN codes and says <em>Not surveyed</em> where a network has not been measured. Trade-in quotes by model and condition and the credit comes off the basket. The bundle builder gives 5% per subscription capped at 15%, refuses a fourth, and drops the real items in your basket.</li>
+      <li><strong>Users, in all four portals.</strong> A directory showing role, MFA, password age and strength. Inviting refuses a bad email, the new person lands as <em>Invited</em> with no permissions in effect, changing a role takes effect at their next sign-in, and removing someone needs REMOVE typed. You cannot remove yourself. On the consumer account the same screen carries household members and monthly spend caps.</li>
+      <li><strong>Roles configuration, in all four portals.</strong> The capability matrix is editable — every cell cycles none, scoped, full. Create a role from nothing or clone one, and it becomes a column straight away with nobody in it. Built-in roles cannot be deleted, and neither can a custom role someone still holds — the dialog lists who, and sends you to reassign them.</li>
+      <li><strong>Passwords, MFA and sessions.</strong> Change your own password and anything below policy is refused, a mismatch is refused, strength is scored live and other sessions are signed out. On someone else's account, send a reset link or force a reset — force needs RESET typed, flags the account and clears their sessions. Turning MFA off needs OFF typed.</li>
+      <li><strong>The invoice, before the money moves.</strong> <code>operator.html</code>, Settlement runs. Open any statement to read the self-billing invoice — reference, period, every SKU that sold, the deduction stack from gross to net, and the tax line. The order lines reconcile to the statement gross to the cent. Approve sits inside the document; a statement with an open dispute shows it disabled with the reason.</li>
+      <li><strong>The avatar opens a real account menu.</strong> My details, change password, sign-in and security, notification preferences and what your role can do — in all four portals. <em>My details</em> is a working screen: saving refuses an empty name or a bad email, writes to the user record and updates the top bar. Mark yourself away and it tells you plainly that work will wait until you name a delegate.</li>
+      <li><strong>Define a marketplace.</strong> <code>operator.html</code>, Marketplaces. It needs a name and a line of storefront copy, starts closed to buyers, copies the policy you base it on, and says it has no partners rather than showing an encouraging zero. Closing a live one needs CLOSE typed and states what happens to listings, recurring orders and sellers.</li>
+      <li><strong>Catalogue policy.</strong> Ten rules per marketplace, each enforce / warn / off. Enforce blocks publication; warn only appears on the checklist. The listing review inspector links to the policy behind the check it just failed.</li>
+      <li><strong>Ask the partner.</strong> <code>operator.html</code>, Catalogue, review a listing. It names the recipient, refuses a query with no ask in it, records a real query with a working-day due date, and can hold the listing so the delay lands on the seller rather than on your desk.</li>
+      <li><strong>Gate policy.</strong> <code>operator.html</code>, Partner onboarding. Owner, target days and dual control per gate. KYC and Agreements cannot be made waivable, and the toggles are disabled rather than quietly ignored.</li>
+      <li><strong>Tax configuration.</strong> <code>operator.html</code>, Tax. Six jurisdictions, each with its own rate and — the fact everything follows from — whether the marketplace or the seller is merchant of record. A jurisdiction cannot go active without a registration number. Partner withholding follows the tax certificate; recording one releases it. The buyer states its GSTIN and sees whether input credit is claimable; the consumer storefront reads tax-inclusive pricing from the same configuration.</li>
+      <li><strong>Export writes a file.</strong> Every Export names its columns, offers on-screen versus everything and CSV versus JSON, then generates and downloads it. Values come from the record, not the HTML, so a status exports as its code rather than as a chip's label. Chart screens export the figures behind the chart.</li>
+      <li><strong>Product media.</strong> <code>partner.html</code>, New listing. Several images plus a video and a datasheet, a primary image that drives the card, reordering, and alt text that is required rather than optional — the listing will not submit without it.</li>
+      <li><strong>Fulfilment APIs.</strong> <code>partner.html</code>, Integrations. Register the endpoints the marketplace calls, with auth, retry and timeout. Plain HTTP and unauthenticated production endpoints are refused. <em>Send a test call</em> reflects the endpoint's real state — the broken one fails. The call log answers "we never received it".</li>
+      <li><strong>Cost, list and sale price.</strong> The wizard shows the full margin stack and refuses a listing priced at or below cost. The seller chooses how far the marketplace may discount, and the screen states the lowest a promotion could reach.</li>
+      <li><strong>Bundle discounts, floored at cost.</strong> <code>operator.html</code>, Catalogue. Discount each component individually, capped at that component's own cost. An override below the cost of the parts is raised to cost on save.</li>
+      <li><strong>The discount engine.</strong> <code>operator.html</code>, Promotions. Time of day, day of week, cart value, item count, category, buyer type, first order. The screen says what applies <em>and what does not, with the reason</em>. No promotion may sell below cost — that is a floor in the engine, not a rule you can write around. Move the clock and watch a time-of-day rule fire.</li>
+      <li><strong>The reporting period switches for real.</strong> The 90-day and 12-month tabs sit on a trailing 12-month series whose last three months sum exactly to the live order set, so the two views reconcile. Totals, growth and the monthly chart all change. Over 12 months there is no comparable prior window, so it says so rather than inventing a growth figure.</li>
+      <li><strong>The partner's own application is readable.</strong> <code>partner.html</code>, Onboarding. Each of the seven gates opens what was submitted — why they applied, the ownership carried over, the reused settlement account, and at the open gate the webhook URL with its HTTP 500 failure stated. <em>Guide</em> is a real document covering every gate, its owner, its target and its evidence.</li>
+      <li><strong>The seller can download its bills.</strong> <code>partner.html</code>, Settlement. Every statement, outstanding and paid, openable as the invoice and downloadable as a CSV of order lines plus the gross-to-net stack.</li>
+      <li><strong>Notification rules and message content.</strong> <em>New rule</em> is a working builder — event, audience, channels, severity, throttle — and it refuses a rule with no channel because that rule would do nothing. Every rule then has editable wording with a tab per channel: merge tokens are click-to-insert, the preview shows sample values rather than braces, SMS counts characters and segments, and switching channel keeps what you typed.</li>
+      <li><strong>Onboarding gates open their inputs.</strong> <code>operator.html</code>, Partner onboarding. Each of the seven gates is a button. Open one to read exactly what was submitted — beneficial ownership at KYC, the settlement account and treaty certificate at Bank &amp; tax, the webhook and sandbox order at Technical readiness — with who submitted it, who reviewed it, and the evidence checklist ticked or not. A gate not yet reached says so instead of inventing a record.</li>
+      <li><strong>Commercial models.</strong> <code>operator.html</code>, Commission plans. A plan is a model plus its parameters, and switching model swaps the parameters, relabels the rate and hides the tier table for a flat-rate model. Define a new model with its own parameter list and it becomes selectable in the wizard without leaving it.</li>
+      <li><strong>Partner bills.</strong> <code>operator.html</code>, Partners. Every statement for a partner — outstanding and paid — openable as the self-billing invoice and downloadable. A bill download is the order lines plus the gross-to-net deduction stack, not a picture of a total.</li>
+      <li><strong>First-party products and bundles.</strong> <code>operator.html</code>, Catalogue. Pull components from the operator's own BSS catalogue and the price derives itself — 4% off per extra component, capped at 18%. An override above the parts is called out. What is created is first party: no partner, no commission, live immediately.</li>
+      <li><strong>Billing configuration.</strong> <code>operator.html</code>, Billing configuration. Edit the numbering pattern and watch it flow into the live preview and into real statement references. Then change a partner's bill cycle — it will not save without a stated reason, because an override with no reason is how a cycle quietly drifts. Three partners here already differ from their plan.</li>
+      <li><strong>Notification rules, in all four portals.</strong> Rules address a <em>role</em>, not a person — so moving someone between roles changes what they are told without editing a rule. Toggles are live, SMS is reserved for urgent severity, and the delivery log shows a bounced address being retired.</li>
+    </ul>
+    <p style="font-size:12px;color:var(--nim-ink-700);margin:12px 0 0">
+      Dismissing any dialog changes nothing, and high-risk actions stay disabled until the confirmation word is typed.
+      266 automated journey checks assert all of this — see the README.</p>
+  </div>
+
+  <div class="prior">
+    An earlier Enterprise Self-Care set — built from a different PRD before the marketplace scope was clear — is kept under
+    <a href="selfcare/index.html">selfcare/</a>. It is not part of this deliverable.
+  </div>
+</main>
+
+<div class="foot">
+  No live customer, partner or settlement records appear anywhere in these screens.
+  Built to the nim-ui-design-system-v2 visual contract; the official 6D mark renders only from the approved brand asset and is never reconstructed in text, CSS or SVG.
+</div>
+
+</body>
+</html>
