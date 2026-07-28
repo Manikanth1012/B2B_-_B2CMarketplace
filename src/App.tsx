@@ -28,6 +28,7 @@ import { OperatorBanners } from './components/operator/OperatorBanners'
 import { OperatorChannels } from './components/operator/OperatorChannels'
 import { OperatorRoles } from './components/operator/OperatorRoles'
 import { OperatorAudit } from './components/operator/OperatorAudit'
+import { ToastHost } from './components/operator/shared'
 
 export default function App() {
   const [persona, setPersona] = useState<Persona>('consumer')
@@ -190,6 +191,7 @@ export default function App() {
           navigate('checkout')
         }}
       />
+      <ToastHost />
     </>
   )
 }

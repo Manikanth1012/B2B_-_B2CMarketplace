@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
-import { TrendingUp, TrendingDown, Users, Package, DollarSign, Ticket, TriangleAlert as AlertTriangle } from 'lucide-react'
+import { TrendingUp, TrendingDown } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import type { OperatorProfile, OperatorTicket, SettlementStatement } from '../../types'
-import { StatCard, SectionCard, Table, Td, StatusPill, PriorityPill, fmtMoney, fmtInt } from './shared'
+import { StatCard, SectionCard, Table, Td, StatusPill, PriorityPill, fmtMoney, fmtInt, Btn } from './shared'
 
 export function OperatorDashboard() {
   const [profile, setProfile] = useState<OperatorProfile | null>(null)
@@ -31,6 +31,13 @@ export function OperatorDashboard() {
   const gmvTrendNum = (profile.forecast_gmv - profile.gmv) / profile.gmv * 100
   const gmvTrend = gmvTrendNum.toFixed(1)
 
+  const handleApproveSettlement = async (id: string) => {
+    await supabase.from('settlement_statements').update({
+      status: 'approved', approved_by: 'Finance Team', approved_at: new Date().toISOString(),
+    }).eq('id', id)
+    setStatements(prev => prev.filter(s => s.id !== id))
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div>
@@ -38,7 +45,6 @@ export function OperatorDashboard() {
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>{profile.operator_name} · Marketplace overview</p>
       </div>
 
-      {/* Top stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
         <StatCard label="Total GMV" value={`$${fmtMoney(profile.gmv)}`} sublabel={`${fmtInt(profile.total_orders)} orders · $${fmtMoney(profile.avg_order_value)} avg`} color="var(--brand-navy)" />
         <StatCard label="Commission" value={`$${fmtMoney(profile.commission)}`} sublabel={`${profile.commission_rate}% blended take`} color="var(--brand-accent)" />
@@ -46,7 +52,6 @@ export function OperatorDashboard() {
         <StatCard label="Open Tickets" value={fmtInt(profile.open_tickets)} sublabel={`${profile.sla_breaches} SLA breaches`} color={profile.sla_breaches > 0 ? 'var(--danger)' : undefined} />
       </div>
 
-      {/* Second row */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
         <StatCard label="Settlements Due" value={fmtInt(profile.settlement_due)} sublabel="Awaiting approval" color="var(--warning)" />
         <StatCard label="Refund Requests" value={fmtInt(profile.refund_requests)} sublabel="Pending decision" />
@@ -54,7 +59,6 @@ export function OperatorDashboard() {
         <StatCard label="Churn Risk" value={fmtInt(profile.churn_risk)} sublabel="Accounts flagged" color="var(--warning)" />
       </div>
 
-      {/* Forecast */}
       <SectionCard title="Revenue Forecast" subtitle={`Linear trend × seasonal index · Backtest error: ${profile.forecast_accuracy}%`}>
         <div style={{ padding: '20px' }}>
           <div style={{ display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
@@ -77,17 +81,18 @@ export function OperatorDashboard() {
         </div>
       </SectionCard>
 
-      {/* Pending settlements + Open tickets */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }} className="op-grid-2col">
-        <SectionCard title="Pending Settlements" subtitle={`${statements.length} awaiting approval`}>
-          <Table headers={['Partner', 'Period', 'Gross', 'Net', 'Status']}>
+        <SectionCard title="Pending Settlements" subtitle={`${statements.length} awaiting approval`}
+          action={statements.length > 0 ? <Btn variant="success" size="sm" onClick={() => statements.forEach(s => handleApproveSettlement(s.id))}>Approve all</Btn> : undefined}
+        >
+          <Table headers={['Partner', 'Period', 'Gross', 'Net', 'Action']}>
             {statements.slice(0, 5).map(s => (
               <tr key={s.id}>
                 <Td>{s.partner_name}</Td>
                 <Td right>{s.period}</Td>
                 <Td right>${fmtMoney(s.gross)}</Td>
                 <Td right>${fmtMoney(s.net)}</Td>
-                <Td right><StatusPill status={s.status} /></Td>
+                <Td right><Btn variant="success" size="sm" onClick={() => handleApproveSettlement(s.id)}>Approve</Btn></Td>
               </tr>
             ))}
           </Table>
