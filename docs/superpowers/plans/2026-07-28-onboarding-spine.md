@@ -836,7 +836,16 @@ INSERT INTO onboarding_tasks (id, partner_id, gate_id, title, detail, owner, due
 ON CONFLICT (id) DO NOTHING;
 ```
 
-Seeded so `PTR-1003` fails exactly two checks: `auth` (EP-1003-02 has none) and `sandbox` (run not passed). `registered` passes because the two endpoints together cover all three required events; `tested` fails too, since EP-1003-02 has no acknowledged call — three of four outstanding.
+Seeded so `PTR-1003` passes exactly one check and fails three:
+
+| Check | Result | Why |
+|---|---|---|
+| `registered` | **passes** | the two endpoints together cover all three required events |
+| `auth` | fails | `EP-1003-02` has `auth: 'None'` |
+| `tested` | fails | `EP-1003-02` has no acknowledged test call |
+| `sandbox` | fails | `SR-1003` is `not_started`, not `passed` |
+
+So the operator's panel reads **1 of 4 checks pass** — three outstanding.
 
 - [ ] **Step 2: Re-export the row types**
 
