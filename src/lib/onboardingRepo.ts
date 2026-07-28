@@ -130,3 +130,34 @@ export async function clearGate(
   }
   return { ok: true, snapshot }
 }
+
+/* The four actions that move the technical checks. Each writes a real record,
+   so the operator's view changes as a consequence rather than being told. */
+
+export async function registerEndpoint(
+  partnerId: string, name: string, url: string, events: string[],
+): Promise<void> {
+  await supabase.from('partner_endpoints').insert({
+    id: `EP-${partnerId}-${Date.now().toString().slice(-5)}`,
+    partner_id: partnerId, name, url, method: 'POST', auth: 'None', enabled: true, events,
+  })
+}
+
+export async function setEndpointAuth(endpointId: string, auth: string): Promise<void> {
+  await supabase.from('partner_endpoints').update({ auth }).eq('id', endpointId)
+}
+
+export async function sendTestCall(endpointId: string): Promise<void> {
+  await supabase.from('endpoint_test_calls').insert({
+    id: `TC-${endpointId}-${Date.now().toString().slice(-5)}`,
+    endpoint_id: endpointId, status: 'acknowledged',
+  })
+}
+
+export async function runSandboxOrder(partnerId: string): Promise<void> {
+  const { data } = await supabase
+    .from('sandbox_runs').select('id').eq('partner_id', partnerId).maybeSingle()
+  const row = { partner_id: partnerId, state: 'passed', ran_at: new Date().toISOString() }
+  if (data) await supabase.from('sandbox_runs').update(row).eq('id', data.id)
+  else await supabase.from('sandbox_runs').insert({ id: `SR-${partnerId}`, ...row })
+}

@@ -51,26 +51,10 @@ export const PARTNER_PLAN = {
   ],
 }
 
-export const ONB_STEPS = [
-  { id: 'apply', name: 'Apply', desc: 'Submit your application to join a marketplace' },
-  { id: 'kyc', name: 'KYC & Due Diligence', desc: 'Company verification and sanctions screening' },
-  { id: 'agree', name: 'Agreements', desc: 'Sign the marketplace addendum and master agreement' },
-  { id: 'finance', name: 'Finance Setup', desc: 'Verify your settlement account and tax status' },
-  { id: 'tech', name: 'Technical Gate', desc: 'Pass a sandbox order through your fulfilment webhook' },
-  { id: 'assure', name: 'Compliance Review', desc: 'Security questionnaire and policy checks' },
-  { id: 'golive', name: 'Go Live', desc: 'Publish your storefront in the new marketplace' },
-]
-
-export const ONB_STATE: Record<string, string> = {
-  apply: 'done',
-  kyc: 'done',
-  agree: 'done',
-  finance: 'done',
-  tech: 'now',
-  assure: 'todo',
-  golive: 'todo',
-}
-
+// Still consumed by PartnerDashboard.tsx and PartnerIntegrations.tsx (out of
+// scope for this task). Left in place rather than deleted: those screens are
+// not part of the shared onboarding record this task wires up, and removing
+// their data would break unrelated, currently-working screens.
 export const ONB_TASKS = [
   { id: 'OB-9101', step: 'tech', title: 'Publish a sandbox test order', detail: 'Place one end-to-end order in sandbox so fulfilment and settlement can be verified before go-live.', owner: 'You', due: 'In 2 days', status: 'pending' },
   { id: 'OB-9102', step: 'tech', title: 'Fulfilment webhook returning 500 on retry', detail: 'Three of five sandbox callbacks failed. Until the endpoint is stable, order status will not update automatically.', owner: 'You', due: 'Today', status: 'blocked' },
