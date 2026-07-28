@@ -613,7 +613,15 @@ ALTER TABLE onboarding_gates DROP COLUMN partner_name;
 
 - [ ] **Step 2: Update the type**
 
-In `src/types/index.ts`, replace the `OnboardingGate` interface (currently lines 332-350):
+In `src/types/index.ts`, replace the `OnboardingGate` interface (currently lines 332-350).
+
+Note `status` is narrowed to `GateStatus` rather than left as `string`. That is what lets the
+rules module consume these rows directly, with no cast at the boundary where the rules are
+enforced. Add the import at the top of the file:
+
+```ts
+import type { GateStatus } from '../lib/onboarding'
+```
 
 ```ts
 export interface OnboardingGate {
@@ -621,7 +629,7 @@ export interface OnboardingGate {
   partner_id: string
   gate_name: string
   gate_order: number
-  status: string
+  status: GateStatus
   owner: string
   target_days: number
   dual_control: boolean
@@ -682,7 +690,16 @@ await supabase.from('partners').insert({
 - [ ] **Step 5: Typecheck**
 
 Run: `npx tsc --noEmit`
-Expected: exit 0. If it reports a remaining `partner_name`, fix that reference — the compiler is finding a spot this plan missed.
+Expected: exit 0.
+
+Two classes of error are expected here and both are the compiler doing its job:
+- a remaining `partner_name` reference this plan missed — fix it
+- a spot assigning a bare `string` to the now-narrowed `status` — narrow it at the source
+  (e.g. `status: 'current' as const`) rather than widening the type back
+
+If narrowing `status` ripples into a file outside onboarding, fix it there too and note the
+file in your report. If the ripple exceeds five files, stop and report BLOCKED rather than
+pressing on — that would mean the narrowing needs its own task.
 
 - [ ] **Step 6: Commit**
 
@@ -1161,16 +1178,22 @@ Line 173, pass the id down:
 - [ ] **Step 4: Typecheck**
 
 Run: `npx tsc --noEmit`
-Expected: one error — `PartnerOnboarding` does not accept props yet. That is expected and Task 10 fixes it. To keep this commit compiling, add the prop signature now in `src/components/partner/PartnerOnboarding.tsx`:
 
-```ts
-export function PartnerOnboarding({ partnerId }: { partnerId: string }) {
+Expected: **exactly one error**, in `src/App.tsx`, saying `PartnerOnboarding` accepts no props.
+
+This is deliberate and correct. Task 10 rewrites that component to take `partnerId`; adding a
+placeholder signature with a `void partnerId` no-op just to make this one commit compile would
+leave dead code sitting in the tree for two tasks. The transient error names exactly the work
+Task 10 does next.
+
+Confirm the error is the only one and is that one:
+
+```bash
+npx tsc --noEmit 2>&1 | tee /tmp/tsc-t7.txt; grep -c "error TS" /tmp/tsc-t7.txt
 ```
 
-and add `void partnerId` as the first line of the body so the unused parameter does not error. Task 10 replaces the body.
-
-Re-run: `npx tsc --noEmit`
-Expected: exit 0.
+Expected: count is `1`, and the line mentions `PartnerOnboarding`. If any other error appears,
+that one is yours to fix.
 
 - [ ] **Step 5: Run tests**
 
@@ -1331,7 +1354,7 @@ In `src/components/operator/OperatorOnboarding.tsx`, add imports:
 ```ts
 import { clearGate, loadOnboarding } from '../../lib/onboardingRepo'
 import { canClearGate, gateIdFor } from '../../lib/onboarding'
-import type { TechStatus, GateRow } from '../../lib/onboarding'
+import type { TechStatus } from '../../lib/onboarding'
 import { TechChecklist } from '../TechChecklist'
 ```
 
@@ -1386,12 +1409,8 @@ function GateModal({ gate, allGates, tech, onClose, onClear, onAddNote }: {
 
   const emptyTech: TechStatus =
     { checks: { registered: false, auth: false, tested: false, sandbox: false }, missing: [], noAuth: [], untested: [] }
-  const verdict = canClearGate(
-    gate as unknown as GateRow,
-    allGates as unknown as GateRow[],
-    tech ?? emptyTech,
-  )
-  const isTech = gateIdFor(gate as unknown as GateRow) === 'tech'
+  const verdict = canClearGate(gate, allGates, tech ?? emptyTech)
+  const isTech = gateIdFor(gate) === 'tech'
 
   return (
     <Modal open onClose={onClose} title={`Gate: ${gate.gate_name}`}
@@ -1699,13 +1718,30 @@ Expected: exit 0. If another file imported the deleted constants, the compiler n
 
 Run: `npm run dev`
 
-1. Sign in as **operator**, Partner Onboarding → **Sentinel Cyber** → Technical readiness. Note: Clear gate disabled, three checks outstanding.
-2. Sign out. Sign in as **partner** (`rajesh.kumar@nimbussensors.com` / `partner123`).
+This is the acceptance criterion for the whole sub-project. It uses the real login identity —
+no code editing.
 
-   Note: the partner console is hardwired to `PTR-1004` (Nimbus Sensors), whose current gate is `Bank & tax`, so the integration panel will not show. To exercise the technical gate, temporarily change `LoginScreen.tsx` to emit `partnerId: 'PTR-1003'`, verify, then change it back.
-3. On the technical gate: register an endpoint, set auth, send a test call, run the sandbox order. Watch the count climb 1→4.
-4. Sign out, back in as **operator**, same gate. **Clear gate is now enabled.** Enter evidence, clear it.
-5. Back as partner: the gate reads Cleared, showing who cleared it, and the next gate is open.
+Nimbus Sensors (`PTR-1004`) is the partner the login card signs you in as, and its current gate
+is `Bank & tax`. Clearing that opens Technical readiness for the same partner, so the round trip
+works end to end:
+
+1. Sign in as **operator** (`admin@6dtelecom.com` / `admin123`) → Partner Onboarding →
+   **Nimbus Sensors** → **Bank & tax** gate. Enter an evidence note, clear it.
+   Technical readiness becomes the current gate.
+2. Still as operator, open **Technical readiness**. Expected: red refusal banner, **Clear gate
+   disabled**, all four checks outstanding (Nimbus has no endpoints yet), and the line
+   "No override exists for this gate."
+3. Sign out. Sign in as **partner** (`rajesh.kumar@nimbussensors.com` / `partner123`).
+   The Integration milestone panel is showing, because this partner is now on the technical gate.
+4. Register an endpoint, set authentication, send a test call, run the sandbox order.
+   Watch the count climb 1 → 4.
+5. Sign out, back in as **operator**, same gate. **Clear gate is now enabled.** Enter evidence
+   and clear it.
+6. Back as **partner**: the gate reads Cleared, naming who cleared it, and Compliance review is
+   now the open gate.
+
+Separately, **Sentinel Cyber** (`PTR-1003`) is seeded already sitting on the technical gate with
+a partially proved integration, so the operator's refusal is visible without doing step 1 first.
 
 - [ ] **Step 6: Commit**
 
@@ -1903,4 +1939,18 @@ Every spec section maps to a task. §9 was completed during the design phase.
 
 **Type consistency:** `GateRow` / `TaskRow` / `Endpoint` / `TestCall` / `SandboxRun` / `TechStatus` / `ClearVerdict` are defined once in Task 1-2 and referenced unchanged after. `techStatus(endpoints, calls, run)` keeps its three-argument shape at every call site. `canClearGate(gate, all, tech)` likewise. `clearGate` takes one object with `{ gateId, partnerId, evidence, actor }` in Tasks 6, 9 and 11 identically.
 
-**One known rough edge, stated rather than hidden:** Task 9 casts `OnboardingGate` to `GateRow` via `as unknown as`. The two types describe the same row but `OnboardingGate.status` is `string` while `GateRow.status` is the narrower `GateStatus`. Narrowing `OnboardingGate` would ripple into components outside this sub-project's scope. The cast is contained to two call sites in one file and is the deliberate tradeoff.
+**Pre-flight scan resolutions.** Three issues were found before execution and all three changed
+the plan:
+
+1. **Task 3 narrows `OnboardingGate.status` to `GateStatus`** rather than leaving it `string` and
+   casting at the call sites. The rules module consumes these rows directly, with no cast at the
+   boundary where the rules are enforced. Task 3 carries a stop rule: if the narrowing ripples
+   beyond five files, report BLOCKED rather than pressing on.
+2. **Task 7 leaves `PartnerOnboarding` untouched** and accepts exactly one transient typecheck
+   error, which Task 10 resolves. The alternative — a placeholder signature plus a `void
+   partnerId` no-op — would have left dead code in the tree across two tasks.
+3. **Task 10's browser verification uses the real login identity.** The original draft told the
+   engineer to temporarily edit `LoginScreen.tsx` to `PTR-1003` and change it back. Unnecessary:
+   Nimbus Sensors (`PTR-1004`) is the login identity and sits at `Bank & tax`, so clearing that
+   gate opens Technical readiness for the same partner. The full operator → partner → operator
+   round trip runs with no code editing.
