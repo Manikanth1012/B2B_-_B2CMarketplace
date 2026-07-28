@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { View, OperatorView, PartnerView, EnterpriseView, Persona } from './types/view'
+import type { View, OperatorView, PartnerView, EnterpriseView, Persona, Session } from './types/view'
 import { supabase } from './lib/supabase'
 import type { CartItem, Product } from './types'
 import { LoginScreen } from './components/LoginScreen'
@@ -49,7 +49,8 @@ import { EnterpriseApprovals, EnterpriseOrders, EnterpriseSubs, EnterpriseMarket
 import { EnterpriseTeam, EnterpriseAudit, EnterpriseProfile } from './components/enterprise/EnterpriseMisc'
 
 export default function App() {
-  const [persona, setPersona] = useState<Persona | null>(null)
+  const [session, setSession] = useState<Session | null>(null)
+  const persona = session?.persona ?? null
   const [view, setView] = useState<View>('home')
   const [opView, setOpView] = useState<OperatorView>('op-dashboard')
   const [ptView, setPtView] = useState<PartnerView>('pt-dashboard')
@@ -121,17 +122,17 @@ export default function App() {
     await loadCart()
   }
 
-  const handleLogin = (p: Persona) => {
-    setPersona(p)
-    if (p === 'operator') setOpView('op-dashboard')
-    else if (p === 'partner') setPtView('pt-dashboard')
-    else if (p === 'enterprise') setEnView('en-dashboard')
+  const handleLogin = (s: Session) => {
+    setSession(s)
+    if (s.persona === 'operator') setOpView('op-dashboard')
+    else if (s.persona === 'partner') setPtView('pt-dashboard')
+    else if (s.persona === 'enterprise') setEnView('en-dashboard')
     else setView('home')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const handleSignOut = () => {
-    setPersona(null)
+    setSession(null)
     setView('home')
     setOpView('op-dashboard')
     setPtView('pt-dashboard')
@@ -170,7 +171,7 @@ export default function App() {
     return (
       <PartnerShell view={ptView} onNavigate={setPtView} onSignOut={handleSignOut}>
         {ptView === 'pt-dashboard' && <PartnerDashboard />}
-        {ptView === 'pt-onboarding' && <PartnerOnboarding />}
+        {ptView === 'pt-onboarding' && <PartnerOnboarding partnerId={session!.partnerId!} />}
         {ptView === 'pt-listings' && <PartnerListings />}
         {ptView === 'pt-newlisting' && <PartnerNewListing />}
         {ptView === 'pt-orders' && <PartnerOrders />}

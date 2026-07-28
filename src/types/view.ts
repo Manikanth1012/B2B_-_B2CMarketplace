@@ -50,3 +50,9 @@ export interface NavigateOptions {
   product?: import('./index').Product
   tab?: string
 }
+
+export interface Session {
+  persona: Persona
+  /* Set when persona === 'partner'. The console has to know whose record it is. */
+  partnerId?: string
+}

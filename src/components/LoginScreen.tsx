@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { ShoppingBag, Settings, Store, Building2, ArrowRight, Mail, Lock, Eye, EyeOff, Loader as Loader2 } from 'lucide-react'
-import type { Persona } from '../types/view'
+import type { Persona, Session } from '../types/view'
 
 interface LoginScreenProps {
-  onLogin: (persona: Persona) => void
+  onLogin: (session: Session) => void
 }
 
 const DEMO_CREDENTIALS: Record<Persona, { email: string; password: string }> = {
@@ -75,7 +75,10 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     const creds = DEMO_CREDENTIALS[selected]
     setTimeout(() => {
       if (email.trim() === creds.email && password === creds.password) {
-        onLogin(selected)
+        onLogin({
+          persona: selected,
+          partnerId: selected === 'partner' ? 'PTR-1004' : undefined,
+        })
       } else {
         setError('Incorrect email or password. Use the pre-filled demo credentials.')
         setLoading(false)
