@@ -5,7 +5,7 @@ import { TechChecklist } from '../TechChecklist'
 import {
   loadOnboarding, registerEndpoint, setEndpointAuth, sendTestCall, runSandboxOrder,
 } from '../../lib/onboardingRepo'
-import type { OnboardingSnapshot } from '../../lib/onboardingRepo'
+import type { OnboardingSnapshot, ActionResult } from '../../lib/onboardingRepo'
 import { deriveTaskState, gateIdFor, REQUIRED_EVENTS } from '../../lib/onboarding'
 
 export function PartnerOnboarding({ partnerId }: { partnerId: string }) {
@@ -33,15 +33,23 @@ export function PartnerOnboarding({ partnerId }: { partnerId: string }) {
     : status === 'current' ? <Clock size={18} style={{ color: 'var(--info)' }} />
     : <Circle size={18} style={{ color: 'var(--text-tertiary)' }} />
 
-  const act = async (fn: () => Promise<void>, msg: string) => {
-    await fn(); await reload(); toast(msg)
+  const act = async (fn: () => Promise<ActionResult>, msg: string) => {
+    const result = await fn()
+    await reload()
+    if (result.ok) toast(msg)
+    else toast(result.reason, 'error')
   }
 
   const handleAddEndpoint = async () => {
     if (!newEp.name.trim() || !newEp.url.trim()) { toast('Name and URL are both required', 'error'); return }
-    await registerEndpoint(partnerId, newEp.name, newEp.url, REQUIRED_EVENTS)
-    setNewEp({ name: '', url: '' }); setEpModal(false)
-    await reload(); toast('Endpoint registered — it still needs authentication and a test call')
+    const result = await registerEndpoint(partnerId, newEp.name, newEp.url, REQUIRED_EVENTS)
+    await reload()
+    if (result.ok) {
+      setNewEp({ name: '', url: '' }); setEpModal(false)
+      toast('Endpoint registered — it still needs authentication and a test call')
+    } else {
+      toast(result.reason, 'error')
+    }
   }
 
   return (

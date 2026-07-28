@@ -132,32 +132,50 @@ export async function clearGate(
 }
 
 /* The four actions that move the technical checks. Each writes a real record,
-   so the operator's view changes as a consequence rather than being told. */
+   so the operator's view changes as a consequence rather than being told. Each
+   returns a result the caller must check — a failed write must not be reported
+   as success, the same discipline clearGate above already follows. */
+
+export type ActionResult = { ok: true } | { ok: false; reason: string }
 
 export async function registerEndpoint(
   partnerId: string, name: string, url: string, events: string[],
-): Promise<void> {
-  await supabase.from('partner_endpoints').insert({
-    id: `EP-${partnerId}-${Date.now().toString().slice(-5)}`,
+): Promise<ActionResult> {
+  const { error } = await supabase.from('partner_endpoints').insert({
+    id: `EP-${partnerId}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
     partner_id: partnerId, name, url, method: 'POST', auth: 'None', enabled: true, events,
   })
+  if (error) return { ok: false, reason: error.message }
+  return { ok: true }
 }
 
-export async function setEndpointAuth(endpointId: string, auth: string): Promise<void> {
-  await supabase.from('partner_endpoints').update({ auth }).eq('id', endpointId)
+export async function setEndpointAuth(endpointId: string, auth: string): Promise<ActionResult> {
+  const { error } = await supabase.from('partner_endpoints').update({ auth }).eq('id', endpointId)
+  if (error) return { ok: false, reason: error.message }
+  return { ok: true }
 }
 
-export async function sendTestCall(endpointId: string): Promise<void> {
-  await supabase.from('endpoint_test_calls').insert({
-    id: `TC-${endpointId}-${Date.now().toString().slice(-5)}`,
+export async function sendTestCall(endpointId: string): Promise<ActionResult> {
+  const { error } = await supabase.from('endpoint_test_calls').insert({
+    id: `TC-${endpointId}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
     endpoint_id: endpointId, status: 'acknowledged',
   })
+  if (error) return { ok: false, reason: error.message }
+  return { ok: true }
 }
 
-export async function runSandboxOrder(partnerId: string): Promise<void> {
-  const { data } = await supabase
+export async function runSandboxOrder(partnerId: string): Promise<ActionResult> {
+  const { data, error: selectErr } = await supabase
     .from('sandbox_runs').select('id').eq('partner_id', partnerId).maybeSingle()
+  if (selectErr) return { ok: false, reason: selectErr.message }
+
   const row = { partner_id: partnerId, state: 'passed', ran_at: new Date().toISOString() }
-  if (data) await supabase.from('sandbox_runs').update(row).eq('id', data.id)
-  else await supabase.from('sandbox_runs').insert({ id: `SR-${partnerId}`, ...row })
+  if (data) {
+    const { error } = await supabase.from('sandbox_runs').update(row).eq('id', data.id)
+    if (error) return { ok: false, reason: error.message }
+  } else {
+    const { error } = await supabase.from('sandbox_runs').insert({ id: `SR-${partnerId}`, ...row })
+    if (error) return { ok: false, reason: error.message }
+  }
+  return { ok: true }
 }
