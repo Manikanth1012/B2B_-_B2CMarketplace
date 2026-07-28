@@ -58,7 +58,7 @@ export const PRODUCT_IMAGES: Record<string, string> = {
   'SKU-5008': `${PEXELS}/1181271/pexels-photo-1181271.jpeg${Q}`,
 
   // Security — firewall
-  'SKU-6001': `${PEXELS}/60504/pexels-photo-60504.jpeg${Q}`,
+  'SKU-6001': `${PEXELS}/5380642/pexels-photo-5380642.jpeg${Q}`,
   // MDR
   'SKU-6002': `${PEXELS}/3784221/pexels-photo-3784221.jpeg${Q}`,
   // VPN

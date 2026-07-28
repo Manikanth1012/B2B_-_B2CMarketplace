@@ -66,6 +66,14 @@ export function ProductCard({ product, onClick, onAddToCart }: ProductCardProps)
             objectFit: 'cover',
             transition: 'transform 400ms ease',
           }}
+          onError={(e) => {
+            const img = e.currentTarget
+            if (img.dataset.fallback) return
+            img.dataset.fallback = '1'
+            img.src = `data:image/svg+xml,${encodeURIComponent(
+              `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200" viewBox="0 0 400 200"><rect width="400" height="200" fill="${color}10"/><text x="200" y="100" font-family="sans-serif" font-size="14" fill="${color}" text-anchor="middle" dominant-baseline="middle">${product.name.slice(0, 30)}</text></svg>`
+            )}`
+          }}
           onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.08)'}
           onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
         />
