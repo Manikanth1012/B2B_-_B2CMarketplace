@@ -303,3 +303,285 @@ export interface ConsumerTicket {
   escalated: boolean
   messages: TicketMessage[]
 }
+
+// ---------- Operator Console Types ----------
+
+export interface OperatorProfile {
+  id: string
+  operator_name: string
+  gmv: number
+  commission: number
+  commission_rate: number
+  active_partners: number
+  pending_applications: number
+  open_tickets: number
+  sla_breaches: number
+  settlement_due: number
+  total_orders: number
+  refund_requests: number
+  dunning_cases: number
+  churn_risk: number
+  avg_order_value: number
+  take_rate: number
+  forecast_gmv: number
+  forecast_commission: number
+  forecast_accuracy: number
+  updated_at: string
+}
+
+export interface OnboardingGate {
+  id: string
+  partner_id: string
+  partner_name: string
+  gate_name: string
+  gate_order: number
+  status: string
+  owner: string
+  target_days: number
+  dual_control: boolean
+  waivable: boolean
+  submitted_by: string | null
+  submitted_at: string | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  evidence: string[]
+  notes: string | null
+  sort_order: number
+}
+
+export interface OperatorListing {
+  id: string
+  product_name: string
+  partner_name: string
+  category: string
+  price: number
+  cost: number
+  status: string
+  submitted_at: string
+  reviewed_by: string | null
+  reviewed_at: string | null
+  rating: number | null
+  reviews: number
+  stock_status: string
+  version: number
+  sort_order: number
+}
+
+export interface SettlementStatement {
+  id: string
+  partner_name: string
+  period: string
+  gross: number
+  commission: number
+  commission_rate: number
+  fees: number
+  withholding: number
+  refunds: number
+  net: number
+  status: string
+  order_count: number
+  currency: string
+  submitted_at: string
+  approved_by: string | null
+  approved_at: string | null
+  disputed: boolean
+  sort_order: number
+}
+
+export interface OperatorInventory {
+  id: string
+  product_name: string
+  partner_name: string
+  warehouse: string
+  on_hand: number
+  reserved: number
+  available: number
+  reorder_point: number
+  inbound: number
+  inbound_due: string | null
+  unit_cost: number
+  last_count: string | null
+  category: string
+  sort_order: number
+}
+
+export interface OperatorWarehouse {
+  id: string
+  name: string
+  type: string
+  address: string
+  timezone: string
+  despatch_cutoff: string
+  capacity: number
+  utilisation: number
+  categories: string[]
+  countries: string[]
+  system_name: string | null
+  sync_mode: string
+  sync_state: string
+  last_sync: string | null
+  tax_reg: string | null
+  sort_order: number
+}
+
+export interface OperatorTicket {
+  id: string
+  subject: string
+  category: string
+  priority: string
+  status: string
+  opened_by: string
+  org: string
+  owner: string | null
+  opened_at: string
+  sla_mins: number
+  response_mins: number | null
+  resolution_mins: number | null
+  breached: boolean
+  escalated: boolean
+  escalated_at: string | null
+  waiting_on_customer: boolean
+  messages: TicketMessage[]
+  sort_order: number
+}
+
+export interface OperatorAuditEntry {
+  id: string
+  when_ts: string
+  actor: string
+  role: string
+  action: string
+  object: string | null
+  category: string
+  severity: string
+  before_val: string | null
+  after_val: string | null
+  outcome: string
+  session_id: string | null
+  hash: string | null
+  prev_hash: string | null
+}
+
+export interface OperatorApi {
+  id: string
+  name: string
+  standard: string
+  audience: string
+  description: string
+  why: string
+  scopes: string[]
+  methods: string[]
+  environments: string[]
+  lifecycle: string
+  version: string
+  subscriber_count: number
+  sort_order: number
+}
+
+export interface OperatorApiSubscription {
+  id: string
+  api_id: string
+  consumer_name: string
+  version: string
+  environment: string
+  scopes: string[]
+  volume: number
+  started_at: string
+  status: string
+  sort_order: number
+}
+
+export interface OperatorRole {
+  id: string
+  name: string
+  description: string
+  is_builtin: boolean
+  assigned_count: number
+  audit_categories: string[]
+  capabilities: Record<string, string>
+  sort_order: number
+}
+
+export interface OperatorUser {
+  id: string
+  name: string
+  email: string
+  role_id: string
+  role_name: string
+  status: string
+  last_active: string | null
+  mfa_enabled: boolean
+  joined_at: string
+  sort_order: number
+}
+
+export interface OperatorPromotion {
+  id: string
+  name: string
+  description: string
+  effect_type: string
+  effect_value: number
+  conditions: Record<string, unknown>
+  stacking: boolean
+  priority: number
+  budget: number
+  spent: number
+  status: string
+  starts_at: string | null
+  ends_at: string | null
+  sort_order: number
+}
+
+export interface OperatorDunningCase {
+  id: string
+  account_name: string
+  account_type: string
+  amount: number
+  age_days: number
+  step: number
+  step_name: string
+  ladder: string
+  attempts: number
+  reason: string
+  collector: string | null
+  promise_to_pay: string | null
+  status: string
+  sort_order: number
+}
+
+export interface OperatorChannel {
+  id: string
+  name: string
+  type: string
+  transport: string
+  protocol: string
+  sender: string
+  throughput: number
+  unit_cost: number
+  success_rate: number
+  region: string
+  has_receipt: boolean
+  is_primary: boolean
+  enabled: boolean
+  note: string | null
+  sort_order: number
+}
+
+export interface OperatorBanner {
+  id: string
+  slot: string
+  title: string
+  subtitle: string | null
+  cta: string
+  audience: string
+  region: string
+  device: string
+  weight: number
+  impressions: number
+  clicks: number
+  revenue: number
+  status: string
+  starts_at: string | null
+  ends_at: string | null
+  sort_order: number
+}

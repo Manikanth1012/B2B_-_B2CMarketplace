@@ -349,3 +349,13 @@ input, select, textarea {
   .hide-mobile { display: none; }
   .show-mobile { display: block; }
 }
+
+/* ---------- Operator Console ---------- */
+@media (min-width: 769px) {
+  .op-sidebar { display: flex !important; position: sticky !important; }
+  .op-main { margin-left: 0; }
+}
+
+@media (max-width: 768px) {
+  .op-grid-2col { grid-template-columns: 1fr !important; }
+}

@@ -9,9 +9,10 @@ interface HeaderProps {
   cartCount: number
   onCartClick: () => void
   onNavigate: (view: View, opts?: { category?: string; tab?: string }) => void
+  onSwitchToOperator?: () => void
 }
 
-export function Header({ cartCount, onCartClick, onNavigate }: HeaderProps) {
+export function Header({ cartCount, onCartClick, onNavigate, onSwitchToOperator }: HeaderProps) {
   const [categories, setCategories] = useState<Category[]>([])
   const [search, setSearch] = useState('')
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -174,6 +175,7 @@ export function Header({ cartCount, onCartClick, onNavigate }: HeaderProps) {
                     <AcctItem icon={<Star size={16} />} label="My permissions" onClick={() => { onNavigate('account'); setAcctOpen(false) }} />
                   </div>
                   <div style={{ padding: '4px', borderTop: '1px solid var(--border-light)' }}>
+                    {onSwitchToOperator && <AcctItem icon={<Settings size={16} />} label="Switch to Operator" onClick={() => { onSwitchToOperator(); setAcctOpen(false) }} />}
                     <AcctItem icon={<LogOut size={16} />} label="Sign out" onClick={() => setAcctOpen(false)} />
                   </div>
                 </div>
