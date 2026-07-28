@@ -1716,7 +1716,18 @@ export function PartnerOnboarding({ partnerId }: { partnerId: string }) {
 
 - [ ] **Step 3: Delete the dead static data**
 
-In `src/components/partner/data.ts`, delete `ONB_STEPS` (lines 54-62), `ONB_STATE` (64-72), `ONB_TASKS` (74-80) and `PARTNER_ENDPOINTS` (82-86). Leave `PARTNER_PROFILE`, `PARTNER_LISTINGS`, `PARTNER_ORDERS`, `PARTNER_SETTLEMENTS`, `PARTNER_PLAN`, `PARTNER_DISPUTES` and `VERTICAL_NAMES` — they belong to later sub-projects.
+In `src/components/partner/data.ts`, delete **only** `ONB_STEPS` (lines 54-62) and `ONB_STATE` (64-72). Those two are dead once this screen stops reading them.
+
+**Do NOT delete `ONB_TASKS` or `PARTNER_ENDPOINTS`**, despite this plan's earlier draft saying so. They are still imported by screens outside this sub-project:
+
+- `ONB_TASKS` → `PartnerDashboard.tsx:3,13` (open-task count on the dashboard)
+- `PARTNER_ENDPOINTS` → `PartnerIntegrations.tsx:3,6,7,15,62,68,70`
+
+Deleting them produces seven compile errors in files this task may not touch.
+
+Leave `PARTNER_PROFILE`, `PARTNER_LISTINGS`, `PARTNER_ORDERS`, `PARTNER_SETTLEMENTS`, `PARTNER_PLAN`, `PARTNER_DISPUTES` and `VERTICAL_NAMES` alone too.
+
+**Known consequence, recorded rather than fixed here:** the partner console ends this sub-project half-migrated. Onboarding reads live shared records; the dashboard's task count and the Integrations screen still read static arrays. So a seller can register an endpoint on the onboarding screen and not see it under Integrations. That inconsistency is real and user-visible. It is out of scope by §10 of the spec — Integrations is its own screen with its own sub-project — but it should be the first thing the next sub-project addresses.
 
 - [ ] **Step 4: Typecheck**
 
