@@ -67,6 +67,14 @@ export interface Order {
   buyer_email: string | null
   shipping_address: Record<string, string> | null
   created_at: string
+  tracking_ref: string | null
+  carrier: string | null
+  placed_date: string | null
+  seller: string | null
+  vertical: string | null
+  failed: boolean
+  stage: number
+  stages: string[]
 }
 
 export interface OrderItem {
@@ -256,4 +264,42 @@ export interface ConsumerRefund {
   state: string
   decided: string | null
   note: string | null
+}
+
+export interface ConsumerBill {
+  id: string
+  period: string
+  issued: string
+  due: string
+  plan_charge: number
+  subscriptions: number
+  oneoff: number
+  tax: number
+  total: number
+  status: string
+  paid_on: string | null
+  pages: number
+}
+
+export interface TicketMessage {
+  who: string
+  when: string
+  text: string
+}
+
+export interface ConsumerTicket {
+  id: string
+  subject: string
+  category: string
+  severity: string
+  status: string
+  opened: string
+  opened_by: string
+  channel: string
+  owner: string | null
+  sla_mins: number
+  resolution_mins: number | null
+  breached: boolean
+  escalated: boolean
+  messages: TicketMessage[]
 }

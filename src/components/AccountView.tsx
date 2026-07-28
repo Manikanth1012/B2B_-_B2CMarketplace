@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
-import { User, Bell, History, Users, RotateCcw, Check, X, Plus, Minus, CircleAlert as AlertCircle, Info, Shield, Wallet, Star, Phone, Mail, MapPin, CreditCard, Clock, ChevronRight, Lock, Trash2 } from 'lucide-react'
+import { User, Bell, History, Users, RotateCcw, Check, X, Plus, Minus, CircleAlert as AlertCircle, Info, Shield, Wallet, Star, Phone, Mail, MapPin, CreditCard, Clock, ChevronRight, Lock, Trash2, FileText, LifeBuoy, MessageSquare, Send, Download } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type {
   ConsumerProfile, ConsumerNotification, ConsumerAuditEntry,
   ConsumerHouseholdMember, ConsumerRefund, ConsumerPaymentMethod,
+  ConsumerBill, ConsumerTicket, TicketMessage,
 } from '../types'
 
-type Tab = 'profile' | 'notifications' | 'activity' | 'household' | 'refunds'
+type Tab = 'profile' | 'notifications' | 'activity' | 'household' | 'refunds' | 'bills' | 'support'
 
 const CHANNELS = ['Push', 'SMS', 'Email']
 
@@ -40,22 +41,28 @@ export function AccountView() {
   const [auditLog, setAuditLog] = useState<ConsumerAuditEntry[]>([])
   const [household, setHousehold] = useState<ConsumerHouseholdMember[]>([])
   const [refunds, setRefunds] = useState<ConsumerRefund[]>([])
+  const [bills, setBills] = useState<ConsumerBill[]>([])
+  const [tickets, setTickets] = useState<ConsumerTicket[]>([])
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState('')
 
   const loadData = useCallback(async () => {
-    const [pRes, nRes, aRes, hRes, rRes] = await Promise.all([
+    const [pRes, nRes, aRes, hRes, rRes, bRes, tRes] = await Promise.all([
       supabase.from('consumer_profile').select('*').eq('id', 'me').maybeSingle(),
       supabase.from('consumer_notifications').select('*').order('id'),
       supabase.from('consumer_audit_log').select('*').order('when_date', { ascending: false }),
       supabase.from('consumer_household').select('*').order('joined'),
       supabase.from('consumer_refunds').select('*').order('id'),
+      supabase.from('consumer_bills').select('*').order('id', { ascending: false }),
+      supabase.from('consumer_tickets').select('*').order('id', { ascending: false }),
     ])
     if (pRes.data) setProfile(pRes.data as ConsumerProfile)
     if (nRes.data) setNotifications(nRes.data as ConsumerNotification[])
     if (aRes.data) setAuditLog(aRes.data as ConsumerAuditEntry[])
     if (hRes.data) setHousehold(hRes.data as ConsumerHouseholdMember[])
     if (rRes.data) setRefunds(rRes.data as ConsumerRefund[])
+    if (bRes.data) setBills(bRes.data as ConsumerBill[])
+    if (tRes.data) setTickets(tRes.data as ConsumerTicket[])
     setLoading(false)
   }, [])
 
@@ -109,6 +116,8 @@ export function AccountView() {
     { id: 'activity', label: 'Account activity', icon: History },
     { id: 'household', label: 'Household', icon: Users },
     { id: 'refunds', label: 'Refunds', icon: RotateCcw },
+    { id: 'bills', label: 'Bills', icon: FileText },
+    { id: 'support', label: 'Help & Support', icon: LifeBuoy },
   ]
 
   return (
@@ -172,6 +181,8 @@ export function AccountView() {
       {tab === 'activity' && <ActivityTab log={auditLog} />}
       {tab === 'household' && <HouseholdTab members={household} showToast={showToast} />}
       {tab === 'refunds' && <RefundsTab refunds={refunds} />}
+      {tab === 'bills' && <BillsTab bills={bills} showToast={showToast} />}
+      {tab === 'support' && <SupportTab tickets={tickets} showToast={showToast} />}
 
       {/* Toast */}
       {toast && (
@@ -955,6 +966,418 @@ function RefundsTab({ refunds }: { refunds: ConsumerRefund[] }) {
           })}
         </div>
       </Card>
+    </div>
+  )
+}
+
+/* ============================== BILLS TAB ============================== */
+function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: string) => void }) {
+  const openBills = bills.filter((b) => b.status === 'open')
+  const totalPaid = bills.filter((b) => b.status === 'paid').reduce((a, b) => a + b.total, 0)
+  const currentDue = openBills.reduce((a, b) => a + b.total, 0)
+
+  const downloadBill = (bill: ConsumerBill) => {
+    const lines: string[] = []
+    lines.push('Aventa Marketplace — Consolidated Bill')
+    lines.push('=========================================')
+    lines.push('')
+    lines.push(`Bill ID: ${bill.id}`)
+    lines.push(`Period: ${bill.period}`)
+    lines.push(`Issued: ${bill.issued}`)
+    lines.push(`Due: ${bill.due}`)
+    lines.push(`Status: ${bill.status}${bill.paid_on ? ' (paid ' + bill.paid_on + ')' : ''}`)
+    lines.push('')
+    lines.push('BILLED TO')
+    lines.push('Priya Raman')
+    lines.push('CUS-449021')
+    lines.push('+91 98860 41127')
+    lines.push('Bengaluru')
+    lines.push('')
+    lines.push('BILL FROM')
+    lines.push('Aventa Telecom (6D Technology)')
+    lines.push('6D Tech Park, Whitefield')
+    lines.push('Bengaluru 560066')
+    lines.push('GSTIN: 29AABCI1234L1ZJ')
+    lines.push('')
+    lines.push('-----------------------------------------')
+    lines.push('CHARGES')
+    lines.push('-----------------------------------------')
+    lines.push(`Aventa Freedom 50 GB plan ............ ${bill.plan_charge.toFixed(2)}`)
+    if (bill.subscriptions > 0) lines.push(`Subscriptions (${bill.period}) ........... ${bill.subscriptions.toFixed(2)}`)
+    if (bill.oneoff > 0) lines.push(`One-off purchases .................... ${bill.oneoff.toFixed(2)}`)
+    lines.push(`Tax (18% GST) ....................... ${bill.tax.toFixed(2)}`)
+    lines.push('-----------------------------------------')
+    lines.push(`Amount due .......................... ${bill.total.toFixed(2)}`)
+    lines.push('')
+    lines.push('-----------------------------------------')
+    lines.push('PAYMENT INSTRUCTIONS')
+    lines.push('-----------------------------------------')
+    lines.push('This bill is charged to your mobile account.')
+    lines.push('Pay by: Bill to mobile (+91 98860 41127)')
+    lines.push('Auto-pay is enabled — the amount will be')
+    lines.push('collected on the due date.')
+    lines.push('')
+    lines.push('Questions about this bill?')
+    lines.push('Call 611 from your Aventa mobile, or')
+    lines.push('email support@aventa.in')
+    lines.push('')
+    lines.push('While you are here: the Aventa Duo bundle')
+    lines.push('combines Unlimited + Streaming for $7/mo')
+    lines.push('less than you pay separately. See the app.')
+    lines.push('')
+    lines.push('--- Page 1 of ' + bill.pages + ' ---')
+    lines.push('')
+    for (let p = 2; p <= bill.pages; p++) {
+      lines.push(`--- Page ${p} of ${bill.pages} ---`)
+      lines.push('')
+      if (p === 2) {
+        lines.push('SUBSCRIPTION DETAIL')
+        lines.push('PlayForge Cloud Gaming .... $9.99/mo')
+        lines.push('Halo Music Family ........ $6.49/mo')
+        lines.push('ClearVault Personal 2TB ... $6.49/mo')
+        lines.push('Device Protect ........... $6.90/mo')
+        lines.push('StreamNova Premium ....... $12.99/mo')
+        lines.push('Travel Cover Lite ......... $6.49/mo')
+        lines.push('')
+      } else if (p === 3) {
+        lines.push('ONE-OFF PURCHASES')
+        if (bill.oneoff > 0) {
+          lines.push(`Various items ............. ${bill.oneoff.toFixed(2)}`)
+        } else {
+          lines.push('No one-off purchases this period.')
+        }
+        lines.push('')
+      } else {
+        lines.push('TAX SUMMARY')
+        lines.push(`GST @ 18% ................. ${bill.tax.toFixed(2)}`)
+        lines.push('')
+        lines.push('TOTALS')
+        lines.push(`Subtotal ................. ${(bill.plan_charge + bill.subscriptions + bill.oneoff).toFixed(2)}`)
+        lines.push(`Tax ...................... ${bill.tax.toFixed(2)}`)
+        lines.push(`Total .................... ${bill.total.toFixed(2)}`)
+        lines.push('')
+      }
+    }
+    const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${bill.id}.txt`
+    a.click()
+    URL.revokeObjectURL(url)
+    showToast(`${bill.id} downloaded`)
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}>
+        <StatBox icon={<FileText size={20} />} label="Current bill" value={fmtMoney(currentDue)} />
+        <StatBox icon={<Clock size={20} />} label="Open bills" value={String(openBills.length)} />
+        <StatBox icon={<Check size={20} />} label="Paid (last 6 mo)" value={fmtMoney(totalPaid)} />
+      </div>
+
+      <Card icon={<FileText size={18} />} title="Bill history" subtitle={`${bills.length} bills on record`}>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid var(--border)' }}>
+                <th style={thStyle}>Bill ID</th>
+                <th style={thStyle}>Period</th>
+                <th style={thStyle}>Issued</th>
+                <th style={thStyle}>Due</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>Total</th>
+                <th style={thStyle}>Status</th>
+                <th style={{ ...thStyle, textAlign: 'right' }}>Bill</th>
+              </tr>
+            </thead>
+            <tbody>
+              {bills.map((b) => (
+                <tr key={b.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                  <td style={tdStyle}>{b.id}</td>
+                  <td style={tdStyle}>{b.period}</td>
+                  <td style={tdStyle}>{b.issued}</td>
+                  <td style={tdStyle}>{b.due}</td>
+                  <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>{fmtMoney(b.total)}</td>
+                  <td style={tdStyle}>
+                    <span style={{
+                      padding: '3px 10px', borderRadius: 'var(--radius-full)',
+                      fontSize: 'var(--text-xs)', fontWeight: 600,
+                      background: b.status === 'paid' ? '#DCFCE7' : '#FEF3C7',
+                      color: b.status === 'paid' ? '#16A34A' : '#D97706',
+                    }}>
+                      {b.status}
+                    </span>
+                  </td>
+                  <td style={{ ...tdStyle, textAlign: 'right' }}>
+                    <button onClick={() => downloadBill(b)} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '4px',
+                      padding: '4px 10px', borderRadius: 'var(--radius)',
+                      border: '1px solid var(--border)', background: 'white',
+                      color: 'var(--text-secondary)', fontWeight: 600,
+                      fontSize: 'var(--text-xs)', cursor: 'pointer',
+                    }}>
+                      <Download size={12} /> View
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div style={{ marginTop: '16px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+          Your bill includes your Aventa mobile plan, all subscriptions, and any one-off purchases made during the billing period. The total shown is what was charged to your mobile account.
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+/* ============================ SUPPORT TAB ============================ */
+function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerTicket[]; showToast: (m: string) => void }) {
+  const [tickets, setTickets] = useState<ConsumerTicket[]>(initialTickets)
+  const [showNew, setShowNew] = useState(false)
+  const [selectedTicket, setSelectedTicket] = useState<ConsumerTicket | null>(null)
+  const [subject, setSubject] = useState('')
+  const [category, setCategory] = useState('General')
+  const [message, setMessage] = useState('')
+  const [severity, setSeverity] = useState('P3')
+  const [submitting, setSubmitting] = useState(false)
+
+  const createTicket = async () => {
+    if (!subject || !message) { showToast('Subject and message are required'); return }
+    setSubmitting(true)
+    const id = 'TCK-' + Math.floor(59200 + Math.random() * 1000)
+    const now = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' +
+      new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+    const newTicket: ConsumerTicket = {
+      id, subject, category, severity, status: 'open', opened: 'Just now',
+      opened_by: 'Priya Raman', channel: 'Self-care portal', owner: null,
+      sla_mins: severity === 'P1' ? 240 : severity === 'P2' ? 480 : severity === 'P3' ? 1440 : 2880,
+      resolution_mins: null, breached: false, escalated: false,
+      messages: [{ who: 'Priya Raman', when: now, text: message }],
+    }
+    await supabase.from('consumer_tickets').insert({
+      ...newTicket,
+      messages: JSON.stringify(newTicket.messages),
+    })
+    setTickets((prev) => [newTicket, ...prev])
+    setSubject(''); setMessage(''); setCategory('General'); setSeverity('P3')
+    setShowNew(false)
+    setSubmitting(false)
+    showToast(`Ticket ${id} created — we will respond within the SLA`)
+  }
+
+  const openCount = tickets.filter((t) => t.status !== 'resolved').length
+  const resolvedCount = tickets.filter((t) => t.status === 'resolved').length
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}>
+        <StatBox icon={<LifeBuoy size={20} />} label="Open tickets" value={String(openCount)} />
+        <StatBox icon={<Check size={20} />} label="Resolved" value={String(resolvedCount)} />
+        <StatBox icon={<MessageSquare size={20} />} label="Total" value={String(tickets.length)} />
+      </div>
+
+      <Card icon={<LifeBuoy size={18} />} title="Help & Support" subtitle="Track your support requests and raise a new one">
+        {!showNew ? (
+          <button onClick={() => setShowNew(true)} style={{
+            display: 'inline-flex', alignItems: 'center', gap: '8px',
+            padding: '10px 20px', borderRadius: 'var(--radius)',
+            border: '1px solid var(--brand-accent)', background: 'white',
+            color: 'var(--brand-accent)', fontWeight: 600,
+            fontSize: 'var(--text-sm)', cursor: 'pointer', marginBottom: '16px',
+          }}>
+            <Plus size={16} /> Raise a ticket
+          </button>
+        ) : (
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: '14px',
+            padding: '20px', border: '1px solid var(--border)',
+            borderRadius: 'var(--radius)', marginBottom: '16px',
+          }}>
+            <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>New support ticket</div>
+            <Field label="Subject" icon={<MessageSquare size={14} />}>
+              <input style={inputStyle} value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Briefly describe the issue" />
+            </Field>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <Field label="Category" icon={<Info size={14} />}>
+                <select style={inputStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
+                  <option>General</option><option>Delivery</option><option>Product</option>
+                  <option>Technical</option><option>Billing</option><option>Account</option>
+                </select>
+              </Field>
+              <Field label="Priority" icon={<AlertCircle size={14} />}>
+                <select style={inputStyle} value={severity} onChange={(e) => setSeverity(e.target.value)}>
+                  <option value="P1">P1 — Urgent</option>
+                  <option value="P2">P2 — High</option>
+                  <option value="P3">P3 — Normal</option>
+                  <option value="P4">P4 — Low</option>
+                </select>
+              </Field>
+            </div>
+            <Field label="Message" icon={<MessageSquare size={14} />}>
+              <textarea
+                style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }}
+                value={message} onChange={(e) => setMessage(e.target.value)}
+                placeholder="Describe the issue in detail"
+              />
+            </Field>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowNew(false)} style={btnSecondary}>Cancel</button>
+              <button onClick={createTicket} disabled={submitting} style={btnPrimary}>
+                {submitting ? 'Creating…' : 'Create ticket'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+          {tickets.map((t) => (
+            <div key={t.id} style={{
+              display: 'flex', gap: '12px', alignItems: 'center',
+              padding: '14px 0', borderBottom: '1px solid var(--border-light)',
+              cursor: 'pointer',
+            }} onClick={() => setSelectedTicket(t)}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{t.subject}</div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                  {t.id} · {t.category} · opened {t.opened} · {t.channel}
+                </div>
+                {t.owner && (
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                    Owner: {t.owner}
+                  </div>
+                )}
+              </div>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                <span style={{
+                  padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                  fontSize: 'var(--text-xs)', fontWeight: 600,
+                  background: t.severity === 'P1' ? '#FEE2E2' : t.severity === 'P2' ? '#FEF3C7' : 'var(--bg-alt)',
+                  color: t.severity === 'P1' ? '#DC2626' : t.severity === 'P2' ? '#D97706' : 'var(--text-secondary)',
+                }}>
+                  {t.severity}
+                </span>
+                <span style={{
+                  padding: '3px 10px', borderRadius: 'var(--radius-full)',
+                  fontSize: 'var(--text-xs)', fontWeight: 600,
+                  background: t.status === 'resolved' ? '#DCFCE7' : t.status === 'inprogress' ? '#E0E7FF' : '#FEF3C7',
+                  color: t.status === 'resolved' ? '#16A34A' : t.status === 'inprogress' ? '#4338CA' : '#D97706',
+                }}>
+                  {t.status}
+                </span>
+                <ChevronRight size={16} style={{ color: 'var(--text-tertiary)' }} />
+              </div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {selectedTicket && (
+        <TicketDetailModal ticket={selectedTicket} onClose={() => setSelectedTicket(null)} showToast={showToast} />
+      )}
+    </div>
+  )
+}
+
+function TicketDetailModal({ ticket, onClose, showToast }: { ticket: ConsumerTicket; onClose: () => void; showToast: (m: string) => void }) {
+  const [reply, setReply] = useState('')
+  const [messages, setMessages] = useState<TicketMessage[]>(ticket.messages || [])
+  const [sending, setSending] = useState(false)
+
+  const sendReply = async () => {
+    if (!reply.trim()) return
+    setSending(true)
+    const now = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' +
+      new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+    const newMsg: TicketMessage = { who: 'Priya Raman', when: now, text: reply }
+    const updated = [...messages, newMsg]
+    await supabase.from('consumer_tickets').update({
+      messages: JSON.stringify(updated),
+    }).eq('id', ticket.id)
+    setMessages(updated)
+    setReply('')
+    setSending(false)
+    showToast('Reply sent')
+  }
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 400,
+      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
+    }}>
+      <div onClick={(e) => e.stopPropagation()} style={{
+        background: 'white', borderRadius: 'var(--radius-lg)', padding: '28px',
+        maxWidth: '560px', width: '100%', maxHeight: '90vh', overflowY: 'auto',
+        boxShadow: 'var(--shadow-lg)',
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <div>
+            <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 800 }}>{ticket.id}</h2>
+            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>{ticket.subject}</div>
+          </div>
+          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}>
+            <X size={20} />
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
+          <span style={{
+            padding: '3px 10px', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 600,
+            background: ticket.status === 'resolved' ? '#DCFCE7' : ticket.status === 'inprogress' ? '#E0E7FF' : '#FEF3C7',
+            color: ticket.status === 'resolved' ? '#16A34A' : ticket.status === 'inprogress' ? '#4338CA' : '#D97706',
+          }}>{ticket.status}</span>
+          <span style={{
+            padding: '3px 10px', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 600,
+            background: 'var(--bg-alt)', color: 'var(--text-secondary)',
+          }}>{ticket.severity}</span>
+          <span style={{
+            padding: '3px 10px', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 600,
+            background: 'var(--bg-alt)', color: 'var(--text-secondary)',
+          }}>{ticket.category}</span>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
+          {messages.map((m, i) => {
+            const isMe = m.who === 'Priya Raman'
+            return (
+              <div key={i} style={{
+                display: 'flex', flexDirection: 'column',
+                alignItems: isMe ? 'flex-end' : 'flex-start',
+              }}>
+                <div style={{
+                  maxWidth: '80%', padding: '12px 16px',
+                  borderRadius: 'var(--radius-lg)',
+                  background: isMe ? 'var(--brand-accent)' : 'var(--bg-alt)',
+                  color: isMe ? 'white' : 'var(--text-primary)',
+                  fontSize: 'var(--text-sm)',
+                }}>
+                  {m.text}
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+                  {m.who} · {m.when}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {ticket.status !== 'resolved' && (
+          <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '16px' }}>
+            <textarea
+              style={{ ...inputStyle, minHeight: '60px', resize: 'vertical', marginBottom: '12px' }}
+              value={reply} onChange={(e) => setReply(e.target.value)}
+              placeholder="Type a reply…"
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={sendReply} disabled={sending || !reply.trim()} style={btnPrimary}>
+                <Send size={14} style={{ display: 'inline', marginRight: '4px' }} />
+                {sending ? 'Sending…' : 'Send reply'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   )
 }
