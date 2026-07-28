@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, ShoppingCart, Menu, X, ChevronDown, User, Bell, Shield, Lock, LogOut, Settings, Star } from 'lucide-react'
+import { Search, ShoppingCart, Menu, X, ChevronDown, User, Bell, Shield, LogOut, Star } from 'lucide-react'
 import type { Category } from '../types'
 import { supabase } from '../lib/supabase'
 
@@ -9,10 +9,10 @@ interface HeaderProps {
   cartCount: number
   onCartClick: () => void
   onNavigate: (view: View, opts?: { category?: string; tab?: string }) => void
-  onSwitchToOperator?: () => void
+  onSignOut?: () => void
 }
 
-export function Header({ cartCount, onCartClick, onNavigate, onSwitchToOperator }: HeaderProps) {
+export function Header({ cartCount, onCartClick, onNavigate, onSignOut }: HeaderProps) {
   const [categories, setCategories] = useState<Category[]>([])
   const [search, setSearch] = useState('')
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -133,29 +133,6 @@ export function Header({ cartCount, onCartClick, onNavigate, onSwitchToOperator 
             >
               Rewards
             </button>
-            {/* Operator console button */}
-            {onSwitchToOperator && (
-              <button
-                onClick={onSwitchToOperator}
-                className="hide-mobile"
-                style={{
-                  display: 'flex', alignItems: 'center', gap: '6px',
-                  padding: '8px 14px',
-                  borderRadius: 'var(--radius)',
-                  background: 'rgba(0,166,166,0.25)',
-                  border: '1px solid rgba(0,166,166,0.4)',
-                  color: 'white',
-                  fontSize: 'var(--text-sm)', fontWeight: 600,
-                  cursor: 'pointer',
-                  transition: 'all 150ms ease',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(0,166,166,0.4)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(0,166,166,0.25)' }}
-              >
-                <Settings size={16} />
-                Operator Console
-              </button>
-            )}
             {/* Account avatar */}
             <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
               <button
@@ -198,7 +175,7 @@ export function Header({ cartCount, onCartClick, onNavigate, onSwitchToOperator 
                     <AcctItem icon={<Star size={16} />} label="My permissions" onClick={() => { onNavigate('account'); setAcctOpen(false) }} />
                   </div>
                   <div style={{ padding: '4px', borderTop: '1px solid var(--border-light)' }}>
-                    {onSwitchToOperator && <AcctItem icon={<Settings size={16} />} label="Switch to Operator" onClick={() => { onSwitchToOperator(); setAcctOpen(false) }} />}
+                    {onSignOut && <AcctItem icon={<LogOut size={16} />} label="Sign out" onClick={() => { onSignOut(); setAcctOpen(false) }} />}
                     <AcctItem icon={<LogOut size={16} />} label="Sign out" onClick={() => setAcctOpen(false)} />
                   </div>
                 </div>

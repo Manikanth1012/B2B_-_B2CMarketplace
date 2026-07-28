@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import type { View, OperatorView, Persona } from './types/view'
 import { supabase } from './lib/supabase'
 import type { CartItem, Product } from './types'
+import { LoginScreen } from './components/LoginScreen'
 import { Header } from './components/Header'
 import { Hero } from './components/Hero'
 import { CategoryStrip } from './components/CategoryStrip'
@@ -31,7 +32,7 @@ import { OperatorAudit } from './components/operator/OperatorAudit'
 import { ToastHost } from './components/operator/shared'
 
 export default function App() {
-  const [persona, setPersona] = useState<Persona>('consumer')
+  const [persona, setPersona] = useState<Persona | null>(null)
   const [view, setView] = useState<View>('home')
   const [opView, setOpView] = useState<OperatorView>('op-dashboard')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
@@ -101,22 +102,29 @@ export default function App() {
     await loadCart()
   }
 
-  const switchToConsumer = () => {
-    setPersona('consumer')
-    setView('home')
+  const handleLogin = (p: Persona) => {
+    setPersona(p)
+    if (p === 'operator') setOpView('op-dashboard')
+    else setView('home')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const switchToOperator = () => {
-    setPersona('operator')
+  const handleSignOut = () => {
+    setPersona(null)
+    setView('home')
     setOpView('op-dashboard')
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  // ---------- Login screen ----------
+  if (!persona) {
+    return <LoginScreen onLogin={handleLogin} />
   }
 
   // ---------- Operator persona ----------
   if (persona === 'operator') {
     return (
-      <OperatorShell view={opView} onNavigate={setOpView} onSwitchPersona={switchToConsumer}>
+      <OperatorShell view={opView} onNavigate={setOpView} onSignOut={handleSignOut}>
         {opView === 'op-dashboard' && <OperatorDashboard />}
         {opView === 'op-onboarding' && <OperatorOnboarding />}
         {opView === 'op-catalogue' && <OperatorCatalogue />}
@@ -141,7 +149,7 @@ export default function App() {
         cartCount={cartCount}
         onCartClick={() => setCartOpen(true)}
         onNavigate={navigate}
-        onSwitchToOperator={switchToOperator}
+        onSignOut={handleSignOut}
       />
       <main>
         {loading && <div style={{ textAlign: 'center', padding: '60px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>}

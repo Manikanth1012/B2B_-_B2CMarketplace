@@ -9,7 +9,7 @@ import type { OperatorView } from '../../types/view'
 interface OperatorShellProps {
   view: OperatorView
   onNavigate: (v: OperatorView) => void
-  onSwitchPersona: () => void
+  onSignOut: () => void
   children: React.ReactNode
 }
 
@@ -49,7 +49,7 @@ const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; i
   },
 ]
 
-export function OperatorShell({ view, onNavigate, onSwitchPersona, children }: OperatorShellProps) {
+export function OperatorShell({ view, onNavigate, onSignOut, children }: OperatorShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [profileOpen, setProfileOpen] = useState(false)
 
@@ -132,7 +132,7 @@ export function OperatorShell({ view, onNavigate, onSwitchPersona, children }: O
 
         <div style={{ padding: '12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
           <button
-            onClick={onSwitchPersona}
+            onClick={onSignOut}
             style={{
               display: 'flex', alignItems: 'center', gap: '10px',
               width: '100%', padding: '10px 12px',
@@ -146,7 +146,7 @@ export function OperatorShell({ view, onNavigate, onSwitchPersona, children }: O
             onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.65)' }}
           >
             <LogOut size={18} />
-            Switch to Consumer
+            Sign out
           </button>
         </div>
       </aside>
@@ -211,8 +211,7 @@ export function OperatorShell({ view, onNavigate, onSwitchPersona, children }: O
                     <ProfileItem label="Sessions" onClick={() => setProfileOpen(false)} />
                   </div>
                   <div style={{ padding: '4px', borderTop: '1px solid var(--border-light)' }}>
-                    <ProfileItem label="Switch to Consumer" onClick={onSwitchPersona} />
-                    <ProfileItem label="Sign out" onClick={() => setProfileOpen(false)} />
+                    <ProfileItem label="Sign out" onClick={onSignOut} />
                   </div>
                 </div>
               )}
