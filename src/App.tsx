@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { View, OperatorView, Persona } from './types/view'
+import type { View, OperatorView, PartnerView, Persona } from './types/view'
 import { supabase } from './lib/supabase'
 import type { CartItem, Product } from './types'
 import { LoginScreen } from './components/LoginScreen'
@@ -30,11 +30,24 @@ import { OperatorChannels } from './components/operator/OperatorChannels'
 import { OperatorRoles } from './components/operator/OperatorRoles'
 import { OperatorAudit } from './components/operator/OperatorAudit'
 import { ToastHost } from './components/operator/shared'
+import { PartnerShell } from './components/partner/PartnerShell'
+import { PartnerDashboard } from './components/partner/PartnerDashboard'
+import { PartnerOnboarding } from './components/partner/PartnerOnboarding'
+import { PartnerListings } from './components/partner/PartnerListings'
+import { PartnerNewListing } from './components/partner/PartnerNewListing'
+import { PartnerOrders } from './components/partner/PartnerOrders'
+import { PartnerSettlement } from './components/partner/PartnerSettlement'
+import { PartnerSettlementPlan } from './components/partner/PartnerSettlementPlan'
+import { PartnerPerformance } from './components/partner/PartnerPerformance'
+import { PartnerIntegrations } from './components/partner/PartnerIntegrations'
+import { PartnerSupport } from './components/partner/PartnerSupport'
+import { PartnerTeam, PartnerAudit, PartnerProfile } from './components/partner/PartnerMisc'
 
 export default function App() {
   const [persona, setPersona] = useState<Persona | null>(null)
   const [view, setView] = useState<View>('home')
   const [opView, setOpView] = useState<OperatorView>('op-dashboard')
+  const [ptView, setPtView] = useState<PartnerView>('pt-dashboard')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [cartItems, setCartItems] = useState<CartItem[]>([])
@@ -105,6 +118,7 @@ export default function App() {
   const handleLogin = (p: Persona) => {
     setPersona(p)
     if (p === 'operator') setOpView('op-dashboard')
+    else if (p === 'partner') setPtView('pt-dashboard')
     else setView('home')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -113,6 +127,7 @@ export default function App() {
     setPersona(null)
     setView('home')
     setOpView('op-dashboard')
+    setPtView('pt-dashboard')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -139,6 +154,27 @@ export default function App() {
         {opView === 'op-roles' && <OperatorRoles />}
         {opView === 'op-audit' && <OperatorAudit />}
       </OperatorShell>
+    )
+  }
+
+  // ---------- Partner persona ----------
+  if (persona === 'partner') {
+    return (
+      <PartnerShell view={ptView} onNavigate={setPtView} onSignOut={handleSignOut}>
+        {ptView === 'pt-dashboard' && <PartnerDashboard />}
+        {ptView === 'pt-onboarding' && <PartnerOnboarding />}
+        {ptView === 'pt-listings' && <PartnerListings />}
+        {ptView === 'pt-newlisting' && <PartnerNewListing />}
+        {ptView === 'pt-orders' && <PartnerOrders />}
+        {ptView === 'pt-settlement' && <PartnerSettlement />}
+        {ptView === 'pt-plan' && <PartnerSettlementPlan />}
+        {ptView === 'pt-performance' && <PartnerPerformance />}
+        {ptView === 'pt-integrations' && <PartnerIntegrations />}
+        {ptView === 'pt-support' && <PartnerSupport />}
+        {ptView === 'pt-team' && <PartnerTeam />}
+        {ptView === 'pt-audit' && <PartnerAudit />}
+        {ptView === 'pt-profile' && <PartnerProfile />}
+      </PartnerShell>
     )
   }
 

@@ -15,7 +15,22 @@ export type OperatorView =
   | 'op-roles'
   | 'op-audit'
 
-export type Persona = 'consumer' | 'operator'
+export type PartnerView =
+  | 'pt-dashboard'
+  | 'pt-onboarding'
+  | 'pt-listings'
+  | 'pt-newlisting'
+  | 'pt-orders'
+  | 'pt-settlement'
+  | 'pt-plan'
+  | 'pt-performance'
+  | 'pt-integrations'
+  | 'pt-support'
+  | 'pt-team'
+  | 'pt-audit'
+  | 'pt-profile'
+
+export type Persona = 'consumer' | 'operator' | 'partner'
 
 export interface NavigateOptions {
   category?: string

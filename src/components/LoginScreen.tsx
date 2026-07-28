@@ -1,14 +1,45 @@
 import { useState } from 'react'
-import { ShoppingBag, Settings, ArrowRight, Mail, Lock, Eye, EyeOff, Loader as Loader2 } from 'lucide-react'
+import { ShoppingBag, Settings, Store, ArrowRight, Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react'
 import type { Persona } from '../types/view'
 
 interface LoginScreenProps {
   onLogin: (persona: Persona) => void
 }
 
-const DEMO_CREDENTIALS = {
+const DEMO_CREDENTIALS: Record<Persona, { email: string; password: string }> = {
   consumer: { email: 'priya.raman@example.com', password: 'demo1234' },
   operator: { email: 'anika.sharma@aventa.com', password: 'operator123' },
+  partner: { email: 'rajesh.kumar@nimbussensors.com', password: 'partner123' },
+}
+
+const PERSONA_META: Record<Persona, { label: string; sub: string; user: string; icon: React.ReactNode; accentBg: string; accentFg: string; accentColor: string }> = {
+  consumer: {
+    label: 'Consumer',
+    sub: 'Browse plans, devices & services',
+    user: 'Priya Raman · Gold member',
+    icon: <ShoppingBag size={24} />,
+    accentBg: 'rgba(0,166,166,0.2)',
+    accentFg: 'var(--brand-accent-light)',
+    accentColor: 'var(--brand-accent)',
+  },
+  operator: {
+    label: 'Operator Admin',
+    sub: 'Manage marketplace operations',
+    user: 'Anika Sharma · Aventa Communications',
+    icon: <Settings size={24} />,
+    accentBg: 'rgba(245,166,35,0.15)',
+    accentFg: 'var(--brand-gold)',
+    accentColor: 'var(--brand-gold)',
+  },
+  partner: {
+    label: 'Partner / Seller',
+    sub: 'Onboard products, manage orders & settlement',
+    user: 'Rajesh Kumar · Nimbus Sensors',
+    icon: <Store size={24} />,
+    accentBg: 'rgba(94,75,155,0.2)',
+    accentFg: '#B8A4E8',
+    accentColor: '#7C63D6',
+  },
 }
 
 export function LoginScreen({ onLogin }: LoginScreenProps) {
@@ -42,6 +73,8 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     }, 700)
   }
 
+  const personaCards: Persona[] = ['consumer', 'operator', 'partner']
+
   return (
     <div style={{
       minHeight: '100vh',
@@ -52,7 +85,6 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       justifyContent: 'center',
       padding: 'var(--space-6)',
     }}>
-      {/* Logo */}
       <div style={{ marginBottom: 'var(--space-8)', textAlign: 'center' }}>
         <img src="/assets/brand/6d-logo-white.png" alt="6D Marketplace" style={{ height: '40px', margin: '0 auto' }} />
         <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'var(--text-sm)', marginTop: 'var(--space-2)', letterSpacing: '0.05em' }}>
@@ -73,78 +105,48 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
-              {/* Consumer card */}
-              <button
-                onClick={() => pickPersona('consumer')}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 'var(--space-4)',
-                  padding: 'var(--space-5) var(--space-6)',
-                  borderRadius: 'var(--radius-lg)',
-                  background: 'rgba(255,255,255,0.08)',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  cursor: 'pointer',
-                  transition: 'all 200ms ease',
-                  textAlign: 'left',
-                  width: '100%',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.borderColor = 'rgba(0,201,201,0.4)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'; e.currentTarget.style.transform = 'translateY(0)' }}
-              >
-                <div style={{
-                  width: 48, height: 48, borderRadius: 'var(--radius-md)',
-                  background: 'rgba(0,166,166,0.2)', color: 'var(--brand-accent-light)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0,
-                }}>
-                  <ShoppingBag size={24} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ color: 'white', fontSize: 'var(--text-base)', fontWeight: 700 }}>Consumer</div>
-                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'var(--text-sm)', marginTop: '2px' }}>
-                    Browse plans, devices & services
-                  </div>
-                </div>
-                <ArrowRight size={20} style={{ color: 'rgba(255,255,255,0.4)' }} />
-              </button>
-
-              {/* Operator card */}
-              <button
-                onClick={() => pickPersona('operator')}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 'var(--space-4)',
-                  padding: 'var(--space-5) var(--space-6)',
-                  borderRadius: 'var(--radius-lg)',
-                  background: 'rgba(255,255,255,0.08)',
-                  border: '1px solid rgba(255,255,255,0.12)',
-                  cursor: 'pointer',
-                  transition: 'all 200ms ease',
-                  textAlign: 'left',
-                  width: '100%',
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.borderColor = 'rgba(0,201,201,0.4)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'; e.currentTarget.style.transform = 'translateY(0)' }}
-              >
-                <div style={{
-                  width: 48, height: 48, borderRadius: 'var(--radius-md)',
-                  background: 'rgba(245,166,35,0.15)', color: 'var(--brand-gold)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  flexShrink: 0,
-                }}>
-                  <Settings size={24} />
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ color: 'white', fontSize: 'var(--text-base)', fontWeight: 700 }}>Operator Admin</div>
-                  <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'var(--text-sm)', marginTop: '2px' }}>
-                    Manage marketplace operations
-                  </div>
-                </div>
-                <ArrowRight size={20} style={{ color: 'rgba(255,255,255,0.4)' }} />
-              </button>
+              {personaCards.map((p) => {
+                const meta = PERSONA_META[p]
+                return (
+                  <button
+                    key={p}
+                    onClick={() => pickPersona(p)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 'var(--space-4)',
+                      padding: 'var(--space-5) var(--space-6)',
+                      borderRadius: 'var(--radius-lg)',
+                      background: 'rgba(255,255,255,0.08)',
+                      border: '1px solid rgba(255,255,255,0.12)',
+                      cursor: 'pointer',
+                      transition: 'all 200ms ease',
+                      textAlign: 'left',
+                      width: '100%',
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.borderColor = 'rgba(0,201,201,0.4)'; e.currentTarget.style.transform = 'translateY(-2px)' }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.08)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'; e.currentTarget.style.transform = 'translateY(0)' }}
+                  >
+                    <div style={{
+                      width: 48, height: 48, borderRadius: 'var(--radius-md)',
+                      background: meta.accentBg, color: meta.accentFg,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0,
+                    }}>
+                      {meta.icon}
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ color: 'white', fontSize: 'var(--text-base)', fontWeight: 700 }}>{meta.label}</div>
+                      <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: 'var(--text-sm)', marginTop: '2px' }}>
+                        {meta.sub}
+                      </div>
+                    </div>
+                    <ArrowRight size={20} style={{ color: 'rgba(255,255,255,0.4)' }} />
+                  </button>
+                )
+              })}
             </div>
           </>
         ) : (
           <>
-            {/* Login form */}
             <div style={{
               background: 'white',
               borderRadius: 'var(--radius-xl)',
@@ -161,18 +163,18 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
                 <div style={{
                   width: 40, height: 40, borderRadius: 'var(--radius)',
-                  background: selected === 'consumer' ? 'rgba(0,166,166,0.1)' : 'rgba(245,166,35,0.1)',
-                  color: selected === 'consumer' ? 'var(--brand-accent)' : 'var(--brand-gold)',
+                  background: PERSONA_META[selected].accentBg,
+                  color: PERSONA_META[selected].accentColor,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  {selected === 'consumer' ? <ShoppingBag size={20} /> : <Settings size={20} />}
+                  {PERSONA_META[selected].icon}
                 </div>
                 <div>
                   <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 800, color: 'var(--text)' }}>
-                    {selected === 'consumer' ? 'Consumer Sign-In' : 'Operator Sign-In'}
+                    {PERSONA_META[selected].label} Sign-In
                   </h2>
                   <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
-                    {selected === 'consumer' ? 'Priya Raman · Gold member' : 'Anika Sharma · Aventa Communications'}
+                    {PERSONA_META[selected].user}
                   </p>
                 </div>
               </div>
@@ -285,3 +287,6 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     </div>
   )
 }
+
+
+export { LoginScreen }
