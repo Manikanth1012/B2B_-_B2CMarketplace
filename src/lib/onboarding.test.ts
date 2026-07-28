@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { techStatus, techReady, TECH_CHECKS, GATES, REQUIRED_EVENTS } from './onboarding'
+import { canClearGate, deriveTaskState, nextGate, gateIdFor } from './onboarding'
 import type { Endpoint, TestCall, SandboxRun } from './onboarding'
+import type { GateRow, TaskRow, TechStatus } from './onboarding'
 
 const ep = (over: Partial<Endpoint> = {}): Endpoint => ({
   id: 'EP-01', partner_id: 'PTR-1004', name: 'Fulfilment', url: 'https://x.test/f',
@@ -71,5 +73,100 @@ describe('techStatus', () => {
     expect(s.checks.registered).toBe(false)
     expect(s.checks.auth).toBe(false)
     expect(s.checks.tested).toBe(false)
+  })
+})
+
+const gates = (currentOrder: number): GateRow[] =>
+  GATES.map(g => ({
+    id: `og-PTR-1004-${g.order}`, partner_id: 'PTR-1004', gate_name: g.name, gate_order: g.order,
+    status: g.order < currentOrder ? 'cleared' as const : g.order === currentOrder ? 'current' as const : 'pending' as const,
+    notes: null, reviewed_by: null, reviewed_at: null,
+  }))
+
+const readyTech: TechStatus =
+  { checks: { registered: true, auth: true, tested: true, sandbox: true }, missing: [], noAuth: [], untested: [] }
+const partialTech: TechStatus =
+  { checks: { registered: true, auth: true, tested: true, sandbox: false }, missing: [], noAuth: [], untested: [] }
+
+describe('gateIdFor', () => {
+  it('maps a row back to its gate id by name', () => {
+    expect(gateIdFor(gates(5)[4])).toBe('tech')
+  })
+})
+
+describe('canClearGate', () => {
+  it('allows clearing the current gate', () => {
+    const all = gates(4)
+    expect(canClearGate(all[3], all, readyTech)).toEqual({ ok: true })
+  })
+
+  it('refuses a gate that is still pending', () => {
+    const all = gates(4)
+    const v = canClearGate(all[5], all, readyTech)
+    expect(v.ok).toBe(false)
+    if (!v.ok) expect(v.reason).toMatch(/not the current gate/i)
+  })
+
+  it('refuses a gate that is already cleared', () => {
+    const all = gates(4)
+    const v = canClearGate(all[0], all, readyTech)
+    expect(v.ok).toBe(false)
+    if (!v.ok) expect(v.reason).toMatch(/already cleared/i)
+  })
+
+  it('refuses the technical gate when three of four checks pass', () => {
+    const all = gates(5)
+    const v = canClearGate(all[4], all, partialTech)
+    expect(v.ok).toBe(false)
+    if (!v.ok) {
+      expect(v.outstanding).toHaveLength(1)
+      expect(v.outstanding[0].id).toBe('sandbox')
+      expect(v.reason).toMatch(/no override/i)
+    }
+  })
+
+  it('allows the technical gate once all four pass', () => {
+    const all = gates(5)
+    expect(canClearGate(all[4], all, readyTech)).toEqual({ ok: true })
+  })
+
+  it('does not apply technical checks to other gates', () => {
+    const all = gates(4)
+    expect(canClearGate(all[3], all, partialTech)).toEqual({ ok: true })
+  })
+})
+
+describe('nextGate', () => {
+  it('returns the following gate by order', () => {
+    const all = gates(4)
+    expect(nextGate(all[3], all)?.gate_order).toBe(5)
+  })
+
+  it('returns null on the final gate', () => {
+    const all = gates(7)
+    expect(nextGate(all[6], all)).toBeNull()
+  })
+})
+
+describe('deriveTaskState', () => {
+  const task = (gate_id: string): TaskRow => ({
+    id: 'OB-1', partner_id: 'PTR-1004', gate_id, title: 't', detail: 'd',
+    owner: 'You', due: null, closed_by: null, closed_at: null,
+  })
+
+  it('is done when its gate is cleared', () => {
+    expect(deriveTaskState(task('apply'), gates(4))).toBe('done')
+  })
+
+  it('is open when its gate is current', () => {
+    expect(deriveTaskState(task('finance'), gates(4))).toBe('open')
+  })
+
+  it('is not started when its gate has not been reached', () => {
+    expect(deriveTaskState(task('golive'), gates(4))).toBe('not_started')
+  })
+
+  it('is not started when the gate id is unknown', () => {
+    expect(deriveTaskState(task('nonsense'), gates(4))).toBe('not_started')
   })
 })

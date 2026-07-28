@@ -109,3 +109,69 @@ export function techStatus(
 export function techReady(s: TechStatus): boolean {
   return TECH_CHECKS.every(c => s.checks[c.id])
 }
+
+export interface GateRow {
+  id: string
+  partner_id: string
+  gate_name: string
+  gate_order: number
+  status: GateStatus
+  notes: string | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+}
+
+export interface TaskRow {
+  id: string
+  partner_id: string
+  gate_id: string
+  title: string
+  detail: string
+  owner: string
+  due: string | null
+  closed_by: string | null
+  closed_at: string | null
+}
+
+export type ClearVerdict =
+  | { ok: true }
+  | { ok: false; reason: string; outstanding: TechCheck[] }
+
+/* Rows carry the display name; the rules key off the stable id. */
+export function gateIdFor(row: GateRow): string {
+  return GATES.find(g => g.name === row.gate_name)?.id ?? ''
+}
+
+/* There is deliberately no override parameter. A caller cannot route around
+   the technical gate because there is nothing to pass. */
+export function canClearGate(gate: GateRow, all: GateRow[], tech: TechStatus): ClearVerdict {
+  if (gate.status === 'cleared') {
+    return { ok: false, reason: 'This gate is already cleared. Gates cannot be un-cleared — a partner that should not have progressed must be suspended instead.', outstanding: [] }
+  }
+  if (gate.status !== 'current') {
+    return { ok: false, reason: 'This is not the current gate. Gates clear in order.', outstanding: [] }
+  }
+  if (gateIdFor(gate) === 'tech' && !techReady(tech)) {
+    const outstanding = TECH_CHECKS.filter(c => !tech.checks[c.id])
+    return {
+      ok: false,
+      outstanding,
+      reason: `Technical readiness is not proved: ${outstanding.length} of ${TECH_CHECKS.length} checks outstanding. Each is verified against the seller's own endpoints. No override exists for this gate.`,
+    }
+  }
+  return { ok: true }
+}
+
+export function nextGate(gate: GateRow, all: GateRow[]): GateRow | null {
+  return all.find(g => g.gate_order === gate.gate_order + 1) ?? null
+}
+
+/* State is derived from the gate, never stored. A stored status is a second
+   opinion that can contradict the gate it belongs to. */
+export function deriveTaskState(task: TaskRow, gates: GateRow[]): 'done' | 'open' | 'not_started' {
+  const gate = gates.find(g => gateIdFor(g) === task.gate_id)
+  if (!gate) return 'not_started'
+  if (gate.status === 'cleared') return 'done'
+  if (gate.status === 'current') return 'open'
+  return 'not_started'
+}
