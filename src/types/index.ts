@@ -1,3 +1,5 @@
+import type { GateStatus } from '../lib/onboarding'
+
 export interface Category {
   id: string
   name: string
@@ -332,10 +334,9 @@ export interface OperatorProfile {
 export interface OnboardingGate {
   id: string
   partner_id: string
-  partner_name: string
   gate_name: string
   gate_order: number
-  status: string
+  status: GateStatus
   owner: string
   target_days: number
   dual_control: boolean
@@ -347,6 +348,9 @@ export interface OnboardingGate {
   evidence: string[]
   notes: string | null
   sort_order: number
+  /* Joined from partners. Present whenever the row was selected with
+     `*, partner:partners(id,name,status)`. */
+  partner?: { id: string; name: string; status: string }
 }
 
 export interface OperatorListing {

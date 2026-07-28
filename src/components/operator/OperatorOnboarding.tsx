@@ -6,6 +6,8 @@ import { CircleCheck as CheckCircle, Clock, Circle, Lock, ChevronRight } from 'l
 
 const GATE_NAMES = ['Application', 'KYC & due diligence', 'Agreements', 'Bank & tax', 'Technical readiness', 'Compliance review', 'Go-live']
 
+const partnerNameOf = (g: OnboardingGate) => g.partner?.name ?? g.partner_id
+
 export function OperatorOnboarding() {
   const [gates, setGates] = useState<OnboardingGate[]>([])
   const [loading, setLoading] = useState(true)
@@ -15,10 +17,10 @@ export function OperatorOnboarding() {
   const [newPartner, setNewPartner] = useState({ name: '', contact: '', email: '', country: '' })
 
   useEffect(() => {
-    supabase.from('onboarding_gates').select('*').order('sort_order').then(({ data }) => {
+    supabase.from('onboarding_gates').select('*, partner:partners(id,name,status)').order('sort_order').then(({ data }) => {
       if (data) {
         setGates(data as OnboardingGate[])
-        const partners = [...new Set(data.map(g => g.partner_name))]
+        const partners = [...new Set((data as OnboardingGate[]).map(partnerNameOf))]
         if (!selectedPartner && partners.length > 0) setSelectedPartner(partners[0])
       }
       setLoading(false)
@@ -27,13 +29,13 @@ export function OperatorOnboarding() {
 
   if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
-  const partners = [...new Set(gates.map(g => g.partner_name))]
+  const partners = [...new Set(gates.map(partnerNameOf))]
   const activePartner = selectedPartner || partners[0] || ''
-  const partnerGates = gates.filter(g => g.partner_name === activePartner).sort((a, b) => a.gate_order - b.gate_order)
+  const partnerGates = gates.filter(g => partnerNameOf(g) === activePartner).sort((a, b) => a.gate_order - b.gate_order)
   const currentGate = partnerGates.find(g => g.status === 'current')
 
   const refreshGates = async () => {
-    const { data } = await supabase.from('onboarding_gates').select('*').order('sort_order')
+    const { data } = await supabase.from('onboarding_gates').select('*, partner:partners(id,name,status)').order('sort_order')
     if (data) setGates(data as OnboardingGate[])
   }
 
@@ -59,15 +61,17 @@ export function OperatorOnboarding() {
 
   const handleAddPartner = async () => {
     if (!newPartner.name.trim()) { toast('Partner name is required', 'error'); return }
-    const partnerId = `P-${String(Date.now()).slice(-4)}`
+    const partnerId = `PTR-${String(Date.now()).slice(-4)}`
     const sortBase = gates.length > 0 ? Math.max(...gates.map(g => g.sort_order)) + 1 : 0
+    await supabase.from('partners').insert({
+      id: partnerId, name: newPartner.name, status: 'onboarding',
+    })
     const newGates = GATE_NAMES.map((gn, i) => ({
       id: `og-${partnerId}-${i}`,
       partner_id: partnerId,
-      partner_name: newPartner.name,
       gate_name: gn,
       gate_order: i + 1,
-      status: i === 0 ? 'current' : 'pending',
+      status: i === 0 ? ('current' as const) : ('pending' as const),
       owner: i === 0 ? 'Onboarding Desk' : i === 1 ? 'Compliance' : i === 2 ? 'Legal' : i === 3 ? 'Finance' : i === 4 ? 'Integrations' : i === 5 ? 'Compliance' : 'Onboarding Desk',
       target_days: i === 0 || i === 5 || i === 6 ? 1 : i === 1 ? 3 : 2,
       dual_control: i !== 0,
