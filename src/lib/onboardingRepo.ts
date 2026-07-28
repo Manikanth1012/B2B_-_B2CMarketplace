@@ -62,7 +62,7 @@ export async function loadPartnerNames(): Promise<{ id: string; name: string }[]
 }
 
 export type ClearResult =
-  | { ok: true; snapshot: OnboardingSnapshot }
+  | { ok: true; snapshot: OnboardingSnapshot; auditWarning?: string }
   | { ok: false; reason: string }
 
 /* Re-validates against freshly loaded state before writing. The operator's
@@ -85,27 +85,38 @@ export async function clearGate(
 
   const now = new Date().toISOString()
 
-  await supabase.from('onboarding_gates')
+  const { error: clearErr } = await supabase.from('onboarding_gates')
     .update({ status: 'cleared', reviewed_by: actor, reviewed_at: now, notes: evidence })
     .eq('id', gate.id)
+  if (clearErr) return { ok: false, reason: `Could not clear the gate: ${clearErr.message}` }
 
   const next = nextGate(gate, fresh.gates)
   if (next) {
-    await supabase.from('onboarding_gates').update({ status: 'current' }).eq('id', next.id)
+    const { error } = await supabase.from('onboarding_gates').update({ status: 'current' }).eq('id', next.id)
+    if (error) return { ok: false, reason: `Gate cleared, but the next gate could not be opened: ${error.message}` }
   }
 
   /* A cleared gate cannot keep open tasks. */
-  await supabase.from('onboarding_tasks')
-    .update({ closed_by: actor, closed_at: now })
-    .eq('partner_id', partnerId).eq('gate_id', gateIdFor(gate)).is('closed_at', null)
+  {
+    const { error } = await supabase.from('onboarding_tasks')
+      .update({ closed_by: actor, closed_at: now })
+      .eq('partner_id', partnerId).eq('gate_id', gateIdFor(gate)).is('closed_at', null)
+    if (error) return { ok: false, reason: `Gate cleared, but its open tasks could not be closed: ${error.message}` }
+  }
 
   /* Clearing the final gate publishes the storefront. */
   if (!next) {
-    await supabase.from('partners').update({ status: 'live' }).eq('id', partnerId)
+    const { error } = await supabase.from('partners').update({ status: 'live' }).eq('id', partnerId)
+    if (error) return { ok: false, reason: `Gate cleared, but the partner could not be published live: ${error.message}` }
   }
 
-  await supabase.from('operator_audit_log').insert({
-    id: `AUD-${Date.now()}`,
+  /* The audit insert is handled differently from the writes above: by this
+     point the state transition is already durable and there is no transaction
+     to roll it back with. Returning ok:false here would tell the caller the
+     clear didn't happen when it did — a worse lie than surfacing a warning
+     alongside the success it actually is. */
+  const { error: auditErr } = await supabase.from('operator_audit_log').insert({
+    id: `AUD-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     actor, role: 'Marketplace operations',
     action: 'onboarding.gate.cleared',
     object: `${partnerId} · ${gate.gate_name}`,
@@ -113,5 +124,9 @@ export async function clearGate(
     before_val: gate.status, after_val: 'cleared',
   })
 
-  return { ok: true, snapshot: await loadOnboarding(partnerId) }
+  const snapshot = await loadOnboarding(partnerId)
+  if (auditErr) {
+    return { ok: true, snapshot, auditWarning: `The gate was cleared but the audit entry could not be written: ${auditErr.message}` }
+  }
+  return { ok: true, snapshot }
 }
