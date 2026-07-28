@@ -9,6 +9,10 @@ import type {
 
 type Tab = 'profile' | 'notifications' | 'activity' | 'household' | 'refunds' | 'bills' | 'support'
 
+function isTab(v: string): v is Tab {
+  return ['profile', 'notifications', 'activity', 'household', 'refunds', 'bills', 'support'].includes(v)
+}
+
 const CHANNELS = ['Push', 'SMS', 'Email']
 
 function fmtMoney(n: number): string {
@@ -34,8 +38,8 @@ const REFUND_STATES: Record<string, { label: string; color: string; bg: string }
   declined: { label: 'Declined', color: '#DC2626', bg: '#FEE2E2' },
 }
 
-export function AccountView() {
-  const [tab, setTab] = useState<Tab>('profile')
+export function AccountView({ initialTab }: { initialTab?: string }) {
+  const [tab, setTab] = useState<Tab>(initialTab && isTab(initialTab) ? initialTab : 'profile')
   const [profile, setProfile] = useState<ConsumerProfile | null>(null)
   const [notifications, setNotifications] = useState<ConsumerNotification[]>([])
   const [auditLog, setAuditLog] = useState<ConsumerAuditEntry[]>([])

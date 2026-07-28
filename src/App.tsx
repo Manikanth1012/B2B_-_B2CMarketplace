@@ -23,6 +23,7 @@ export default function App() {
   const [cartOpen, setCartOpen] = useState(false)
   const [cartCount, setCartCount] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [accountTab, setAccountTab] = useState<string | undefined>(undefined)
 
   const loadCart = useCallback(async () => {
     const { data: cart } = await supabase
@@ -39,9 +40,11 @@ export default function App() {
     loadCart().then(() => setLoading(false))
   }, [loadCart])
 
-  const navigate = (v: View, opts?: { category?: string; product?: Product }) => {
+  const navigate = (v: View, opts?: { category?: string; product?: Product; tab?: string }) => {
     if (opts?.category !== undefined) setSelectedCategory(opts.category)
     if (opts?.product !== undefined) setSelectedProduct(opts.product)
+    if (opts?.tab !== undefined) setAccountTab(opts.tab)
+    else setAccountTab(undefined)
     setView(v)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -116,7 +119,7 @@ export default function App() {
         {view === 'orders' && <OrdersView />}
         {view === 'subscriptions' && <SubscriptionsView />}
         {view === 'rewards' && <RewardsView />}
-        {view === 'account' && <AccountView />}
+        {view === 'account' && <AccountView initialTab={accountTab} />}
       </main>
       <Footer onNavigate={navigate} />
 

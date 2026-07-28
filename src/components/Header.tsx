@@ -8,7 +8,7 @@ import type { View } from '../types/view'
 interface HeaderProps {
   cartCount: number
   onCartClick: () => void
-  onNavigate: (view: View, opts?: { category?: string }) => void
+  onNavigate: (view: View, opts?: { category?: string; tab?: string }) => void
 }
 
 export function Header({ cartCount, onCartClick, onNavigate }: HeaderProps) {
@@ -53,8 +53,7 @@ export function Header({ cartCount, onCartClick, onNavigate }: HeaderProps) {
         <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>India · UAE · Kenya</span>
           <div style={{ display: 'flex', gap: '20px' }}>
-            <button onClick={() => onNavigate('orders')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: 'var(--text-xs)', padding: 0 }} className="hide-mobile">Track Order</button>
-            <button onClick={() => onNavigate('account')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: 'var(--text-xs)', padding: 0 }} className="hide-mobile">Help & Support</button>
+            <button onClick={() => onNavigate('account', { tab: 'support' })} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: 'var(--text-xs)', padding: 0 }} className="hide-mobile">Help & Support</button>
             <span>EN</span>
           </div>
         </div>
