@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { OnboardingGate } from '../../types'
-import { SectionCard, StatusPill, fmtDate, EmptyState, Btn, Modal, FormField, TextArea, TextInput, toast } from './shared'
+import { SectionCard, StatusPill, fmtDate, EmptyState, Btn, Modal, FormField, TextArea, TextInput, Select, toast } from './shared'
 import { CircleCheck as CheckCircle, Clock, Circle, Lock, ChevronRight } from 'lucide-react'
 import { clearGate, loadOnboarding } from '../../lib/onboardingRepo'
 import { canClearGate, gateIdFor } from '../../lib/onboarding'
@@ -9,6 +9,7 @@ import type { TechStatus } from '../../lib/onboarding'
 import { TechChecklist } from '../TechChecklist'
 
 const GATE_NAMES = ['Application', 'KYC & due diligence', 'Agreements', 'Bank & tax', 'Technical readiness', 'Compliance review', 'Go-live']
+const PARTNER_TYPES = ['Content provider', 'Device OEM', 'Insurance', 'IoT hardware', 'Reseller', 'Security ISV']
 
 const partnerNameOf = (g: OnboardingGate) => g.partner?.name ?? g.partner_id
 
@@ -18,7 +19,7 @@ export function OperatorOnboarding() {
   const [selectedPartner, setSelectedPartner] = useState<string | null>(null)
   const [gateModal, setGateModal] = useState<OnboardingGate | null>(null)
   const [addPartnerModal, setAddPartnerModal] = useState(false)
-  const [newPartner, setNewPartner] = useState({ name: '', contact: '', email: '', country: '' })
+  const [newPartner, setNewPartner] = useState({ name: '', type: '', contact: '', email: '', country: '' })
   const [tech, setTech] = useState<TechStatus | null>(null)
 
   useEffect(() => {
@@ -73,11 +74,13 @@ export function OperatorOnboarding() {
 
   const handleAddPartner = async () => {
     if (!newPartner.name.trim()) { toast('Partner name is required', 'error'); return }
+    if (!newPartner.type) { toast('Partner type is required', 'error'); return }
     const partnerId = `PTR-${String(Date.now()).slice(-4)}`
     const sortBase = gates.length > 0 ? Math.max(...gates.map(g => g.sort_order)) + 1 : 0
-    await supabase.from('partners').insert({
-      id: partnerId, name: newPartner.name, status: 'onboarding',
+    const { error: partnerErr } = await supabase.from('partners').insert({
+      id: partnerId, name: newPartner.name, type: newPartner.type, status: 'onboarding',
     })
+    if (partnerErr) { toast(`Could not create partner: ${partnerErr.message}`, 'error'); return }
     const newGates = GATE_NAMES.map((gn, i) => ({
       id: `og-${partnerId}-${i}`,
       partner_id: partnerId,
@@ -96,9 +99,10 @@ export function OperatorOnboarding() {
       notes: `Desk-created application for ${newPartner.name}`,
       sort_order: sortBase + i + 1,
     }))
-    await supabase.from('onboarding_gates').insert(newGates)
+    const { error: gatesErr } = await supabase.from('onboarding_gates').insert(newGates)
+    if (gatesErr) { toast(`Partner created, but onboarding gates could not be created: ${gatesErr.message}`, 'error'); return }
     toast(`${newPartner.name} added to onboarding funnel`)
-    setNewPartner({ name: '', contact: '', email: '', country: '' })
+    setNewPartner({ name: '', type: '', contact: '', email: '', country: '' })
     setAddPartnerModal(false)
     await refreshGates()
     setSelectedPartner(newPartner.name)
@@ -192,9 +196,15 @@ export function OperatorOnboarding() {
 
       {/* Add partner modal */}
       <Modal open={addPartnerModal} onClose={() => setAddPartnerModal(false)} title="Add Partner to Onboarding"
-        footer={<><Btn variant="secondary" size="sm" onClick={() => setAddPartnerModal(false)}>Cancel</Btn><Btn size="sm" onClick={handleAddPartner}>Create</Btn></>}>
+        footer={<><Btn variant="secondary" size="sm" onClick={() => setAddPartnerModal(false)}>Cancel</Btn><Btn size="sm" disabled={!newPartner.name.trim() || !newPartner.type} onClick={handleAddPartner}>Create</Btn></>}>
         <FormField label="Partner name" required>
           <TextInput value={newPartner.name} onChange={(e) => setNewPartner({ ...newPartner, name: e.target.value })} placeholder="e.g. Acme IoT Solutions" />
+        </FormField>
+        <FormField label="Partner type" required>
+          <Select value={newPartner.type} onChange={(e) => setNewPartner({ ...newPartner, type: e.target.value })}>
+            <option value="">Select a type…</option>
+            {PARTNER_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+          </Select>
         </FormField>
         <FormField label="Contact person">
           <TextInput value={newPartner.contact} onChange={(e) => setNewPartner({ ...newPartner, contact: e.target.value })} placeholder="Full name" />
