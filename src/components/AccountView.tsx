@@ -820,9 +820,83 @@ function ActivityTab({ log }: { log: ConsumerAuditEntry[] }) {
 }
 
 /* ============================== HOUSEHOLD TAB ============================== */
-function HouseholdTab({ members, showToast }: { members: ConsumerHouseholdMember[]; showToast: (m: string) => void }) {
+const ROLE_OPTIONS = [
+  { value: 'Adult member', label: 'Adult member — can buy within a monthly cap' },
+  { value: 'Young person', label: 'Young person — requests need your approval' },
+  { value: 'View only', label: 'View only — sees the bill, cannot buy' },
+]
+
+function HouseholdTab({ members: initialMembers, showToast }: { members: ConsumerHouseholdMember[]; showToast: (m: string) => void }) {
+  const [members, setMembers] = useState<ConsumerHouseholdMember[]>(initialMembers)
+  const [showAdd, setShowAdd] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [addName, setAddName] = useState('')
+  const [addEmail, setAddEmail] = useState('')
+  const [addRole, setAddRole] = useState('Adult member')
+  const [addCap, setAddCap] = useState('40')
+  const [saving, setSaving] = useState(false)
+
+  // Per-member edit state
+  const [editRole, setEditRole] = useState('')
+  const [editCap, setEditCap] = useState('')
+
   const active = members.filter((m) => m.status === 'active')
-  const capped = members.filter((m) => m.cap !== null && m.cap > 0)
+  const capped = members.filter((m) => m.cap !== null && m.cap !== undefined && m.cap > 0)
+
+  const openEdit = (m: ConsumerHouseholdMember) => {
+    setEditingId(m.id)
+    setEditRole(m.role_name)
+    setEditCap(m.cap !== null && m.cap !== undefined ? String(m.cap) : '')
+  }
+
+  const saveEdit = async (m: ConsumerHouseholdMember) => {
+    setSaving(true)
+    const newCap = editCap === '' ? null : parseFloat(editCap)
+    await supabase.from('consumer_household').update({
+      role_name: editRole,
+      cap: newCap,
+    }).eq('id', m.id)
+    setMembers((prev) => prev.map((x) => x.id === m.id ? { ...x, role_name: editRole, cap: newCap } : x))
+    setEditingId(null)
+    setSaving(false)
+    showToast(`${m.name} updated`)
+  }
+
+  const removeMember = async (m: ConsumerHouseholdMember) => {
+    if (!confirm(`Remove ${m.name} from the account?`)) return
+    await supabase.from('consumer_household').delete().eq('id', m.id)
+    setMembers((prev) => prev.filter((x) => x.id !== m.id))
+    showToast(`${m.name} removed from the account`)
+  }
+
+  const resendInvite = (m: ConsumerHouseholdMember) => {
+    showToast(`Invite resent to ${m.email} — link valid for 7 days`)
+  }
+
+  const addMember = async () => {
+    if (!addName.trim() || !addEmail.trim()) { showToast('Name and email are required'); return }
+    setSaving(true)
+    const id = 'HH-' + Math.random().toString(36).slice(2, 8).toUpperCase()
+    const initials = addName.trim().split(' ').map((w: string) => w[0]).join('').slice(0, 2).toUpperCase()
+    const newMember: ConsumerHouseholdMember = {
+      id, name: addName.trim(), email: addEmail.trim(),
+      role_id: 'CO-ADULT', role_name: addRole, status: 'invited',
+      joined: 'Just now', last_active: 'Never',
+      mfa: false, is_you: false,
+      cap: addRole === 'View only' ? null : parseFloat(addCap) || 40,
+      spent: 0,
+    }
+    await supabase.from('consumer_household').insert({
+      ...newMember,
+      initials,
+    })
+    setMembers((prev) => [...prev, newMember])
+    setAddName(''); setAddEmail(''); setAddRole('Adult member'); setAddCap('40')
+    setShowAdd(false)
+    setSaving(false)
+    showToast(`Invite sent to ${newMember.email} — link valid for 7 days`)
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div style={{
@@ -840,80 +914,191 @@ function HouseholdTab({ members, showToast }: { members: ConsumerHouseholdMember
       <Card icon={<Users size={18} />} title="People on this account" subtitle={`${active.length} active · ${members.length - active.length} invited`}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
           {members.map((m) => (
-            <div key={m.id} style={{
-              display: 'flex', gap: '16px', alignItems: 'center',
-              padding: '16px 0', borderBottom: '1px solid var(--border-light)',
-            }}>
-              {/* Avatar */}
+            <div key={m.id}>
               <div style={{
-                width: '44px', height: '44px', borderRadius: '50%',
-                background: m.is_you ? 'var(--brand-accent)' : 'var(--bg-alt)',
-                color: m.is_you ? 'white' : 'var(--text-secondary)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontWeight: 700, fontSize: 'var(--text-sm)', flexShrink: 0,
+                display: 'flex', gap: '16px', alignItems: 'center',
+                padding: '16px 0',
+                borderBottom: editingId === m.id ? 'none' : '1px solid var(--border-light)',
               }}>
-                {m.name.split(' ').map((w) => w[0]).join('').slice(0, 2)}
-              </div>
-
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>
-                  {m.name}
-                  {m.is_you && <span style={{ marginLeft: '8px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>(you)</span>}
+                {/* Avatar */}
+                <div style={{
+                  width: '44px', height: '44px', borderRadius: '50%',
+                  background: m.is_you ? 'var(--brand-accent)' : 'var(--bg-alt)',
+                  color: m.is_you ? 'white' : 'var(--text-secondary)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontWeight: 700, fontSize: 'var(--text-sm)', flexShrink: 0,
+                }}>
+                  {m.name.split(' ').map((w) => w[0]).join('').slice(0, 2)}
                 </div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{m.email}</div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
-                  {m.role_name} · Joined {m.joined} · Last active {m.last_active || 'Never'}
+
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>
+                    {m.name}
+                    {m.is_you && <span style={{ marginLeft: '8px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>(you)</span>}
+                  </div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{m.email}</div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                    {m.role_name} · Joined {m.joined} · Last active {m.last_active || 'Never'}
+                  </div>
                 </div>
+
+                {/* MFA badge */}
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '4px',
+                  fontSize: 'var(--text-xs)', fontWeight: 600,
+                  color: m.mfa ? '#16A34A' : '#D97706',
+                }}>
+                  <Shield size={14} />
+                  {m.mfa ? '2FA on' : 'No 2FA'}
+                </div>
+
+                {/* Cap */}
+                {m.cap !== null && m.cap !== undefined && m.cap > 0 && (
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>Monthly cap</div>
+                    <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>{fmtMoney(m.cap)}</div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                      {fmtMoney(m.spent ?? 0)} spent
+                    </div>
+                  </div>
+                )}
+
+                {/* Status */}
+                <span style={{
+                  padding: '4px 10px', borderRadius: 'var(--radius-full)',
+                  fontSize: 'var(--text-xs)', fontWeight: 600,
+                  background: m.status === 'active' ? '#DCFCE7' : '#FEF3C7',
+                  color: m.status === 'active' ? '#16A34A' : '#D97706',
+                  flexShrink: 0,
+                }}>
+                  {m.status}
+                </span>
+
+                {/* Actions — not shown for yourself */}
+                {!m.is_you && (
+                  <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                    {m.status === 'invited' && (
+                      <button onClick={() => resendInvite(m)} style={btnSecondarySmall}>
+                        Resend invite
+                      </button>
+                    )}
+                    <button
+                      onClick={() => editingId === m.id ? setEditingId(null) : openEdit(m)}
+                      style={btnSecondarySmall}
+                    >
+                      {editingId === m.id ? 'Cancel' : 'Manage'}
+                    </button>
+                    <button
+                      onClick={() => removeMember(m)}
+                      style={{ ...btnSecondarySmall, color: '#DC2626', borderColor: '#FECACA' }}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
               </div>
 
-              {/* MFA badge */}
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: '4px',
-                fontSize: 'var(--text-xs)', fontWeight: 600,
-                color: m.mfa ? '#16A34A' : '#D97706',
-              }}>
-                <Shield size={14} />
-                {m.mfa ? '2FA on' : 'No 2FA'}
-              </div>
-
-              {/* Cap */}
-              {m.cap !== null && m.cap > 0 && (
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>Monthly cap</div>
-                  <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>{fmtMoney(m.cap)}</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                    {fmtMoney(m.spent)} spent
+              {/* Inline edit panel */}
+              {editingId === m.id && (
+                <div style={{
+                  padding: '16px 20px', marginBottom: '8px',
+                  background: 'var(--bg-alt)', borderRadius: 'var(--radius)',
+                  border: '1px solid var(--border)', borderTop: 'none',
+                  display: 'flex', flexDirection: 'column', gap: '14px',
+                }}>
+                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>Edit {m.name}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                    <Field label="Role" icon={<Users size={14} />}>
+                      <select style={inputStyle} value={editRole} onChange={(e) => setEditRole(e.target.value)}>
+                        {ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                      </select>
+                    </Field>
+                    {editRole !== 'View only' && (
+                      <Field label="Monthly spend cap ($)" icon={<Wallet size={14} />}>
+                        <input
+                          style={inputStyle} type="number" min="0" step="5"
+                          value={editCap} onChange={(e) => setEditCap(e.target.value)}
+                          placeholder="e.g. 40 — leave blank for no cap"
+                        />
+                      </Field>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                    <button onClick={() => setEditingId(null)} style={btnSecondary}>Cancel</button>
+                    <button onClick={() => saveEdit(m)} disabled={saving} style={btnPrimary}>
+                      {saving ? 'Saving…' : 'Save changes'}
+                    </button>
                   </div>
                 </div>
               )}
-
-              {/* Status */}
-              <span style={{
-                padding: '4px 10px', borderRadius: 'var(--radius-full)',
-                fontSize: 'var(--text-xs)', fontWeight: 600,
-                background: m.status === 'active' ? '#DCFCE7' : '#FEF3C7',
-                color: m.status === 'active' ? '#16A34A' : '#D97706',
-                flexShrink: 0,
-              }}>
-                {m.status}
-              </span>
             </div>
           ))}
         </div>
-        <button
-          onClick={() => showToast('Invite sent — the link is valid for 7 days')}
-          style={{
-            marginTop: '16px', display: 'inline-flex', alignItems: 'center', gap: '8px',
-            padding: '10px 20px', borderRadius: 'var(--radius)', border: '1px solid var(--brand-accent)',
-            background: 'white', color: 'var(--brand-accent)', fontWeight: 600,
-            fontSize: 'var(--text-sm)', cursor: 'pointer',
-          }}
-        >
-          <Plus size={16} /> Add someone
-        </button>
+
+        {/* Add someone */}
+        {!showAdd ? (
+          <button
+            onClick={() => setShowAdd(true)}
+            style={{
+              marginTop: '16px', display: 'inline-flex', alignItems: 'center', gap: '8px',
+              padding: '10px 20px', borderRadius: 'var(--radius)', border: '1px solid var(--brand-accent)',
+              background: 'white', color: 'var(--brand-accent)', fontWeight: 600,
+              fontSize: 'var(--text-sm)', cursor: 'pointer',
+            }}
+          >
+            <Plus size={16} /> Add someone
+          </button>
+        ) : (
+          <div style={{
+            marginTop: '16px', padding: '20px',
+            border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+            display: 'flex', flexDirection: 'column', gap: '14px',
+          }}>
+            <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>Invite someone to your account</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <Field label="Full name" icon={<User size={14} />}>
+                <input style={inputStyle} value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="e.g. Ananya Raman" />
+              </Field>
+              <Field label="Email address" icon={<Mail size={14} />}>
+                <input style={inputStyle} type="email" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} placeholder="e.g. ananya@gmail.com" />
+              </Field>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <Field label="Role" icon={<Users size={14} />}>
+                <select style={inputStyle} value={addRole} onChange={(e) => setAddRole(e.target.value)}>
+                  {ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </select>
+              </Field>
+              {addRole !== 'View only' && (
+                <Field label="Monthly spend cap ($)" icon={<Wallet size={14} />}>
+                  <input
+                    style={inputStyle} type="number" min="0" step="5"
+                    value={addCap} onChange={(e) => setAddCap(e.target.value)}
+                    placeholder="e.g. 40 — leave blank for no cap"
+                  />
+                </Field>
+              )}
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+              They will receive an email invite with a link to set up their account. The link is valid for 7 days.
+            </div>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowAdd(false)} style={btnSecondary}>Cancel</button>
+              <button onClick={addMember} disabled={saving} style={btnPrimary}>
+                {saving ? 'Sending…' : 'Send invite'}
+              </button>
+            </div>
+          </div>
+        )}
       </Card>
     </div>
   )
+}
+
+const btnSecondarySmall: React.CSSProperties = {
+  padding: '5px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)',
+  background: 'white', color: 'var(--text-secondary)', fontWeight: 600,
+  fontSize: 'var(--text-xs)', cursor: 'pointer',
 }
 
 /* ============================== REFUNDS TAB ============================== */
