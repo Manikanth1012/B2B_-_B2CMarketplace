@@ -15,6 +15,9 @@ async function teardown() {
   await supabase.from('onboarding_tasks').delete().eq('partner_id', PID)
   await supabase.from('onboarding_gates').delete().eq('partner_id', PID)
   await supabase.from('partners').delete().eq('id', PID)
+  /* clearGate writes one audit row per gate cleared, keyed `${partnerId} · ${gate_name}`.
+     There is no partner_id column on this table, so match on the object prefix instead. */
+  await supabase.from('operator_audit_log').delete().like('object', `${PID}%`)
 }
 
 beforeAll(async () => {
@@ -33,6 +36,16 @@ beforeAll(async () => {
     dual_control: g.dualControl, waivable: g.waivable, evidence: [], sort_order: g.order,
   })))
   if (gatesErr) throw new Error(`Could not seed PTR-TEST gates: ${gatesErr.message}`)
+
+  /* Without a task on an early gate, the task-closing UPDATE in clearGate
+     matches zero rows on every clear in this suite and a broken gateIdFor
+     mapping would still leave the suite green. Seed one on 'apply' so
+     closing it is actually exercised and asserted below. */
+  const { error: taskErr } = await supabase.from('onboarding_tasks').insert({
+    id: `OB-${PID}-apply`, partner_id: PID, gate_id: 'apply',
+    title: 'Submit the application form', detail: 'Baseline application details.', owner: 'You', due: null,
+  })
+  if (taskErr) throw new Error(`Could not seed PTR-TEST task: ${taskErr.message}`)
 })
 
 afterAll(teardown)
@@ -54,6 +67,14 @@ describe('onboarding round trip', () => {
     }
     const s = await loadOnboarding(PID)
     expect(s.gates.find(g => g.gate_order === 5)!.status).toBe('current')
+
+    /* Clearing 'apply' (order 1) must have closed the task seeded on it. This
+       is the only assertion in either suite that the task-closing write in
+       clearGate actually matched and updated a row. */
+    const task = s.tasks.find(t => t.id === `OB-${PID}-apply`)
+    expect(task).toBeTruthy()
+    expect(task!.closed_by).toBe('test')
+    expect(task!.closed_at).not.toBeNull()
   })
 
   it('refuses the technical gate until all four checks pass', async () => {

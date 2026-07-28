@@ -13,6 +13,10 @@ export interface OnboardingSnapshot {
   run: SandboxRun | null
   tech: TechStatus
   partnerName: string
+  /* Set when any of the underlying reads failed. An empty snapshot and a
+     failed-to-load snapshot must never render the same way — the first means
+     "nothing outstanding", the second means "we don't know". */
+  loadError?: string
 }
 
 export async function loadOnboarding(partnerId: string): Promise<OnboardingSnapshot> {
@@ -23,20 +27,28 @@ export async function loadOnboarding(partnerId: string): Promise<OnboardingSnaps
     supabase.from('partners').select('id,name').eq('id', partnerId).maybeSingle(),
   ])
 
+  const errors: string[] = []
+  if (gatesRes.error) errors.push(`gates: ${gatesRes.error.message}`)
+  if (tasksRes.error) errors.push(`tasks: ${tasksRes.error.message}`)
+  if (epRes.error) errors.push(`endpoints: ${epRes.error.message}`)
+  if (partnerRes.error) errors.push(`partner: ${partnerRes.error.message}`)
+
   const endpoints = (epRes.data ?? []) as Endpoint[]
 
   /* Test calls hang off endpoints, so they cannot be fetched until the endpoint
      ids are known. An empty `in` list matches nothing, so skip the round trip. */
   let calls: TestCall[] = []
   if (endpoints.length > 0) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('endpoint_test_calls').select('*')
       .in('endpoint_id', endpoints.map(e => e.id))
+    if (error) errors.push(`test calls: ${error.message}`)
     calls = (data ?? []) as TestCall[]
   }
 
-  const { data: runRow } = await supabase
+  const { data: runRow, error: runErr } = await supabase
     .from('sandbox_runs').select('*').eq('partner_id', partnerId).maybeSingle()
+  if (runErr) errors.push(`sandbox run: ${runErr.message}`)
   const run = (runRow ?? null) as SandboxRun | null
 
   return {
@@ -45,6 +57,7 @@ export async function loadOnboarding(partnerId: string): Promise<OnboardingSnaps
     endpoints, calls, run,
     tech: techStatus(endpoints, calls, run),
     partnerName: partnerRes.data?.name ?? partnerId,
+    ...(errors.length > 0 ? { loadError: `Could not load the full onboarding record (${errors.join('; ')}).` } : {}),
   }
 }
 
@@ -77,6 +90,7 @@ export async function clearGate(
   }
 
   const fresh = await loadOnboarding(partnerId)
+  if (fresh.loadError) return { ok: false, reason: `Could not re-verify the current state before clearing: ${fresh.loadError}` }
   const gate = fresh.gates.find(g => g.id === gateId)
   if (!gate) return { ok: false, reason: 'That gate no longer exists.' }
 

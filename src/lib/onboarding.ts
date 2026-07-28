@@ -156,7 +156,7 @@ export function canClearGate(gate: GateRow, all: GateRow[], tech: TechStatus): C
     return {
       ok: false,
       outstanding,
-      reason: `Technical readiness is not proved: ${outstanding.length} of ${TECH_CHECKS.length} checks outstanding. Each is verified against the seller's own endpoints. No override exists for this gate.`,
+      reason: `Technical readiness is not proved: ${outstanding.length} of ${TECH_CHECKS.length} checks outstanding. Each is a recorded check this gate enforces, not a live call to the seller's endpoints. No override exists for this gate.`,
     }
   }
   return { ok: true }

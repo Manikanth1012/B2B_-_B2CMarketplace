@@ -4,11 +4,10 @@ import type { OnboardingGate } from '../../types'
 import { SectionCard, StatusPill, fmtDate, EmptyState, Btn, Modal, FormField, TextArea, TextInput, Select, toast } from './shared'
 import { CircleCheck as CheckCircle, Clock, Circle, Lock, ChevronRight } from 'lucide-react'
 import { clearGate, loadOnboarding } from '../../lib/onboardingRepo'
-import { canClearGate, gateIdFor } from '../../lib/onboarding'
+import { canClearGate, gateIdFor, GATES } from '../../lib/onboarding'
 import type { TechStatus } from '../../lib/onboarding'
 import { TechChecklist } from '../TechChecklist'
 
-const GATE_NAMES = ['Application', 'KYC & due diligence', 'Agreements', 'Bank & tax', 'Technical readiness', 'Compliance review', 'Go-live']
 const PARTNER_TYPES = ['Content provider', 'Device OEM', 'Insurance', 'IoT hardware', 'Reseller', 'Security ISV']
 
 const partnerNameOf = (g: OnboardingGate) => g.partner?.name ?? g.partner_id
@@ -81,16 +80,16 @@ export function OperatorOnboarding() {
       id: partnerId, name: newPartner.name, type: newPartner.type, status: 'onboarding',
     })
     if (partnerErr) { toast(`Could not create partner: ${partnerErr.message}`, 'error'); return }
-    const newGates = GATE_NAMES.map((gn, i) => ({
+    const newGates = GATES.map((g, i) => ({
       id: `og-${partnerId}-${i}`,
       partner_id: partnerId,
-      gate_name: gn,
-      gate_order: i + 1,
-      status: i === 0 ? ('current' as const) : ('pending' as const),
-      owner: i === 0 ? 'Onboarding Desk' : i === 1 ? 'Compliance' : i === 2 ? 'Legal' : i === 3 ? 'Finance' : i === 4 ? 'Integrations' : i === 5 ? 'Compliance' : 'Onboarding Desk',
-      target_days: i === 0 || i === 5 || i === 6 ? 1 : i === 1 ? 3 : 2,
-      dual_control: i !== 0,
-      waivable: i !== 1 && i !== 2,
+      gate_name: g.name,
+      gate_order: g.order,
+      status: g.order === 1 ? ('current' as const) : ('pending' as const),
+      owner: g.owner,
+      target_days: g.targetDays,
+      dual_control: g.dualControl,
+      waivable: g.waivable,
       submitted_by: 'desk',
       submitted_at: new Date().toISOString(),
       reviewed_by: null,

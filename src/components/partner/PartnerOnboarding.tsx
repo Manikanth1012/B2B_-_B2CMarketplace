@@ -24,6 +24,19 @@ export function PartnerOnboarding({ partnerId }: { partnerId: string }) {
     return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
   }
 
+  if (snap.loadError) {
+    return (
+      <div style={{
+        padding: '16px', borderRadius: 'var(--radius-md)',
+        background: 'var(--danger-bg)', border: '1px solid var(--danger)',
+        fontSize: 'var(--text-sm)', color: 'var(--danger)',
+      }}>
+        Your onboarding status could not be loaded. This is not the same as having nothing outstanding —
+        please refresh, and contact the marketplace desk if the problem persists.
+      </div>
+    )
+  }
+
   const current = snap.gates.find(g => g.status === 'current')
   const cleared = snap.gates.filter(g => g.status === 'cleared').length
   const openTasks = snap.tasks.filter(t => deriveTaskState(t, snap.gates) === 'open')
@@ -92,7 +105,7 @@ export function PartnerOnboarding({ partnerId }: { partnerId: string }) {
 
       {current && gateIdFor(current) === 'tech' && (
         <SectionCard title="Integration milestone"
-                     subtitle="The marketplace verifies each of these against your own endpoints. None can be waived.">
+                     subtitle="This gate will not clear until each of these is recorded and enforced here. None can be waived.">
           <div style={{ padding: '20px' }}>
             <TechChecklist
               tech={snap.tech}
