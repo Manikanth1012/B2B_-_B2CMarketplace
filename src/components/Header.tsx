@@ -53,8 +53,8 @@ export function Header({ cartCount, onCartClick, onNavigate }: HeaderProps) {
         <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span>India · UAE · Kenya</span>
           <div style={{ display: 'flex', gap: '20px' }}>
-            <span className="hide-mobile">Track Order</span>
-            <span className="hide-mobile">Help & Support</span>
+            <button onClick={() => onNavigate('orders')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: 'var(--text-xs)', padding: 0 }} className="hide-mobile">Track Order</button>
+            <button onClick={() => onNavigate('account')} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: 'var(--text-xs)', padding: 0 }} className="hide-mobile">Help & Support</button>
             <span>EN</span>
           </div>
         </div>

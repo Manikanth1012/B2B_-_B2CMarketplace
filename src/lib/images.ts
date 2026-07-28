@@ -81,7 +81,7 @@ export const CATEGORY_IMAGES: Record<string, string> = {
   consumer: `${PEXELS}/47261/pexels-photo-47261.jpeg${Q}`,
   partner: `${PEXELS}/5380642/pexels-photo-5380642.jpeg${Q}`,
   iot: `${PEXELS}/7994435/pexels-photo-7994435.jpeg${Q}`,
-  security: `${PEXELS}/60504/pexels-photo-60504.jpeg${Q}`,
+  security: `${PEXELS}/3784221/pexels-photo-3784221.jpeg${Q}`,
   device: `${PEXELS}/699122/pexels-photo-699122.jpeg${Q}`,
   content: `${PEXELS}/2881229/pexels-photo-2881229.jpeg${Q}`,
 }
