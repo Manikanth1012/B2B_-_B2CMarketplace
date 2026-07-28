@@ -90,3 +90,93 @@ export interface Subscription {
   next_renewal: string | null
   price: number
 }
+
+export interface LoyaltyProgramme {
+  id: string
+  name: string
+  unit: string
+  per_unit: number
+  min_redeem: number
+  expiry_months: number
+  rounding_note: string
+  breakage: number
+  breakage_basis: string
+  liability_account: string
+  funding_note: string
+  status: string
+  launched: string
+}
+
+export interface LoyaltyTier {
+  id: string
+  name: string
+  sort_order: number
+  qualify_spend: number
+  multiplier: number
+  colour: string
+  benefits: string[]
+  note: string | null
+}
+
+export interface EarnRule {
+  id: string
+  name: string
+  scope: string
+  scope_id: string | null
+  rate: number
+  funder: string
+  split: number | null
+  status: string
+  from: string | null
+  to: string | null
+  cap_per_order: number | null
+  cap_per_month: number | null
+  audience: string
+  bonus: number | null
+  first_only: boolean
+  why: string
+}
+
+export interface RedeemOption {
+  id: string
+  name: string
+  kind: string
+  min: number
+  step: number
+  value_per: number
+  cost: string
+  audience: string
+  status: string
+  description: string
+  why: string
+}
+
+export interface LoyaltyMember {
+  id: string
+  party: string | null
+  name: string
+  kind: string
+  tier: string
+  balance: number
+  joined: string | null
+  qualify_12m: number
+  lifetime_earned: number
+  lifetime_redeemed: number
+  expiring_soon: number
+  expiring_on: string | null
+  last_activity: string | null
+}
+
+export interface LoyaltyLedgerEntry {
+  id: string
+  member: string
+  when_date: string
+  type: string
+  points: number
+  ref: string | null
+  rule_id: string | null
+  funder: string
+  seller_id: string | null
+  value: number
+  note: string
+}

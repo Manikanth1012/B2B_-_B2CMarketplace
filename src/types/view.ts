@@ -1,1 +1,1 @@
-export type View = 'home' | 'category' | 'product' | 'checkout' | 'orders' | 'subscriptions'
+export type View = 'home' | 'category' | 'product' | 'checkout' | 'orders' | 'subscriptions' | 'rewards'

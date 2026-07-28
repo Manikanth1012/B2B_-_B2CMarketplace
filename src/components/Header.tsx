@@ -119,6 +119,13 @@ export function Header({ cartCount, onCartClick, onNavigate }: HeaderProps) {
               Subscriptions
             </button>
             <button
+              onClick={() => onNavigate('rewards')}
+              className="btn-ghost hide-mobile"
+              style={{ color: 'rgba(255,255,255,0.85)', borderRadius: 'var(--radius)' }}
+            >
+              Rewards
+            </button>
+            <button
               onClick={onCartClick}
               style={{
                 position: 'relative',
@@ -239,6 +246,7 @@ export function Header({ cartCount, onCartClick, onNavigate }: HeaderProps) {
             <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: '8px', paddingTop: '8px' }}>
               <button onClick={() => { onNavigate('orders'); setMobileOpen(false) }} style={mobileLinkStyle}>My Orders</button>
               <button onClick={() => { onNavigate('subscriptions'); setMobileOpen(false) }} style={mobileLinkStyle}>Subscriptions</button>
+              <button onClick={() => { onNavigate('rewards'); setMobileOpen(false) }} style={mobileLinkStyle}>Rewards</button>
             </div>
           </div>
         )}
