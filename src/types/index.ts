@@ -589,3 +589,5 @@ export interface OperatorBanner {
   ends_at: string | null
   sort_order: number
 }
+
+export type { Endpoint, TestCall, SandboxRun, GateRow, TaskRow, TechStatus, TechCheck, Gate, ClearVerdict } from '../lib/onboarding'
