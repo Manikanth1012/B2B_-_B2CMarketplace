@@ -30,7 +30,20 @@ export type PartnerView =
   | 'pt-audit'
   | 'pt-profile'
 
-export type Persona = 'consumer' | 'operator' | 'partner'
+export type EnterpriseView =
+  | 'en-dashboard'
+  | 'en-browse'
+  | 'en-iot'
+  | 'en-security'
+  | 'en-devices'
+  | 'en-approvals'
+  | 'en-orders'
+  | 'en-subs'
+  | 'en-team'
+  | 'en-audit'
+  | 'en-profile'
+
+export type Persona = 'consumer' | 'operator' | 'partner' | 'enterprise'
 
 export interface NavigateOptions {
   category?: string

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ShoppingBag, Settings, Store, ArrowRight, Mail, Lock, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { ShoppingBag, Settings, Store, Building2, ArrowRight, Mail, Lock, Eye, EyeOff, Loader as Loader2 } from 'lucide-react'
 import type { Persona } from '../types/view'
 
 interface LoginScreenProps {
@@ -10,6 +10,7 @@ const DEMO_CREDENTIALS: Record<Persona, { email: string; password: string }> = {
   consumer: { email: 'priya.raman@example.com', password: 'demo1234' },
   operator: { email: 'anika.sharma@aventa.com', password: 'operator123' },
   partner: { email: 'rajesh.kumar@nimbussensors.com', password: 'partner123' },
+  enterprise: { email: 'vikram.shah@smartbuild.in', password: 'enterprise123' },
 }
 
 const PERSONA_META: Record<Persona, { label: string; sub: string; user: string; icon: React.ReactNode; accentBg: string; accentFg: string; accentColor: string }> = {
@@ -39,6 +40,15 @@ const PERSONA_META: Record<Persona, { label: string; sub: string; user: string; 
     accentBg: 'rgba(94,75,155,0.2)',
     accentFg: '#B8A4E8',
     accentColor: '#7C63D6',
+  },
+  enterprise: {
+    label: 'Enterprise Buyer',
+    sub: 'Procure IoT, security & devices with approvals',
+    user: 'Vikram Shah · SmartBuild Ltd',
+    icon: <Building2 size={24} />,
+    accentBg: 'rgba(0,107,107,0.25)',
+    accentFg: '#4FCDCD',
+    accentColor: '#006B6B',
   },
 }
 
@@ -73,7 +83,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     }, 700)
   }
 
-  const personaCards: Persona[] = ['consumer', 'operator', 'partner']
+  const personaCards: Persona[] = ['consumer', 'operator', 'partner', 'enterprise']
 
   return (
     <div style={{
@@ -287,6 +297,3 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     </div>
   )
 }
-
-
-export { LoginScreen }

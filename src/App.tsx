@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { View, OperatorView, PartnerView, Persona } from './types/view'
+import type { View, OperatorView, PartnerView, EnterpriseView, Persona } from './types/view'
 import { supabase } from './lib/supabase'
 import type { CartItem, Product } from './types'
 import { LoginScreen } from './components/LoginScreen'
@@ -42,12 +42,18 @@ import { PartnerPerformance } from './components/partner/PartnerPerformance'
 import { PartnerIntegrations } from './components/partner/PartnerIntegrations'
 import { PartnerSupport } from './components/partner/PartnerSupport'
 import { PartnerTeam, PartnerAudit, PartnerProfile } from './components/partner/PartnerMisc'
+import { EnterpriseShell } from './components/enterprise/EnterpriseShell'
+import { EnterpriseDashboard } from './components/enterprise/EnterpriseDashboard'
+import { EnterpriseBrowse } from './components/enterprise/EnterpriseBrowse'
+import { EnterpriseApprovals, EnterpriseOrders, EnterpriseSubs, EnterpriseMarketplace } from './components/enterprise/EnterpriseViews'
+import { EnterpriseTeam, EnterpriseAudit, EnterpriseProfile } from './components/enterprise/EnterpriseMisc'
 
 export default function App() {
   const [persona, setPersona] = useState<Persona | null>(null)
   const [view, setView] = useState<View>('home')
   const [opView, setOpView] = useState<OperatorView>('op-dashboard')
   const [ptView, setPtView] = useState<PartnerView>('pt-dashboard')
+  const [enView, setEnView] = useState<EnterpriseView>('en-dashboard')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [cartItems, setCartItems] = useState<CartItem[]>([])
@@ -119,6 +125,7 @@ export default function App() {
     setPersona(p)
     if (p === 'operator') setOpView('op-dashboard')
     else if (p === 'partner') setPtView('pt-dashboard')
+    else if (p === 'enterprise') setEnView('en-dashboard')
     else setView('home')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -128,6 +135,7 @@ export default function App() {
     setView('home')
     setOpView('op-dashboard')
     setPtView('pt-dashboard')
+    setEnView('en-dashboard')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -175,6 +183,25 @@ export default function App() {
         {ptView === 'pt-audit' && <PartnerAudit />}
         {ptView === 'pt-profile' && <PartnerProfile />}
       </PartnerShell>
+    )
+  }
+
+  // ---------- Enterprise persona ----------
+  if (persona === 'enterprise') {
+    return (
+      <EnterpriseShell view={enView} onNavigate={setEnView} onSignOut={handleSignOut}>
+        {enView === 'en-dashboard' && <EnterpriseDashboard onNavigate={setEnView} />}
+        {enView === 'en-browse' && <EnterpriseBrowse />}
+        {enView === 'en-iot' && <EnterpriseMarketplace vertical="iot" />}
+        {enView === 'en-security' && <EnterpriseMarketplace vertical="security" />}
+        {enView === 'en-devices' && <EnterpriseMarketplace vertical="device" />}
+        {enView === 'en-approvals' && <EnterpriseApprovals />}
+        {enView === 'en-orders' && <EnterpriseOrders />}
+        {enView === 'en-subs' && <EnterpriseSubs />}
+        {enView === 'en-team' && <EnterpriseTeam />}
+        {enView === 'en-audit' && <EnterpriseAudit />}
+        {enView === 'en-profile' && <EnterpriseProfile />}
+      </EnterpriseShell>
     )
   }
 
