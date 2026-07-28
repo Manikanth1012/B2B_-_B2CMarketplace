@@ -193,6 +193,20 @@ export interface ConsumerProfile {
   points: number
   payment_method: string
   email: string
+  mfa_enabled: boolean
+  active_sessions: number
+  pwd_changed: string
+}
+
+export interface ConsumerPaymentMethod {
+  id: string
+  kind: string
+  detail: string
+  holder: string
+  expires: string | null
+  is_primary: boolean
+  status: string
+  added: string
 }
 
 export interface ConsumerNotification {

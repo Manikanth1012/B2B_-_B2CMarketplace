@@ -1,9 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { User, Bell, History, Users, RotateCcw, Check, X, Plus, Minus, CircleAlert as AlertCircle, Info, Shield, Wallet, Star, Phone, Mail, MapPin, CreditCard, Clock, ChevronRight, Lock } from 'lucide-react'
+import { User, Bell, History, Users, RotateCcw, Check, X, Plus, Minus, CircleAlert as AlertCircle, Info, Shield, Wallet, Star, Phone, Mail, MapPin, CreditCard, Clock, ChevronRight, Lock, Trash2 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type {
   ConsumerProfile, ConsumerNotification, ConsumerAuditEntry,
-  ConsumerHouseholdMember, ConsumerRefund,
+  ConsumerHouseholdMember, ConsumerRefund, ConsumerPaymentMethod,
 } from '../types'
 
 type Tab = 'profile' | 'notifications' | 'activity' | 'household' | 'refunds'
@@ -195,6 +195,7 @@ function ProfileTab({ profile, showToast }: { profile: ConsumerProfile; showToas
   const [phone, setPhone] = useState(profile.msisdn)
   const [city, setCity] = useState(profile.city)
   const [saving, setSaving] = useState(false)
+  const [modal, setModal] = useState<null | 'password' | 'mfa' | 'payments' | 'sessions'>(null)
 
   const save = async () => {
     setSaving(true)
@@ -206,59 +207,415 @@ function ProfileTab({ profile, showToast }: { profile: ConsumerProfile; showToas
   }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
-      {/* Profile card */}
-      <Card icon={<User size={18} />} title="Personal details">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          <Field label="Full name" icon={<User size={14} />}>
-            <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} />
-          </Field>
-          <Field label="Email" icon={<Mail size={14} />}>
-            <input style={inputStyle} value={email} onChange={(e) => setEmail(e.target.value)} />
-          </Field>
-          <Field label="Phone" icon={<Phone size={14} />}>
-            <input style={inputStyle} value={phone} onChange={(e) => setPhone(e.target.value)} />
-          </Field>
-          <Field label="City" icon={<MapPin size={14} />}>
-            <input style={inputStyle} value={city} onChange={(e) => setCity(e.target.value)} />
-          </Field>
-          <button
-            onClick={save}
-            disabled={saving}
-            style={{
-              padding: '10px 24px', borderRadius: 'var(--radius)', border: 'none',
-              background: 'var(--brand-accent)', color: 'white', fontWeight: 600,
-              fontSize: 'var(--text-sm)', cursor: saving ? 'not-allowed' : 'pointer',
-              alignSelf: 'flex-start',
-            }}
-          >
-            {saving ? 'Saving…' : 'Save changes'}
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+        {/* Profile card */}
+        <Card icon={<User size={18} />} title="Personal details">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <Field label="Full name" icon={<User size={14} />}>
+              <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} />
+            </Field>
+            <Field label="Email" icon={<Mail size={14} />}>
+              <input style={inputStyle} value={email} onChange={(e) => setEmail(e.target.value)} />
+            </Field>
+            <Field label="Phone" icon={<Phone size={14} />}>
+              <input style={inputStyle} value={phone} onChange={(e) => setPhone(e.target.value)} />
+            </Field>
+            <Field label="City" icon={<MapPin size={14} />}>
+              <input style={inputStyle} value={city} onChange={(e) => setCity(e.target.value)} />
+            </Field>
+            <button
+              onClick={save}
+              disabled={saving}
+              style={{
+                padding: '10px 24px', borderRadius: 'var(--radius)', border: 'none',
+                background: 'var(--brand-accent)', color: 'white', fontWeight: 600,
+                fontSize: 'var(--text-sm)', cursor: saving ? 'not-allowed' : 'pointer',
+                alignSelf: 'flex-start',
+              }}
+            >
+              {saving ? 'Saving…' : 'Save changes'}
+            </button>
+          </div>
+        </Card>
+
+        {/* Account summary */}
+        <Card icon={<Star size={18} />} title="Account summary">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <SummaryRow label="Customer ID" value={profile.customer_id} />
+            <SummaryRow label="Member since" value={profile.since} />
+            <SummaryRow label="Tier" value={profile.tier} />
+            <SummaryRow label="Wallet balance" value={fmtMoney(profile.wallet)} />
+            <SummaryRow label="Reward points" value={fmtPts(profile.points)} />
+            <SummaryRow label="Payment method" value={profile.payment_method} />
+          </div>
+        </Card>
+
+        {/* Security */}
+        <Card icon={<Shield size={18} />} title="Sign-in & security">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <SecurityRow
+              icon={<Lock size={16} />}
+              label="Password"
+              value={`Last changed ${profile.pwd_changed}`}
+              action="Change"
+              onClick={() => setModal('password')}
+            />
+            <SecurityRow
+              icon={<Shield size={16} />}
+              label="Two-factor auth"
+              value={profile.mfa_enabled ? 'Enabled' : 'Not enabled'}
+              action={profile.mfa_enabled ? 'Manage' : 'Enable'}
+              positive={profile.mfa_enabled}
+              onClick={() => setModal('mfa')}
+            />
+            <SecurityRow
+              icon={<CreditCard size={16} />}
+              label="Payment methods"
+              value="3 saved (1 expired)"
+              action="Manage"
+              onClick={() => setModal('payments')}
+            />
+            <SecurityRow
+              icon={<Clock size={16} />}
+              label="Active sessions"
+              value={`${profile.active_sessions} ${profile.active_sessions === 1 ? 'device' : 'devices'}`}
+              action="Sign out all"
+              onClick={() => setModal('sessions')}
+            />
+          </div>
+        </Card>
+      </div>
+
+      {modal === 'password' && (
+        <PasswordModal profile={profile} onClose={() => setModal(null)} showToast={showToast} />
+      )}
+      {modal === 'mfa' && (
+        <MfaModal profile={profile} onClose={() => setModal(null)} showToast={showToast} />
+      )}
+      {modal === 'payments' && (
+        <PaymentsModal onClose={() => setModal(null)} showToast={showToast} />
+      )}
+      {modal === 'sessions' && (
+        <SessionsModal profile={profile} onClose={() => setModal(null)} showToast={showToast} />
+      )}
+    </>
+  )
+}
+
+/* ============================ SECURITY MODALS ============================ */
+function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 400,
+        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: 'white', borderRadius: 'var(--radius-lg)', padding: '28px',
+          maxWidth: '480px', width: '100%', maxHeight: '90vh', overflowY: 'auto',
+          boxShadow: 'var(--shadow-lg)',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 800 }}>{title}</h2>
+          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}>
+            <X size={20} />
           </button>
         </div>
-      </Card>
-
-      {/* Account summary */}
-      <Card icon={<Star size={18} />} title="Account summary">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <SummaryRow label="Customer ID" value={profile.customer_id} />
-          <SummaryRow label="Member since" value={profile.since} />
-          <SummaryRow label="Tier" value={profile.tier} />
-          <SummaryRow label="Wallet balance" value={fmtMoney(profile.wallet)} />
-          <SummaryRow label="Reward points" value={fmtPts(profile.points)} />
-          <SummaryRow label="Payment method" value={profile.payment_method} />
-        </div>
-      </Card>
-
-      {/* Security */}
-      <Card icon={<Shield size={18} />} title="Sign-in & security">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <SecurityRow icon={<Lock size={16} />} label="Password" value="Last changed 12 Jun 2026" action="Change" />
-          <SecurityRow icon={<Shield size={16} />} label="Two-factor auth" value="Enabled" action="Manage" positive />
-          <SecurityRow icon={<CreditCard size={16} />} label="Payment methods" value="3 saved (1 expired)" action="Manage" />
-          <SecurityRow icon={<Clock size={16} />} label="Active sessions" value="2 devices" action="Sign out all" />
-        </div>
-      </Card>
+        {children}
+      </div>
     </div>
+  )
+}
+
+function PasswordModal({ profile, onClose, showToast }: { profile: ConsumerProfile; onClose: () => void; showToast: (m: string) => void }) {
+  const [cur, setCur] = useState('')
+  const [nw, setNw] = useState('')
+  const [confirm, setConfirm] = useState('')
+  const [err, setErr] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  const submit = async () => {
+    setErr('')
+    if (!cur) { setErr('Enter your current password'); return }
+    if (nw.length < 12) { setErr('New password must be at least 12 characters'); return }
+    if (nw !== confirm) { setErr('Passwords do not match'); return }
+    if (nw === cur) { setErr('New password must be different from the current one'); return }
+    setSaving(true)
+    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    await supabase.from('consumer_profile').update({ pwd_changed: today }).eq('id', 'me')
+    await supabase.from('consumer_audit_log').insert({
+      id: 'AUD-CU-' + Date.now(), when_date: today + ' ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+      action: 'password.changed', label: 'Password changed', category: 'Security', severity: 'warning',
+      detail: 'Changed by the account holder',
+    })
+    setSaving(false)
+    showToast('Your password has been changed')
+    onClose()
+  }
+
+  return (
+    <Modal title="Change password" onClose={onClose}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <Field label="Current password" icon={<Lock size={14} />}>
+          <input type="password" style={inputStyle} value={cur} onChange={(e) => setCur(e.target.value)} placeholder="Enter current password" />
+        </Field>
+        <Field label="New password" icon={<Lock size={14} />}>
+          <input type="password" style={inputStyle} value={nw} onChange={(e) => setNw(e.target.value)} placeholder="At least 12 characters" />
+        </Field>
+        <Field label="Confirm new password" icon={<Lock size={14} />}>
+          <input type="password" style={inputStyle} value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Re-enter new password" />
+        </Field>
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+          Must be at least 12 characters with mixed case, a number and a symbol. Cannot match your last 5 passwords.
+        </div>
+        {err && <div style={{ fontSize: 'var(--text-sm)', color: '#DC2626', fontWeight: 600 }}>{err}</div>}
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={btnSecondary}>Cancel</button>
+          <button onClick={submit} disabled={saving} style={btnPrimary}>{saving ? 'Saving…' : 'Change password'}</button>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+function MfaModal({ profile, onClose, showToast }: { profile: ConsumerProfile; onClose: () => void; showToast: (m: string) => void }) {
+  const [enabled, setEnabled] = useState(profile.mfa_enabled)
+  const [code, setCode] = useState('')
+  const [step, setStep] = useState<'manage' | 'verify'>(profile.mfa_enabled ? 'manage' : 'verify')
+  const [saving, setSaving] = useState(false)
+
+  const toggle = async () => {
+    setSaving(true)
+    const newState = !enabled
+    await supabase.from('consumer_profile').update({ mfa_enabled: newState }).eq('id', 'me')
+    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    await supabase.from('consumer_audit_log').insert({
+      id: 'AUD-CU-' + Date.now(), when_date: today + ' ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+      action: newState ? 'mfa.enabled' : 'mfa.disabled',
+      label: newState ? 'Two-factor auth enabled' : 'Two-factor auth disabled',
+      category: 'Security', severity: 'warning',
+      detail: 'Changed by the account holder',
+    })
+    setEnabled(newState)
+    setSaving(false)
+    showToast(newState ? 'Two-factor auth is now on' : 'Two-factor auth is now off')
+    if (newState) onClose()
+  }
+
+  const verify = async () => {
+    if (code.length !== 6) { showToast('Enter the 6-digit code from your authenticator app'); return }
+    await toggle()
+  }
+
+  return (
+    <Modal title="Two-factor authentication" onClose={onClose}>
+      {step === 'manage' ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', background: '#DCFCE7', borderRadius: 'var(--radius)' }}>
+            <Shield size={24} style={{ color: '#16A34A' }} />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>Two-factor auth is on</div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+                You need a code from your authenticator app to sign in.
+              </div>
+            </div>
+          </div>
+          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+            Turning it off means anyone with your password can sign in. We recommend keeping it on.
+          </div>
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+            <button onClick={onClose} style={btnSecondary}>Close</button>
+            <button onClick={toggle} disabled={saving} style={{ ...btnPrimary, background: '#DC2626' }}>
+              {saving ? 'Working…' : 'Turn off 2FA'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+            Scan the QR code in your authenticator app (Google Authenticator, Authy, etc.) and enter the 6-digit code it shows.
+          </div>
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '24px', background: 'var(--bg-alt)', borderRadius: 'var(--radius)',
+            border: '2px dashed var(--border)',
+          }}>
+            <Shield size={48} style={{ color: 'var(--brand-accent)' }} />
+          </div>
+          <Field label="6-digit code" icon={<Lock size={14} />}>
+            <input style={inputStyle} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" maxLength={6} />
+          </Field>
+          <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+            <button onClick={onClose} style={btnSecondary}>Cancel</button>
+            <button onClick={verify} disabled={saving} style={btnPrimary}>{saving ? 'Verifying…' : 'Verify and enable'}</button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+function PaymentsModal({ onClose, showToast }: { onClose: () => void; showToast: (m: string) => void }) {
+  const [payments, setPayments] = useState<ConsumerPaymentMethod[]>([])
+  const [loading, setLoading] = useState(true)
+  const [adding, setAdding] = useState(false)
+  const [newKind, setNewKind] = useState('Visa')
+  const [newDetail, setNewDetail] = useState('')
+  const [newHolder, setNewHolder] = useState('')
+  const [newExp, setNewExp] = useState('')
+
+  const load = useCallback(async () => {
+    const { data } = await supabase.from('consumer_payment_methods').select('*').order('added')
+    if (data) setPayments(data as ConsumerPaymentMethod[])
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  const setPrimary = async (id: string) => {
+    await supabase.from('consumer_payment_methods').update({ is_primary: false }).neq('id', '')
+    await supabase.from('consumer_payment_methods').update({ is_primary: true }).eq('id', id)
+    load()
+    showToast('Primary payment method updated')
+  }
+
+  const remove = async (id: string) => {
+    await supabase.from('consumer_payment_methods').delete().eq('id', id)
+    load()
+    showToast('Payment method removed')
+  }
+
+  const add = async () => {
+    if (!newDetail || !newHolder) { showToast('Card number and cardholder name are required'); return }
+    const id = 'PM-' + Date.now()
+    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    await supabase.from('consumer_payment_methods').insert({
+      id, kind: newKind, detail: '•••• ' + newDetail.slice(-4), holder: newHolder,
+      expires: newExp || null, is_primary: false, status: 'active', added: today,
+    })
+    setNewDetail(''); setNewHolder(''); setNewExp('')
+    setAdding(false)
+    load()
+    showToast('Payment method added')
+  }
+
+  return (
+    <Modal title="Payment methods" onClose={onClose}>
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-secondary)' }}>Loading…</div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {payments.map((p) => (
+            <div key={p.id} style={{
+              display: 'flex', gap: '12px', alignItems: 'center', padding: '14px',
+              border: '1px solid var(--border)', borderRadius: 'var(--radius)',
+            }}>
+              <CreditCard size={20} style={{ color: 'var(--text-tertiary)' }} />
+              <div style={{ flex: 1 }}>
+                <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>
+                  {p.kind} {p.detail}
+                  {p.is_primary && <span style={{ marginLeft: '8px', fontSize: 'var(--text-xs)', color: 'var(--brand-accent)' }}>Primary</span>}
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                  {p.holder}{p.expires ? ` · expires ${p.expires}` : ''} · added {p.added}
+                </div>
+                {p.status === 'expired' && <span style={{ fontSize: 'var(--text-xs)', color: '#DC2626', fontWeight: 600 }}>Expired</span>}
+              </div>
+              {!p.is_primary && p.status === 'active' && (
+                <button onClick={() => setPrimary(p.id)} style={btnSmall}>Make primary</button>
+              )}
+              <button onClick={() => remove(p.id)} style={{ ...btnSmall, color: '#DC2626', borderColor: '#FCA5A5' }}>
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+
+          {adding ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '16px', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
+              <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>Add a payment method</div>
+              <select style={inputStyle} value={newKind} onChange={(e) => setNewKind(e.target.value)}>
+                <option>Visa</option><option>Mastercard</option><option>Amex</option><option>Bill to mobile</option>
+              </select>
+              <input style={inputStyle} value={newDetail} onChange={(e) => setNewDetail(e.target.value)} placeholder="Card number" />
+              <input style={inputStyle} value={newHolder} onChange={(e) => setNewHolder(e.target.value)} placeholder="Cardholder name" />
+              <input style={inputStyle} value={newExp} onChange={(e) => setNewExp(e.target.value)} placeholder="MM/YYYY" />
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+                <button onClick={() => setAdding(false)} style={btnSecondary}>Cancel</button>
+                <button onClick={add} style={btnPrimary}>Add</button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setAdding(true)} style={{
+              display: 'inline-flex', alignItems: 'center', gap: '8px', alignSelf: 'flex-start',
+              padding: '10px 20px', borderRadius: 'var(--radius)', border: '1px solid var(--brand-accent)',
+              background: 'white', color: 'var(--brand-accent)', fontWeight: 600,
+              fontSize: 'var(--text-sm)', cursor: 'pointer',
+            }}>
+              <Plus size={16} /> Add payment method
+            </button>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
+            <button onClick={onClose} style={btnSecondary}>Done</button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  )
+}
+
+function SessionsModal({ profile, onClose, showToast }: { profile: ConsumerProfile; onClose: () => void; showToast: (m: string) => void }) {
+  const [count, setCount] = useState(profile.active_sessions)
+  const [saving, setSaving] = useState(false)
+
+  const signOutAll = async () => {
+    setSaving(true)
+    await supabase.from('consumer_profile').update({ active_sessions: 0 }).eq('id', 'me')
+    const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+    await supabase.from('consumer_audit_log').insert({
+      id: 'AUD-CU-' + Date.now(), when_date: today + ' ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+      action: 'sessions.revoked', label: 'All sessions signed out', category: 'Security', severity: 'warning',
+      detail: 'All devices signed out by the account holder',
+    })
+    setCount(0)
+    setSaving(false)
+    showToast('All devices have been signed out')
+    onClose()
+  }
+
+  return (
+    <Modal title="Active sessions" onClose={onClose}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '12px', padding: '16px',
+          background: 'var(--bg-alt)', borderRadius: 'var(--radius)',
+        }}>
+          <Clock size={24} style={{ color: 'var(--brand-accent)' }} />
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>
+              {count} {count === 1 ? 'device' : 'devices'} currently signed in
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+              This includes this browser and any other devices where you are signed in.
+            </div>
+          </div>
+        </div>
+        <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+          Signing out all devices means you will need to enter your password again on every device, including this one.
+        </div>
+        <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+          <button onClick={onClose} style={btnSecondary}>Cancel</button>
+          <button onClick={signOutAll} disabled={saving || count === 0} style={{ ...btnPrimary, background: '#DC2626' }}>
+            {saving ? 'Signing out…' : 'Sign out all devices'}
+          </button>
+        </div>
+      </div>
+    </Modal>
   )
 }
 
@@ -613,6 +970,25 @@ const inputStyle: React.CSSProperties = {
   transition: 'border-color 200ms ease',
 }
 
+const btnPrimary: React.CSSProperties = {
+  padding: '10px 24px', borderRadius: 'var(--radius)', border: 'none',
+  background: 'var(--brand-accent)', color: 'white', fontWeight: 600,
+  fontSize: 'var(--text-sm)', cursor: 'pointer',
+}
+
+const btnSecondary: React.CSSProperties = {
+  padding: '10px 24px', borderRadius: 'var(--radius)', border: '1px solid var(--border)',
+  background: 'white', color: 'var(--text-secondary)', fontWeight: 600,
+  fontSize: 'var(--text-sm)', cursor: 'pointer',
+}
+
+const btnSmall: React.CSSProperties = {
+  padding: '6px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)',
+  background: 'white', color: 'var(--text-secondary)', fontWeight: 600,
+  fontSize: 'var(--text-xs)', cursor: 'pointer',
+  display: 'inline-flex', alignItems: 'center', gap: '4px',
+}
+
 const thStyle: React.CSSProperties = {
   textAlign: 'left',
   padding: '10px 12px',
@@ -671,7 +1047,7 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   )
 }
 
-function SecurityRow({ icon, label, value, action, positive }: { icon: React.ReactNode; label: string; value: string; action: string; positive?: boolean }) {
+function SecurityRow({ icon, label, value, action, positive, onClick }: { icon: React.ReactNode; label: string; value: string; action: string; positive?: boolean; onClick?: () => void }) {
   return (
     <div style={{
       display: 'flex', gap: '12px', alignItems: 'center',
@@ -682,11 +1058,15 @@ function SecurityRow({ icon, label, value, action, positive }: { icon: React.Rea
         <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{label}</div>
         <div style={{ fontSize: 'var(--text-xs)', color: positive ? '#16A34A' : 'var(--text-tertiary)' }}>{value}</div>
       </div>
-      <button style={{
+      <button onClick={onClick} style={{
         padding: '6px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)',
         background: 'white', color: 'var(--text-secondary)', fontWeight: 600,
-        fontSize: 'var(--text-xs)', cursor: 'pointer',
-      }}>
+        fontSize: 'var(--text-xs)', cursor: onClick ? 'pointer' : 'default',
+        transition: 'background 150ms ease',
+      }}
+      onMouseEnter={(e) => { if (onClick) e.currentTarget.style.background = 'var(--bg-alt)' }}
+      onMouseLeave={(e) => { if (onClick) e.currentTarget.style.background = 'white' }}
+      >
         {action}
       </button>
     </div>
@@ -707,3 +1087,6 @@ function StatBox({ icon, label, value }: { icon: React.ReactNode; label: string;
     </div>
   )
 }
+
+
+export { AccountView }
