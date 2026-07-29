@@ -5,6 +5,7 @@ import type { CartItem, Product } from './types'
 import { LoginScreen } from './components/LoginScreen'
 import { PublicShell } from './components/public/PublicShell'
 import { LandingPage } from './components/public/LandingPage'
+import { AudiencePage } from './components/public/AudiencePage'
 import { Header } from './components/Header'
 import { Hero } from './components/Hero'
 import { CategoryStrip } from './components/CategoryStrip'
@@ -156,7 +157,11 @@ export default function App() {
       >
         {surface.page === 'landing' && <LandingPage onNavigate={(page) => { setSurface({ kind: 'public', page }); window.scrollTo({ top: 0 }) }} />}
         {surface.page !== 'landing' && (
-          <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--text-secondary)' }}>{surface.page} page</div>
+          <AudiencePage
+            page={surface.page}
+            onSignIn={handleLogin}
+            onApply={() => { handleLogin({ persona: 'partner', partnerId: 'PTR-1004' }); setPtView('pt-onboarding') }}
+          />
         )}
       </PublicShell>
     )
