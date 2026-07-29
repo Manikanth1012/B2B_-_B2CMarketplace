@@ -137,10 +137,13 @@ async function findRuns(file, axis, threshold = 28, minRun = 40) {
 }
 
 async function sliceGrid(file, cols, rows, out, prefix, size) {
+  /* Detect BOTH axes on every sheet, including single-row ones. Taking the
+     full height for a one-row sheet would keep its top and bottom margin,
+     leaving a navy band above and below every card. */
   const xs = await findRuns(file, 'x')
-  const ys = rows === 1 ? [[0, (await sharp(file).metadata()).height]] : await findRuns(file, 'y')
+  const ys = await findRuns(file, 'y')
   if (xs.length !== cols) throw new Error(`${file}: found ${xs.length} columns, expected ${cols}`)
-  if (rows > 1 && ys.length !== rows) throw new Error(`${file}: found ${ys.length} rows, expected ${rows}`)
+  if (ys.length !== rows) throw new Error(`${file}: found ${ys.length} rows, expected ${rows}`)
 
   const names = []
   let n = 0
@@ -157,18 +160,6 @@ async function sliceGrid(file, cols, rows, out, prefix, size) {
     }
   }
   return names
-}
-
-/* ---------- alt text ----------
-   Derived from the source filename, which describes the subject. */
-function altFromFilename(f) {
-  return f
-    .replace(/^Professional_product_photograph_of_(a|an)_/, '')
-    .replace(/-\d+\.png$/, '')
-    .replace(/_/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .replace(/^./, (c) => c.toUpperCase())
 }
 
 /* ---------- run ---------- */
@@ -194,14 +185,34 @@ for (const mark of ['6d-logo-white.png', '6d-logo.png']) {
   copyFileSync(join('assets', 'brand', mark), join(BRAND_OUT, mark))
 }
 
-/* 12 enterprise product photographs, chosen deterministically by sorted name
-   so a re-run picks the same twelve. */
-const photos = readdirSync(SRC).filter((f) => f.startsWith('Professional_')).sort().slice(0, 12)
+/* Twelve enterprise photographs, chosen by an identifying fragment of the
+   filename and paired with hand-written alt text.
+   The source filenames are truncated mid-word — "..._a_compact_GPS_t-1785312585611.png"
+   — so deriving alt from them yields "compact GPS t". A screen reader user
+   deserves better, and a length check would not catch it. */
+const ENTERPRISE_PICKS = [
+  ['IoT_ga',  'IoT gateway for connecting field devices'],
+  ['LoRa_g',  'LoRa gateway for long-range sensor networks'],
+  ['BLE_be',  'Bluetooth low-energy beacon'],
+  ['GPS_t',   'Compact GPS asset tracker'],
+  ['PIR_mo',  'PIR motion sensor'],
+  ['therm',   'Compact thermal sensor'],
+  ['PTZ_se',  'Pan-tilt-zoom security camera'],
+  ['Networ',  'Managed network switch'],
+  ['rac',     'Full-size server rack'],
+  ['EV_cha',  'EV charging point'],
+  ['POS_te',  'Point-of-sale terminal'],
+  ['NFC_pa',  'NFC contactless payment reader'],
+]
+
+const files = readdirSync(SRC).filter((f) => f.startsWith('Professional_'))
 const enterprise = []
-for (const [i, f] of photos.entries()) {
+for (const [i, [fragment, alt]] of ENTERPRISE_PICKS.entries()) {
+  const f = files.find((x) => x.includes(fragment))
+  if (!f) throw new Error(`no source image matching "${fragment}"`)
   const name = `product-${String(i + 1).padStart(2, '0')}.webp`
   await sharp(join(SRC, f)).resize(320, 320, { fit: 'cover' }).webp({ quality: 80 }).toFile(join(OUT, name))
-  enterprise.push({ src: `/assets/mp/${name}`, alt: altFromFilename(f) })
+  enterprise.push({ src: `/assets/mp/${name}`, alt })
 }
 
 /* The collage splits by audience: its first three rows (18 cells) are consumer
@@ -463,8 +474,14 @@ describe('asset manifest', () => {
     expect(Math.round(totalKb)).toBeLessThan(2048)
   })
 
-  it('gives every product tile real alt text', () => {
-    const bad = [...RETAIL_PRODUCTS, ...ENTERPRISE_PRODUCTS].filter(t => !t.alt || t.alt.trim().length < 3)
+  it('gives every product tile real alt text, not a truncated filename', () => {
+    /* The source filenames are cut mid-word, so a length check alone would
+       accept "compact GPS t". Require a whole final word. */
+    const bad = [...RETAIL_PRODUCTS, ...ENTERPRISE_PRODUCTS].filter(t => {
+      const a = (t.alt || '').trim()
+      const lastWord = a.split(' ').pop() ?? ''
+      return a.length < 6 || lastWord.length < 3
+    })
     expect(bad).toEqual([])
   })
 
@@ -1139,6 +1156,16 @@ does not rewrite. The file lives at the repo root under `assets/brand/`, not und
 `dist/assets/brand/` contains only `image.png` and the logo 404s in a production build. It renders
 in dev because Vite's dev server also serves the project root, which is why nobody has noticed.
 Task 1 copies both marks into `public/`, since making assets shippable is exactly that task's job.
+
+**Two plan bugs found in the pre-flight scan and fixed before execution:**
+
+1. `sliceGrid` short-circuited row detection for single-row sheets, taking the sheet's full height.
+   That keeps the top and bottom margin, so every carousel card would have carried a navy band.
+   Both axes are now detected on every sheet.
+2. Alt text was derived from the source filename, but those filenames are truncated mid-word —
+   `..._a_compact_GPS_t-1785312585611.png` yields "compact GPS t". The twelve enterprise products
+   are now chosen by an identifying fragment and paired with written alt text, and the manifest
+   test requires a whole final word rather than merely a non-empty string.
 
 **Three risks worth naming:**
 
