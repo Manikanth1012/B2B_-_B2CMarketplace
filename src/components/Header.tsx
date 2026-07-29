@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, ShoppingCart, Menu, X, ChevronDown, User, Bell, Shield, LogOut, Star } from 'lucide-react'
+import { Search, ShoppingCart, Menu, X, ChevronDown, User, Bell, Shield, LogOut, Star, BookOpen } from 'lucide-react'
 import type { Category } from '../types'
 import { supabase } from '../lib/supabase'
 
@@ -155,6 +155,7 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut }: Header
                     <AcctItem icon={<Bell size={16} />} label="Notification preferences" onClick={() => { onNavigate('account'); setAcctOpen(false) }} />
                     <AcctItem icon={<Shield size={16} />} label="Sign-in & security" onClick={() => { onNavigate('account'); setAcctOpen(false) }} />
                     <AcctItem icon={<Star size={16} />} label="My permissions" onClick={() => { onNavigate('account'); setAcctOpen(false) }} />
+                    <AcctItem icon={<BookOpen size={16} />} label="How things work" onClick={() => { onNavigate('kb'); setAcctOpen(false) }} />
                   </div>
                   <div style={{ padding: '4px', borderTop: '1px solid var(--border-light)' }}>
                     {onSignOut && <AcctItem icon={<LogOut size={16} />} label="Sign out" onClick={() => { onSignOut(); setAcctOpen(false) }} />}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, Search, Shield, Cpu, Monitor, ShoppingCart, SquareCheck as CheckSquare, Users, History, User, ChevronDown, Bell as BellIcon, LogOut, Menu, X, Building2 } from 'lucide-react'
+import { LayoutDashboard, Search, Shield, Cpu, Monitor, ShoppingCart, SquareCheck as CheckSquare, Users, History, User, ChevronDown, Bell as BellIcon, LogOut, Menu, X, Building2, BookOpen } from 'lucide-react'
 import type { EnterpriseView } from '../../types/view'
 
 interface EnterpriseShellProps {
@@ -39,6 +39,7 @@ const NAV_SECTIONS: { label: string; items: { id: EnterpriseView; label: string;
       { id: 'en-team', label: 'Team & Roles', icon: <Users size={18} /> },
       { id: 'en-audit', label: 'Audit Log', icon: <History size={18} /> },
       { id: 'en-profile', label: 'My Details', icon: <User size={18} /> },
+      { id: 'en-kb', label: 'Knowledge base', icon: <BookOpen size={18} /> },
     ]
   },
 ]

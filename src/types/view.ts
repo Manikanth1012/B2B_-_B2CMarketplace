@@ -1,4 +1,4 @@
-export type View = 'home' | 'category' | 'product' | 'checkout' | 'orders' | 'subscriptions' | 'rewards' | 'account'
+export type View = 'home' | 'category' | 'product' | 'checkout' | 'orders' | 'subscriptions' | 'rewards' | 'account' | 'kb'
 
 export type OperatorView =
   | 'op-dashboard'
@@ -14,6 +14,7 @@ export type OperatorView =
   | 'op-channels'
   | 'op-roles'
   | 'op-audit'
+  | 'op-kb'
 
 export type PartnerView =
   | 'pt-dashboard'
@@ -29,6 +30,7 @@ export type PartnerView =
   | 'pt-team'
   | 'pt-audit'
   | 'pt-profile'
+  | 'pt-kb'
 
 export type EnterpriseView =
   | 'en-dashboard'
@@ -42,6 +44,7 @@ export type EnterpriseView =
   | 'en-team'
   | 'en-audit'
   | 'en-profile'
+  | 'en-kb'
 
 export type Persona = 'consumer' | 'operator' | 'partner' | 'enterprise'
 

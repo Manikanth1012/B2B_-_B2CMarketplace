@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
   LayoutDashboard, Route, Package, ShoppingCart, Wallet, FileText,
   BarChart3, Plug, LifeBuoy, Users, History, User, ChevronDown,
-  Search, Bell as BellIcon, LogOut, Menu, X, Store
+  Search, Bell as BellIcon, LogOut, Menu, X, Store, BookOpen
 } from 'lucide-react'
 import type { PartnerView } from '../../types/view'
 
@@ -50,6 +50,7 @@ const NAV_SECTIONS: { label: string; items: { id: PartnerView; label: string; ic
       { id: 'pt-team', label: 'Your Team', icon: <Users size={18} /> },
       { id: 'pt-audit', label: 'Audit Log', icon: <History size={18} /> },
       { id: 'pt-profile', label: 'My Details', icon: <User size={18} /> },
+      { id: 'pt-kb', label: 'Knowledge base', icon: <BookOpen size={18} /> },
     ]
   },
 ]
