@@ -1325,6 +1325,11 @@ The anonymous surface the React application opens on, before anyone signs in. De
 | 29.10 | As a developer I want the carousel's rules testable without a browser | `nextIndex`, `prevIndex` and `shouldAdvance` are pure functions with 12 tests and no DOM |
 | 29.11 | As a developer I want asset paths in one place | Components import from `lib/assets.ts`; no component hardcodes a path |
 | 29.12 | As a developer I want the public front not to disturb the consoles | A `Surface` union in `App.tsx`, no router; the four personas are untouched |
+| 29.13 | As a visitor I want the page for my kind of buyer to speak to me | Three audience pages — Partners, Retail, Enterprise — each with its own copy, imagery and rail |
+| 29.14 | As a visitor I want signing in from an audience page to land me in the right console | Each CTA calls the same `handleLogin(Session)` the login screen calls |
+| 29.15 | As a prospective seller I want applying to be one step, not a hunt | *Apply to sell* opens the seller console on its Onboarding screen |
+| 29.16 | As a visitor I want to leave a console the way I came in | Signing out of any of the three consoles returns to the landing page |
+| 29.17 | As a visitor on a slow connection I want the first screen to be cheap | Above-the-fold images measured at 338 KB against a 400 KB budget |
 
 **Decisions worth keeping**
 
@@ -1345,3 +1350,7 @@ The anonymous surface the React application opens on, before anyone signs in. De
    reachable through the rails and the audience pages, so nothing is lost.
 8. **No router.** A `Surface` union costs one state field; a router would have rewritten the
    navigation of four working consoles to add three public pages.
+9. **One component, three configurations.** The audience pages differ in copy, imagery and
+   destination — not structure. Three components would drift apart at the first change.
+10. **A public CTA signs in by the same door as the login screen.** Both call `handleLogin` with
+    the same `Session`, so there is one path into a console and not two to keep in step.

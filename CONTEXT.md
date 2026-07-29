@@ -104,13 +104,21 @@ consoles had to change.
 |-------|------|-----------|
 | Shell | `components/public/PublicShell.tsx` | Sticky header (Partners / Retail / Enterprise), footer, Demo sign-in |
 | Landing page | `components/public/LandingPage.tsx` | Hero + carousel, four-banner promo strip, two product rails |
+| Audience pages | `components/public/AudiencePage.tsx` | One component, three configurations — Partners, Retail, Enterprise |
 | Carousel | `components/public/Carousel.tsx` | Auto-advancing slides, arrows, dots, stop control |
 | Product rail | `components/public/ProductRail.tsx` | Horizontally scrolling tiles with labels |
 | Carousel rules | `lib/carousel.ts` | `nextIndex`, `prevIndex`, `shouldAdvance`, `SLIDE_MS` — pure, 12 tests |
 | Asset manifest | `lib/assets.ts` | `HERO`, `CAROUSEL`, `BANNERS`, `RETAIL_PRODUCTS`, `ENTERPRISE_PRODUCTS` — 6 tests |
 
 Images live in `public/assets/mp/` (72 webp files) and are referenced only through `lib/assets.ts`,
-so nothing else hardcodes a path.
+so nothing else hardcodes a path. Above-the-fold payload on the landing page measures **338 KB**
+against a 400 KB budget; only the first carousel slide is `eager`.
+
+The three audience pages are **one component with three configurations** — they differ in copy,
+imagery and destination, not structure, and three components would drift. Each CTA calls the same
+`handleLogin(Session)` the login screen calls, so signing in from an audience page follows exactly
+the path the login screen follows. *Apply to sell* additionally opens the seller console on its
+Onboarding screen.
 
 ### Accessibility decisions worth keeping
 These are load-bearing — changing them reintroduces a defect that was specifically fixed:
