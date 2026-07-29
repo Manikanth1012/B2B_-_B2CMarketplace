@@ -4,6 +4,7 @@ import { supabase } from './lib/supabase'
 import type { CartItem, Product } from './types'
 import { LoginScreen } from './components/LoginScreen'
 import { PublicShell } from './components/public/PublicShell'
+import { LandingPage } from './components/public/LandingPage'
 import { Header } from './components/Header'
 import { Hero } from './components/Hero'
 import { CategoryStrip } from './components/CategoryStrip'
@@ -153,9 +154,10 @@ export default function App() {
         onNavigate={(page) => { setSurface({ kind: 'public', page }); window.scrollTo({ top: 0 }) }}
         onDemoSignIn={() => setSurface({ kind: 'login' })}
       >
-        <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--text-secondary)' }}>
-          {surface.page} page
-        </div>
+        {surface.page === 'landing' && <LandingPage onNavigate={(page) => { setSurface({ kind: 'public', page }); window.scrollTo({ top: 0 }) }} />}
+        {surface.page !== 'landing' && (
+          <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--text-secondary)' }}>{surface.page} page</div>
+        )}
       </PublicShell>
     )
   }
