@@ -285,7 +285,7 @@ Expected: four personas listed with counts summing to 33, and `kb_tours: HTTP 20
 - Test: `src/lib/kb.test.ts`
 
 **Interfaces:**
-- Consumes: `Persona` from `src/types/view.ts`.
+- Consumes: nothing. `persona` is typed `string`, not the `Persona` union, so this module keeps zero imports and stays pure. Later tasks pass persona as a string for the same reason.
 - Produces:
   ```ts
   export type KbStatus = 'published' | 'held'
@@ -340,7 +340,7 @@ describe('filterArticles', () => {
   const all = [
     art(),
     art({ id: 'KB-2', kind: 'policy', title: 'Listing rules', tags: ['catalogue'], summary: 'What is checked' }),
-    art({ id: 'KB-3', kind: 'howto', title: 'Run a settlement', tags: ['finance'], summary: 'Paying sellers' }),
+    art({ id: 'KB-3', kind: 'howto', title: 'Run a settlement', tags: ['finance'], summary: 'Paying out to accounts' }),
   ]
 
   it('returns everything when nothing is set', () => {
@@ -488,7 +488,7 @@ export function canAct(a: KbArticle, myRole: string | null): boolean {
 - [ ] **Step 4: Run tests**
 
 Run: `npm test`
-Expected: PASS — 23 existing plus 15 new = 38.
+Expected: PASS — 23 existing plus 13 new = 36.
 
 - [ ] **Step 5: Typecheck and commit**
 
@@ -838,7 +838,7 @@ The consumer wrapper is needed because consumer views render inside `<main>` wit
 ```bash
 npx tsc --noEmit && npm test && npm run build
 ```
-Expected: 0 errors; 38 tests; build succeeds.
+Expected: 0 errors; 36 tests; build succeeds.
 
 - [ ] **Step 5: Verify in the browser**
 
@@ -1000,7 +1000,7 @@ Then in `App.tsx`, pass it: `<Header … currentView={view} />`.
 ```bash
 npx tsc --noEmit && npm test && npm run build
 ```
-Expected: 0 errors; 38 tests; build succeeds.
+Expected: 0 errors; 36 tests; build succeeds.
 
 - [ ] **Step 5: Verify both branches in the browser**
 
@@ -1155,7 +1155,7 @@ Leave the operator's call without `feedbackAs`:
 ```bash
 npx tsc --noEmit && npm test && npm run build
 ```
-Expected: 0 errors; 38 tests; build succeeds.
+Expected: 0 errors; 36 tests; build succeeds.
 
 - [ ] **Step 5: Verify, then clean up the row you created**
 
@@ -1256,7 +1256,7 @@ Add the switch immediately above the existing status filter controls:
 ```bash
 npx tsc --noEmit && npm test && npm run build
 ```
-Expected: 0 errors; 38 tests; build succeeds.
+Expected: 0 errors; 36 tests; build succeeds.
 
 - [ ] **Step 4: Verify the counts do not move**
 
@@ -1337,7 +1337,7 @@ describe('view bindings in the migration', () => {
 - [ ] **Step 2: Run it**
 
 Run: `npm test`
-Expected: PASS — 41 tests. If "every non-null view is a real view id" fails, the listed ids are wrong in `PROTO_VIEW_MAP`; fix the extractor and regenerate, do not edit the SQL by hand.
+Expected: PASS — 39 tests. If "every non-null view is a real view id" fails, the listed ids are wrong in `PROTO_VIEW_MAP`; fix the extractor and regenerate, do not edit the SQL by hand.
 
 - [ ] **Step 3: Write the integration test**
 
