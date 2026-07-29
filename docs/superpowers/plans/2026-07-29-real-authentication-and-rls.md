@@ -1,0 +1,178 @@
+# Plan: Real authentication and scoped RLS
+
+Replace the client-side credential comparison with Supabase Auth, and replace the
+`TO anon, authenticated USING (true)` policies with predicates keyed to the signed-in
+user — so that the anon key stops being a full read/write credential for the whole
+database.
+
+**Status: blocked on two things outside the code.** See *Prerequisites*. Nothing in this
+plan can be executed, let alone verified, until both are cleared.
+
+---
+
+## Why
+
+Today every one of the **128 policies** across **43 tables** grants `TO anon, authenticated`
+with `USING (true)`; **89 of them cover INSERT, UPDATE or DELETE**. Sign-in is a string
+comparison in `LoginScreen.tsx` against credentials compiled into the bundle, and there is
+not a single `supabase.auth` call anywhere in `src/`.
+
+The consequence is not subtle: the anon key shipped in `dist/` is equivalent to full read
+and write access to settlement statements, the audit log, the user directory and every
+order. The hash-chained audit trail can be rewritten by anyone who opens DevTools. RLS is
+enabled everywhere and constrains nothing.
+
+## Prerequisites
+
+1. **Network egress.** This environment cannot reach the project host. The integration
+   suite fails with `Host not in allowlist: playukebhnkrdrcsorhj.supabase.co. Add this host
+   to your network egress settings to allow access.` Add it to the environment's network
+   settings (see code.claude.com/docs/en/claude-code-on-the-web).
+2. **A credential that can alter policy.** The anon key cannot run DDL. `CREATE POLICY`,
+   `DROP POLICY` and `ALTER TABLE` need either the **service_role** key or the Postgres
+   connection string. Supply one, or apply the migrations from the Supabase dashboard.
+
+A third question needs an answer before Task 2 can be written: **who creates the auth
+users** — a seeding script run with service_role, or a human in the dashboard.
+
+## Global constraints
+
+- **The public front must keep working without a session.** `CategoryStrip` and
+  `ProductGrid` query `categories` and `products` on the landing surface, before anyone
+  signs in. Those two tables keep an anon SELECT policy. Everything else loses anon.
+- **No console rewrite.** Policies change; component queries do not, except where a query
+  genuinely reaches data the signed-in persona should not see.
+- **Every step is reversible.** Each migration ships with its `DROP POLICY` counterpart, so
+  a bad policy can be rolled back without restoring a backup.
+- **The demo stays demonstrable.** Four known personas, four known passwords, still
+  pre-filled on the login cards. The change is that the password now buys a real JWT.
+
+---
+
+## Task 1: The identity table
+
+**Files:** create `supabase/migrations/<ts>_auth_profiles.sql`
+
+A table mapping `auth.uid()` to a persona, because a policy cannot read a persona out of
+thin air and the JWT should not be trusted to carry one it can set itself.
+
+```sql
+create table profiles (
+  id uuid primary key references auth.users(id) on delete cascade,
+  persona text not null check (persona in ('consumer','operator','partner','enterprise')),
+  partner_id text references partners(id),
+  created_at timestamptz not null default now()
+);
+alter table profiles enable row level security;
+create policy "own_profile_read" on profiles for select to authenticated using (id = auth.uid());
+```
+
+Plus a `security definer` helper both readable and cheap to call from a policy:
+
+```sql
+create or replace function current_persona() returns text
+  language sql stable security definer set search_path = public as
+$$ select persona from profiles where id = auth.uid() $$;
+
+create or replace function current_partner_id() returns text
+  language sql stable security definer set search_path = public as
+$$ select partner_id from profiles where id = auth.uid() $$;
+```
+
+**Verify:** `select current_persona()` returns null when unauthenticated, the persona when
+signed in.
+
+## Task 2: The four auth users
+
+**Depends on the prerequisite decision above.** Create one `auth.users` row per persona with
+the passwords `DEMO_CREDENTIALS` already documents, and a matching `profiles` row. The
+partner user carries `partner_id = 'PTR-1004'`, which is what `LoginScreen.tsx:80`,
+`AudiencePage.tsx:40` and `partner/data.ts` already agree on.
+
+**Verify:** `signInWithPassword` succeeds for all four; `current_persona()` returns the
+right value for each.
+
+## Task 3: Sign-in through Supabase
+
+**Files:** modify `src/components/LoginScreen.tsx`, `src/lib/supabase.ts`, `src/App.tsx`
+
+- `supabase.ts`: `persistSession: true` — it is `false` today, so a refresh would drop the
+  session and strand the user mid-console.
+- `LoginScreen`: replace the `setTimeout` string comparison with
+  `supabase.auth.signInWithPassword`, and build the `Session` from `profiles` rather than
+  from the card that was clicked. Keep the pre-filled credentials and the persona cards; the
+  card now selects which credentials to prefill, not which console to open.
+- `App.tsx`: restore a session on mount via `getSession`, and sign out through
+  `supabase.auth.signOut()` in `handleSignOut`.
+
+**The failure this prevents:** deriving the persona from the clicked card means a user who
+signs in with operator credentials from the consumer card gets a consumer session. The
+persona must come from the database.
+
+**Verify:** all four personas sign in; a page refresh keeps the console open; sign-out
+returns to the landing page and `getSession()` is null.
+
+## Task 4: Public read, then everything else locked
+
+**Files:** create `supabase/migrations/<ts>_scoped_rls_public.sql`
+
+Drop the 128 permissive policies. Re-add anon SELECT for exactly the tables the public
+front reads — `categories`, `products`, `kb_articles` — and nothing more.
+
+**Verify:** signed out, the landing page and both rails still render; `orders` returns an
+empty set rather than rows.
+
+## Task 5: Per-persona policies
+
+**Files:** create `supabase/migrations/<ts>_scoped_rls_personas.sql`
+
+Written table by table, not with a loop, because the rules genuinely differ:
+
+| Table group | Rule |
+|---|---|
+| `consumer_*`, `cart_items`, `orders`, `subscriptions`, `loyalty_members`, `loyalty_ledger` | Owner reads and writes own rows; operator reads all |
+| `partners`, `partner_endpoints`, `onboarding_*`, `settlement_statements` | Partner reads and writes where `partner_id = current_partner_id()`; operator reads and writes all |
+| `operator_*` except the audit log | `current_persona() = 'operator'` |
+| `operator_audit_log`, `consumer_audit_log` | **INSERT and SELECT only, for everyone. No UPDATE, no DELETE, for any role.** A hash-chained log that can be edited is decoration |
+| `products`, `categories`, `kb_articles` | Anon and authenticated SELECT; operator writes |
+
+**Verify:** each console loads every screen with no empty tables and no policy errors; a
+partner session cannot read another partner's settlement rows.
+
+## Task 6: Tests
+
+**Files:** modify `src/lib/*.integration.test.ts`, `vitest.integration.config.ts`
+
+The integration tests run as anon today and will stop working the moment Task 4 lands. They
+need to sign in first. **`onboardingRepo.integration.test.ts:20` deletes from
+`operator_audit_log` for cleanup — that DELETE is exactly what Task 5 forbids**, so cleanup
+moves to a service_role fixture or the assertion changes to tolerate accumulated rows.
+
+Add a policy regression test: signed in as the partner, assert that reading another
+partner's settlement rows returns empty rather than throwing — silent empty is what RLS
+does, and a test that expects an error would pass for the wrong reason.
+
+**Verify:** `npm test` still 57; `npm run test:integration` green.
+
+---
+
+## Self-Review
+
+**The riskiest step is Task 4**, because it breaks everything at once and the consoles only
+come back as Task 5 lands. Both should go out together, or behind a maintenance window on
+the demo.
+
+**Three risks worth naming:**
+
+1. **Cross-persona reads are not fully mapped.** The operator console reads partner and
+   consumer tables freely today. Every such read has to be re-checked once policies bite,
+   and the plan cannot enumerate them without the database in front of it.
+2. **89 write policies is a lot of surface.** A missed table fails closed — a screen goes
+   blank rather than leaking — which is the right direction, but it means Task 5's
+   verification is a walk of all four consoles, not a spot check.
+3. **The anon key already in circulation stays valid.** Rotating it is a separate action in
+   the Supabase dashboard and should follow Task 5, not precede it.
+
+**Out of scope:** MFA, SSO, password reset, email confirmation, and rate limiting on
+sign-in. The prototype documents these as modelled behaviours (PRD §4.28); making them real
+is its own piece of work.
