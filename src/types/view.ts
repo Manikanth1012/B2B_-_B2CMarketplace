@@ -59,3 +59,13 @@ export interface Session {
   /* Set when persona === 'partner'. The console has to know whose record it is. */
   partnerId?: string
 }
+
+export type PublicPage = 'landing' | 'partner' | 'retail' | 'enterprise'
+
+/* The app has no router — react-router-dom is declared but never imported.
+   Rather than introduce one here (which would touch every console), the
+   existing state machine gains a third surface. */
+export type Surface =
+  | { kind: 'public'; page: PublicPage }
+  | { kind: 'login' }
+  | { kind: 'session'; session: Session }

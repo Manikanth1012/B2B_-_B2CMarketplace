@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { View, OperatorView, PartnerView, EnterpriseView, Persona, Session } from './types/view'
+import type { View, OperatorView, PartnerView, EnterpriseView, Persona, Session, Surface, PublicPage } from './types/view'
 import { supabase } from './lib/supabase'
 import type { CartItem, Product } from './types'
 import { LoginScreen } from './components/LoginScreen'
+import { PublicShell } from './components/public/PublicShell'
 import { Header } from './components/Header'
 import { Hero } from './components/Hero'
 import { CategoryStrip } from './components/CategoryStrip'
@@ -50,7 +51,8 @@ import { EnterpriseTeam, EnterpriseAudit, EnterpriseProfile } from './components
 import { KnowledgeBase } from './components/KnowledgeBase'
 
 export default function App() {
-  const [session, setSession] = useState<Session | null>(null)
+  const [surface, setSurface] = useState<Surface>({ kind: 'public', page: 'landing' })
+  const session = surface.kind === 'session' ? surface.session : null
   const persona = session?.persona ?? null
   const [view, setView] = useState<View>('home')
   const [opView, setOpView] = useState<OperatorView>('op-dashboard')
@@ -124,7 +126,7 @@ export default function App() {
   }
 
   const handleLogin = (s: Session) => {
-    setSession(s)
+    setSurface({ kind: 'session', session: s })
     if (s.persona === 'operator') setOpView('op-dashboard')
     else if (s.persona === 'partner') setPtView('pt-dashboard')
     else if (s.persona === 'enterprise') setEnView('en-dashboard')
@@ -133,17 +135,29 @@ export default function App() {
   }
 
   const handleSignOut = () => {
-    setSession(null)
+    setSurface({ kind: 'public', page: 'landing' })
     setView('home')
-    setOpView('op-dashboard')
-    setPtView('pt-dashboard')
-    setEnView('en-dashboard')
+    setOpView('op-dashboard'); setPtView('pt-dashboard'); setEnView('en-dashboard')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  // ---------- Login screen ----------
-  if (!persona) {
+  // ---------- Public surface ----------
+  if (surface.kind === 'login') {
     return <LoginScreen onLogin={handleLogin} />
+  }
+
+  if (surface.kind === 'public') {
+    return (
+      <PublicShell
+        page={surface.page}
+        onNavigate={(page) => { setSurface({ kind: 'public', page }); window.scrollTo({ top: 0 }) }}
+        onDemoSignIn={() => setSurface({ kind: 'login' })}
+      >
+        <div style={{ padding: '48px 0', textAlign: 'center', color: 'var(--text-secondary)' }}>
+          {surface.page} page
+        </div>
+      </PublicShell>
+    )
   }
 
   // ---------- Operator persona ----------
