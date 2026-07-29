@@ -18,11 +18,13 @@ export async function loadKb(persona: string): Promise<KbSnapshot> {
       .eq('persona', persona).eq('status', 'published').order('sort_order'),
   ])
 
-  const errs = [artRes.error?.message, tourRes.error?.message].filter(Boolean)
+  /* Only the articles query can fail the screen. Nothing renders tours yet — `tours` is
+     returned for a later phase to consume — so a `kb_tours` failure with a healthy
+     `kb_articles` read must not blank out articles the reader can already see. */
   return {
     articles: (artRes.data ?? []) as KbArticle[],
     tours: (tourRes.data ?? []) as KbTour[],
-    ...(errs.length ? { loadError: errs.join('; ') } : {}),
+    ...(artRes.error ? { loadError: artRes.error.message } : {}),
   }
 }
 
@@ -63,7 +65,11 @@ export async function raiseContentFeedback(
     opened_by: actor,
     org,
     sla_mins: 2880,
-    messages: JSON.stringify([{ who: actor, when: new Date().toISOString(), text: note }]),
+    /* jsonb column — write the array directly. JSON.stringify()-ing it here stores a jsonb
+       *string scalar* instead of an array, which breaks every reader that does
+       `.messages.map(...)` (see OperatorTickets.handleReply, which writes this same column
+       correctly and is the pattern to match). */
+    messages: [{ who: actor, when: new Date().toISOString(), text: note }],
   }).select()
   if (error) return { ok: false, reason: `Could not send that: ${error.message}` }
   return { ok: true, ticketId: id }

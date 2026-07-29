@@ -224,6 +224,18 @@ role can perform the action. Reading is never gated.
 This is the prototype's explicit choice: role-scoped for action, not for reading. Someone trying to
 understand why they cannot do something is exactly the person who needs the article.
 
+**Status: logic and tests delivered, runtime plumbing deferred.** `canAct(article, myRole)` and the
+"you can read this, but performing it needs role X" banner are implemented and unit-tested in
+`kb.test.ts`. But no call site passes `myRole` — `App.tsx` renders all four consoles without it —
+because `Session` (`src/types/view.ts`) carries only `persona` and `partnerId`, with no field for
+the current user's role. `myRole` therefore always arrives as `null`, `canAct` always returns
+`true`, and the banner never renders in the running app today.
+
+Closing this gap needs a role on `Session`, sourced from `operator_users` or the equivalent table
+for the other three personas, plumbed through to each console and down into `KnowledgeBase`. That
+is deliberately not done here — hardcoding a role to make the banner appear would be fabricating
+data the app does not actually have, which is worse than leaving the gap visible.
+
 ---
 
 ## 10. Testing
@@ -260,3 +272,6 @@ excludes.
 - **An operator authoring UI** for articles. Storage is a table, so it is possible later; nothing
   asks for it now, and a help article editable without review is a support risk.
 - **Article ratings.** The prototype counted them; not requested here.
+- **Runtime role scoping for the §9 action banner.** The logic (`canAct`) and its tests exist, but
+  no console plumbs a role into `myRole` — `Session` has none to plumb. Needs a role on `Session`,
+  sourced from `operator_users` or equivalent, before the banner can appear for real.

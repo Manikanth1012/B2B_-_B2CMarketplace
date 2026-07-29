@@ -7,9 +7,13 @@ import type { KbArticle } from './kb'
 const AID = 'KB-TEST-1'
 const ORG = 'KB Test Co'
 
+/* pt-team is a real partner view (see PartnerView in src/types/view.ts) that no seeded
+   article binds to. pt-listings is already bound by KB-P07 at a lower sort_order, so a
+   test article seeded there would lose the "first bound article" race to real data and
+   the id assertion below would silently check the wrong row. */
 const testArticle: KbArticle = {
   id: AID, persona: 'partner', kind: 'howto', title: 'Test article', mins: 1,
-  updated: '29 Jul 2026', view: 'pt-listings', roles: [], tags: ['test'],
+  updated: '29 Jul 2026', view: 'pt-team', roles: [], tags: ['test'],
   summary: 'Seeded by the integration test', body: [['Heading', 'Prose']],
   status: 'published', sort_order: 999,
 }
@@ -39,9 +43,11 @@ describe('knowledge base round trip', () => {
   })
 
   it('resolves contextual help by view, and returns null for a screen with no article', async () => {
-    const hit = await articleForView('partner', 'pt-listings')
+    const hit = await articleForView('partner', 'pt-team')
     expect(hit.ok).toBe(true)
-    if (hit.ok) expect(hit.article).not.toBeNull()
+    // A bare non-null check would pass even if this test's own insert silently failed.
+    // Assert it is the article we seeded, not merely "something".
+    if (hit.ok) expect(hit.article?.id).toBe(AID)
     const miss = await articleForView('partner', 'pt-nonexistent')
     expect(miss.ok).toBe(true)
     if (miss.ok) expect(miss.article).toBeNull()
@@ -59,5 +65,10 @@ describe('knowledge base round trip', () => {
     expect(data).toHaveLength(1)
     expect(data![0].category).toBe(CONTENT_FEEDBACK_CATEGORY)
     expect(data![0].subject).toContain('Test article')
+    // Guards the jsonb-string-vs-array bug: JSON.stringify()-ing the messages payload before
+    // insert stores a jsonb string scalar, which reads back with typeof 'string' and no
+    // .map — this is what breaks OperatorTickets.tsx's `selected.messages.map(...)`.
+    expect(Array.isArray(data![0].messages)).toBe(true)
+    expect(data![0].messages[0].text).toBe('Unclear')
   })
 })

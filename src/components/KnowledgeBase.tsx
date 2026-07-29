@@ -5,10 +5,15 @@ import { loadKb, raiseContentFeedback } from '../lib/kbRepo'
 import type { KbSnapshot } from '../lib/kbRepo'
 import { KB_KINDS, kbKind, filterArticles, allTags, canAct } from '../lib/kb'
 import type { KbArticle } from '../lib/kb'
+import type { Persona } from '../types/view'
 
 export function KnowledgeBase({ persona, title, myRole = null, feedbackAs }: {
-  persona: string
+  persona: Persona
   title: string
+  /* Not yet supplied by any caller — App.tsx renders all four consoles without it, and
+     Session (src/types/view.ts) carries no current-role field to source it from. Until
+     that plumbing exists this is always null, so canAct() always returns true and the
+     "you can read this, but performing it needs role X" banner below is unreachable. */
   myRole?: string | null
   /* Omitted for the operator: they are the queue. */
   feedbackAs?: { actor: string; org: string }

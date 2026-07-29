@@ -4,9 +4,10 @@ import { Modal, Btn } from './operator/shared'
 import { articleForView } from '../lib/kbRepo'
 import { kbKind } from '../lib/kb'
 import type { KbArticle } from '../lib/kb'
+import type { Persona } from '../types/view'
 
 export function ContextualHelp({ persona, view, onOpenCatalogue, onDark = false }: {
-  persona: string
+  persona: Persona
   view: string
   onOpenCatalogue: () => void
   /* The consumer's header is dark navy; the three admin shells are white.
