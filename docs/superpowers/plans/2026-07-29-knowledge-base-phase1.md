@@ -610,8 +610,10 @@ distinctly from an empty result."
     persona: string
     title: string          // "How things work" | "Knowledge base"
     myRole?: string | null
-    onRaiseFeedback?: (article: KbArticle) => void
   }): JSX.Element
+
+  // NOTE: feedback is deliberately NOT part of this task. Task 7 adds the prop,
+  // the button and the dialog together, so no unused prop exists at any commit.
   ```
 
 - [ ] **Step 1: Write the implementation**
@@ -627,11 +629,10 @@ import type { KbSnapshot } from '../lib/kbRepo'
 import { KB_KINDS, kbKind, filterArticles, allTags, canAct } from '../lib/kb'
 import type { KbArticle } from '../lib/kb'
 
-export function KnowledgeBase({ persona, title, myRole = null, onRaiseFeedback }: {
+export function KnowledgeBase({ persona, title, myRole = null }: {
   persona: string
   title: string
   myRole?: string | null
-  onRaiseFeedback?: (article: KbArticle) => void
 }) {
   const [snap, setSnap] = useState<KbSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
@@ -685,14 +686,6 @@ export function KnowledgeBase({ persona, title, myRole = null, onRaiseFeedback }
               </div>
             ))}
 
-            {onRaiseFeedback && (
-              <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '14px' }}>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginBottom: '8px' }}>
-                  Wrong, missing or unclear? Tell us — the articles that fail are the ones worth finding.
-                </div>
-                <Btn size="sm" variant="secondary" onClick={() => onRaiseFeedback(open)}>This did not answer my question</Btn>
-              </div>
-            )}
           </div>
         </SectionCard>
       </div>
@@ -1035,7 +1028,7 @@ article it says so and offers the catalogue rather than doing nothing."
 - Modify: `src/components/KnowledgeBase.tsx`
 
 **Interfaces:**
-- Consumes: `KbArticle` (Task 2); `KnowledgeBase`'s `onRaiseFeedback` (Task 4).
+- Consumes: `KbArticle` (Task 2); the `KnowledgeBase` reader built in Task 4.
 - Produces:
   ```ts
   export const CONTENT_FEEDBACK_CATEGORY = 'Content feedback'
@@ -1095,7 +1088,7 @@ const [fbFor, setFbFor] = useState<KbArticle | null>(null)
 const [note, setNote] = useState('')
 ```
 
-Change the props to carry identity instead of a callback:
+Add the identity prop (Task 4 deliberately shipped none, so this adds rather than replaces):
 
 ```tsx
 export function KnowledgeBase({ persona, title, myRole = null, feedbackAs }: {
@@ -1107,7 +1100,7 @@ export function KnowledgeBase({ persona, title, myRole = null, feedbackAs }: {
 })
 ```
 
-Replace the `onRaiseFeedback &&` block in the reader with:
+Add this to the reader, immediately after the `body.map(...)` block:
 
 ```tsx
 {feedbackAs && (
@@ -1468,6 +1461,6 @@ Every section maps to a task.
 
 **Type consistency:** `KbArticle`, `KbTour`, `KbSnapshot`, `KbStatus` are defined once in Tasks 2-3 and used unchanged after. `loadKb(persona)` keeps its single-argument shape at every call site. `raiseContentFeedback` takes one object `{ article, actor, org, note }` in Tasks 7 and 9 identically. `CONTENT_FEEDBACK_CATEGORY` is defined in Task 7 and imported in Tasks 8 and 9.
 
-**One interface change mid-plan, called out deliberately:** Task 4 gives `KnowledgeBase` an `onRaiseFeedback?: (a: KbArticle) => void` prop; Task 7 replaces it with `feedbackAs?: { actor; org }`. Task 4 cannot own the dialog because the write path does not exist until Task 7, and a callback the parent must implement four times is worse than the component owning its own dialog. Task 7's Step 2 states the replacement explicitly so an implementer reading only Task 7 is not surprised.
+**Pre-flight scan resolution.** An earlier draft had Task 4 ship an `onRaiseFeedback?` prop that nothing passed until Task 7 replaced it — an unused prop living across three commits, then deleted. Task 4 now ships the list and reader only; Task 7 adds the prop, the button and the dialog together. Feedback is defined in exactly one place and no commit contains a dead prop.
 
 **One risk worth naming:** the validator in Task 9 parses generated SQL with a regex. If the extractor's column order changes, the regex silently matches nothing — which is why the first assertion checks `rows.length >= 33` rather than trusting the parse.
