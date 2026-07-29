@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
+import { CONTENT_FEEDBACK_CATEGORY } from '../../lib/kbRepo'
 import type { OperatorTicket } from '../../types'
 import { SectionCard, Table, Td, StatusPill, PriorityPill, EmptyState, fmtDateTime, Btn, Modal, FormField, TextInput, TextArea, Select, toast, ConfirmDialog } from './shared'
 import { TriangleAlert as AlertTriangle, Clock } from 'lucide-react'
@@ -8,6 +9,7 @@ export function OperatorTickets() {
   const [tickets, setTickets] = useState<OperatorTicket[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('open')
+  const [queue, setQueue] = useState<'service' | 'feedback'>('service')
   const [selected, setSelected] = useState<OperatorTicket | null>(null)
   const [reply, setReply] = useState('')
   const [addModal, setAddModal] = useState(false)
@@ -22,9 +24,14 @@ export function OperatorTickets() {
 
   if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
-  const filtered = filter === 'all' ? tickets : tickets.filter(t => t.status === filter)
-  const openCount = tickets.filter(t => t.status === 'open').length
-  const breachedCount = tickets.filter(t => t.breached).length
+  /* Content feedback is a different kind of work and must not inflate the
+     service SLA figures, so the counts below are service-only. */
+  const service = tickets.filter(t => t.category !== CONTENT_FEEDBACK_CATEGORY)
+  const feedback = tickets.filter(t => t.category === CONTENT_FEEDBACK_CATEGORY)
+  const inQueue = queue === 'service' ? service : feedback
+  const filtered = filter === 'all' ? inQueue : inQueue.filter(t => t.status === filter)
+  const openCount = service.filter(t => t.status === 'open').length
+  const breachedCount = service.filter(t => t.breached).length
 
   const refresh = async () => {
     const { data } = await supabase.from('operator_tickets').select('*').order('sort_order')
@@ -98,9 +105,26 @@ export function OperatorTickets() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Tickets & SLA</h1>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>{openCount} open · {breachedCount} breached · {tickets.filter(t => t.escalated).length} escalated</p>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginTop: '4px' }}>
+            {openCount} open · {breachedCount} breached · {service.filter(t => t.escalated).length} escalated
+            {feedback.length > 0 && ` · ${feedback.length} content feedback (counted separately)`}
+          </p>
         </div>
         <Btn onClick={() => setAddModal(true)}>New ticket</Btn>
+      </div>
+
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+        {(['service', 'feedback'] as const).map(qk => (
+          <button key={qk} onClick={() => setQueue(qk)} style={{
+            padding: '6px 14px', borderRadius: 'var(--radius-full)',
+            fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer',
+            border: '1px solid var(--border)',
+            background: queue === qk ? 'var(--brand-navy)' : 'white',
+            color: queue === qk ? 'white' : 'var(--text-secondary)',
+          }}>
+            {qk === 'service' ? `Service tickets (${service.length})` : `Content feedback (${feedback.length})`}
+          </button>
+        ))}
       </div>
 
       <div style={{ display: 'flex', gap: '8px' }}>
