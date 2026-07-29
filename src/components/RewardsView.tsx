@@ -319,8 +319,11 @@ export function RewardsView() {
                   {t.qualify_spend > 0 ? `${fmtMoney0(t.qualify_spend)} a year` : 'No qualification'}
                 </div>
                 <div style={{ fontSize: 'var(--text-xs)' }}>{t.multiplier}× earn</div>
+                {/* t.colour comes from loyalty_tiers and is chosen for the badge, not for
+                    legibility as text — Gold is 2.44:1 on white. The tier colour still carries
+                    the badge and border above; the label itself uses readable ink. */}
                 {state === 'here' && (
-                  <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: t.colour, marginTop: '4px' }}>You are here</div>
+                  <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text)', marginTop: '4px' }}>You are here</div>
                 )}
               </div>
             )
