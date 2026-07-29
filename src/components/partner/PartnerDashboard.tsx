@@ -36,7 +36,7 @@ export function PartnerDashboard() {
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
         <StatCard label="Gross Merchandise Value" value={`$${fmtMoney(gmv)}`} sublabel={`${fmtInt(PARTNER_ORDERS.length)} orders`} color="var(--brand-navy)" />
-        <StatCard label="Orders to Fulfil" value={fmtInt(openOrders.length)} sublabel={failedOrders.length ? `${failedOrders.length} failed and need action` : 'Nothing overdue'} color="var(--brand-accent)" />
+        <StatCard label="Orders to Fulfil" value={fmtInt(openOrders.length)} sublabel={failedOrders.length ? `${failedOrders.length} failed and need action` : 'Nothing overdue'} color="var(--brand-accent-dark)" />
         <StatCard label="Settlement Due" value={`$${fmtMoney(dueSettlement)}`} sublabel={`Next payout ${PARTNER_SETTLEMENTS[0]?.due || '—'}`} color="var(--success)" />
         <StatCard label="Live Listings" value={`${liveListings.length} of ${PARTNER_LISTINGS.length}`} sublabel={`${pendingListings.length} awaiting marketplace review`} />
       </div>
@@ -55,7 +55,7 @@ export function PartnerDashboard() {
                     <span style={{ color: 'var(--text-tertiary)', fontVariantNumeric: 'tabular-nums' }}>${fmtMoney(listingGmv)}</span>
                   </div>
                   <div style={{ height: '8px', borderRadius: '4px', background: 'var(--bg-alt)', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${(listingGmv / maxGmv) * 100}%`, background: 'var(--brand-accent)', borderRadius: '4px', transition: 'width 300ms ease' }} />
+                    <div style={{ height: '100%', width: `${(listingGmv / maxGmv) * 100}%`, background: 'var(--brand-accent-dark)', borderRadius: '4px', transition: 'width 300ms ease' }} />
                   </div>
                 </div>
               )

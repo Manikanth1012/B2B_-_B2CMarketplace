@@ -26,7 +26,7 @@ export function PartnerSettlement() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
         <StatCard label="Due to you" value={`$${fmtMoney(due)}`} sublabel={`Payout ${cur.due} by ${cur.method}`} color="var(--success)" />
         <StatCard label="Gross this period" value={`$${fmtMoney(cur.gross)}`} sublabel={`${cur.orders} orders`} color="var(--brand-navy)" />
-        <StatCard label="Effective commission" value={`${((cur.commission / cur.gross) * 100).toFixed(1)}%`} sublabel={`Plan rate ${PARTNER_PLAN.base}%`} color="var(--brand-accent)" />
+        <StatCard label="Effective commission" value={`${((cur.commission / cur.gross) * 100).toFixed(1)}%`} sublabel={`Plan rate ${PARTNER_PLAN.base}%`} color="var(--brand-accent-dark)" />
         <StatCard label="Holdback" value={PARTNER_PLAN.hold === 'None' ? 'None' : PARTNER_PLAN.hold.split('(')[0]} sublabel="Released after returns window" />
       </div>
 

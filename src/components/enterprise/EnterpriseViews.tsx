@@ -113,7 +113,7 @@ export function EnterpriseOrders() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
-        <StatCard label="In flight" value={fmtInt(openOrders.length)} sublabel="Provisioning and delivery" color="var(--brand-accent)" />
+        <StatCard label="In flight" value={fmtInt(openOrders.length)} sublabel="Provisioning and delivery" color="var(--brand-accent-dark)" />
         <StatCard label="Completed" value={fmtInt(completedOrders.length)} sublabel="Delivered or provisioned" color="var(--success)" />
         <StatCard label="Failed" value={fmtInt(failedOrders.length)} sublabel={failedOrders.length ? 'Needs attention' : 'None'} color={failedOrders.length ? 'var(--danger)' : undefined} />
         <StatCard label="Total spend" value={`$${fmtMoney(orders.reduce((a, o) => a + o.gross, 0))}`} sublabel="All orders" color="var(--brand-navy)" />
@@ -197,7 +197,7 @@ export function EnterpriseSubs() {
                     <div>
                       <div style={{ fontSize: 'var(--text-sm)' }}>{s.seatsUsed} / {s.seatsTotal}</div>
                       <div style={{ height: '6px', borderRadius: '3px', background: 'var(--bg-alt)', overflow: 'hidden', marginTop: '4px' }}>
-                        <div style={{ height: '100%', width: `${(s.seatsUsed / s.seatsTotal) * 100}%`, background: 'var(--brand-accent)', borderRadius: '3px' }} />
+                        <div style={{ height: '100%', width: `${(s.seatsUsed / s.seatsTotal) * 100}%`, background: 'var(--brand-accent-dark)', borderRadius: '3px' }} />
                       </div>
                     </div>
                   )}

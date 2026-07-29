@@ -49,7 +49,7 @@ export function PartnerOrders() {
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
-        <StatCard label="To fulfil" value={fmtInt(openOrders.length)} sublabel="Dispatch target: next working day" color="var(--brand-accent)" />
+        <StatCard label="To fulfil" value={fmtInt(openOrders.length)} sublabel="Dispatch target: next working day" color="var(--brand-accent-dark)" />
         <StatCard label="Completed" value={fmtInt(completedOrders.length)} sublabel="Last 90 days" color="var(--success)" />
         <StatCard label="Failed" value={fmtInt(failedOrders.length)} sublabel={failedOrders.length ? 'Action needed' : 'None'} color={failedOrders.length ? 'var(--danger)' : undefined} />
         <StatCard label="Value to settle" value={`$${fmtMoney(valueToSettle)}`} sublabel="Net of commission, before fees" color="var(--brand-navy)" />

@@ -5,7 +5,10 @@
   --brand-navy-dark: #060F1F;
   --brand-accent: #00A6A6;
   --brand-accent-light: #00C9C9;
-  --brand-accent-dark: #007575;
+  --brand-accent-dark: #007575;   /* 5.50:1 both ways — use for small teal text and for
+                                     fills that carry a small white label. #00A6A6 is 3.00:1,
+                                     which only clears AA for large text. */
+  --brand-accent-darker: #005F5F;
   --brand-gold: #F5A623;
   --brand-red: #E63946;
 
@@ -182,11 +185,12 @@ input, select, textarea {
 }
 
 .btn-primary {
-  background: var(--brand-accent);
+  /* Darker teal: the label is small text, and white on #00A6A6 is only 3.00:1. */
+  background: var(--brand-accent-dark);
   color: white;
 }
 .btn-primary:hover {
-  background: var(--brand-accent-dark);
+  background: var(--brand-accent-darker);
   transform: translateY(-1px);
   box-shadow: var(--shadow-md);
 }

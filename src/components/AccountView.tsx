@@ -244,7 +244,7 @@ function ProfileTab({ profile, showToast }: { profile: ConsumerProfile; showToas
               disabled={saving}
               style={{
                 padding: '10px 24px', borderRadius: 'var(--radius)', border: 'none',
-                background: 'var(--brand-accent)', color: 'white', fontWeight: 600,
+                background: 'var(--brand-accent-dark)', color: 'white', fontWeight: 600,
                 fontSize: 'var(--text-sm)', cursor: saving ? 'not-allowed' : 'pointer',
                 alignSelf: 'flex-start',
               }}
@@ -461,7 +461,7 @@ function MfaModal({ profile, onClose, showToast }: { profile: ConsumerProfile; o
             padding: '24px', background: 'var(--bg-alt)', borderRadius: 'var(--radius)',
             border: '2px dashed var(--border)',
           }}>
-            <Shield size={48} style={{ color: 'var(--brand-accent)' }} />
+            <Shield size={48} style={{ color: 'var(--brand-accent-dark)' }} />
           </div>
           <Field label="6-digit code" icon={<Lock size={14} />}>
             <input style={inputStyle} value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} placeholder="000000" maxLength={6} />
@@ -535,7 +535,7 @@ function PaymentsModal({ onClose, showToast }: { onClose: () => void; showToast:
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>
                   {p.kind} {p.detail}
-                  {p.is_primary && <span style={{ marginLeft: '8px', fontSize: 'var(--text-xs)', color: 'var(--brand-accent)' }}>Primary</span>}
+                  {p.is_primary && <span style={{ marginLeft: '8px', fontSize: 'var(--text-xs)', color: 'var(--brand-accent-dark)' }}>Primary</span>}
                 </div>
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
                   {p.holder}{p.expires ? ` · expires ${p.expires}` : ''} · added {p.added}
@@ -569,7 +569,7 @@ function PaymentsModal({ onClose, showToast }: { onClose: () => void; showToast:
             <button onClick={() => setAdding(true)} style={{
               display: 'inline-flex', alignItems: 'center', gap: '8px', alignSelf: 'flex-start',
               padding: '10px 20px', borderRadius: 'var(--radius)', border: '1px solid var(--brand-accent)',
-              background: 'white', color: 'var(--brand-accent)', fontWeight: 600,
+              background: 'white', color: 'var(--brand-accent-dark)', fontWeight: 600,
               fontSize: 'var(--text-sm)', cursor: 'pointer',
             }}>
               <Plus size={16} /> Add payment method
@@ -610,7 +610,7 @@ function SessionsModal({ profile, onClose, showToast }: { profile: ConsumerProfi
           display: 'flex', alignItems: 'center', gap: '12px', padding: '16px',
           background: 'var(--bg-alt)', borderRadius: 'var(--radius)',
         }}>
-          <Clock size={24} style={{ color: 'var(--brand-accent)' }} />
+          <Clock size={24} style={{ color: 'var(--brand-accent-dark)' }} />
           <div>
             <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>
               {count} {count === 1 ? 'device' : 'devices'} currently signed in
@@ -649,7 +649,7 @@ function NotificationsTab({
         background: 'var(--bg-alt)', borderRadius: 'var(--radius-lg)', padding: '16px 20px',
         display: 'flex', gap: '12px', alignItems: 'flex-start',
       }}>
-        <Info size={20} style={{ color: 'var(--brand-accent)', flexShrink: 0, marginTop: 2 }} />
+        <Info size={20} style={{ color: 'var(--brand-accent-dark)', flexShrink: 0, marginTop: 2 }} />
         <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
           Pick what reaches you and how it reaches you. A switch turns the whole subject off; the channels next to it decide where the ones you keep are sent.
           <br />
@@ -778,7 +778,7 @@ function ActivityTab({ log }: { log: ConsumerAuditEntry[] }) {
         background: 'var(--bg-alt)', borderRadius: 'var(--radius-lg)', padding: '16px 20px',
         display: 'flex', gap: '12px', alignItems: 'flex-start',
       }}>
-        <Info size={20} style={{ color: 'var(--brand-accent)', flexShrink: 0, marginTop: 2 }} />
+        <Info size={20} style={{ color: 'var(--brand-accent-dark)', flexShrink: 0, marginTop: 2 }} />
         <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
           <strong>Everything that has happened on this account.</strong> Who bought what, who changed a spend cap, when a password was changed. As the account owner you see all of it; everyone else on the account sees only their own orders. Nothing here can be deleted, including by you — which is the point of it.
         </div>
@@ -907,7 +907,7 @@ function HouseholdTab({ members: initialMembers, showToast }: { members: Consume
         background: 'var(--bg-alt)', borderRadius: 'var(--radius-lg)', padding: '16px 20px',
         display: 'flex', gap: '12px', alignItems: 'flex-start',
       }}>
-        <Users size={20} style={{ color: 'var(--brand-accent)', flexShrink: 0, marginTop: 2 }} />
+        <Users size={20} style={{ color: 'var(--brand-accent-dark)', flexShrink: 0, marginTop: 2 }} />
         <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
           Everyone here shares one bill and one basket history, but each person only sees their own orders.
           {' '}
@@ -1046,7 +1046,7 @@ function HouseholdTab({ members: initialMembers, showToast }: { members: Consume
             style={{
               marginTop: '16px', display: 'inline-flex', alignItems: 'center', gap: '8px',
               padding: '10px 20px', borderRadius: 'var(--radius)', border: '1px solid var(--brand-accent)',
-              background: 'white', color: 'var(--brand-accent)', fontWeight: 600,
+              background: 'white', color: 'var(--brand-accent-dark)', fontWeight: 600,
               fontSize: 'var(--text-sm)', cursor: 'pointer',
             }}
           >
@@ -1373,7 +1373,7 @@ function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerT
             display: 'inline-flex', alignItems: 'center', gap: '8px',
             padding: '10px 20px', borderRadius: 'var(--radius)',
             border: '1px solid var(--brand-accent)', background: 'white',
-            color: 'var(--brand-accent)', fontWeight: 600,
+            color: 'var(--brand-accent-dark)', fontWeight: 600,
             fontSize: 'var(--text-sm)', cursor: 'pointer', marginBottom: '16px',
           }}>
             <Plus size={16} /> Raise a ticket
@@ -1584,7 +1584,7 @@ const inputStyle: React.CSSProperties = {
 
 const btnPrimary: React.CSSProperties = {
   padding: '10px 24px', borderRadius: 'var(--radius)', border: 'none',
-  background: 'var(--brand-accent)', color: 'white', fontWeight: 600,
+  background: 'var(--brand-accent-dark)', color: 'white', fontWeight: 600,
   fontSize: 'var(--text-sm)', cursor: 'pointer',
 }
 
@@ -1622,7 +1622,7 @@ function Card({ icon, title, subtitle, children }: { icon: React.ReactNode; titl
       padding: '24px',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-        <span style={{ color: 'var(--brand-accent)' }}>{icon}</span>
+        <span style={{ color: 'var(--brand-accent-dark)' }}>{icon}</span>
         <h2 style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>{title}</h2>
       </div>
       {subtitle && <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '20px' }}>{subtitle}</p>}
@@ -1691,7 +1691,7 @@ function StatBox({ icon, label, value }: { icon: React.ReactNode; label: string;
       background: 'white', border: '1px solid var(--border)',
       borderRadius: 'var(--radius-lg)', padding: '20px',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: 'var(--brand-accent)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: 'var(--brand-accent-dark)' }}>
         {icon}
         <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-tertiary)' }}>{label}</span>
       </div>

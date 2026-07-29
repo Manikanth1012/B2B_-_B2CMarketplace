@@ -144,7 +144,7 @@ export function Hero({ onNavigate }: HeroProps) {
             { icon: <Sparkles size={18} />, label: 'Reward points', sub: 'Earn on every purchase' },
           ].map((item) => (
             <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'rgba(255,255,255,0.7)' }}>
-              <div style={{ color: 'var(--brand-accent)' }}>{item.icon}</div>
+              <div style={{ color: 'var(--brand-accent-dark)' }}>{item.icon}</div>
               <div>
                 <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'white' }}>{item.label}</div>
                 <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.5)' }}>{item.sub}</div>

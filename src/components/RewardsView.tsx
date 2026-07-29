@@ -209,7 +209,7 @@ export function RewardsView() {
             gap: '8px',
             padding: '10px 20px',
             borderRadius: 'var(--radius)',
-            background: 'var(--brand-accent)',
+            background: 'var(--brand-accent-dark)',
             color: 'white',
             border: 'none',
             fontWeight: 600,
@@ -259,7 +259,7 @@ export function RewardsView() {
             alignItems: 'flex-start',
           }}
         >
-          <Info size={20} style={{ color: 'var(--brand-accent)', flexShrink: 0, marginTop: 2 }} />
+          <Info size={20} style={{ color: 'var(--brand-accent-dark)', flexShrink: 0, marginTop: 2 }} />
           <div>
             <strong>Nothing is close to expiring.</strong> Points last {programme.expiry_months} months from the day they were earned, and the oldest are always spent first.
           </div>
@@ -344,7 +344,7 @@ export function RewardsView() {
                     height: '100%',
                     width: `${progress.pct}%`,
                     borderRadius: '4px',
-                    background: 'var(--brand-accent)',
+                    background: 'var(--brand-accent-dark)',
                     transition: 'width 600ms ease',
                   }}
                 />
@@ -418,7 +418,7 @@ export function RewardsView() {
                       width: '40px',
                       height: '40px',
                       borderRadius: 'var(--radius)',
-                      background: 'var(--brand-accent)',
+                      background: 'var(--brand-accent-dark)',
                       color: 'white',
                       display: 'flex',
                       alignItems: 'center',
@@ -445,7 +445,7 @@ export function RewardsView() {
                         borderRadius: 'var(--radius)',
                         border: '1px solid var(--brand-accent)',
                         background: 'white',
-                        color: 'var(--brand-accent)',
+                        color: 'var(--brand-accent-dark)',
                         fontWeight: 600,
                         fontSize: 'var(--text-xs)',
                         cursor: 'pointer',
@@ -576,7 +576,7 @@ export function RewardsView() {
             onClick={(e) => e.stopPropagation()}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '20px 20px 0' }}>
-              <Zap size={24} style={{ color: 'var(--brand-accent)' }} />
+              <Zap size={24} style={{ color: 'var(--brand-accent-dark)' }} />
               <div style={{ flex: 1 }}>
                 <h3 style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>Redeem points</h3>
                 <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
@@ -708,7 +708,7 @@ export function RewardsView() {
                   padding: '10px 20px',
                   borderRadius: 'var(--radius)',
                   border: 'none',
-                  background: 'var(--brand-accent)',
+                  background: 'var(--brand-accent-dark)',
                   color: 'white',
                   fontWeight: 600,
                   fontSize: 'var(--text-sm)',
@@ -757,7 +757,7 @@ function StatCard({ icon, label, value, foot }: { icon: React.ReactNode; label: 
         padding: '20px',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: 'var(--brand-accent)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: 'var(--brand-accent-dark)' }}>
         {icon}
         <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-tertiary)' }}>{label}</span>
       </div>
@@ -779,7 +779,7 @@ function SectionCard({ icon, title, subtitle, children }: { icon: React.ReactNod
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-        <span style={{ color: 'var(--brand-accent)' }}>{icon}</span>
+        <span style={{ color: 'var(--brand-accent-dark)' }}>{icon}</span>
         <h2 style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>{title}</h2>
       </div>
       {subtitle && <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '20px' }}>{subtitle}</p>}

@@ -41,7 +41,7 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
         <StatCard label="Committed monthly" value={`$${fmtMoney(mrc)}`} sublabel={`${ENTERPRISE_SUBS.filter(s => s.status === 'active').length} active subscriptions`} color="var(--brand-navy)" />
-        <StatCard label="Budget used" value={`${budgetUsed.toFixed(1)}%`} sublabel={`$${fmtMoney(ENTERPRISE_PROFILE.budgetSpent)} of $${fmtMoney(ENTERPRISE_PROFILE.budgetYear)} · $${fmtMoney(budgetLeft)} left`} color="var(--brand-accent)" />
+        <StatCard label="Budget used" value={`${budgetUsed.toFixed(1)}%`} sublabel={`$${fmtMoney(ENTERPRISE_PROFILE.budgetSpent)} of $${fmtMoney(ENTERPRISE_PROFILE.budgetYear)} · $${fmtMoney(budgetLeft)} left`} color="var(--brand-accent-dark)" />
         <StatCard label="Awaiting approval" value={fmtInt(ENTERPRISE_APPROVALS.length)} sublabel={`$${fmtMoney(ENTERPRISE_APPROVALS.reduce((a, x) => a + x.amount, 0))} of requests`} color="var(--warning)" />
         <StatCard label="Orders in flight" value={fmtInt(ordersInFlight.length)} sublabel={failedOrders.length ? `${failedOrders.length} failed` : 'Provisioning and delivery'} color={failedOrders.length ? 'var(--danger)' : undefined} />
       </div>
@@ -86,7 +86,7 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
                 <div key={m} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                   <span style={{ fontSize: 'var(--text-xs)', width: '30px', color: 'var(--text-tertiary)' }}>{m}</span>
                   <div style={{ flex: 1, height: '14px', borderRadius: '3px', background: 'var(--bg-alt)', overflow: 'hidden', position: 'relative' }}>
-                    <div style={{ position: 'absolute', inset: 0, width: `${(monthly / budget) * 100}%`, background: 'var(--brand-accent)', borderRadius: '3px' }} />
+                    <div style={{ position: 'absolute', inset: 0, width: `${(monthly / budget) * 100}%`, background: 'var(--brand-accent-dark)', borderRadius: '3px' }} />
                   </div>
                   <span style={{ fontSize: 'var(--text-xs)', width: '50px', textAlign: 'right', color: 'var(--text-tertiary)' }}>${fmtInt(monthly)}</span>
                 </div>

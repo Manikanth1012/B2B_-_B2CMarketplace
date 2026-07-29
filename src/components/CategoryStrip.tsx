@@ -97,7 +97,7 @@ export function CategoryStrip({ onNavigate }: CategoryStripProps) {
                 </p>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span className="pill">{counts[cat.id] || 0} products</span>
-                  <span style={{ fontSize: 'var(--text-xs)', color: '#00A6A6', fontWeight: 600 }}>
+                  <span style={{ fontSize: 'var(--text-xs)', color: 'var(--brand-accent-dark)', fontWeight: 600 }}>
                     Browse →
                   </span>
                 </div>

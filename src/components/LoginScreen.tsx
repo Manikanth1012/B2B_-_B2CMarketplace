@@ -268,7 +268,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                   style={{
                     width: '100%', padding: '14px',
                     borderRadius: 'var(--radius)',
-                    background: 'var(--brand-accent)', color: 'white',
+                    background: 'var(--brand-accent-dark)', color: 'white',
                     fontSize: 'var(--text-base)', fontWeight: 700,
                     border: 'none', cursor: loading ? 'not-allowed' : 'pointer',
                     opacity: loading ? 0.7 : 1,

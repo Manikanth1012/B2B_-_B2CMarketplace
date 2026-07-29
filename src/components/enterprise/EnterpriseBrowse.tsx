@@ -68,7 +68,7 @@ export function EnterpriseBrowse() {
         <aside style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', alignSelf: 'start', position: 'sticky', top: '80px' }}>
           <div style={{ padding: '12px', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <strong style={{ fontSize: 'var(--text-sm)' }}>Filters</strong>
-            {filtering && <button onClick={reset} style={{ background: 'none', border: 'none', color: 'var(--brand-accent)', fontSize: 'var(--text-xs)', cursor: 'pointer' }}>Clear all</button>}
+            {filtering && <button onClick={reset} style={{ background: 'none', border: 'none', color: 'var(--brand-accent-dark)', fontSize: 'var(--text-xs)', cursor: 'pointer' }}>Clear all</button>}
           </div>
           <div style={{ padding: '12px', borderBottom: '1px solid var(--border-light)' }}>
             <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', marginBottom: '8px' }}>Marketplace</div>

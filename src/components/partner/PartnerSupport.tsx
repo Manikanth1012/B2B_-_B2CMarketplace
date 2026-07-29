@@ -59,7 +59,7 @@ export function PartnerSupport() {
           ].map(c => (
             <div key={c.title} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '16px' }}>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '8px' }}>
-                <span style={{ color: 'var(--brand-accent)' }}>{c.icon}</span>
+                <span style={{ color: 'var(--brand-accent-dark)' }}>{c.icon}</span>
                 <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{c.title}</span>
               </div>
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '12px' }}>{c.desc}</div>

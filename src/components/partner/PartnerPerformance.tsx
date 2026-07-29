@@ -20,7 +20,7 @@ export function PartnerPerformance() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
         <StatCard label="Listing views" value={fmtInt(views)} sublabel="Last 90 days" />
-        <StatCard label="Orders" value={fmtInt(totalOrders)} sublabel={`Conversion ${conversion}%`} color="var(--brand-accent)" />
+        <StatCard label="Orders" value={fmtInt(totalOrders)} sublabel={`Conversion ${conversion}%`} color="var(--brand-accent-dark)" />
         <StatCard label="Average order value" value={`$${fmtMoney(totalOrders ? totalGmv / totalOrders : 0)}`} sublabel="Bundles lift this materially" color="var(--brand-navy)" />
         <StatCard label="Return rate" value="2.1%" sublabel="Marketplace median for hardware is 3.4%" color="var(--success)" />
       </div>
@@ -38,7 +38,7 @@ export function PartnerPerformance() {
                     <span style={{ color: 'var(--text-tertiary)' }}>${fmtMoney(gmv)}</span>
                   </div>
                   <div style={{ height: '8px', borderRadius: '4px', background: 'var(--bg-alt)', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${(gmv / max) * 100}%`, background: 'var(--brand-accent)', borderRadius: '4px' }} />
+                    <div style={{ height: '100%', width: `${(gmv / max) * 100}%`, background: 'var(--brand-accent-dark)', borderRadius: '4px' }} />
                   </div>
                 </div>
               )

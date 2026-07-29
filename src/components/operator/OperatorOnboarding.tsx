@@ -151,14 +151,14 @@ export function OperatorOnboarding() {
                   }}>
                     <div style={{ marginBottom: '8px' }}>{statusIcon(gate.status)}</div>
                     <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text)', textAlign: 'center', lineHeight: 1.3 }}>{gate.gate_name}</div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '4px' }}>Owner: {gate.owner}</div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>Target: {gate.target_days}d</div>
-                    {gate.dual_control && <div style={{ fontSize: '10px', color: 'var(--warning)', fontWeight: 600 }}>Dual control</div>}
+                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '4px' }}>Owner: {gate.owner}</div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-secondary)' }}>Target: {gate.target_days}d</div>
+                    {gate.dual_control && <div style={{ fontSize: '10px', color: 'var(--text)', fontWeight: 600 }}>Dual control</div>}
                     {!gate.waivable && <div style={{ fontSize: '10px', color: 'var(--danger)', fontWeight: 600 }}>Not waivable</div>}
                     {gate.status === 'cleared' && gate.reviewed_at && <div style={{ fontSize: '10px', color: 'var(--success)', marginTop: '4px' }}>Cleared {fmtDate(gate.reviewed_at)}</div>}
                     {gate.status === 'current' && <div style={{ fontSize: '10px', color: 'var(--info)', marginTop: '4px', fontWeight: 600 }}>Click to review →</div>}
                   </button>
-                  {i < partnerGates.length - 1 && <div style={{ textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '10px', marginTop: '4px' }}>{gate.status === 'cleared' ? '✓' : '—'}</div>}
+                  {i < partnerGates.length - 1 && <div style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: '10px', marginTop: '4px' }}>{gate.status === 'cleared' ? '✓' : '—'}</div>}
                 </div>
               ))}
             </div>

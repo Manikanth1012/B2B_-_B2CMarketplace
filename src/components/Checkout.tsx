@@ -114,7 +114,7 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
           <p style={{ color: 'var(--text-secondary)', marginBottom: '8px' }}>
             Your order reference is
           </p>
-          <p style={{ fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--brand-accent)', marginBottom: '24px' }}>
+          <p style={{ fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--brand-accent-dark)', marginBottom: '24px' }}>
             {orderRef}
           </p>
           <p style={{ color: 'var(--text-secondary)', marginBottom: '32px' }}>

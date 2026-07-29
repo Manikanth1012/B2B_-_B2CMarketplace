@@ -129,7 +129,7 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut }: Header
               >
                 <div style={{
                   width: '32px', height: '32px', borderRadius: '50%',
-                  background: 'var(--brand-accent)', color: 'white',
+                  background: 'var(--brand-accent-dark)', color: 'white',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontWeight: 700, fontSize: 'var(--text-xs)',
                 }}>
@@ -182,7 +182,7 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut }: Header
                   position: 'absolute',
                   top: '2px',
                   right: '2px',
-                  background: 'var(--brand-accent)',
+                  background: 'var(--brand-accent-dark)',
                   color: 'white',
                   fontSize: '10px',
                   fontWeight: 700,

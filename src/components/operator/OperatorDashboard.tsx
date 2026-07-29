@@ -47,7 +47,7 @@ export function OperatorDashboard() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
         <StatCard label="Total GMV" value={`$${fmtMoney(profile.gmv)}`} sublabel={`${fmtInt(profile.total_orders)} orders · $${fmtMoney(profile.avg_order_value)} avg`} color="var(--brand-navy)" />
-        <StatCard label="Commission" value={`$${fmtMoney(profile.commission)}`} sublabel={`${profile.commission_rate}% blended take`} color="var(--brand-accent)" />
+        <StatCard label="Commission" value={`$${fmtMoney(profile.commission)}`} sublabel={`${profile.commission_rate}% blended take`} color="var(--brand-accent-dark)" />
         <StatCard label="Active Partners" value={fmtInt(profile.active_partners)} sublabel={`${profile.pending_applications} pending applications`} />
         <StatCard label="Open Tickets" value={fmtInt(profile.open_tickets)} sublabel={`${profile.sla_breaches} SLA breaches`} color={profile.sla_breaches > 0 ? 'var(--danger)' : undefined} />
       </div>
@@ -72,7 +72,7 @@ export function OperatorDashboard() {
             </div>
             <div>
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase' }}>Projected Commission</div>
-              <div style={{ fontSize: 'var(--text-3xl)', fontWeight: 800, color: 'var(--brand-accent)', marginTop: '4px' }}>${fmtMoney(profile.forecast_commission)}</div>
+              <div style={{ fontSize: 'var(--text-3xl)', fontWeight: 800, color: 'var(--brand-accent-dark)', marginTop: '4px' }}>${fmtMoney(profile.forecast_commission)}</div>
             </div>
           </div>
           <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '12px' }}>
