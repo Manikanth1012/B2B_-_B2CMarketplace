@@ -1,9 +1,35 @@
+import { useState, useEffect } from 'react'
 import { Carousel } from './Carousel'
-import { ProductRail } from './ProductRail'
-import { HERO, CAROUSEL, BANNERS, RETAIL_PRODUCTS, ENTERPRISE_PRODUCTS } from '../../lib/assets'
+import { CategoryRail } from './CategoryRail'
+import { PromoStrip } from './PromoStrip'
+import { HERO, CAROUSEL, BANNERS, DEVICE_THUMBS } from '../../lib/assets'
+import { loadPromoBanners, loadCategories, loadCatalogue, countByCategory } from '../../lib/storefrontRepo'
+import {
+  promoStrip, retailCategories, enterpriseCategories, assignImages,
+  type PromoSlide,
+} from '../../lib/storefront'
+import type { Category } from '../../types'
 import type { PublicPage } from '../../types/view'
 
 export function LandingPage({ onNavigate }: { onNavigate: (p: PublicPage) => void }) {
+  const [slides, setSlides] = useState<PromoSlide[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [counts, setCounts] = useState<Record<string, number>>({})
+
+  useEffect(() => {
+    /* Three independent reads. Any of them coming back empty degrades one band of
+       the page rather than failing the page, which is why none of them throws. */
+    loadPromoBanners().then(b => setSlides(promoStrip(b, BANNERS)))
+    loadCategories().then(setCategories)
+    loadCatalogue().then(p => setCounts(countByCategory(p)))
+  }, [])
+
+  const retail = retailCategories(categories)
+  const enterprise = enterpriseCategories(categories)
+  /* One image per category, assigned across both rails at once so Devices — which
+     legitimately appears in both — carries the same picture in each. */
+  const art = assignImages(categories.map(c => c.id), DEVICE_THUMBS)
+
   return (
     <>
       {/* Hero */}
@@ -32,16 +58,28 @@ export function LandingPage({ onNavigate }: { onNavigate: (p: PublicPage) => voi
         </div>
       </section>
 
-      {/* Promo strip — 4 of the 12 banners. Decorative: every offer they show
-          is reachable through the rails and the audience pages below. */}
-      <section className="container" style={{ padding: '32px 24px', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
-        {BANNERS.slice(0, 4).map(src => (
-          <img key={src} src={src} alt="" loading="lazy" style={{ width: '100%', borderRadius: 'var(--radius-md)' }} />
-        ))}
-      </section>
+      {/* Promo strip — the operator's live storefront banners. The copy is theirs;
+          pausing a banner in their console takes it off this page. */}
+      <PromoStrip slides={slides} onNavigate={onNavigate} />
 
-      <ProductRail title="Retail products" subtitle="Phones, wearables, entertainment and connected home" tiles={RETAIL_PRODUCTS} />
-      <ProductRail title="Enterprise products" subtitle="IoT gateways, sensors, security and point of sale" tiles={ENTERPRISE_PRODUCTS} />
+      {/* The rails show the marketplace's own six categories, split by the audience
+          each one records, rather than a hand-kept list of pictures. */}
+      <CategoryRail
+        title="Retail products"
+        subtitle="Plans, devices, entertainment and connected home"
+        categories={retail}
+        images={art}
+        counts={counts}
+        onNavigate={onNavigate}
+      />
+      <CategoryRail
+        title="Enterprise products"
+        subtitle="IoT, security, devices and reselling"
+        categories={enterprise}
+        images={art}
+        counts={counts}
+        onNavigate={onNavigate}
+      />
     </>
   )
 }

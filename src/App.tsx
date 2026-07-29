@@ -69,6 +69,10 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [accountTab, setAccountTab] = useState<string | undefined>(undefined)
   const [applyIntent, setApplyIntent] = useState(false)
+  /* Held across the sign-in round trip: a visitor can browse the public catalogue
+     without a session, but the basket is owner-scoped, so the first add has to
+     become a sign-in and then finish itself. */
+  const [pendingProduct, setPendingProduct] = useState<Product | null>(null)
 
   const loadCart = useCallback(async () => {
     const { data: cart } = await supabase
@@ -95,8 +99,16 @@ export default function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  /* Asks the database what is already in the basket rather than trusting the copy
+     in state. Signing in mid-flow adds a row before `cartItems` has been reloaded
+     for the new session, and reading the stale copy would insert a duplicate. */
   const addToCart = async (product: Product, quantity = 1) => {
-    const existing = cartItems.find((item) => item.product_id === product.id)
+    const { data: existing } = await supabase
+      .from('cart_items')
+      .select('id, quantity')
+      .eq('product_id', product.id)
+      .maybeSingle()
+
     if (existing) {
       await supabase
         .from('cart_items')
@@ -139,6 +151,17 @@ export default function App() {
     else if (s.persona === 'enterprise') setEnView('en-dashboard')
     else setView('home')
     setApplyIntent(false)
+
+    /* The product the visitor picked before they had a session. `cart_items` is
+       owner-scoped, so there was nowhere to put it until now — this is the add
+       they already asked for, completed on the other side of the sign-in.
+       Dropped for any other persona: an operator's basket is not a thing. */
+    const pending = pendingProduct
+    setPendingProduct(null)
+    if (pending && s.persona === 'consumer') {
+      void addToCart(pending)
+    }
+
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
@@ -163,7 +186,13 @@ export default function App() {
 
   // ---------- Public surface ----------
   if (surface.kind === 'login') {
-    return <LoginScreen prefill={surface.prefill} onLogin={handleLogin} />
+    return (
+      <LoginScreen
+        prefill={surface.prefill}
+        onLogin={handleLogin}
+        notice={pendingProduct ? `Sign in to add "${pendingProduct.name}" to your basket.` : undefined}
+      />
+    )
   }
 
   if (surface.kind === 'public') {
@@ -179,6 +208,13 @@ export default function App() {
             page={surface.page}
             onSignIn={(p) => setSurface({ kind: 'login', prefill: p })}
             onApply={() => { setApplyIntent(true); setSurface({ kind: 'login', prefill: 'partner' }) }}
+            /* Anyone can browse; the basket needs an owner. The first add sends
+               the visitor to sign in and is completed for them afterwards. */
+            onAddToBasket={(p) => {
+              setPendingProduct(p)
+              setSurface({ kind: 'login', prefill: 'consumer' })
+              window.scrollTo({ top: 0 })
+            }}
           />
         )}
       </PublicShell>
