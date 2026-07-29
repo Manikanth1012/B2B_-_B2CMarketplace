@@ -124,17 +124,20 @@ const ENTERPRISE_PICKS = [
   ['therm',   'Compact thermal sensor'],
   ['PTZ_se',  'Pan-tilt-zoom security camera'],
   ['Networ',  'Managed network switch'],
-  ['rac',     'Full-size server rack'],
+  ['full-size_rac', 'Full-size server rack'],
   ['EV_cha',  'EV charging point'],
   ['POS_te',  'Point-of-sale terminal'],
   ['NFC_pa',  'NFC contactless payment reader'],
 ]
 
-const files = readdirSync(SRC).filter((f) => f.startsWith('Professional_'))
+const files = readdirSync(SRC).filter((f) => f.startsWith('Professional_')).sort()
 const enterprise = []
 for (const [i, [fragment, alt]] of ENTERPRISE_PICKS.entries()) {
-  const f = files.find((x) => x.includes(fragment))
-  if (!f) throw new Error(`no source image matching "${fragment}"`)
+  const matches = files.filter((x) => x.includes(fragment))
+  if (matches.length !== 1) {
+    throw new Error(`fragment "${fragment}" matched ${matches.length} files, expected exactly 1: ${matches.join(', ')}`)
+  }
+  const f = matches[0]
   const name = `product-${String(i + 1).padStart(2, '0')}.webp`
   await sharp(join(SRC, f)).resize(320, 320, { fit: 'cover' }).webp({ quality: 80 }).toFile(join(OUT, name))
   enterprise.push({ src: `/assets/mp/${name}`, alt })
