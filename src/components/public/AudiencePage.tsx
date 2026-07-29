@@ -1,6 +1,6 @@
 import { ProductRail } from './ProductRail'
 import { BANNERS, RETAIL_PRODUCTS, ENTERPRISE_PRODUCTS, DEVICE_THUMBS } from '../../lib/assets'
-import type { PublicPage, Session } from '../../types/view'
+import type { PublicPage, Persona } from '../../types/view'
 
 type Aud = Exclude<PublicPage, 'landing'>
 
@@ -10,7 +10,7 @@ const CONFIG: Record<Aud, {
   title: string; blurb: string; points: string[]
   cta: string; banner: string
   rail: { title: string; subtitle: string; tiles: readonly { src: string; alt: string }[] }
-  session: Session
+  persona: Persona
 }> = {
   retail: {
     title: 'Everything for your everyday connection',
@@ -19,7 +19,7 @@ const CONFIG: Record<Aud, {
     cta: 'Start shopping',
     banner: BANNERS[1],
     rail: { title: 'Popular with shoppers', subtitle: 'Phones, wearables and entertainment', tiles: RETAIL_PRODUCTS },
-    session: { persona: 'consumer' },
+    persona: 'consumer',
   },
   enterprise: {
     title: 'Procure connected hardware with approvals built in',
@@ -28,7 +28,7 @@ const CONFIG: Record<Aud, {
     cta: 'Sign in to procure',
     banner: BANNERS[5],
     rail: { title: 'Built for business', subtitle: 'Gateways, sensors, security and point of sale', tiles: ENTERPRISE_PRODUCTS },
-    session: { persona: 'enterprise' },
+    persona: 'enterprise',
   },
   partner: {
     title: 'Sell to consumers and enterprises on one marketplace',
@@ -37,13 +37,13 @@ const CONFIG: Record<Aud, {
     cta: 'Sign in to your seller console',
     banner: BANNERS[3],
     rail: { title: 'What sells here', subtitle: 'Categories open to new sellers', tiles: ENTERPRISE_PRODUCTS },
-    session: { persona: 'partner', partnerId: 'PTR-1004' },
+    persona: 'partner',
   },
 }
 
 export function AudiencePage({ page, onSignIn, onApply }: {
   page: Aud
-  onSignIn: (s: Session) => void
+  onSignIn: (p: Persona) => void
   onApply: () => void
 }) {
   const c = CONFIG[page]
@@ -60,7 +60,7 @@ export function AudiencePage({ page, onSignIn, onApply }: {
               ))}
             </ul>
             <div style={{ display: 'flex', gap: '12px', marginTop: '32px', flexWrap: 'wrap' }}>
-              <button className="btn btn-primary btn-lg" onClick={() => onSignIn(c.session)}>{c.cta}</button>
+              <button className="btn btn-primary btn-lg" onClick={() => onSignIn(c.persona)}>{c.cta}</button>
               {page === 'partner' && (
                 <button className="btn btn-secondary btn-lg" style={{ background: 'rgba(255,255,255,0.1)', color: 'white', borderColor: 'rgba(255,255,255,0.2)' }} onClick={onApply}>
                   Apply to sell

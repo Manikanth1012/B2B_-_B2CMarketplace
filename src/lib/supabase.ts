@@ -9,6 +9,9 @@ if (!supabaseUrl || !supabaseAnonKey) {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    persistSession: false,
+    /* Sign-in issues a real JWT now, so the session has to survive a reload —
+       otherwise a refresh drops the user out of the console mid-task. */
+    persistSession: true,
+    autoRefreshToken: true,
   },
 })

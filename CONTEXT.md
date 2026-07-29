@@ -16,7 +16,7 @@ signing in. The four signed-in personas sit behind it, reached through "Demo sig
 - **Backend**: Supabase (Postgres + RLS)
 - **Icons**: lucide-react
 - **Styling**: CSS variables (brand navy + teal accent), inline styles + global.css
-- **Tests**: Vitest — `npm test` (57 unit) and `npm run test:integration` (4, writes to the live DB under `PTR-TEST`)
+- **Tests**: Vitest — `npm test` (63 unit) and `npm run test:integration` (16, against the live DB; writes are confined to `PTR-TEST` and `KB-TEST-1`)
 
 ## Commands
 
@@ -24,8 +24,8 @@ signing in. The four signed-in personas sit behind it, reached through "Demo sig
 npm install
 npm run dev              # http://localhost:5173
 npm run build            # tsc && vite build
-npm test                 # 57 unit tests, pure logic, no network
-npm run test:integration # 4 tests against the live Supabase project
+npm test                 # 63 unit tests, pure logic, no network
+npm run test:integration # 16 tests against the live Supabase project
 ```
 
 `.env` holds `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. It is gitignored; the app throws at
@@ -35,14 +35,28 @@ import time without it (`src/lib/supabase.ts`).
 Reach the login screen from **Demo sign-in**, in the public header or footer. It presents four
 persona cards; picking one pre-fills its credentials, so there is normally nothing to type.
 
-Credentials below are the ones in `DEMO_CREDENTIALS` (`src/components/LoginScreen.tsx`). The check
-is an exact string comparison, so typing anything else — including what this file used to claim —
-is rejected:
+Sign-in is **real Supabase Auth** — `signInWithPassword` against `auth.users`, not a string
+comparison in the bundle. The credentials below are prefilled by the cards and are the ones
+seeded into the project:
 
 - Consumer: `priya.raman@example.com` / `demo1234`
 - Operator: `anika.sharma@aventa.com` / `operator123`
 - Partner: `rajesh.kumar@nimbussensors.com` / `partner123`
 - Enterprise: `vikram.shah@smartbuild.in` / `enterprise123`
+
+**The card does not choose the console.** It chooses which credentials get prefilled; the
+persona comes back from the server on the JWT (`src/lib/auth.ts`), so operator credentials
+open the operator console no matter which card was clicked. The persona is read from
+`app_metadata`, which only the service_role key can write — never from `user_metadata`, which
+the signed-in user can set themselves.
+
+Sessions persist across a reload. `scripts/seed-auth-users.mjs` creates or updates the four
+accounts and needs `SUPABASE_SERVICE_ROLE_KEY`; it is idempotent.
+
+> **RLS is still wide open.** Authentication is real, but the 128 `USING (true)` policies over
+> 43 tables are unchanged, so the anon key remains a full read/write credential. See
+> `docs/superpowers/plans/2026-07-29-rls-live-audit.md`. Do not point this deployment at data
+> that matters.
 
 ## Operator Console Screens (all database-backed with CRUD)
 

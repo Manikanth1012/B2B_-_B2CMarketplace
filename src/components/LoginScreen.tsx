@@ -1,9 +1,13 @@
 import { useState } from 'react'
 import { ShoppingBag, Settings, Store, Building2, ArrowRight, Mail, Lock, Eye, EyeOff, Loader as Loader2 } from 'lucide-react'
 import type { Persona, Session } from '../types/view'
+import { signIn, SignInError } from '../lib/auth'
 
 interface LoginScreenProps {
   onLogin: (session: Session) => void
+  /* Preselects a card, so arriving from an audience page lands on the right
+     one. It only chooses the prefilled credentials. */
+  prefill?: Persona
 }
 
 const DEMO_CREDENTIALS: Record<Persona, { email: string; password: string }> = {
@@ -52,10 +56,10 @@ const PERSONA_META: Record<Persona, { label: string; sub: string; user: string; 
   },
 }
 
-export function LoginScreen({ onLogin }: LoginScreenProps) {
-  const [selected, setSelected] = useState<Persona | null>(null)
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+export function LoginScreen({ onLogin, prefill }: LoginScreenProps) {
+  const [selected, setSelected] = useState<Persona | null>(prefill ?? null)
+  const [email, setEmail] = useState(prefill ? DEMO_CREDENTIALS[prefill].email : '')
+  const [password, setPassword] = useState(prefill ? DEMO_CREDENTIALS[prefill].password : '')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -67,23 +71,20 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     setError('')
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  /* The card selects which credentials to prefill. It does NOT decide which
+     console opens — that comes back from the server with the JWT. Deriving it
+     from the card would hand an operator a consumer session for signing in from
+     the wrong tile. */
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selected) return
     setError('')
     setLoading(true)
-    const creds = DEMO_CREDENTIALS[selected]
-    setTimeout(() => {
-      if (email.trim() === creds.email && password === creds.password) {
-        onLogin({
-          persona: selected,
-          partnerId: selected === 'partner' ? 'PTR-1004' : undefined,
-        })
-      } else {
-        setError('Incorrect email or password. Use the pre-filled demo credentials.')
-        setLoading(false)
-      }
-    }, 700)
+    try {
+      onLogin(await signIn(email, password))
+    } catch (err) {
+      setError(err instanceof SignInError ? err.message : 'Could not reach the sign-in service. Try again.')
+      setLoading(false)
+    }
   }
 
   const personaCards: Persona[] = ['consumer', 'operator', 'partner', 'enterprise']

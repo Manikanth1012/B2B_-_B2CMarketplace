@@ -67,5 +67,7 @@ export type PublicPage = 'landing' | 'partner' | 'retail' | 'enterprise'
    existing state machine gains a third surface. */
 export type Surface =
   | { kind: 'public'; page: PublicPage }
-  | { kind: 'login' }
+  /* `prefill` preselects a persona card. It chooses which credentials are
+     filled in, never which console opens — that comes back from the server. */
+  | { kind: 'login'; prefill?: Persona }
   | { kind: 'session'; session: Session }

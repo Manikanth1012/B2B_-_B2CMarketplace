@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { View, OperatorView, PartnerView, EnterpriseView, Persona, Session, Surface, PublicPage } from './types/view'
 import { supabase } from './lib/supabase'
+import { restoreSession, signOut } from './lib/auth'
 import type { CartItem, Product } from './types'
 import { LoginScreen } from './components/LoginScreen'
 import { PublicShell } from './components/public/PublicShell'
@@ -67,6 +68,7 @@ export default function App() {
   const [cartCount, setCartCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [accountTab, setAccountTab] = useState<string | undefined>(undefined)
+  const [applyIntent, setApplyIntent] = useState(false)
 
   const loadCart = useCallback(async () => {
     const { data: cart } = await supabase
@@ -82,6 +84,7 @@ export default function App() {
   useEffect(() => {
     loadCart().then(() => setLoading(false))
   }, [loadCart])
+
 
   const navigate = (v: View, opts?: { category?: string; product?: Product; tab?: string }) => {
     if (opts?.category !== undefined) setSelectedCategory(opts.category)
@@ -130,22 +133,37 @@ export default function App() {
   const handleLogin = (s: Session) => {
     setSurface({ kind: 'session', session: s })
     if (s.persona === 'operator') setOpView('op-dashboard')
-    else if (s.persona === 'partner') setPtView('pt-dashboard')
+    /* "Apply to sell" now goes via the login screen, so the intent has to
+       outlive the round trip to land on Onboarding rather than the dashboard. */
+    else if (s.persona === 'partner') setPtView(applyIntent ? 'pt-onboarding' : 'pt-dashboard')
     else if (s.persona === 'enterprise') setEnView('en-dashboard')
     else setView('home')
+    setApplyIntent(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const handleSignOut = () => {
+  /* Sign-in issues a real JWT that outlives the page, so a reload has to land
+     back in the console the user was in rather than on the landing page. */
+  useEffect(() => {
+    restoreSession().then((s) => { if (s) handleLogin(s) })
+    // handleLogin is stable for this purpose — it only ever sets state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleSignOut = async () => {
+    /* Clear the surface first: the console should not stay on screen while the
+       network round trip runs, and a failed revoke must not strand the user in
+       a console they asked to leave. */
     setSurface({ kind: 'public', page: 'landing' })
     setView('home')
     setOpView('op-dashboard'); setPtView('pt-dashboard'); setEnView('en-dashboard')
     window.scrollTo({ top: 0, behavior: 'smooth' })
+    await signOut()
   }
 
   // ---------- Public surface ----------
   if (surface.kind === 'login') {
-    return <LoginScreen onLogin={handleLogin} />
+    return <LoginScreen prefill={surface.prefill} onLogin={handleLogin} />
   }
 
   if (surface.kind === 'public') {
@@ -159,8 +177,8 @@ export default function App() {
         {surface.page !== 'landing' && (
           <AudiencePage
             page={surface.page}
-            onSignIn={handleLogin}
-            onApply={() => { handleLogin({ persona: 'partner', partnerId: 'PTR-1004' }); setPtView('pt-onboarding') }}
+            onSignIn={(p) => setSurface({ kind: 'login', prefill: p })}
+            onApply={() => { setApplyIntent(true); setSurface({ kind: 'login', prefill: 'partner' }) }}
           />
         )}
       </PublicShell>

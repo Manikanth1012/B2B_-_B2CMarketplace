@@ -8,8 +8,10 @@ database.
 **Status: blocked.** See *Prerequisites*. Nothing in this plan can be executed, let alone
 verified, until they are cleared.
 
-> **Updated 2026-07-29 after live database access.** Prerequisite 1 is now cleared.
-> Prerequisite 2 is not. A third blocker was found that this plan did not anticipate:
+> **Updated 2026-07-29 after live database access.** Prerequisite 1 is cleared, and a
+> service_role key has been supplied — enough for the Auth admin API, so **Tasks 2 and 3 are
+> done and verified against the live project**. It is *not* enough for DDL, so Tasks 1, 4 and
+> 5 remain blocked. A third blocker was found that this plan did not anticipate:
 > **Task 5 is not implementable against the current schema**, because no table carries a row
 > owner — `settlement_statements` has `partner_name` (free text) and not `partner_id`,
 > `orders` has `buyer_email`, and `consumer_profile` is a single shared row. Measurements,
@@ -97,19 +99,36 @@ $$ select partner_id from profiles where id = auth.uid() $$;
 **Verify:** `select current_persona()` returns null when unauthenticated, the persona when
 signed in.
 
-## Task 2: The four auth users
+## Task 2: The four auth users — DONE
 
-**Depends on the prerequisite decision above.** Create one `auth.users` row per persona with
-the passwords `DEMO_CREDENTIALS` already documents, and a matching `profiles` row. The
-partner user carries `partner_id = 'PTR-1004'`, which is what `LoginScreen.tsx:80`,
-`AudiencePage.tsx:40` and `partner/data.ts` already agree on.
+Implemented as `scripts/seed-auth-users.mjs`, run once against the project. Four users exist
+with the passwords `DEMO_CREDENTIALS` documents, the partner carrying `partner_id = 'PTR-1004'`.
 
-**Verify:** `signInWithPassword` succeeds for all four; `current_persona()` returns the
-right value for each.
+**Changed from the plan:** the persona lives in `app_metadata`, not in a `profiles` row,
+because creating that table is DDL and there is no route to DDL from here. This keeps the
+plan's actual security requirement — `app_metadata` is writable only with service_role, never
+by the signed-in user, so it is not "a claim the JWT can set itself". `user_metadata` would
+have been, and is deliberately unused. When Task 1 becomes possible, `profiles` should still
+be added: it gives `partner_id` a real foreign key to `partners`, which `app_metadata` cannot.
 
-## Task 3: Sign-in through Supabase
+**Verified:** all four sign in and carry the right persona; a wrong password is refused.
 
-**Files:** modify `src/components/LoginScreen.tsx`, `src/lib/supabase.ts`, `src/App.tsx`
+## Task 3: Sign-in through Supabase — DONE
+
+**Files:** added `src/lib/auth.ts`; modified `src/components/LoginScreen.tsx`,
+`src/lib/supabase.ts`, `src/App.tsx`, `src/components/public/AudiencePage.tsx`,
+`src/types/view.ts`
+
+One thing the plan did not foresee: the audience-page CTAs called `handleLogin` with a
+hand-built `Session`, which under real auth would have opened a console with no JWT behind it
+— every query in it running as anon. They now route to the login screen with the persona
+preselected, so there is exactly one way into a console. `Surface`'s `login` variant carries
+that `prefill`, and "Apply to sell" keeps its Onboarding destination across the round trip.
+
+**Verified** against the live project by `src/lib/auth.integration.test.ts` (7 tests) —
+including a reload, simulated as two clients over one storage, which is what `persistSession`
+actually has to survive. Not yet verified in a browser: Chromium cannot reach the project from
+this environment (see the audit).
 
 - `supabase.ts`: `persistSession: true` — it is `false` today, so a refresh would drop the
   session and strand the user mid-console.
