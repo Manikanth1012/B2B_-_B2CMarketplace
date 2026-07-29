@@ -25,17 +25,17 @@ function fmtPts(n: number): string {
 
 const SEV_COLORS: Record<string, string> = {
   info: '#6B7280',
-  warning: '#D97706',
-  high: '#DC2626',
+  warning: 'var(--warning)',
+  high: 'var(--danger)',
   low: '#6B7280',
   normal: '#6B7280',
 }
 
 const REFUND_STATES: Record<string, { label: string; color: string; bg: string }> = {
-  pending: { label: 'Pending', color: '#D97706', bg: '#FEF3C7' },
-  refunded: { label: 'Refunded', color: '#16A34A', bg: '#DCFCE7' },
-  partial: { label: 'Partial', color: '#D97706', bg: '#FEF3C7' },
-  declined: { label: 'Declined', color: '#DC2626', bg: '#FEE2E2' },
+  pending: { label: 'Pending', color: 'var(--warning)', bg: '#FEF3C7' },
+  refunded: { label: 'Refunded', color: 'var(--success)', bg: '#DCFCE7' },
+  partial: { label: 'Partial', color: 'var(--warning)', bg: '#FEF3C7' },
+  declined: { label: 'Declined', color: 'var(--danger)', bg: '#FEE2E2' },
 }
 
 export function AccountView({ initialTab }: { initialTab?: string }) {
@@ -389,7 +389,7 @@ function PasswordModal({ profile, onClose, showToast }: { profile: ConsumerProfi
         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
           Must be at least 12 characters with mixed case, a number and a symbol. Cannot match your last 5 passwords.
         </div>
-        {err && <div style={{ fontSize: 'var(--text-sm)', color: '#DC2626', fontWeight: 600 }}>{err}</div>}
+        {err && <div style={{ fontSize: 'var(--text-sm)', color: 'var(--danger)', fontWeight: 600 }}>{err}</div>}
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={btnSecondary}>Cancel</button>
           <button onClick={submit} disabled={saving} style={btnPrimary}>{saving ? 'Saving…' : 'Change password'}</button>
@@ -433,7 +433,7 @@ function MfaModal({ profile, onClose, showToast }: { profile: ConsumerProfile; o
       {step === 'manage' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', background: '#DCFCE7', borderRadius: 'var(--radius)' }}>
-            <Shield size={24} style={{ color: '#16A34A' }} />
+            <Shield size={24} style={{ color: 'var(--success)' }} />
             <div>
               <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>Two-factor auth is on</div>
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
@@ -446,7 +446,7 @@ function MfaModal({ profile, onClose, showToast }: { profile: ConsumerProfile; o
           </div>
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
             <button onClick={onClose} style={btnSecondary}>Close</button>
-            <button onClick={toggle} disabled={saving} style={{ ...btnPrimary, background: '#DC2626' }}>
+            <button onClick={toggle} disabled={saving} style={{ ...btnPrimary, background: 'var(--danger)' }}>
               {saving ? 'Working…' : 'Turn off 2FA'}
             </button>
           </div>
@@ -540,12 +540,12 @@ function PaymentsModal({ onClose, showToast }: { onClose: () => void; showToast:
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
                   {p.holder}{p.expires ? ` · expires ${p.expires}` : ''} · added {p.added}
                 </div>
-                {p.status === 'expired' && <span style={{ fontSize: 'var(--text-xs)', color: '#DC2626', fontWeight: 600 }}>Expired</span>}
+                {p.status === 'expired' && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', fontWeight: 600 }}>Expired</span>}
               </div>
               {!p.is_primary && p.status === 'active' && (
                 <button onClick={() => setPrimary(p.id)} style={btnSmall}>Make primary</button>
               )}
-              <button onClick={() => remove(p.id)} style={{ ...btnSmall, color: '#DC2626', borderColor: '#FCA5A5' }}>
+              <button onClick={() => remove(p.id)} style={{ ...btnSmall, color: 'var(--danger)', borderColor: '#FCA5A5' }}>
                 <Trash2 size={14} />
               </button>
             </div>
@@ -625,7 +625,7 @@ function SessionsModal({ profile, onClose, showToast }: { profile: ConsumerProfi
         </div>
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={btnSecondary}>Cancel</button>
-          <button onClick={signOutAll} disabled={saving || count === 0} style={{ ...btnPrimary, background: '#DC2626' }}>
+          <button onClick={signOutAll} disabled={saving || count === 0} style={{ ...btnPrimary, background: 'var(--danger)' }}>
             {saving ? 'Signing out…' : 'Sign out all devices'}
           </button>
         </div>
@@ -758,7 +758,7 @@ function NotificationsTab({
               <span style={{
                 padding: '4px 10px', borderRadius: 'var(--radius-full)',
                 fontSize: 'var(--text-xs)', fontWeight: 600,
-                background: '#DCFCE7', color: '#16A34A',
+                background: '#DCFCE7', color: 'var(--success)',
               }}>
                 {d.state}
               </span>
@@ -950,7 +950,7 @@ function HouseholdTab({ members: initialMembers, showToast }: { members: Consume
                 <div style={{
                   display: 'flex', alignItems: 'center', gap: '4px',
                   fontSize: 'var(--text-xs)', fontWeight: 600,
-                  color: m.mfa ? '#16A34A' : '#D97706',
+                  color: m.mfa ? 'var(--success)' : 'var(--warning)',
                 }}>
                   <Shield size={14} />
                   {m.mfa ? '2FA on' : 'No 2FA'}
@@ -972,7 +972,7 @@ function HouseholdTab({ members: initialMembers, showToast }: { members: Consume
                   padding: '4px 10px', borderRadius: 'var(--radius-full)',
                   fontSize: 'var(--text-xs)', fontWeight: 600,
                   background: m.status === 'active' ? '#DCFCE7' : '#FEF3C7',
-                  color: m.status === 'active' ? '#16A34A' : '#D97706',
+                  color: m.status === 'active' ? 'var(--success)' : 'var(--warning)',
                   flexShrink: 0,
                 }}>
                   {m.status}
@@ -994,7 +994,7 @@ function HouseholdTab({ members: initialMembers, showToast }: { members: Consume
                     </button>
                     <button
                       onClick={() => removeMember(m)}
-                      style={{ ...btnSecondarySmall, color: '#DC2626', borderColor: '#FECACA' }}
+                      style={{ ...btnSecondarySmall, color: 'var(--danger)', borderColor: '#FECACA' }}
                     >
                       Remove
                     </button>
@@ -1292,7 +1292,7 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
                       padding: '3px 10px', borderRadius: 'var(--radius-full)',
                       fontSize: 'var(--text-xs)', fontWeight: 600,
                       background: b.status === 'paid' ? '#DCFCE7' : '#FEF3C7',
-                      color: b.status === 'paid' ? '#16A34A' : '#D97706',
+                      color: b.status === 'paid' ? 'var(--success)' : 'var(--warning)',
                     }}>
                       {b.status}
                     </span>
@@ -1443,7 +1443,7 @@ function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerT
                   padding: '2px 8px', borderRadius: 'var(--radius-full)',
                   fontSize: 'var(--text-xs)', fontWeight: 600,
                   background: t.severity === 'P1' ? '#FEE2E2' : t.severity === 'P2' ? '#FEF3C7' : 'var(--bg-alt)',
-                  color: t.severity === 'P1' ? '#DC2626' : t.severity === 'P2' ? '#D97706' : 'var(--text-secondary)',
+                  color: t.severity === 'P1' ? 'var(--danger)' : t.severity === 'P2' ? 'var(--warning)' : 'var(--text-secondary)',
                 }}>
                   {t.severity}
                 </span>
@@ -1451,7 +1451,7 @@ function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerT
                   padding: '3px 10px', borderRadius: 'var(--radius-full)',
                   fontSize: 'var(--text-xs)', fontWeight: 600,
                   background: t.status === 'resolved' ? '#DCFCE7' : t.status === 'inprogress' ? '#E0E7FF' : '#FEF3C7',
-                  color: t.status === 'resolved' ? '#16A34A' : t.status === 'inprogress' ? '#4338CA' : '#D97706',
+                  color: t.status === 'resolved' ? 'var(--success)' : t.status === 'inprogress' ? '#4338CA' : 'var(--warning)',
                 }}>
                   {t.status}
                 </span>
@@ -1514,7 +1514,7 @@ function TicketDetailModal({ ticket, onClose, showToast }: { ticket: ConsumerTic
           <span style={{
             padding: '3px 10px', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 600,
             background: ticket.status === 'resolved' ? '#DCFCE7' : ticket.status === 'inprogress' ? '#E0E7FF' : '#FEF3C7',
-            color: ticket.status === 'resolved' ? '#16A34A' : ticket.status === 'inprogress' ? '#4338CA' : '#D97706',
+            color: ticket.status === 'resolved' ? 'var(--success)' : ticket.status === 'inprogress' ? '#4338CA' : 'var(--warning)',
           }}>{ticket.status}</span>
           <span style={{
             padding: '3px 10px', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 600,
@@ -1665,10 +1665,10 @@ function SecurityRow({ icon, label, value, action, positive, onClick }: { icon: 
       display: 'flex', gap: '12px', alignItems: 'center',
       padding: '10px 0', borderBottom: '1px solid var(--border-light)',
     }}>
-      <span style={{ color: positive ? '#16A34A' : 'var(--text-tertiary)' }}>{icon}</span>
+      <span style={{ color: positive ? 'var(--success)' : 'var(--text-tertiary)' }}>{icon}</span>
       <div style={{ flex: 1 }}>
         <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{label}</div>
-        <div style={{ fontSize: 'var(--text-xs)', color: positive ? '#16A34A' : 'var(--text-tertiary)' }}>{value}</div>
+        <div style={{ fontSize: 'var(--text-xs)', color: positive ? 'var(--success)' : 'var(--text-tertiary)' }}>{value}</div>
       </div>
       <button onClick={onClick} style={{
         padding: '6px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)',

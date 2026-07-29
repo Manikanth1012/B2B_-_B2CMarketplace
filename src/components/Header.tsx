@@ -112,27 +112,9 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut }: Header
 
           {/* Actions */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-            <button
-              onClick={() => onNavigate('orders')}
-              className="btn-ghost hide-mobile"
-              style={{ color: 'rgba(255,255,255,0.85)', borderRadius: 'var(--radius)' }}
-            >
-              My Orders
-            </button>
-            <button
-              onClick={() => onNavigate('subscriptions')}
-              className="btn-ghost hide-mobile"
-              style={{ color: 'rgba(255,255,255,0.85)', borderRadius: 'var(--radius)' }}
-            >
-              Subscriptions
-            </button>
-            <button
-              onClick={() => onNavigate('rewards')}
-              className="btn-ghost hide-mobile"
-              style={{ color: 'rgba(255,255,255,0.85)', borderRadius: 'var(--radius)' }}
-            >
-              Rewards
-            </button>
+            <HeaderNavBtn label="My Orders" onClick={() => onNavigate('orders')} />
+            <HeaderNavBtn label="Subscriptions" onClick={() => onNavigate('subscriptions')} />
+            <HeaderNavBtn label="Rewards" onClick={() => onNavigate('rewards')} />
             {/* Account avatar */}
             <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
               <button
@@ -320,6 +302,32 @@ const mobileLinkStyle: React.CSSProperties = {
   fontSize: 'var(--text-sm)',
   fontWeight: 500,
   borderRadius: 'var(--radius)',
+}
+
+/* Nav buttons sit on the dark navy header, so they cannot use .btn-ghost —
+   that class is built for light surfaces and its :hover sets a light background
+   with dark text. Forcing white text inline (as this did) wins over the class,
+   so hovering produced white-on-light. Tint the background instead, matching
+   the account button above. */
+function HeaderNavBtn({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="hide-mobile"
+      style={{
+        padding: 'var(--space-2) var(--space-3)',
+        borderRadius: 'var(--radius)',
+        border: 'none', background: 'transparent',
+        color: 'rgba(255,255,255,0.85)',
+        fontSize: 'var(--text-sm)', fontWeight: 500,
+        cursor: 'pointer', transition: 'background 150ms ease, color 150ms ease',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = 'white' }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.85)' }}
+    >
+      {label}
+    </button>
+  )
 }
 
 function AcctItem({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {

@@ -8,6 +8,9 @@ interface ProductCardProps {
   onAddToCart: () => void
 }
 
+/* Hex literals on purpose: these feed `${color}10` / `${color}05` below, where
+   the suffix is hex alpha. var() cannot participate in that concatenation.
+   Decorative card tints only — no text is rendered on them. */
 const catColors: Record<string, string> = {
   consumer: '#00A6A6',
   partner: '#8B5CF6',

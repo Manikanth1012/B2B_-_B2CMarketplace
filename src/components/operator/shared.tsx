@@ -56,9 +56,9 @@ export function StatusPill({ status }: { status: string }) {
 
 export function PriorityPill({ priority }: { priority: string }) {
   const map: Record<string, { bg: string; color: string }> = {
-    P1: { bg: '#FEE2E2', color: '#DC2626' },
-    P2: { bg: '#FEF3C7', color: '#F59E0B' },
-    P3: { bg: '#DBEAFE', color: '#2563EB' },
+    P1: { bg: '#FEE2E2', color: 'var(--danger)' },
+    P2: { bg: '#FEF3C7', color: 'var(--warning)' },
+    P3: { bg: '#DBEAFE', color: 'var(--info)' },
     P4: { bg: '#F3F4F6', color: '#6B7280' },
   }
   const s = map[priority] || { bg: '#F3F4F6', color: '#6B7280' }

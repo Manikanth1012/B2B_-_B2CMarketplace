@@ -308,7 +308,7 @@ export function RewardsView() {
                     fontWeight: 700,
                     fontSize: 'var(--text-sm)',
                     background: state === 'past' ? '#16A34A20' : state === 'here' ? t.colour + '30' : 'var(--bg-alt)',
-                    color: state === 'past' ? '#16A34A' : state === 'here' ? t.colour : 'var(--text-tertiary)',
+                    color: state === 'past' ? 'var(--success)' : state === 'here' ? t.colour : 'var(--text-tertiary)',
                     border: state === 'here' ? `2px solid ${t.colour}` : '2px solid transparent',
                   }}
                 >
@@ -377,7 +377,7 @@ export function RewardsView() {
             <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {progress.cur.benefits.map((b, i) => (
                 <li key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-                  <Check size={14} style={{ color: '#16A34A', flexShrink: 0, marginTop: 3 }} />
+                  <Check size={14} style={{ color: 'var(--success)', flexShrink: 0, marginTop: 3 }} />
                   {b}
                 </li>
               ))}
@@ -454,7 +454,7 @@ export function RewardsView() {
                       Redeem
                     </button>
                   ) : (
-                    <span style={{ fontSize: 'var(--text-xs)', color: '#DC2626', fontWeight: 600 }}>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', fontWeight: 600 }}>
                       {fmtPts(o.min - member.balance)} short
                     </span>
                   )}
@@ -493,7 +493,7 @@ export function RewardsView() {
                           fontSize: 'var(--text-xs)',
                           fontWeight: 600,
                           background: t.points < 0 ? '#DC262615' : t.points > 0 ? '#16A34A15' : 'var(--bg-alt)',
-                          color: t.points < 0 ? '#DC2626' : t.points > 0 ? '#16A34A' : 'var(--text-secondary)',
+                          color: t.points < 0 ? 'var(--danger)' : t.points > 0 ? 'var(--success)' : 'var(--text-secondary)',
                         }}
                       >
                         {tl.label}
@@ -503,7 +503,7 @@ export function RewardsView() {
                       <div>{t.note}</div>
                       {t.ref && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{t.ref}</div>}
                     </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: t.points < 0 ? '#DC2626' : t.points > 0 ? '#16A34A' : 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: t.points < 0 ? 'var(--danger)' : t.points > 0 ? 'var(--success)' : 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                       {t.points > 0 ? '+' : ''}{Math.round(t.points).toLocaleString('en-US')}
                     </td>
                     <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>{fmtMoney(t.value)}</td>

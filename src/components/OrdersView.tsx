@@ -70,7 +70,7 @@ export function OrdersView() {
             background: '#FEF3C7', borderRadius: 'var(--radius-lg)', marginBottom: '24px',
             border: '1px solid #FCD34D',
           }}>
-            <AlertCircle size={20} style={{ color: '#D97706', flexShrink: 0, marginTop: 2 }} />
+            <AlertCircle size={20} style={{ color: 'var(--warning)', flexShrink: 0, marginTop: 2 }} />
             <div style={{ fontSize: 'var(--text-sm)', color: '#92400E' }}>
               <strong>One order needs your attention.</strong> A delivery attempt failed and the parcel is waiting at the depot.
             </div>
@@ -92,7 +92,7 @@ export function OrdersView() {
                         padding: '3px 10px', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)',
                         fontWeight: 600,
                         background: order.failed ? '#FEE2E2' : order.status === 'delivered' ? '#DCFCE7' : order.status === 'refunded' ? '#FEF3C7' : '#E0E7FF',
-                        color: order.failed ? '#DC2626' : order.status === 'delivered' ? '#16A34A' : order.status === 'refunded' ? '#D97706' : '#4338CA',
+                        color: order.failed ? 'var(--danger)' : order.status === 'delivered' ? 'var(--success)' : order.status === 'refunded' ? 'var(--warning)' : '#4338CA',
                       }}>
                         {order.status}
                       </span>
@@ -245,7 +245,7 @@ function OrderDetailModal({ order, items, onClose }: { order: Order; items: Orde
           <span style={{
             padding: '4px 12px', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 600,
             background: order.failed ? '#FEE2E2' : order.status === 'delivered' ? '#DCFCE7' : order.status === 'refunded' ? '#FEF3C7' : '#E0E7FF',
-            color: order.failed ? '#DC2626' : order.status === 'delivered' ? '#16A34A' : order.status === 'refunded' ? '#D97706' : '#4338CA',
+            color: order.failed ? 'var(--danger)' : order.status === 'delivered' ? 'var(--success)' : order.status === 'refunded' ? 'var(--warning)' : '#4338CA',
           }}>
             {order.status}
           </span>

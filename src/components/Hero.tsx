@@ -115,12 +115,14 @@ export function Hero({ onNavigate }: HeroProps) {
                 <div style={{
                   position: 'absolute',
                   inset: 0,
+                  /* item.color is a hex literal on purpose: the `80` suffix is hex alpha,
+                     which var() cannot participate in. Decorative tint only. */
                   background: `linear-gradient(to top, ${item.color}80, transparent)`,
                 }} />
               </div>
               <div style={{ padding: '12px 16px' }}>
-                <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', marginBottom: '2px' }}>{item.label}</div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.5)' }}>Explore →</div>
+                <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', color: 'white', marginBottom: '2px' }}>{item.label}</div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'rgba(255,255,255,0.75)' }}>Explore →</div>
               </div>
             </button>
           ))}

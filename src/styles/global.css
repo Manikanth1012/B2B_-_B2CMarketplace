@@ -10,13 +10,13 @@
   --brand-red: #E63946;
 
   /* Semantic colors */
-  --success: #16A34A;
+  --success: #117F3A;   /* was #16A34A — 3.30:1 on white, 3.00:1 on its tint. Now 5.10 / 4.64 */
   --success-bg: #DCFCE7;
-  --warning: #F59E0B;
+  --warning: #986207;   /* was #F59E0B — 2.15:1 on white, 1.93:1 on its tint (unreadable). Now 5.14 / 4.62 */
   --warning-bg: #FEF3C7;
-  --danger: #DC2626;
+  --danger: #CA2323;    /* was #DC2626 — 3.95:1 on its tint. Now 5.56 / 4.55 */
   --danger-bg: #FEE2E2;
-  --info: #2563EB;
+  --info: #245FE2;      /* was #2563EB — 4.24:1 on its tint. Now 5.51 / 4.52 */
   --info-bg: #DBEAFE;
 
   /* Neutrals */
@@ -42,7 +42,11 @@
   /* Text */
   --text: #111827;
   --text-secondary: #4B5563;
-  --text-tertiary: #9CA3AF;
+  /* Was #9CA3AF, which is 2.54:1 on white — below the 4.5:1 WCAG AA floor for
+     normal text, across 284 usages. #6B7280 is 4.80:1 and keeps the hierarchy
+     (--text #111827 > --text-secondary #4B5563 > --text-tertiary #6B7280).
+     Every usage sits on a light surface; the dark rails use rgba(255,255,255,…). */
+  --text-tertiary: #6B7280;
   --text-inverse: #FFFFFF;
 
   /* Shadows */
@@ -236,7 +240,9 @@ input, select, textarea {
 
 .badge-bestseller {
   background: var(--brand-gold);
-  color: white;
+  /* Dark ink, not white: white on this gold is 2.03:1. Dark is 8.4:1, and it
+     is the conventional treatment for a gold badge anyway. */
+  color: var(--text);
 }
 
 .badge-bundle {

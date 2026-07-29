@@ -12,10 +12,10 @@ interface ProductDetailProps {
 }
 
 const catColors: Record<string, string> = {
-  consumer: '#00A6A6',
+  consumer: 'var(--brand-accent)',
   partner: '#8B5CF6',
-  iot: '#16A34A',
-  security: '#2563EB',
+  iot: 'var(--success)',
+  security: 'var(--info)',
   device: '#F5A623',
   content: '#E63946',
 }
@@ -23,7 +23,7 @@ const catColors: Record<string, string> = {
 export function ProductDetail({ product, onAddToCart, onNavigate }: ProductDetailProps) {
   const [quantity, setQuantity] = useState(1)
   const [activeTab, setActiveTab] = useState<'description' | 'specs' | 'reviews'>('description')
-  const color = catColors[product.category_id] || '#00A6A6'
+  const color = catColors[product.category_id] || 'var(--brand-accent)'
   const hasDiscount = product.was_price && product.was_price > product.price
   const outOfStock = product.stock === 'out'
 
