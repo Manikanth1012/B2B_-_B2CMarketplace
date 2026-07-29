@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { KB_KINDS, kbKind, filterArticles, allTags, canAct } from './kb'
 import type { KbArticle } from './kb'
 
@@ -76,5 +77,32 @@ describe('canAct', () => {
 
   it('is true when my role is unknown — reading is never gated', () => {
     expect(canAct(art({ roles: ['OR-ADMIN'] }), null)).toBe(true)
+  })
+})
+
+/* Every published article must point at a view this app actually has. The
+   equivalent check caught two faults on the prototype's first run. */
+describe('view bindings in the migration', () => {
+  const sql = readFileSync('supabase/migrations/20260729120000_knowledge_base.sql', 'utf8')
+  const views = readFileSync('src/types/view.ts', 'utf8')
+  const known = new Set((views.match(/'[a-z][a-z0-9-]*'/g) || []).map(s => s.replace(/'/g, '')))
+
+  /* Rows are `('id', 'persona', ..., 'view'|NULL, ...)`; pull id/persona/view. */
+  const rows = [...sql.matchAll(/^\('([^']+)', '([a-z]+)', '[^']*', '(?:[^']|'')*', \d+, (?:'[^']*'|NULL), (NULL|'[^']+')/gm)]
+    .map(m => ({ id: m[1], persona: m[2], view: m[3] === 'NULL' ? null : m[3].replace(/'/g, '') }))
+
+  it('parsed the article rows', () => {
+    expect(rows.length).toBeGreaterThanOrEqual(33)
+  })
+
+  it('every non-null view is a real view id', () => {
+    const bad = rows.filter(r => r.view && !known.has(r.view))
+    expect(bad.map(b => `${b.id} -> ${b.view}`)).toEqual([])
+  })
+
+  it('a null view is only ever on a held article', () => {
+    const published = sql.split('\n').filter(l => l.startsWith("('") && l.includes("'published'"))
+    const nullViewPublished = published.filter(l => /, NULL, '\{/.test(l))
+    expect(nullViewPublished).toEqual([])
   })
 })
