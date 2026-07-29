@@ -59,7 +59,14 @@ const PROTO_VIEW_MAP = {
 const PERSONA = { consumer: 'consumer', partner: 'partner', operator: 'operator', buyer: 'enterprise' };
 
 const q = v => v === null || v === undefined ? 'NULL' : "'" + String(v).replace(/'/g, "''") + "'";
-const arr = a => !a || !a.length ? "'{}'" : "'{" + a.map(s => '"' + String(s).replace(/"/g, '\\"') + '"').join(',') + "}'";
+/* Two escapes at two levels: `"` for Postgres array-element syntax (applied
+   first, per element), then `'` for the outer SQL string literal (applied
+   once, to the finished element list) — neither substitutes for the other. */
+const arr = a => {
+  if (!a || !a.length) return "'{}'";
+  const inner = a.map(s => '"' + String(s).replace(/"/g, '\\"') + '"').join(',');
+  return "'{" + inner.replace(/'/g, "''") + "}'";
+};
 const json = o => "'" + JSON.stringify(o).replace(/'/g, "''") + "'::jsonb";
 
 const rows = [], tourRows = [];
