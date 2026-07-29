@@ -514,8 +514,15 @@ scoping governs acting, not reading."
   ```ts
   export interface KbSnapshot { articles: KbArticle[]; tours: KbTour[]; loadError?: string }
   export function loadKb(persona: string): Promise<KbSnapshot>
-  export function articleForView(persona: string, view: string): Promise<KbArticle | null>
+  export type ArticleForViewResult =
+    | { ok: true; article: KbArticle | null }   // null = genuinely none bound
+    | { ok: false; reason: string }             // the read failed
+  export function articleForView(persona: string, view: string): Promise<ArticleForViewResult>
   ```
+
+  A failed read and "no article bound" are different answers. Conflating them makes
+  contextual help say "there is no article for this screen" when the truth is that it
+  could not find out — spec §4.
 
 **Note on `.error`:** check it on every query and surface a load failure distinctly from an empty result. `loadOnboarding` did not, and a failed read rendered to the seller as "nothing outstanding" — a wrong answer presented as a confident one.
 
@@ -552,13 +559,19 @@ export async function loadKb(persona: string): Promise<KbSnapshot> {
   }
 }
 
-/* Contextual help: the article bound to the screen you are on, if any. */
-export async function articleForView(persona: string, view: string): Promise<KbArticle | null> {
+/* Contextual help: the article bound to the screen you are on, if any.
+   Three outcomes, not two — a failed read must never be reported as "no
+   article exists", which is a wrong answer stated confidently. */
+export type ArticleForViewResult =
+  | { ok: true; article: KbArticle | null }
+  | { ok: false; reason: string }
+
+export async function articleForView(persona: string, view: string): Promise<ArticleForViewResult> {
   const { data, error } = await supabase.from('kb_articles').select('*')
     .eq('persona', persona).eq('status', 'published').eq('view', view)
     .order('sort_order').limit(1)
-  if (error) return null
-  return (data && data[0] ? data[0] : null) as KbArticle | null
+  if (error) return { ok: false, reason: error.message }
+  return { ok: true, article: (data && data[0] ? data[0] : null) as KbArticle | null }
 }
 ```
 
@@ -908,9 +921,13 @@ export function ContextualHelp({ persona, view, onOpenCatalogue }: {
   const [article, setArticle] = useState<KbArticle | null>(null)
   const [loaded, setLoaded] = useState(false)
 
+  const [failed, setFailed] = useState(false)
+
   const openHelp = async () => {
-    setOpen(true); setLoaded(false)
-    setArticle(await articleForView(persona, view))
+    setOpen(true); setLoaded(false); setFailed(false)
+    const res = await articleForView(persona, view)
+    if (res.ok) setArticle(res.article)
+    else { setArticle(null); setFailed(true) }
     setLoaded(true)
   }
 
@@ -945,10 +962,18 @@ export function ContextualHelp({ persona, view, onOpenCatalogue }: {
             ))}
           </div>
         ) : (
-          /* Say it plainly rather than doing nothing. */
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-            There is no article for this screen yet. The knowledge base has everything that is written.
-          </p>
+          /* Say it plainly rather than doing nothing — and say WHICH thing.
+             "No article exists" and "we could not check" are different claims. */
+          failed ? (
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--danger)' }}>
+              The help article could not be loaded. This does not mean there is none —
+              try again, or browse the knowledge base.
+            </p>
+          ) : (
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+              There is no article for this screen yet. The knowledge base has everything that is written.
+            </p>
+          )
         )}
       </Modal>
     </>
@@ -1386,8 +1411,11 @@ describe('knowledge base round trip', () => {
 
   it('resolves contextual help by view, and returns null for a screen with no article', async () => {
     const hit = await articleForView('partner', 'pt-listings')
-    expect(hit).not.toBeNull()
-    expect(await articleForView('partner', 'pt-nonexistent')).toBeNull()
+    expect(hit.ok).toBe(true)
+    if (hit.ok) expect(hit.article).not.toBeNull()
+    const miss = await articleForView('partner', 'pt-nonexistent')
+    expect(miss.ok).toBe(true)
+    if (miss.ok) expect(miss.article).toBeNull()
   })
 
   it('refuses feedback with an empty note', async () => {
