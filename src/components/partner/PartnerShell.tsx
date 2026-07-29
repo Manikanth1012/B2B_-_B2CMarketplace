@@ -5,6 +5,7 @@ import {
   Search, Bell as BellIcon, LogOut, Menu, X, Store, BookOpen
 } from 'lucide-react'
 import type { PartnerView } from '../../types/view'
+import { ContextualHelp } from '../ContextualHelp'
 
 interface PartnerShellProps {
   view: PartnerView
@@ -193,6 +194,7 @@ export function PartnerShell({ view, onNavigate, onSignOut, children }: PartnerS
               <BellIcon size={20} />
               <span style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--danger)' }} />
             </button>
+            <ContextualHelp persona="partner" view={view} onOpenCatalogue={() => onNavigate('pt-kb')} />
             <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
               <button
                 onClick={() => setProfileOpen(!profileOpen)}

@@ -218,6 +218,7 @@ export default function App() {
         onCartClick={() => setCartOpen(true)}
         onNavigate={navigate}
         onSignOut={handleSignOut}
+        currentView={view}
       />
       <main>
         {loading && <div style={{ textAlign: 'center', padding: '60px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>}

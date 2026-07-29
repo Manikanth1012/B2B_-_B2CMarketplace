@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { LayoutDashboard, Search, Shield, Cpu, Monitor, ShoppingCart, SquareCheck as CheckSquare, Users, History, User, ChevronDown, Bell as BellIcon, LogOut, Menu, X, Building2, BookOpen } from 'lucide-react'
 import type { EnterpriseView } from '../../types/view'
+import { ContextualHelp } from '../ContextualHelp'
 
 interface EnterpriseShellProps {
   view: EnterpriseView
@@ -154,6 +155,7 @@ export function EnterpriseShell({ view, onNavigate, onSignOut, children }: Enter
               <BellIcon size={20} />
               <span style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--danger)' }} />
             </button>
+            <ContextualHelp persona="enterprise" view={view} onOpenCatalogue={() => onNavigate('en-kb')} />
             <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
               <button
                 onClick={() => setProfileOpen(!profileOpen)}

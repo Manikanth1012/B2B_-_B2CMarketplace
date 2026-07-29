@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Search, ShoppingCart, Menu, X, ChevronDown, User, Bell, Shield, LogOut, Star, BookOpen } from 'lucide-react'
 import type { Category } from '../types'
 import { supabase } from '../lib/supabase'
+import { ContextualHelp } from './ContextualHelp'
 
 import type { View } from '../types/view'
 
@@ -10,9 +11,10 @@ interface HeaderProps {
   onCartClick: () => void
   onNavigate: (view: View, opts?: { category?: string; tab?: string }) => void
   onSignOut?: () => void
+  currentView?: View
 }
 
-export function Header({ cartCount, onCartClick, onNavigate, onSignOut }: HeaderProps) {
+export function Header({ cartCount, onCartClick, onNavigate, onSignOut, currentView }: HeaderProps) {
   const [categories, setCategories] = useState<Category[]>([])
   const [search, setSearch] = useState('')
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -115,6 +117,7 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut }: Header
             <HeaderNavBtn label="My Orders" onClick={() => onNavigate('orders')} />
             <HeaderNavBtn label="Subscriptions" onClick={() => onNavigate('subscriptions')} />
             <HeaderNavBtn label="Rewards" onClick={() => onNavigate('rewards')} />
+            {currentView && <ContextualHelp persona="consumer" view={currentView} onOpenCatalogue={() => onNavigate('kb')} />}
             {/* Account avatar */}
             <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
               <button
