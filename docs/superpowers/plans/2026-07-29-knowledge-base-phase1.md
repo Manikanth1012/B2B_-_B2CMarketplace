@@ -912,10 +912,14 @@ import { articleForView } from '../lib/kbRepo'
 import { kbKind } from '../lib/kb'
 import type { KbArticle } from '../lib/kb'
 
-export function ContextualHelp({ persona, view, onOpenCatalogue }: {
+export function ContextualHelp({ persona, view, onOpenCatalogue, onDark = false }: {
   persona: string
   view: string
   onOpenCatalogue: () => void
+  /* The consumer's header is dark navy; the three admin shells are white. A
+     shared control cannot assume its surface — var(--text-secondary) on navy
+     is 2.18:1, below the 3:1 floor for a control. */
+  onDark?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [article, setArticle] = useState<KbArticle | null>(null)
@@ -934,7 +938,7 @@ export function ContextualHelp({ persona, view, onOpenCatalogue }: {
   return (
     <>
       <button onClick={openHelp} aria-label="Help for this screen" title="Help for this screen"
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: 'transparent', color: onDark ? 'rgba(255,255,255,0.85)' : 'var(--text-secondary)', cursor: 'pointer' }}>
         <HelpCircle size={18} />
       </button>
 
@@ -1015,7 +1019,7 @@ interface HeaderProps {
 Destructure `currentView` and render, immediately before the account avatar block:
 
 ```tsx
-{currentView && <ContextualHelp persona="consumer" view={currentView} onOpenCatalogue={() => onNavigate('kb')} />}
+{currentView && <ContextualHelp persona="consumer" view={currentView} onOpenCatalogue={() => onNavigate('kb')} onDark />}
 ```
 
 Then in `App.tsx`, pass it: `<Header … currentView={view} />`.
