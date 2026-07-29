@@ -115,7 +115,8 @@ be added: it gives `partner_id` a real foreign key to `partners`, which `app_met
 
 ## Task 3: Sign-in through Supabase — DONE
 
-**Files:** added `src/lib/auth.ts`; modified `src/components/LoginScreen.tsx`,
+**Files:** added `src/lib/auth.ts` (pure) and `src/lib/authRepo.ts` (Supabase); modified
+`src/components/LoginScreen.tsx`,
 `src/lib/supabase.ts`, `src/App.tsx`, `src/components/public/AudiencePage.tsx`,
 `src/types/view.ts`
 

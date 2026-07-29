@@ -4,7 +4,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { createClient } from '@supabase/supabase-js'
 import { supabase } from './supabase'
-import { signIn, restoreSession, signOut, SignInError } from './auth'
+import { signIn, restoreSession, signOut, SignInError } from './authRepo'
 
 const CREDENTIALS = {
   consumer: { email: 'priya.raman@example.com', password: 'demo1234' },

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { View, OperatorView, PartnerView, EnterpriseView, Persona, Session, Surface, PublicPage } from './types/view'
 import { supabase } from './lib/supabase'
-import { restoreSession, signOut } from './lib/auth'
+import { restoreSession, signOut } from './lib/authRepo'
 import type { CartItem, Product } from './types'
 import { LoginScreen } from './components/LoginScreen'
 import { PublicShell } from './components/public/PublicShell'

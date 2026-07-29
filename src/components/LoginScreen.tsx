@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { ShoppingBag, Settings, Store, Building2, ArrowRight, Mail, Lock, Eye, EyeOff, Loader as Loader2 } from 'lucide-react'
 import type { Persona, Session } from '../types/view'
-import { signIn, SignInError } from '../lib/auth'
+import { signIn, SignInError } from '../lib/authRepo'
 
 interface LoginScreenProps {
   onLogin: (session: Session) => void
