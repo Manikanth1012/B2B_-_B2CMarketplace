@@ -5,8 +5,17 @@ Replace the client-side credential comparison with Supabase Auth, and replace th
 user — so that the anon key stops being a full read/write credential for the whole
 database.
 
-**Status: blocked on two things outside the code.** See *Prerequisites*. Nothing in this
-plan can be executed, let alone verified, until both are cleared.
+**Status: blocked.** See *Prerequisites*. Nothing in this plan can be executed, let alone
+verified, until they are cleared.
+
+> **Updated 2026-07-29 after live database access.** Prerequisite 1 is now cleared.
+> Prerequisite 2 is not. A third blocker was found that this plan did not anticipate:
+> **Task 5 is not implementable against the current schema**, because no table carries a row
+> owner — `settlement_statements` has `partner_name` (free text) and not `partner_id`,
+> `orders` has `buyer_email`, and `consumer_profile` is a single shared row. Measurements,
+> the full per-table permission matrix, and the evidence are in
+> [`2026-07-29-rls-live-audit.md`](./2026-07-29-rls-live-audit.md). The figures below were
+> checked against the live project and are correct as written.
 
 ---
 
@@ -24,16 +33,22 @@ enabled everywhere and constrains nothing.
 
 ## Prerequisites
 
-1. **Network egress.** This environment cannot reach the project host. The integration
-   suite fails with `Host not in allowlist: playukebhnkrdrcsorhj.supabase.co. Add this host
-   to your network egress settings to allow access.` Add it to the environment's network
-   settings (see code.claude.com/docs/en/claude-code-on-the-web).
-2. **A credential that can alter policy.** The anon key cannot run DDL. `CREATE POLICY`,
-   `DROP POLICY` and `ALTER TABLE` need either the **service_role** key or the Postgres
-   connection string. Supply one, or apply the migrations from the Supabase dashboard.
+1. ~~**Network egress.**~~ **Cleared 2026-07-29.** The host is allowlisted;
+   `npm run test:integration` runs 9 tests against the live project and passes.
+2. **A credential that can alter policy.** *Still outstanding.* The anon key cannot run DDL.
+   `CREATE POLICY`, `DROP POLICY` and `ALTER TABLE` need either the **service_role** key or
+   the Postgres connection string. Supply one, or apply the migrations from the Supabase
+   dashboard. Confirmed unmet: the key's JWT claims `"role":"anon"`, schema introspection is
+   refused for anything but service_role, and no SQL-executing RPC is exposed.
+3. **A decision on row ownership.** New — see the audit. The consumer-owned tables have no
+   `user_id` and `settlement_statements` has no `partner_id`, so Task 5's predicates have
+   nothing to resolve against. Adding those columns and backfilling the seeded rows is a
+   task this plan does not yet contain, and the backfill needs a human answer: which demo
+   persona owns the existing seeded orders, given `buyer_email` is display text.
 
-A third question needs an answer before Task 2 can be written: **who creates the auth
-users** — a seeding script run with service_role, or a human in the dashboard.
+The question of **who creates the auth users** is now answered: public signup is enabled and
+auto-confirming, so Task 2 can seed them with the anon key alone. That does not unblock
+anything by itself, since the `profiles` table it must write to is Task 1 DDL.
 
 ## Global constraints
 
@@ -125,6 +140,12 @@ empty set rather than rows.
 ## Task 5: Per-persona policies
 
 **Files:** create `supabase/migrations/<ts>_scoped_rls_personas.sql`
+
+> **Not implementable as written** — see prerequisite 3. The `partner_*` and `onboarding_*`
+> row is the only group whose key (`partner_id`) exists today. Every row below that mentions
+> an owner needs the ownership columns added and backfilled first. Note also that policies
+> here must key on `current_persona()` and **never** on `auth.role() = 'authenticated'`:
+> public signup is open, so `authenticated` includes anyone who registers.
 
 Written table by table, not with a loop, because the rules genuinely differ:
 
