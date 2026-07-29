@@ -5,6 +5,14 @@ database access, so its figures came from reading `supabase/migrations/`. The ho
 reachable, so this file records what was **measured against the live project**
 (`playukebhnkrdrcsorhj`) on 2026-07-29, and what changed as a result.
 
+> **Resolved, same day.** Everything below describes the state *before* the scoped-RLS
+> migrations. All of it has since been fixed and re-measured — jump to
+> [After the fix](#after-the-fix) for the current numbers. The DDL blocker was cleared by the
+> Supabase **Management API** (`POST /v1/projects/<ref>/database/query` with a personal access
+> token), which runs as `postgres`; the section below that calls DDL unreachable was correct
+> about PostgREST, service_role and direct Postgres, and wrong only in assuming
+> `api.supabase.com` would stay off the allowlist.
+
 ## Method
 
 `npm run test:integration` passes against the live database — 9 tests when this audit began,
@@ -123,31 +131,34 @@ guessed at silently:
    unregistered seller should be. This is deliberate: inventing partner rows to satisfy a
    foreign key would put fictional sellers into the onboarding console.
 
-None of this has been applied — it is the mapping to apply once a DDL credential exists.
+**Applied** as `supabase/migrations/20260729130100_row_ownership.sql`, exactly as decided
+above. Measured after: `orders` 7/7 owned, `order_items` 7/7, every `consumer_*` table fully
+owned, `loyalty_members` 1 of 8 and `loyalty_ledger` 10 of 36 — LM-4001 only, joined on
+`party = consumer_profile.customer_id = 'CUS-449021'`. `settlement_statements` carries a
+`partner_id` on 6 of 12 rows: the two Nimbus, two Sentinel and two StreamNova statements. The
+other six — TechDyne, CloudSync and Aventa (First-party) — are null and therefore
+operator-only, which is the outcome decision 3 asked for.
 
 ## Status against the plan
 
 | Task | State |
 |---|---|
 | Prereq 1 — network egress | **Cleared.** Integration suite reaches the project |
-| Prereq 2 — DDL credential | **Partly.** service_role supplied; enough for the Auth admin API, not for DDL |
-| Prereq 3 — row ownership | Mapping decided above; needs DDL to apply |
-| 1 — identity table | **Blocked.** DDL |
+| Prereq 2 — DDL credential | **Cleared.** Management API query endpoint + a `sbp_…` token, running as `postgres` |
+| Prereq 3 — row ownership | **Cleared.** `20260729130100_row_ownership.sql` |
+| 1 — identity table | **Done and verified.** `20260729130000_auth_profiles.sql` |
 | 2 — four auth users | **Done and verified.** `scripts/seed-auth-users.mjs` |
 | 3 — sign-in through Supabase | **Done and verified.** `src/lib/auth.ts` |
-| 4 — drop permissive policies | **Blocked.** DDL |
-| 5 — per-persona policies | **Blocked.** DDL, plus the ownership columns |
-| 6 — tests | Auth half done (7 integration tests). Policy regression tests wait on Tasks 4–5 |
+| 4 — drop permissive policies | **Done and verified.** `20260729130200_scoped_rls_public.sql` |
+| 5 — per-persona policies | **Done and verified.** `20260729130300_scoped_rls_personas.sql` |
+| 6 — tests | **Partly.** Both suites repaired and green (16 tests); the partner settlement regression test is still outstanding |
 
-### Why service_role still does not reach DDL
+### Why service_role did not reach DDL, and what did
 
-The key is genuine — it authenticates, and `/rest/v1/` introspection, refused for anon, now
+The key is genuine — it authenticates, and `/rest/v1/` introspection, refused for anon,
 returns the schema. What it cannot do is run DDL, because **PostgREST does not execute DDL at
-all** and every other route out of this environment is closed:
+all**, and the other routes out of this environment are closed:
 
-- `api.supabase.com` — the Management API, which does have a query endpoint — is **not on the
-  network allowlist**: the proxy answers `403` to `CONNECT`. It also wants a personal access
-  token (`sbp_…`), which service_role is not.
 - **Direct Postgres is unreachable.** The proxy answers `200 Connection Established` to a
   `CONNECT` on port 5432, but nothing flows — the Postgres handshake times out on the direct
   host and on the poolers alike, so the 200 is optimistic rather than a working tunnel.
@@ -156,8 +167,17 @@ all** and every other route out of this environment is closed:
   all 404 with service_role as with anon), and no `pg-meta` route is exposed on the project
   host.
 
-**To finish Tasks 1, 4 and 5, one of these has to change:** allowlist `api.supabase.com` and
-supply a personal access token, or paste the migrations into the dashboard SQL editor.
+**The route that worked** is the one this section had listed as blocked:
+
+    POST https://api.supabase.com/v1/projects/<ref>/database/query
+    Authorization: Bearer sbp_…            # a personal access token, not service_role
+
+`api.supabase.com` is reachable after all, and the endpoint runs arbitrary SQL as `postgres`
+— `select current_user` returns `postgres` on PostgreSQL 17.6. That is full DDL. The four
+migrations were applied and verified through it; Tasks 4 and 5 went in one `begin; … commit;`
+so the consoles were never left locked out between them.
+
+The token is a credential and is not stored in this repository.
 
 ### The browser cannot reach the project either
 
@@ -175,6 +195,67 @@ under a real session.** That walk still needs doing somewhere a browser can reac
 ## The risk the plan flagged, now measured
 
 Risk 1 said cross-persona reads could not be mapped without the database in front of it. With
-the database in front of it, the answer is worse than "not mapped": the schema has no notion
-of who owns a row, so the mapping cannot be expressed until the columns exist. Tasks 4 and 5
-still have to ship together, and the schema change now has to ship with them.
+the database in front of it, the answer was worse than "not mapped": the schema had no notion
+of who owned a row, so the mapping could not be expressed until the columns existed. Tasks 4
+and 5 had to ship together, and the schema change had to ship with them. All three did.
+
+---
+
+## After the fix
+
+Re-measured against the live project once the four migrations were in. Same method as above,
+plus a per-persona probe: for each role, count the rows visible in all 43 tables under a JWT
+for that persona, then attempt every write path the consoles actually perform.
+
+**128 permissive policies → 115 scoped ones.** Every table has at least one policy and RLS
+enabled, so nothing is left silently open. Only two policies anywhere still read `true`:
+public SELECT on `categories` and `products`.
+
+### What the anon key can do now
+
+| | Before | After |
+|---|---|---|
+| Tables returning rows to anon | **all 43** | **3** — `categories` (6), `products` (39), `kb_articles` (21 of 33, published only) |
+| Anon INSERT | 37 of 43 tables | **none** |
+| Anon UPDATE / DELETE | **all 43** | **none** |
+| `operator_audit_log` rewritable | yes | **no — by anyone.** Neither audit table has an UPDATE or DELETE policy for any role |
+
+The 123 open write paths are 0. `settlement_statements`, `operator_users`, `partners` and
+`orders` all return empty to an unauthenticated caller.
+
+### What each persona sees
+
+| Persona | Reads | Refused |
+|---|---|---|
+| anon | 3 catalogue/content tables | everything else; every write |
+| JWT with no `profiles` row | nothing beyond anon | every write — `current_persona()` is null |
+| consumer | own 7 orders, 7 order items, 7 bills, 5 household, 11 audit rows, 1 loyalty membership + its 10 ledger rows, own profile, catalogue, reference data | all `operator_*`, all partner tables, another member's loyalty row, another user's rows |
+| partner `PTR-1004` | own partner row, 7 gates, 1 task, **2 of 12 settlement statements** | the other 10 settlement rows, another partner's gates and endpoints, all consumer data, the operator's tables |
+| enterprise | catalogue and reference data only — the console runs on local `data.ts` | everything else |
+| operator | all 43 tables | rewriting either audit log |
+
+The partner row is the answer to the plan's own verification question: a partner session
+cannot read another partner's settlement rows, and gets silent empty rather than an error.
+
+### The consoles still work unchanged
+
+Every write path was exercised under a real persona JWT and rolled back. Cart add/update/
+remove, checkout writing `orders` + `order_items` + `subscriptions`, profile edits, security
+audit rows, loyalty redemption, partner endpoint registration, gate clearing, and the
+knowledge base's content-feedback ticket all succeed. None of them mention `user_id`; the
+column default stamps the owner server-side, which is why **no component query changed**.
+
+`npm test` 63 passed, `npm run test:integration` 16 passed against the live project,
+`npm run build` clean.
+
+### Still open
+
+1. **The anon key in circulation is unchanged.** It no longer buys write access to anything,
+   but rotating it in the dashboard is the right follow-up.
+2. **Public signup is still enabled and auto-confirming.** Harmless to the policies now — a
+   self-registered stranger has no `profiles` row and is refused everywhere, which was
+   measured — but worth closing.
+3. **Nobody has watched the four consoles render under a real session.** Unchanged: Chromium
+   still cannot reach the project from this environment (see *The browser cannot reach the
+   project either*, above). The policies are verified at the database, not through the UI.
+4. **The partner settlement regression test** named in Task 6 is not yet written.

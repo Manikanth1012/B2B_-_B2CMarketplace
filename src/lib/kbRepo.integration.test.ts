@@ -1,8 +1,15 @@
-/* Touches the live Supabase project. Owns only rows it creates. */
+/* Touches the live Supabase project. Owns only rows it creates.
+
+   Signs in as the operator first: since the scoped-RLS migrations landed, anon can
+   only SELECT published kb_articles, so seeding a fixture article and reading the
+   operator ticket queue back both need a persona behind them. */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { supabase } from './supabase'
+import { signIn, signOut } from './authRepo'
 import { loadKb, articleForView, raiseContentFeedback, CONTENT_FEEDBACK_CATEGORY } from './kbRepo'
 import type { KbArticle } from './kb'
+
+const OPERATOR = { email: 'anika.sharma@aventa.com', password: 'operator123' }
 
 const AID = 'KB-TEST-1'
 const ORG = 'KB Test Co'
@@ -24,11 +31,16 @@ async function teardown() {
 }
 
 beforeAll(async () => {
+  await signIn(OPERATOR.email, OPERATOR.password)
   await teardown()
-  await supabase.from('kb_articles').insert({ ...testArticle, body: JSON.stringify(testArticle.body) })
+  const { error } = await supabase.from('kb_articles').insert({ ...testArticle, body: JSON.stringify(testArticle.body) })
+  if (error) throw new Error(`Could not seed ${AID}: ${error.message}`)
 })
 
-afterAll(teardown)
+afterAll(async () => {
+  await teardown()
+  await signOut()
+})
 
 describe('knowledge base round trip', () => {
   it('loads the seeded article for its persona', async () => {

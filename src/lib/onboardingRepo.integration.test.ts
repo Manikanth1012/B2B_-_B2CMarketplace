@@ -1,11 +1,18 @@
 /* Touches the live Supabase project. It owns only the rows it creates under
-   PTR-TEST and never reads or mutates the demo partners. */
+   PTR-TEST and never reads or mutates the demo partners.
+
+   Runs as the operator. Since the scoped-RLS migrations landed, the partner-scoped
+   tables answer only to `partner_id = current_partner_id()` or to the operator, and
+   the demo partner persona is PTR-1004 — it could not see PTR-TEST at all. The
+   operator is the persona that legitimately reaches every partner's onboarding. */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { supabase } from './supabase'
+import { signIn, signOut } from './authRepo'
 import { loadOnboarding, clearGate, registerEndpoint, setEndpointAuth, sendTestCall, runSandboxOrder } from './onboardingRepo'
 import { GATES } from './onboarding'
 
 const PID = 'PTR-TEST'
+const OPERATOR = { email: 'anika.sharma@aventa.com', password: 'operator123' }
 
 async function teardown() {
   const { data: eps } = await supabase.from('partner_endpoints').select('id').eq('partner_id', PID)
@@ -16,17 +23,18 @@ async function teardown() {
   await supabase.from('onboarding_gates').delete().eq('partner_id', PID)
   await supabase.from('partners').delete().eq('id', PID)
   /* clearGate writes one audit row per gate cleared, keyed `${partnerId} · ${gate_name}`.
-     There is no partner_id column on this table, so match on the object prefix instead. */
-  await supabase.from('operator_audit_log').delete().like('object', `${PID}%`)
+     Those rows are deliberately left behind: the scoped-RLS migration gives
+     operator_audit_log no DELETE policy for any role, because a hash-chained log that
+     can be edited is decoration. Nothing here asserts on the table's size, and every
+     row carries a unique id, so they accumulate harmlessly. */
 }
 
 beforeAll(async () => {
+  await signIn(OPERATOR.email, OPERATOR.password)
   await teardown()
-  /* There is no DELETE policy on `partners` (deliberate — see the migration
-     that added INSERT/UPDATE), so teardown cannot remove this row once it
-     exists. Upsert instead of insert so a second run doesn't 23505 on the
-     primary key, and reset status so a prior run ending at 'live' doesn't
-     leak into this one's assertions. */
+  /* Upsert instead of insert so a second run doesn't 23505 on the primary key, and
+     reset status so a prior run ending at 'live' doesn't leak into this one's
+     assertions. */
   const { error: partnerErr } = await supabase.from('partners')
     .upsert({ id: PID, name: 'Integration Test Co', type: 'IoT hardware', status: 'onboarding' })
   if (partnerErr) throw new Error(`Could not seed PTR-TEST partner: ${partnerErr.message}`)
@@ -48,7 +56,10 @@ beforeAll(async () => {
   if (taskErr) throw new Error(`Could not seed PTR-TEST task: ${taskErr.message}`)
 })
 
-afterAll(teardown)
+afterAll(async () => {
+  await teardown()
+  await signOut()
+})
 
 describe('onboarding round trip', () => {
   it('refuses to clear without evidence', async () => {
