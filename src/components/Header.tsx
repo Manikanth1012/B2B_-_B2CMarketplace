@@ -117,7 +117,7 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut, currentV
             <HeaderNavBtn label="My Orders" onClick={() => onNavigate('orders')} />
             <HeaderNavBtn label="Subscriptions" onClick={() => onNavigate('subscriptions')} />
             <HeaderNavBtn label="Rewards" onClick={() => onNavigate('rewards')} />
-            {currentView && <ContextualHelp persona="consumer" view={currentView} onOpenCatalogue={() => onNavigate('kb')} />}
+            {currentView && <ContextualHelp persona="consumer" view={currentView} onOpenCatalogue={() => onNavigate('kb')} onDark />}
             {/* Account avatar */}
             <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
               <button

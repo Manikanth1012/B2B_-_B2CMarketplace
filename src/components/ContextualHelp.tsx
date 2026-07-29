@@ -5,10 +5,13 @@ import { articleForView } from '../lib/kbRepo'
 import { kbKind } from '../lib/kb'
 import type { KbArticle } from '../lib/kb'
 
-export function ContextualHelp({ persona, view, onOpenCatalogue }: {
+export function ContextualHelp({ persona, view, onOpenCatalogue, onDark = false }: {
   persona: string
   view: string
   onOpenCatalogue: () => void
+  /* The consumer's header is dark navy; the three admin shells are white.
+     A shared control cannot assume its surface. */
+  onDark?: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [article, setArticle] = useState<KbArticle | null>(null)
@@ -24,10 +27,18 @@ export function ContextualHelp({ persona, view, onOpenCatalogue }: {
     setLoaded(true)
   }
 
+  const restColor = onDark ? 'rgba(255,255,255,0.85)' : 'var(--text-secondary)'
+
   return (
     <>
       <button onClick={openHelp} aria-label="Help for this screen" title="Help for this screen"
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px', borderRadius: '50%', border: 'none', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer' }}>
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', width: '32px', height: '32px',
+          borderRadius: '50%', border: 'none', background: 'transparent', color: restColor, cursor: 'pointer',
+          transition: onDark ? 'background 150ms ease, color 150ms ease' : undefined,
+        }}
+        onMouseEnter={onDark ? (e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = 'white' } : undefined}
+        onMouseLeave={onDark ? (e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = restColor } : undefined}>
         <HelpCircle size={18} />
       </button>
 
