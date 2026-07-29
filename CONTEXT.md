@@ -1,7 +1,11 @@
 # Project Context — 6D Telecom Marketplace
 
 ## Overview
-A telecom marketplace web app built with React + Vite + Supabase. It has four personas:
+A telecom marketplace web app built with React + Vite + Supabase.
+
+The app opens on a **public front** — an anonymous marketing surface anyone can browse without
+signing in. The four signed-in personas sit behind it, reached through "Demo sign-in":
+
 1. **Consumer** — browse products, add to cart, checkout, view orders/subscriptions/rewards/account
 2. **Operator** — admin console for managing the marketplace (12 screens)
 3. **Partner / Seller** — onboard products, manage orders, view settlement, performance dashboard
@@ -12,7 +16,7 @@ A telecom marketplace web app built with React + Vite + Supabase. It has four pe
 - **Backend**: Supabase (Postgres + RLS)
 - **Icons**: lucide-react
 - **Styling**: CSS variables (brand navy + teal accent), inline styles + global.css
-- **Tests**: Vitest — `npm test` (23 unit) and `npm run test:integration` (4, writes to the live DB under `PTR-TEST`)
+- **Tests**: Vitest — `npm test` (57 unit) and `npm run test:integration` (4, writes to the live DB under `PTR-TEST`)
 
 ## Commands
 
@@ -20,7 +24,7 @@ A telecom marketplace web app built with React + Vite + Supabase. It has four pe
 npm install
 npm run dev              # http://localhost:5173
 npm run build            # tsc && vite build
-npm test                 # 23 unit tests, pure logic, no network
+npm test                 # 57 unit tests, pure logic, no network
 npm run test:integration # 4 tests against the live Supabase project
 ```
 
@@ -28,11 +32,17 @@ npm run test:integration # 4 tests against the live Supabase project
 import time without it (`src/lib/supabase.ts`).
 
 ## How to Switch Personas
-- Login screen presents four persona cards: Consumer, Operator, Partner, Enterprise
-- Consumer: email `consumer@demo.com` / `demo123`
-- Operator: email `admin@6dtelecom.com` / `admin123`
-- Partner: email `rajesh.kumar@nimbussensors.com` / `partner123`
-- Enterprise: email `vikram.shah@smartbuild.in` / `enterprise123`
+Reach the login screen from **Demo sign-in**, in the public header or footer. It presents four
+persona cards; picking one pre-fills its credentials, so there is normally nothing to type.
+
+Credentials below are the ones in `DEMO_CREDENTIALS` (`src/components/LoginScreen.tsx`). The check
+is an exact string comparison, so typing anything else — including what this file used to claim —
+is rejected:
+
+- Consumer: `priya.raman@example.com` / `demo1234`
+- Operator: `anika.sharma@aventa.com` / `operator123`
+- Partner: `rajesh.kumar@nimbussensors.com` / `partner123`
+- Enterprise: `vikram.shah@smartbuild.in` / `enterprise123`
 
 ## Operator Console Screens (all database-backed with CRUD)
 
@@ -83,6 +93,39 @@ import time without it (`src/lib/supabase.ts`).
 | Team & Roles | Team members with roles and MFA status |
 | Audit Log | Account-scoped procurement activity log |
 | My Details | Contact info, procurement settings (approval threshold, IT sign-off policy, payment terms) |
+
+## The public front (added on the `Claude` branch)
+
+The anonymous surface the app now opens on. There is no router: `App.tsx` holds a `Surface` union
+(`public` | `login` | `session`) alongside the existing persona state, so nothing in the four
+consoles had to change.
+
+| Piece | File | What it is |
+|-------|------|-----------|
+| Shell | `components/public/PublicShell.tsx` | Sticky header (Partners / Retail / Enterprise), footer, Demo sign-in |
+| Landing page | `components/public/LandingPage.tsx` | Hero + carousel, four-banner promo strip, two product rails |
+| Carousel | `components/public/Carousel.tsx` | Auto-advancing slides, arrows, dots, stop control |
+| Product rail | `components/public/ProductRail.tsx` | Horizontally scrolling tiles with labels |
+| Carousel rules | `lib/carousel.ts` | `nextIndex`, `prevIndex`, `shouldAdvance`, `SLIDE_MS` — pure, 12 tests |
+| Asset manifest | `lib/assets.ts` | `HERO`, `CAROUSEL`, `BANNERS`, `RETAIL_PRODUCTS`, `ENTERPRISE_PRODUCTS` — 6 tests |
+
+Images live in `public/assets/mp/` (72 webp files) and are referenced only through `lib/assets.ts`,
+so nothing else hardcodes a path.
+
+### Accessibility decisions worth keeping
+These are load-bearing — changing them reintroduces a defect that was specifically fixed:
+
+- The carousel container carries **`role="region"`**. `aria-roledescription` is only honoured on an
+  element that already has a role; on a bare `div` it and the `aria-label` are both dropped, and
+  the carousel reaches a screen reader unnamed.
+- The rail's scrolling `div` is **`tabIndex={0}`** and labelled by its own heading via `useId`. A
+  div that scrolls cannot be reached with a keyboard unless it can hold focus, which strands anyone
+  not using a pointer at the first few tiles.
+- The carousel has a **stop control**, not just hover/focus pausing. Hovering does nothing on a
+  touch screen, and `SLIDE_MS` is 6000 — past the five seconds that may be left unstoppable.
+- `shouldAdvance` **refuses** auto-advance under `prefers-reduced-motion`, rather than slowing it.
+  Reduced motion is held in state, not a ref, because the stop control and the slide transition
+  both render differently under it.
 
 ## The onboarding spine (added on the `Claude` branch)
 
@@ -162,9 +205,11 @@ onboarding spine did for gates.
 src/
   App.tsx              — main app, persona switching, routing
   types/index.ts       — TypeScript types
-  types/view.ts        — View, OperatorView, PartnerView, EnterpriseView, Persona types
+  types/view.ts        — View, OperatorView, PartnerView, EnterpriseView, Persona, Surface, PublicPage
   lib/supabase.ts      — Supabase client
   lib/images.ts        — Image helpers
+  lib/assets.ts        — public-front asset manifest (hero, carousel, banners, product tiles)
+  lib/carousel.ts      — carousel rules, pure (no React, no timers)
   lib/onboarding.ts    — the gate machine, pure (no React, no Supabase, no I/O)
   lib/onboardingRepo.ts — the only module touching Supabase for onboarding
   styles/global.css    — Global styles + CSS variables
@@ -173,9 +218,30 @@ src/
   components/operator/ — All 12 operator screens + shared.tsx (Btn, Modal, Table, etc.)
   components/partner/  — All partner screens + data.ts
   components/enterprise/ — EnterpriseShell, EnterpriseDashboard, EnterpriseBrowse, EnterpriseViews, EnterpriseMisc, data.ts
+  components/public/   — PublicShell, LandingPage, Carousel, ProductRail
 ```
 
 ## Recent Changes — `Claude` branch
+
+**Public front** (see the section above): asset pipeline and manifest, pure carousel rules with 12
+tests, the `Surface` state and public shell, then the carousel and product rail, then the landing
+page. The app no longer opens on the persona login; that screen is unchanged and reachable as
+Demo sign-in.
+
+**Three accessibility defects fixed in the carousel and rail**, each of which silently excluded a
+group rather than looking broken:
+- `aria-roledescription="carousel"` sat on a roleless `div`, so the carousel — label included —
+  reached a screen reader unnamed. Now `role="region"`.
+- The rail's scroll container could not take keyboard focus, stranding anyone not using a pointer
+  at the first few tiles. Now `tabIndex={0}` and labelled by its heading.
+- Auto-advance could only be paused by hovering or focusing, which excludes touch entirely. Now a
+  real stop control, since `SLIDE_MS` is past the five seconds that may be left unstoppable.
+
+**Two stale facts in this file, corrected:**
+- The Consumer and Operator demo credentials documented here (`consumer@demo.com` / `demo123`,
+  `admin@6dtelecom.com` / `admin123`) were **not** the ones in `DEMO_CREDENTIALS`. Sign-in is an
+  exact string comparison, so anyone typing them was refused. Now matched to the code.
+- The test count said 23; it is 57.
 
 **Onboarding spine** (see the section above): identity reconciled with a real FK, four new tables,
 a pure rules module both consoles import, the technical gate made unclearable without proof, and

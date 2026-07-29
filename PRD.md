@@ -1186,3 +1186,36 @@ node _src/layout.js               # class, column, chart, alignment and wording 
 One deterministic seeded dataset (mulberry32, seed 20260725) shared by all four portals so the personas reconcile against each other: 6 categories, 15 partners, 39 products, 2,600 orders, 30 settlement statements, 8 commission plans across 7 commercial models, 10 catalogue policy rules, 6 promotions, 6 tax jurisdictions, 17 operator BSS products, 12 months of trailing history, 4 warehouses with a stock ledger, 8 tickets under SLA, 10 reviews, 9 banners, 5 published APIs with 5 consumers, 4 contract prices, 4 dunning cases, a versioned history against every partner listing, 3 Number Management systems with 26 sampled ICCIDs, 6 channel providers with 15 tracked messages, and 9 bulk-update sets.
 
 **Reconciliation is the point.** GMV of $711,109 equals the sum of the categories and the sum of order gross; settlement net equals gross less commission, fees, withholding and refunds across all 30 statements; the last three months of the 12-month series equal the 90-day figure exactly.
+
+### 7.6 The React application (second implementation)
+
+Sections 7.1–7.5 describe the **HTML prototype** — four self-contained portals over a synthetic
+in-memory dataset. A **second implementation** exists alongside it in `src/`: a React 18 + Vite +
+TypeScript application backed by a real Supabase Postgres with RLS. The two are separate artifacts
+and neither supersedes the other. The HTML prototype remains the broader surface (85 views, 1,604
+automated checks); the React application is the narrower one carrying real persistence.
+
+| | HTML prototype | React application |
+|---|---|---|
+| Entry | `index.html` → four portals | `src/App.tsx` |
+| Data | Synthetic, in memory, resets on reload | Supabase Postgres, RLS enabled |
+| Personas | Consumer, Partner, Operator, Enterprise | The same four, plus a public front |
+| Tests | 1,604 journey checks (`_src/*.js`) | 57 unit (Vitest) + 4 integration |
+
+**The public front.** The React application opens on an anonymous marketing surface rather than the
+sign-in gate: a landing page with a hero carousel, a promo strip and two product rails, plus
+Partners / Retail / Enterprise audience pages. The persona login is unchanged and reached through
+*Demo sign-in*. Navigation is a `Surface` union in `App.tsx`, not a router, so the four consoles
+were not touched.
+
+**Accessibility.** The carousel and rails are built to be usable without a pointer and without
+motion: `role="region"` and a polite live region on the carousel, a focusable and heading-labelled
+scroll container on each rail, a persistent stop control (auto-advance runs longer than the five
+seconds that may be left unstoppable), and outright refusal of auto-advance under
+`prefers-reduced-motion`. The rules governing advance, wrap and pause are pure functions under
+test, with no DOM.
+
+**Known gap.** Sign-in is a client-side string comparison against credentials compiled into the
+bundle, and every RLS policy grants `anon` full CRUD — the same posture as §7.4's exclusion of an
+authentication back end, and the same caveat applies: this is demonstrable behaviour, not an access
+control boundary. It must not be pointed at data that matters.

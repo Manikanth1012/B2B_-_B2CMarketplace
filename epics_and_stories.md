@@ -1303,3 +1303,45 @@ The last three gaps, plus bulk update. Every story below is demonstrated in the 
 18. **A disabled button that names what the user wants is worse than no button.** Either the control does the thing or it is not that control.
 19. **"We will let you know" has to say how.** The channel and the address are on the record.
 20. **An alert reserves nothing**, and says so before it is set.
+
+---
+
+## EP-29 — The Public Front
+
+The anonymous surface the React application opens on, before anyone signs in. Delivered on the
+`Claude` branch as Tasks 1–6 of the marketplace public front plan.
+
+| # | Story | Acceptance |
+|---|---|---|
+| 29.1 | As a visitor I want to see what is sold here without signing in | The app opens on a public landing page; no credential is asked for |
+| 29.2 | As a visitor I want to know which of the three doors is mine | Header names Partners, Retail and Enterprise; the hero repeats them as actions |
+| 29.3 | As a visitor I want to sign in when I choose to, not before | *Demo sign-in* in the header and the footer; the four-card login is otherwise unchanged |
+| 29.4 | As a visitor I want the highlights to move without demanding attention | Carousel advances every six seconds and stops when hovered or focused |
+| 29.5 | As a visitor who cannot use a pointer I want to stop it anyway | A stop control sits with the dots and persists until pressed again |
+| 29.6 | As a visitor who has asked for less motion I want that honoured | Auto-advance is refused outright under `prefers-reduced-motion`, not merely slowed |
+| 29.7 | As a screen reader user I want the carousel announced as what it is | Container carries `role="region"`, a name, and a polite live region reporting slide *n* of *m* |
+| 29.8 | As a keyboard user I want to reach the product rails | Each rail's scroll container takes focus and is named by its own heading |
+| 29.9 | As a visitor I want the products to carry words, not just pictures | Every tile renders the alt text the asset manifest generated |
+| 29.10 | As a developer I want the carousel's rules testable without a browser | `nextIndex`, `prevIndex` and `shouldAdvance` are pure functions with 12 tests and no DOM |
+| 29.11 | As a developer I want asset paths in one place | Components import from `lib/assets.ts`; no component hardcodes a path |
+| 29.12 | As a developer I want the public front not to disturb the consoles | A `Surface` union in `App.tsx`, no router; the four personas are untouched |
+
+**Decisions worth keeping**
+
+1. **`aria-roledescription` needs a role to sit on.** On a bare `div` it is discarded, and the
+   `aria-label` with it — the carousel then reaches a screen reader with no name at all. This is
+   invisible in every visual check, which is exactly why it survived to review.
+2. **A div that scrolls is not reachable by keyboard.** Without `tabIndex`, the pointer-less user
+   sees the first few tiles and nothing else, and no error is raised anywhere.
+3. **Hover is not a pause control.** It does nothing on a touch screen and nothing for anyone who
+   never puts focus there. Past five seconds a slide, the stop has to be a real, visible control.
+4. **Reduced motion is refused, not slowed.** Motion a person cannot stop is the specific failure
+   carousels are known for; the arrows and dots still work.
+5. **Reduced motion is state, not a ref.** The stop control and the slide transition both render
+   differently under it, and a ref does not re-render.
+6. **A rail is named by its own heading**, via `useId`, so the accessible name cannot drift from
+   the visible one.
+7. **Decorative images say so.** Banners and hero carry `alt=""`; every offer they show is
+   reachable through the rails and the audience pages, so nothing is lost.
+8. **No router.** A `Surface` union costs one state field; a router would have rewritten the
+   navigation of four working consoles to add three public pages.
