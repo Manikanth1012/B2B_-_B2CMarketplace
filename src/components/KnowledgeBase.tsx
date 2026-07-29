@@ -1,15 +1,17 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ChevronLeft, Clock, TriangleAlert as AlertTriangle } from 'lucide-react'
-import { SectionCard, EmptyState, Btn, TextInput, Select } from './operator/shared'
-import { loadKb } from '../lib/kbRepo'
+import { SectionCard, EmptyState, Btn, TextInput, Select, Modal, FormField, TextArea, toast } from './operator/shared'
+import { loadKb, raiseContentFeedback } from '../lib/kbRepo'
 import type { KbSnapshot } from '../lib/kbRepo'
 import { KB_KINDS, kbKind, filterArticles, allTags, canAct } from '../lib/kb'
 import type { KbArticle } from '../lib/kb'
 
-export function KnowledgeBase({ persona, title, myRole = null }: {
+export function KnowledgeBase({ persona, title, myRole = null, feedbackAs }: {
   persona: string
   title: string
   myRole?: string | null
+  /* Omitted for the operator: they are the queue. */
+  feedbackAs?: { actor: string; org: string }
 }) {
   const [snap, setSnap] = useState<KbSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
@@ -17,6 +19,8 @@ export function KnowledgeBase({ persona, title, myRole = null }: {
   const [tag, setTag] = useState('')
   const [q, setQ] = useState('')
   const [open, setOpen] = useState<KbArticle | null>(null)
+  const [fbFor, setFbFor] = useState<KbArticle | null>(null)
+  const [note, setNote] = useState('')
 
   const load = useCallback(async () => { setSnap(await loadKb(persona)) }, [persona])
   useEffect(() => { load().then(() => setLoading(false)) }, [load])
@@ -63,8 +67,36 @@ export function KnowledgeBase({ persona, title, myRole = null }: {
               </div>
             ))}
 
+            {feedbackAs && (
+              <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '14px' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginBottom: '8px' }}>
+                  Wrong, missing or unclear? Tell us — the articles that fail are the ones worth finding.
+                </div>
+                <Btn size="sm" variant="secondary" onClick={() => { setFbFor(open); setNote('') }}>This did not answer my question</Btn>
+              </div>
+            )}
+
           </div>
         </SectionCard>
+
+        <Modal open={!!fbFor} onClose={() => setFbFor(null)} title="Tell us what is wrong"
+          footer={<>
+            <Btn variant="secondary" size="sm" onClick={() => setFbFor(null)}>Cancel</Btn>
+            <Btn size="sm" onClick={async () => {
+              if (!fbFor || !feedbackAs) return
+              const res = await raiseContentFeedback({ article: fbFor, actor: feedbackAs.actor, org: feedbackAs.org, note })
+              if (!res.ok) { toast(res.reason, 'error'); return }
+              setFbFor(null)
+              toast(`Thanks — logged as ${res.ticketId}. We review content feedback separately from support.`)
+            }}>Send</Btn>
+          </>}>
+          <FormField label={`About: ${fbFor?.title ?? ''}`} required>
+            <TextArea value={note} onChange={e => setNote(e.target.value)} placeholder="What did you expect to find?" />
+          </FormField>
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+            This goes to the team that maintains these articles, not to support. You will get a reference, not a case to track.
+          </p>
+        </Modal>
       </div>
     )
   }

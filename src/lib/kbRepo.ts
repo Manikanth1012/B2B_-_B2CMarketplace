@@ -41,3 +41,30 @@ export async function articleForView(persona: string, view: string): Promise<Art
   if (error) return { ok: false, reason: error.message }
   return { ok: true, article: (data && data[0] ? data[0] : null) as KbArticle | null }
 }
+
+/* Content feedback is not a service ticket. Different owner, different urgency,
+   different resolution — you fix the article, not the customer's account. It
+   carries its own category so it does not inflate service SLA figures. */
+export const CONTENT_FEEDBACK_CATEGORY = 'Content feedback'
+
+export async function raiseContentFeedback(
+  { article, actor, org, note }: { article: KbArticle; actor: string; org: string; note: string },
+): Promise<{ ok: true; ticketId: string } | { ok: false; reason: string }> {
+  if (!note.trim()) {
+    return { ok: false, reason: 'Tell us what was wrong or missing — an empty report cannot be acted on.' }
+  }
+  const id = `CF-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
+  const { error } = await supabase.from('operator_tickets').insert({
+    id,
+    subject: `Content feedback — ${article.title}`,
+    category: CONTENT_FEEDBACK_CATEGORY,
+    priority: 'P3',
+    status: 'open',
+    opened_by: actor,
+    org,
+    sla_mins: 2880,
+    messages: JSON.stringify([{ who: actor, when: new Date().toISOString(), text: note }]),
+  }).select()
+  if (error) return { ok: false, reason: `Could not send that: ${error.message}` }
+  return { ok: true, ticketId: id }
+}

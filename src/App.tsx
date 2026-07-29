@@ -164,6 +164,7 @@ export default function App() {
         {opView === 'op-roles' && <OperatorRoles />}
         {opView === 'op-audit' && <OperatorAudit />}
         {opView === 'op-kb' && <KnowledgeBase persona="operator" title="Knowledge base" />}
+        {/* No feedbackAs: the operator is the queue. */}
       </OperatorShell>
     )
   }
@@ -185,7 +186,7 @@ export default function App() {
         {ptView === 'pt-team' && <PartnerTeam />}
         {ptView === 'pt-audit' && <PartnerAudit />}
         {ptView === 'pt-profile' && <PartnerProfile />}
-        {ptView === 'pt-kb' && <KnowledgeBase persona="partner" title="Knowledge base" />}
+        {ptView === 'pt-kb' && <KnowledgeBase persona="partner" title="Knowledge base" feedbackAs={{ actor: 'Rajesh Kumar', org: 'Nimbus Sensors' }} />}
       </PartnerShell>
     )
   }
@@ -205,7 +206,7 @@ export default function App() {
         {enView === 'en-team' && <EnterpriseTeam />}
         {enView === 'en-audit' && <EnterpriseAudit />}
         {enView === 'en-profile' && <EnterpriseProfile />}
-        {enView === 'en-kb' && <KnowledgeBase persona="enterprise" title="Knowledge base" />}
+        {enView === 'en-kb' && <KnowledgeBase persona="enterprise" title="Knowledge base" feedbackAs={{ actor: 'Vikram Shah', org: 'SmartBuild Ltd' }} />}
       </EnterpriseShell>
     )
   }
@@ -254,7 +255,7 @@ export default function App() {
         {!loading && view === 'subscriptions' && <SubscriptionsView />}
         {!loading && view === 'rewards' && <RewardsView />}
         {!loading && view === 'account' && <AccountView initialTab={accountTab} />}
-        {!loading && view === 'kb' && <div className="container" style={{ padding: '32px 24px' }}><KnowledgeBase persona="consumer" title="How things work" /></div>}
+        {!loading && view === 'kb' && <div className="container" style={{ padding: '32px 24px' }}><KnowledgeBase persona="consumer" title="How things work" feedbackAs={{ actor: 'Priya Raman', org: 'Consumer' }} /></div>}
       </main>
       <Footer onNavigate={navigate} />
 
