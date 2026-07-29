@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # vitest.config.ts excludes *.integration.test.ts, so this stays pure
+      # logic — no network, no database, no secrets.
+      - name: Unit tests
+        run: npm test
+
+      # Vite reads VITE_SUPABASE_* at runtime, not build time, so the build
+      # needs no credentials. src/lib/supabase.ts throws when the app boots
+      # without them, which is a runtime concern and not this job's.
+      - name: Build
+        run: npm run build
