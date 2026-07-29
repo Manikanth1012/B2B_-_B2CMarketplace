@@ -143,8 +143,10 @@ that `prefill`, and "Apply to sell" keeps its Onboarding destination across the 
 
 **Verified** against the live project by `src/lib/auth.integration.test.ts` (7 tests) —
 including a reload, simulated as two clients over one storage, which is what `persistSession`
-actually has to survive. Not yet verified in a browser: Chromium cannot reach the project from
-this environment (see the audit).
+actually has to survive. **Also verified in a real browser**: all four personas now sign in
+through the actual login screen and land in the right console, and every screen in all four
+consoles renders with no policy error. Chromium still cannot reach the project directly from
+this sandbox, so that walk went through a local bridge — see the audit.
 
 - `supabase.ts`: `persistSession: true` — it is `false` today, so a refresh would drop the
   session and strand the user mid-console.

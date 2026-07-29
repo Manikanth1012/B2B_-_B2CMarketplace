@@ -187,10 +187,16 @@ alike, with the CA registered in the NSS store, with `--proxy-server` set explic
 with certificate errors and QUIC both disabled. It is not a trust failure, and `curl` through
 the same proxy to the same host works, so it is specific to the browser.
 
-What that costs: sign-in, persona resolution, refusal of a bad password and session restore
-across a reload are all covered against the live project by
-`src/lib/auth.integration.test.ts` — but **nobody has yet watched the four consoles render
-under a real session.** That walk still needs doing somewhere a browser can reach Supabase.
+Re-tested after the migrations landed and **still true**: `net::ERR_CONNECTION_RESET`, with
+the proxy passed explicitly *and* with certificate errors ignored, so it is not a trust
+failure. Node reaches the same host fine — the 16 integration tests prove it.
+
+**The walk has since been done anyway,** by working around the browser's egress rather than
+fixing it: a throwaway Node server served `dist/` and reverse-proxied `/sb/*` to the project,
+so the browser only ever talked to `127.0.0.1` while the requests themselves left from Node.
+Same origin, so no CORS, and the app was built with `VITE_SUPABASE_URL` pointed at the bridge.
+Nothing about that harness is committed; it is recorded here only so the result below can be
+reproduced.
 
 ## The risk the plan flagged, now measured
 
@@ -248,6 +254,39 @@ column default stamps the owner server-side, which is why **no component query c
 `npm test` 63 passed, `npm run test:integration` 16 passed against the live project,
 `npm run build` clean.
 
+### The console walk, in a real browser
+
+Signed in through the actual login screen as each persona and clicked every nav item in all
+four consoles. **Zero PostgREST 4xx/5xx across the whole walk** — no screen lost its data to
+a policy, and no policy raised an error.
+
+| Console | What rendered |
+|---|---|
+| consumer | My Orders "7 orders", Rewards with the balance and 15 ledger rows, Account. Subscriptions says "No subscriptions" — correct, the table is genuinely empty |
+| operator | All 15 screens. Partner Onboarding shows "7-gate funnel · 3 partners in flight" with Nimbus, Sentinel and StreamNova and their gate history; Audit Trail 19 rows; Settlement Runs all 12 |
+| partner | All 15 screens, dashboard through audit log |
+| enterprise | All 12 screens (this console runs on local `data.ts` and needs only the catalogue reads) |
+
+Then, from inside each signed-in page, PostgREST was queried with that page's **own live
+access token** — the strongest form of the isolation check, since it is the real session
+rather than a simulated JWT:
+
+    partner session ->  settlement_statements   2 rows, both ss-002/ss-008 Nimbus PTR-1004
+                        partners                1 row
+                        orders                  0
+                        operator_users          0
+                        consumer_profile        0
+    partner PATCH settlement_statements?partner_id=eq.PTR-1004  ->  200, body []
+
+That last line is the one to read carefully. PostgREST returns **200 with an empty body**, not
+403: the UPDATE matched no rows because no UPDATE policy admits a partner. `net` on both rows
+is unchanged and the table's total is still 932696.55. Silent empty is what RLS does, and a
+test that expected an error here would pass for the wrong reason.
+
+Two failing requests appear in the browser console throughout and are **unrelated to this
+work**: `fonts.googleapis.com` and the `images.pexels.com` product photos, both external CDNs
+this sandbox blocks. They were failing before these migrations too.
+
 ### Still open
 
 1. **The anon key in circulation is unchanged.** It no longer buys write access to anything,
@@ -255,7 +294,9 @@ column default stamps the owner server-side, which is why **no component query c
 2. **Public signup is still enabled and auto-confirming.** Harmless to the policies now — a
    self-registered stranger has no `profiles` row and is refused everywhere, which was
    measured — but worth closing.
-3. **Nobody has watched the four consoles render under a real session.** Unchanged: Chromium
-   still cannot reach the project from this environment (see *The browser cannot reach the
-   project either*, above). The policies are verified at the database, not through the UI.
-4. **The partner settlement regression test** named in Task 6 is not yet written.
+3. ~~**Nobody has watched the four consoles render under a real session.**~~ **Done** — see
+   *The console walk, in a real browser* above. Chromium still cannot reach the project
+   directly from this sandbox; the walk went through a local bridge.
+4. **The partner settlement regression test** named in Task 6 is not yet written. The
+   behaviour it would pin is now verified twice over — simulated JWT and real session — but
+   nothing in the repo would catch a regression.
