@@ -22,6 +22,10 @@ export function OperatorTickets() {
     })
   }, [])
 
+  useEffect(() => {
+    setSelected(null)
+  }, [queue])
+
   if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
   /* Content feedback is a different kind of work and must not inflate the
@@ -128,7 +132,7 @@ export function OperatorTickets() {
       </div>
 
       <div style={{ display: 'flex', gap: '8px' }}>
-        {[{ id: 'open', label: 'Open', count: openCount }, { id: 'resolved', label: 'Resolved', count: tickets.filter(t => t.status === 'resolved').length }, { id: 'all', label: 'All', count: tickets.length }].map(f => (
+        {[{ id: 'open', label: 'Open', count: inQueue.filter(t => t.status === 'open').length }, { id: 'resolved', label: 'Resolved', count: inQueue.filter(t => t.status === 'resolved').length }, { id: 'all', label: 'All', count: inQueue.length }].map(f => (
           <button key={f.id} onClick={() => setFilter(f.id)} style={{ padding: '8px 16px', borderRadius: 'var(--radius)', fontSize: 'var(--text-sm)', fontWeight: 600, background: filter === f.id ? 'var(--brand-navy)' : 'white', color: filter === f.id ? 'white' : 'var(--text-secondary)', border: '1px solid var(--border)', cursor: 'pointer' }}>{f.label} ({f.count})</button>
         ))}
       </div>
