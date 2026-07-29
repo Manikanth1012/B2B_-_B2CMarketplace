@@ -147,7 +147,7 @@ export function OrdersView() {
                             </div>
                             <span style={{
                               fontSize: 'var(--text-xs)', fontWeight: done ? 600 : 400,
-                              color: done ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                              color: done ? 'var(--text)' : 'var(--text-tertiary)',
                               whiteSpace: 'nowrap',
                             }}>
                               {stage}
@@ -272,7 +272,7 @@ function OrderDetailModal({ order, items, onClose }: { order: Order; items: Orde
                 </div>
                 <span style={{
                   fontSize: 'var(--text-sm)', fontWeight: done ? 600 : 400,
-                  color: done ? 'var(--text-primary)' : 'var(--text-tertiary)',
+                  color: done ? 'var(--text)' : 'var(--text-tertiary)',
                 }}>
                   {stage}
                 </span>

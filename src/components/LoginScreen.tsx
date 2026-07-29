@@ -127,6 +127,10 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                     style={{
                       display: 'flex', alignItems: 'center', gap: 'var(--space-4)',
                       padding: 'var(--space-5) var(--space-6)',
+                      /* A floor so a description that wraps to two lines does not
+                         make its card taller than the rest. Four choice cards in a
+                         stack should read as one list, not a ragged column. */
+                      minHeight: '104px',
                       borderRadius: 'var(--radius-lg)',
                       background: 'rgba(255,255,255,0.08)',
                       border: '1px solid rgba(255,255,255,0.12)',

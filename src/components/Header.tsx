@@ -163,7 +163,7 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut }: Header
                   minWidth: '240px', zIndex: 200, overflow: 'hidden',
                 }}>
                   <div style={{ padding: '16px', borderBottom: '1px solid var(--border-light)' }}>
-                    <div style={{ fontWeight: 800, fontSize: 'var(--text-sm)', color: 'var(--text-primary)' }}>Priya Raman</div>
+                    <div style={{ fontWeight: 800, fontSize: 'var(--text-sm)', color: 'var(--text)' }}>Priya Raman</div>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
                       Gold member · 3,180 pts
                     </div>
@@ -176,7 +176,6 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut }: Header
                   </div>
                   <div style={{ padding: '4px', borderTop: '1px solid var(--border-light)' }}>
                     {onSignOut && <AcctItem icon={<LogOut size={16} />} label="Sign out" onClick={() => { onSignOut(); setAcctOpen(false) }} />}
-                    <AcctItem icon={<LogOut size={16} />} label="Sign out" onClick={() => setAcctOpen(false)} />
                   </div>
                 </div>
               )}

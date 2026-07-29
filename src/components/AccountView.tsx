@@ -1538,7 +1538,7 @@ function TicketDetailModal({ ticket, onClose, showToast }: { ticket: ConsumerTic
                   maxWidth: '80%', padding: '12px 16px',
                   borderRadius: 'var(--radius-lg)',
                   background: isMe ? 'var(--brand-accent)' : 'var(--bg-alt)',
-                  color: isMe ? 'white' : 'var(--text-primary)',
+                  color: isMe ? 'white' : 'var(--text)',
                   fontSize: 'var(--text-sm)',
                 }}>
                   {m.text}
