@@ -1,8 +1,12 @@
-import { Star, Plus } from 'lucide-react'
+import { Star, Plus, Bell } from 'lucide-react'
 import type { Product } from '../types'
 import { getProductImage } from '../lib/images'
 
 interface ProductCardProps {
+  /* Set when the shopper has already asked about this one, so the card can say so
+     instead of offering to sign them up twice. */
+  watching?: boolean
+  onNotifyMe?: () => void
   product: Product
   onClick: () => void
   onAddToCart: () => void
@@ -20,7 +24,7 @@ const catColors: Record<string, string> = {
   content: '#E63946',
 }
 
-export function ProductCard({ product, onClick, onAddToCart }: ProductCardProps) {
+export function ProductCard({ product, onClick, onAddToCart, watching, onNotifyMe }: ProductCardProps) {
   const color = catColors[product.category_id] || '#00A6A6'
   const hasDiscount = product.was_price && product.was_price > product.price
   const outOfStock = product.stock === 'out'
@@ -157,7 +161,22 @@ export function ProductCard({ product, onClick, onAddToCart }: ProductCardProps)
           </div>
 
           {outOfStock ? (
-            <span className="badge badge-stock-out">Out of stock</span>
+            /* An out-of-stock tile used to end here, with nothing to do. */
+            watching ? (
+              <span className="badge badge-stock-out" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Bell size={11} /> You will be told
+              </span>
+            ) : onNotifyMe ? (
+              <button
+                onClick={(e) => { e.stopPropagation(); onNotifyMe() }}
+                className="btn btn-secondary btn-sm"
+                style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: '5px' }}
+              >
+                <Bell size={13} /> Notify me
+              </button>
+            ) : (
+              <span className="badge badge-stock-out">Out of stock</span>
+            )
           ) : (
             <button
               onClick={(e) => {

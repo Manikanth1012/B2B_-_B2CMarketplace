@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
-import type { OperatorInventory, OperatorWarehouse } from '../../types'
+import type { OperatorInventory, OperatorWarehouse, Product } from '../../types'
+import { demandByProduct, type Watch } from '../../lib/stockWatch'
 import { SectionCard, Table, Td, StatusPill, EmptyState, fmtMoney, fmtInt, fmtDate, Btn, Modal, FormField, TextInput, Select, toast, ConfirmDialog } from './shared'
 
 export function OperatorInventory() {
@@ -12,6 +13,10 @@ export function OperatorInventory() {
   const [addModal, setAddModal] = useState(false)
   const [whModal, setWhModal] = useState<OperatorWarehouse | null>(null)
   const [whAddModal, setWhAddModal] = useState(false)
+  /* Who is waiting for what. Sourced from stock_watch joined to `products` rather
+     than to operator_inventory, which carries product_name as free text and has no
+     key back to the catalogue. */
+  const [demand, setDemand] = useState<{ product: Product; waiting: number }[]>([])
 
   useEffect(() => {
     Promise.all([
@@ -21,6 +26,15 @@ export function OperatorInventory() {
       if (inv.data) setInventory(inv.data as OperatorInventory[])
       if (wh.data) setWarehouses(wh.data as OperatorWarehouse[])
       setLoading(false)
+    })
+
+    supabase.from('stock_watch').select('*').then(async ({ data }) => {
+      const counts = demandByProduct((data ?? []) as Watch[])
+      if (counts.length === 0) return
+      const { data: prods } = await supabase.from('products').select('*')
+        .in('id', counts.map(c => c.productId))
+      const byId = Object.fromEntries(((prods ?? []) as Product[]).map(p => [p.id, p]))
+      setDemand(counts.filter(c => byId[c.productId]).map(c => ({ product: byId[c.productId], waiting: c.waiting })))
     })
   }, [])
 
@@ -61,6 +75,36 @@ export function OperatorInventory() {
           <button key={t.id} onClick={() => setTab(t.id)} style={{ padding: '8px 16px', borderRadius: 'var(--radius)', fontSize: 'var(--text-sm)', fontWeight: 600, background: tab === t.id ? 'var(--brand-navy)' : 'white', color: tab === t.id ? 'white' : 'var(--text-secondary)', border: '1px solid var(--border)', cursor: 'pointer' }}>{t.label}</button>
         ))}
       </div>
+
+      {/* Demand the ledger cannot show: shoppers who tried to buy something that was
+          not there and asked to be told. A line nobody is waiting for and a line
+          twelve people are waiting for should not look the same when deciding what
+          to reorder. */}
+      {tab === 'stock' && demand.length > 0 && (
+        <SectionCard title="Waiting for stock" subtitle="Shoppers who asked to be told when these come back">
+          <Table headers={['Product', 'Seller', 'Stock', 'Waiting']}>
+            {demand.map(d => (
+              <tr key={d.product.id}>
+                <Td>{d.product.name}</Td>
+                <Td>{d.product.seller}</Td>
+                {/* StatusPill's vocabulary is approval states — reusing it here
+                    labelled an out-of-stock product "rejected". Stock has its own
+                    words. */}
+                <Td>
+                  <span style={{
+                    padding: '2px 10px', borderRadius: '999px', fontSize: 'var(--text-xs)', fontWeight: 700,
+                    background: d.product.stock === 'out' ? '#FEE2E2' : d.product.stock === 'low' ? '#FEF3C7' : '#DCFCE7',
+                    color: d.product.stock === 'out' ? '#B91C1C' : d.product.stock === 'low' ? '#92400E' : '#15803D',
+                  }}>
+                    {d.product.stock === 'out' ? 'Out of stock' : d.product.stock === 'low' ? 'Low stock' : 'In stock'}
+                  </span>
+                </Td>
+                <Td right style={{ fontWeight: 700 }}>{fmtInt(d.waiting)}</Td>
+              </tr>
+            ))}
+          </Table>
+        </SectionCard>
+      )}
 
       {tab === 'stock' && (
         <SectionCard title="Stock Ledger" subtitle="On hand · Reserved · Available = on hand − reserved">

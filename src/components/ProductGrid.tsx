@@ -7,12 +7,15 @@ import { ProductCard } from './ProductCard'
 import type { View } from '../types/view'
 
 interface ProductGridProps {
+  onNotifyMe?: (product: Product) => void
+  /* Product ids the shopper already has an open alert on. */
+  watching?: Set<string>
   categoryFilter?: string | null
   onNavigate: (view: View, opts?: { category?: string; product?: Product }) => void
   onAddToCart: (product: Product, quantity?: number) => void
 }
 
-export function ProductGrid({ categoryFilter, onNavigate, onAddToCart }: ProductGridProps) {
+export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyMe, watching }: ProductGridProps) {
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -222,6 +225,8 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart }: Product
                 product={product}
                 onClick={() => onNavigate('product', { product })}
                 onAddToCart={() => onAddToCart(product)}
+                watching={watching?.has(product.id)}
+                onNotifyMe={onNotifyMe ? () => onNotifyMe(product) : undefined}
               />
             ))}
           </div>

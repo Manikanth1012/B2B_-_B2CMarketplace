@@ -2,6 +2,10 @@ import { useState, useEffect, useCallback } from 'react'
 import type { View, OperatorView, PartnerView, EnterpriseView, Persona, Session, Surface, PublicPage } from './types/view'
 import { supabase } from './lib/supabase'
 import { activeLines, basketCount } from './lib/basket'
+import { NotifyMeModal } from './components/NotifyMeModal'
+import { StockWatchCard } from './components/StockWatchCard'
+import { isOpen as watchIsOpen, type Watch } from './lib/stockWatch'
+import type { ConsumerProfile } from './types'
 import { restoreSession, signOut } from './lib/authRepo'
 import type { CartItem, Product } from './types'
 import { LoginScreen } from './components/LoginScreen'
@@ -34,7 +38,7 @@ import { OperatorBanners } from './components/operator/OperatorBanners'
 import { OperatorChannels } from './components/operator/OperatorChannels'
 import { OperatorRoles } from './components/operator/OperatorRoles'
 import { OperatorAudit } from './components/operator/OperatorAudit'
-import { ToastHost } from './components/operator/shared'
+import { ToastHost, toast } from './components/operator/shared'
 import { PartnerShell } from './components/partner/PartnerShell'
 import { PartnerDashboard } from './components/partner/PartnerDashboard'
 import { PartnerOnboarding } from './components/partner/PartnerOnboarding'
@@ -74,6 +78,17 @@ export default function App() {
      without a session, but the basket is owner-scoped, so the first add has to
      become a sign-in and then finish itself. */
   const [pendingProduct, setPendingProduct] = useState<Product | null>(null)
+  const [notifyProduct, setNotifyProduct] = useState<Product | null>(null)
+  const [watching, setWatching] = useState<Set<string>>(new Set())
+  const [consumerProfile, setConsumerProfile] = useState<ConsumerProfile | null>(null)
+
+  /* Which products already have an open alert, so a tile can say "you will be told"
+     rather than offering to sign the shopper up a second time. */
+  const loadWatches = useCallback(async () => {
+    const { data } = await supabase.from('stock_watch').select('*')
+    const open = ((data ?? []) as Watch[]).filter(watchIsOpen).map(w => w.product_id)
+    setWatching(new Set(open))
+  }, [])
 
   const loadCart = useCallback(async () => {
     const { data: cart } = await supabase
@@ -170,7 +185,12 @@ export default function App() {
     /* The basket is owner-scoped, so the mount-time load ran as a signed-out
        visitor and came back empty. Without this the customer signs in to an empty
        basket and only sees their real one after touching it. */
-    if (s.persona === 'consumer') void loadCart()
+    if (s.persona === 'consumer') {
+      void loadCart()
+      void loadWatches()
+      void supabase.from('consumer_profile').select('*').maybeSingle()
+        .then(({ data }) => setConsumerProfile((data as ConsumerProfile) ?? null))
+    }
 
     const pending = pendingProduct
     setPendingProduct(null)
@@ -318,7 +338,12 @@ export default function App() {
           <>
             <Hero onNavigate={navigate} />
             <CategoryStrip onNavigate={navigate} />
-            <ProductGrid onNavigate={navigate} onAddToCart={addToCart} />
+            <ProductGrid
+              onNavigate={navigate}
+              onAddToCart={addToCart}
+              onNotifyMe={setNotifyProduct}
+              watching={watching}
+            />
           </>
         )}
         {!loading && view === 'category' && (
@@ -326,6 +351,8 @@ export default function App() {
             categoryFilter={selectedCategory}
             onNavigate={navigate}
             onAddToCart={addToCart}
+            onNotifyMe={setNotifyProduct}
+            watching={watching}
           />
         )}
         {!loading && view === 'product' && selectedProduct && (
@@ -345,10 +372,23 @@ export default function App() {
         {!loading && view === 'orders' && <OrdersView />}
         {!loading && view === 'subscriptions' && <SubscriptionsView />}
         {!loading && view === 'rewards' && <RewardsView />}
-        {!loading && view === 'account' && <AccountView initialTab={accountTab} />}
+        {!loading && view === 'account' && <AccountView initialTab={accountTab} onWatchesChanged={loadWatches} />}
         {!loading && view === 'kb' && <div className="container" style={{ padding: '32px 24px' }}><KnowledgeBase persona="consumer" title="How things work" feedbackAs={{ actor: 'Priya Raman', org: 'Consumer' }} /></div>}
       </main>
       <Footer onNavigate={navigate} />
+
+      {notifyProduct && (
+        <NotifyMeModal
+          product={notifyProduct}
+          profile={consumerProfile}
+          onClose={() => setNotifyProduct(null)}
+          onWatched={async (p) => {
+            setNotifyProduct(null)
+            await loadWatches()
+            toast(`We will tell you when ${p.name} is back`)
+          }}
+        />
+      )}
 
       <CartDrawer
         open={cartOpen}

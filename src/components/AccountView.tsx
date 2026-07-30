@@ -7,6 +7,7 @@ import { paymentSummary } from '../lib/payments'
 import { LANGUAGES, TIME_ZONES, DATA_UNITS, effectivePreferences, isAuditable } from '../lib/preferences'
 import { PrivacyCard } from './PrivacyCard'
 import { AddressBookCard } from './AddressBookCard'
+import { StockWatchCard } from './StockWatchCard'
 import type {
   ConsumerProfile, ConsumerNotification, ConsumerAuditEntry,
   ConsumerHouseholdMember, ConsumerRefund, ConsumerPaymentMethod,
@@ -44,7 +45,11 @@ const REFUND_STATES: Record<string, { label: string; color: string; bg: string }
   declined: { label: 'Declined', color: 'var(--danger)', bg: '#FEE2E2' },
 }
 
-export function AccountView({ initialTab }: { initialTab?: string }) {
+export function AccountView({ initialTab, onWatchesChanged }: {
+  initialTab?: string
+  /* Cancelling a restock alert here changes what a product tile says elsewhere. */
+  onWatchesChanged?: () => void
+}) {
   const [tab, setTab] = useState<Tab>(initialTab && isTab(initialTab) ? initialTab : 'profile')
   const [profile, setProfile] = useState<ConsumerProfile | null>(null)
   const [notifications, setNotifications] = useState<ConsumerNotification[]>([])
@@ -180,7 +185,7 @@ export function AccountView({ initialTab }: { initialTab?: string }) {
       </div>
 
       {/* Tab content */}
-      {tab === 'profile' && <ProfileTab profile={profile} showToast={showToast} />}
+      {tab === 'profile' && <ProfileTab profile={profile} showToast={showToast} onWatchesChanged={onWatchesChanged} />}
       {tab === 'notifications' && (
         <NotificationsTab
           notifications={notifications}
@@ -210,7 +215,11 @@ export function AccountView({ initialTab }: { initialTab?: string }) {
 }
 
 /* ============================== PROFILE TAB ============================== */
-function ProfileTab({ profile, showToast }: { profile: ConsumerProfile; showToast: (m: string) => void }) {
+function ProfileTab({ profile, showToast, onWatchesChanged }: {
+  profile: ConsumerProfile
+  showToast: (m: string) => void
+  onWatchesChanged?: () => void
+}) {
   const [name, setName] = useState(profile.name)
   const [email, setEmail] = useState(profile.email)
   const [phone, setPhone] = useState(profile.msisdn)
@@ -342,6 +351,8 @@ function ProfileTab({ profile, showToast }: { profile: ConsumerProfile; showToas
         </Card>
 
         <AddressBookCard showToast={showToast} />
+
+        <StockWatchCard showToast={showToast} onChanged={onWatchesChanged} />
 
         <PrivacyCard profile={profile} showToast={showToast} />
 
