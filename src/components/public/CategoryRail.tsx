@@ -1,17 +1,18 @@
 import { useId } from 'react'
 import type { Category } from '../../types'
+import { getCategoryImage } from '../../lib/images'
 import { categoryDestination } from '../../lib/storefront'
 import type { PublicPage } from '../../types/view'
 
 /* A rail of real categories rather than stock photography. The six categories come
    from the `categories` table, so the rail follows the catalogue rather than a list
-   maintained by hand in this file. */
+   maintained by hand in this file — and each one keeps the picture CategoryStrip
+   already gives it, so a category looks the same on both surfaces. */
 
-export function CategoryRail({ title, subtitle, categories, images, counts, onNavigate }: {
+export function CategoryRail({ title, subtitle, categories, counts, onNavigate }: {
   title: string
   subtitle?: string
   categories: readonly Category[]
-  images: Record<string, string>
   counts: Record<string, number>
   onNavigate: (p: PublicPage) => void
 }) {
@@ -44,7 +45,7 @@ export function CategoryRail({ title, subtitle, categories, images, counts, onNa
           >
             <div style={{ position: 'relative', height: '132px' }}>
               <img
-                src={images[cat.id]}
+                src={getCategoryImage(cat.id)}
                 alt=""
                 loading="lazy"
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}

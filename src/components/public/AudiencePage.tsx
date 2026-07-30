@@ -3,7 +3,7 @@ import { ProductRail } from './ProductRail'
 import { PublicProductGrid } from './PublicProductGrid'
 import { BANNERS, RETAIL_PRODUCTS, ENTERPRISE_PRODUCTS, DEVICE_THUMBS } from '../../lib/assets'
 import { loadCatalogue, loadCategories } from '../../lib/storefrontRepo'
-import { productsForPage, assignImages } from '../../lib/storefront'
+import { productsForPage } from '../../lib/storefront'
 import type { Category, Product } from '../../types'
 import type { PublicPage, Persona } from '../../types/view'
 
@@ -64,7 +64,6 @@ export function AudiencePage({ page, onSignIn, onApply, onAddToBasket }: {
   /* The same rows the operator's catalogue holds — name, seller, price, rating —
      narrowed to the categories this page covers and to what is actually live. */
   const products = productsForPage(catalogue, categories, page)
-  const art = assignImages(products.map(p => p.id), DEVICE_THUMBS)
 
   return (
     <>
@@ -101,7 +100,6 @@ export function AudiencePage({ page, onSignIn, onApply, onAddToBasket }: {
           title={c.rail.title}
           subtitle={c.rail.subtitle}
           products={products}
-          images={art}
           onAdd={onAddToBasket}
         />
       )}

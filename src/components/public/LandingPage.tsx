@@ -2,10 +2,10 @@ import { useState, useEffect } from 'react'
 import { Carousel } from './Carousel'
 import { CategoryRail } from './CategoryRail'
 import { PromoStrip } from './PromoStrip'
-import { HERO, CAROUSEL, BANNERS, DEVICE_THUMBS } from '../../lib/assets'
+import { HERO, CAROUSEL, BANNERS } from '../../lib/assets'
 import { loadPromoBanners, loadCategories, loadCatalogue, countByCategory } from '../../lib/storefrontRepo'
 import {
-  promoStrip, retailCategories, enterpriseCategories, assignImages,
+  promoStrip, retailCategories, enterpriseCategories,
   type PromoSlide,
 } from '../../lib/storefront'
 import type { Category } from '../../types'
@@ -26,9 +26,6 @@ export function LandingPage({ onNavigate }: { onNavigate: (p: PublicPage) => voi
 
   const retail = retailCategories(categories)
   const enterprise = enterpriseCategories(categories)
-  /* One image per category, assigned across both rails at once so Devices — which
-     legitimately appears in both — carries the same picture in each. */
-  const art = assignImages(categories.map(c => c.id), DEVICE_THUMBS)
 
   return (
     <>
@@ -68,7 +65,6 @@ export function LandingPage({ onNavigate }: { onNavigate: (p: PublicPage) => voi
         title="Retail products"
         subtitle="Plans, devices, entertainment and connected home"
         categories={retail}
-        images={art}
         counts={counts}
         onNavigate={onNavigate}
       />
@@ -76,7 +72,6 @@ export function LandingPage({ onNavigate }: { onNavigate: (p: PublicPage) => voi
         title="Enterprise products"
         subtitle="IoT, security, devices and reselling"
         categories={enterprise}
-        images={art}
         counts={counts}
         onNavigate={onNavigate}
       />

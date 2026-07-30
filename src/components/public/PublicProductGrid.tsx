@@ -1,6 +1,7 @@
 import { useId } from 'react'
 import { Star, ShoppingBag } from 'lucide-react'
 import type { Product } from '../../types'
+import { getProductImage } from '../../lib/images'
 import { canAddToBasket } from '../../lib/storefront'
 
 /* Real catalogue rows on the public pages — name, seller, price and rating as they
@@ -12,11 +13,14 @@ function money(n: number): string {
   return `$${n.toFixed(2)}`
 }
 
-export function PublicProductGrid({ title, subtitle, products, images, onAdd }: {
+/* Pictures come from the curated per-SKU map in lib/images, the same one
+   ProductCard, ProductDetail and CartDrawer use. A product has one photograph
+   wherever it appears; picking a decorative image here instead would put a network
+   switch next to a mobile plan. */
+export function PublicProductGrid({ title, subtitle, products, onAdd }: {
   title: string
   subtitle?: string
   products: readonly Product[]
-  images: Record<string, string>
   onAdd: (p: Product) => void
 }) {
   const headingId = useId()
@@ -36,7 +40,7 @@ export function PublicProductGrid({ title, subtitle, products, images, onAdd }: 
           return (
             <article key={p.id} className="card" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ position: 'relative', height: '150px', background: 'var(--surface-2, #f4f6f8)' }}>
-                <img src={images[p.id]} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img src={getProductImage(p.id)} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 {p.badge && (
                   <span style={{
                     position: 'absolute', top: '10px', left: '10px', padding: '3px 8px',
