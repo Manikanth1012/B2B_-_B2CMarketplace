@@ -374,27 +374,28 @@ export interface OnboardingGate {
   partner?: { id: string; name: string; status: string }
 }
 
+/* The record of the review that decided whether a listing could be sold — not a
+   listing in itself. A listing *is* a product, and `products.status` is the
+   lifecycle both sides read. The name, price, category and seller live on the
+   product; this used to hold copies of all four, and they drifted.
+
+   The working shape is `Submission` in lib/catalogue.ts; this alias is what the
+   screens that only count rows still import. */
 export interface OperatorListing {
   id: string
-  product_name: string
-  partner_name: string
-  category: string
-  price: number
-  cost: number
-  status: string
-  submitted_at: string
+  product_id: string
+  partner_id: string | null
+  status: 'pending' | 'approved' | 'rejected'
+  risk: 'low' | 'medium' | 'high'
+  check_note: string
+  issue: string | null
+  decision_reason: string | null
+  submitted_by: string | null
+  submitted_at: string | null
   reviewed_by: string | null
   reviewed_at: string | null
-  rating: number | null
-  reviews: number
-  stock_status: string
   version: number
   sort_order: number
-  /* The catalogue row this submission became. Null for pending and rejected
-     listings — that is the queue working, not missing data — and for approved ones
-     the catalogue has no equivalent of. See the migration that added it. */
-  product_id: string | null
-  partner_id: string | null
 }
 
 export interface SettlementStatement {

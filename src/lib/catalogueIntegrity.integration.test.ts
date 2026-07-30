@@ -74,34 +74,42 @@ describe('everything that references the catalogue', () => {
     }
   })
 
-  it('links approved review-queue listings to the catalogue they became', async () => {
-    /* operator_listings is the review queue, not a second catalogue. Reading it needs
-       the operator persona. */
+  /* The review record and the product are two halves of one listing, and this
+     is the seam. It used to be looser than that: `product_id` was nullable and a
+     submission carried a name and a price of its own, so a queue row could name
+     a product that did not exist and quote a price the catalogue contradicted.
+     Now every submission points at its product from the moment it is created,
+     and `products.status` is the lifecycle both sides read. */
+  it('links every submission to a real product whose status agrees with it', async () => {
     await signOut()
     await signIn('anika.sharma@aventa.com', 'operator123')
-    const { data } = await supabase
-      .from('operator_listings').select('id, status, product_id, partner_id')
+    const { data, error } = await supabase
+      .from('operator_listings')
+      .select('id, status, product_id, partner_id, product:products(id, status, partner_id)')
+      .returns<{ id: string; status: string; product_id: string; partner_id: string | null;
+                 product: { id: string; status: string; partner_id: string | null } | null }[]>()
+    expect(error).toBeNull()
+    expect(data!.length).toBeGreaterThan(0)
 
-    for (const l of data ?? []) {
-      if (l.product_id) {
-        expect(find(l.product_id), `${l.id} links to a missing product`).toBeTruthy()
-        /* Only an approved submission can be in the catalogue. A pending or rejected
-           one carrying a product_id would mean something reached the shelf without
-           being signed off. */
-        expect(l.status, `${l.id} is ${l.status} but is linked to a live product`).toBe('approved')
-      } else {
-        /* Null is the normal case for pending and rejected, and for two approved
-           listings the catalogue genuinely has no equivalent of. */
-        expect(['approved', 'pending', 'rejected']).toContain(l.status)
-      }
+    for (const l of data!) {
+      expect(l.product, `${l.id} links to a product that does not exist`).toBeTruthy()
+      expect(l.partner_id, `${l.id} and its product disagree about the seller`).toBe(l.product!.partner_id)
+
+      /* Pending means waiting; approved means on sale or since taken down with
+         its seller; rejected means it never went on sale. */
+      const p = l.product!.status
+      if (l.status === 'pending') expect(p, `${l.id} is pending but its product is ${p}`).toBe('pending')
+      if (l.status === 'approved') expect(['live', 'suspended'], `${l.id} is approved but its product is ${p}`).toContain(p)
+      if (l.status === 'rejected') expect(['rejected', 'suspended'], `${l.id} is rejected but its product is ${p}`).toContain(p)
     }
 
-    const approved = (data ?? []).filter(l => l.status === 'approved')
-    expect(approved.length).toBeGreaterThan(0)
-    expect(approved.filter(l => l.product_id).length).toBe(5)
-
-    await signOut()
-    await signIn(CONSUMER.email, CONSUMER.password)
+    /* And nothing a buyer can reach, or is waiting on, arrived without a
+       decision behind it. */
+    const reviewed = new Set(data!.map(l => l.product_id))
+    const { data: shelf } = await supabase.from('products').select('id,name,status').in('status', ['live', 'pending'])
+    for (const p of (shelf ?? []) as { id: string; name: string }[]) {
+      expect(reviewed.has(p.id), `${p.name} is on the shelf with no review record`).toBe(true)
+    }
   })
 
   it('is enforced by the database, not only by this test', async () => {

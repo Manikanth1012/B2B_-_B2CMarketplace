@@ -5,6 +5,7 @@ import { Callout } from '../OnboardingJourney'
 import { loadSellerRecord } from '../../lib/partnerRepo'
 import type { SellerRecord } from '../../lib/partnerRepo'
 import { canListIn, rateAt, approvedCategories } from '../../lib/partnerCommerce'
+import { submitForReview } from '../../lib/catalogueRepo'
 
 const STEPS = ['Marketplace and type', 'Details and media', 'Pricing and commission', 'Fulfilment', 'Compliance', 'Review and submit']
 
@@ -17,6 +18,8 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
   const [rec, setRec] = useState<SellerRecord | null>(null)
   const [loading, setLoading] = useState(true)
   const [step, setStep] = useState(0)
+  const [saving, setSaving] = useState(false)
+  const [subCategory, setSubCategory] = useState('')
   const [vertical, setVertical] = useState('')
   const [name, setName] = useState('')
   const [desc, setDesc] = useState('')
@@ -43,23 +46,37 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
   const net = +(priceNum - comm - fee).toFixed(2)
   const margin = costNum > 0 ? +(net - costNum).toFixed(2) : net
 
-  const handleSubmit = () => {
+  /* This used to end in a toast and write nothing, so a seller could submit all
+     day and the operator's queue never moved. It now creates the listing in
+     `pending` and the review record the catalogue desk decides on — the same
+     two rows every other submission in the queue is made of. */
+  const handleSubmit = async () => {
     if (!name.trim() || priceNum <= 0) {
       toast('A listing needs a name and a price before it can be submitted', 'error')
       return
     }
-    /* Checked again at submit, not only when the picker was built: the approval
-       can be withdrawn between opening this wizard and finishing it. */
     if (rec) {
+      /* Checked again at submit, not only when the picker was built: the
+         approval can be withdrawn between opening this wizard and finishing it. */
       const verdict = canListIn(vertical, rec.approvals, id => rec.categories.find(c => c.id === id)?.name ?? id)
       if (!verdict.ok) { toast(verdict.reason, 'error'); return }
     }
-    toast(`${name} submitted — now in the marketplace review queue`)
-    setStep(0)
-    setName('')
-    setPrice('')
-    setCost('')
-    setDesc('')
+
+    setSaving(true)
+    const res = await submitForReview({
+      draft: {
+        partnerId, categoryId: vertical, subCategory: subCategory || 'General',
+        name, description: desc, price: priceNum, cost: costNum,
+        model, fulfil: model === 'oneoff' ? 'shipped' : 'provisioned',
+        tags: [],
+      },
+      submittedBy: rec?.partner?.contact ?? 'Seller operations',
+    })
+    setSaving(false)
+    if (!res.ok) { toast(res.reason, 'error'); return }
+
+    toast(res.note ?? `${name} is in the marketplace review queue`)
+    setStep(0); setName(''); setPrice(''); setCost(''); setDesc(''); setSubCategory('')
   }
 
   if (loading) {
@@ -97,7 +114,7 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
           </Select>
         </FormField>
         <FormField label="Sub-category" hint="How buyers narrow a search inside that marketplace.">
-          <TextInput placeholder="e.g. Sensors" />
+          <TextInput value={subCategory} onChange={e => setSubCategory(e.target.value)} placeholder="e.g. Sensors" />
         </FormField>
       </div>
       <div>
@@ -373,7 +390,7 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
           {step === STEPS.length - 1 ? 'Submitting sends this to the catalogue team' : 'Your progress is saved as you go'}
         </span>
         {step === STEPS.length - 1
-          ? <Btn variant="primary" onClick={handleSubmit}>Submit for review</Btn>
+          ? <Btn variant="primary" disabled={saving} onClick={handleSubmit}>{saving ? 'Submitting…' : 'Submit for review'}</Btn>
           : <Btn variant="primary" onClick={() => setStep(step + 1)}>Continue <ChevronRight size={14} /></Btn>}
       </div>
     </div>

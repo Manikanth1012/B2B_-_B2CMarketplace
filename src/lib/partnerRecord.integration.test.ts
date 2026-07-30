@@ -393,14 +393,15 @@ describe('settlement statements', () => {
     const [{ data: st }, { data: ps }, { data: prods }] = await Promise.all([
       supabase.from('settlement_statements').select('partner_id'),
       supabase.from('partners').select('id,name,status'),
-      supabase.from('products').select('partner_id').not('partner_id', 'is', null),
+      supabase.from('products').select('partner_id').eq('status', 'live').not('partner_id', 'is', null),
     ])
     const counted = new Set(((st ?? []) as { partner_id: string | null }[]).map(s => s.partner_id))
     const sells = new Set(((prods ?? []) as { partner_id: string }[]).map(p => p.partner_id))
 
     for (const p of (ps ?? []) as { id: string; name: string; status: string }[]) {
-      /* A seller with no listings of their own has nothing to settle — that is
-         an answer, not a gap. */
+      /* A seller with nothing *on sale* has nothing to settle — that is an
+         answer, not a gap. Beacon Reseller Co is the case: live, with its first
+         listing still in the review queue and therefore no share of any month. */
       if (p.status !== 'live' || !sells.has(p.id)) continue
       expect(counted.has(p.id), `${p.name} is trading with no statements`).toBe(true)
     }
