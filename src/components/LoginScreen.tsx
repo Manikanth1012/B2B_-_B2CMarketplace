@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { ShoppingBag, Settings, Store, Building2, ArrowRight, Mail, Lock, Eye, EyeOff, Loader as Loader2 } from 'lucide-react'
 import type { Persona, Session } from '../types/view'
-import { signIn, SignInError } from '../lib/authRepo'
+import { signIn, requestPasswordReset, SignInError } from '../lib/authRepo'
+import { looksLikeEmail, RESET_SENT_MESSAGE } from '../lib/password'
 
 interface LoginScreenProps {
   onLogin: (session: Session) => void
@@ -67,6 +68,10 @@ export function LoginScreen({ onLogin, prefill, notice }: LoginScreenProps) {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  /* The reset flow replaces the form in place rather than opening a modal — the
+     visitor is already looking at the one field it needs. */
+  const [resetting, setResetting] = useState(false)
+  const [resetNotice, setResetNotice] = useState('')
 
   const pickPersona = (p: Persona) => {
     setSelected(p)
@@ -279,6 +284,33 @@ export function LoginScreen({ onLogin, prefill, notice }: LoginScreenProps) {
                     fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)',
                   }}>
                     {error}
+                  </div>
+                )}
+
+                {/* Reset lives with the password field, which is where somebody
+                    realises they have forgotten it. */}
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'calc(-1 * var(--space-3))', marginBottom: 'var(--space-4)' }}>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setError('')
+                      if (!looksLikeEmail(email)) { setError('Enter your email address first, then choose Forgot password.'); return }
+                      setResetting(true)
+                      await requestPasswordReset(email)
+                      setResetting(false)
+                      /* Always the same words, whether or not that address has an
+                         account — saying otherwise tells a stranger who is registered. */
+                      setResetNotice(RESET_SENT_MESSAGE)
+                    }}
+                    style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.65)', fontSize: 'var(--text-xs)', cursor: 'pointer', padding: 0, textDecoration: 'underline' }}
+                  >
+                    {resetting ? 'Sending…' : 'Forgot password?'}
+                  </button>
+                </div>
+
+                {resetNotice && (
+                  <div role="status" style={{ marginBottom: 'var(--space-4)', padding: 'var(--space-3)', borderRadius: 'var(--radius)', background: 'rgba(0,166,166,0.16)', border: '1px solid rgba(0,166,166,0.4)', color: 'white', fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>
+                    {resetNotice}
                   </div>
                 )}
 

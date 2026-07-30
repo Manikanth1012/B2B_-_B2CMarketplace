@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { User, Bell, History, Users, RotateCcw, Check, X, Plus, Minus, CircleAlert as AlertCircle, Info, Shield, Wallet, Star, Phone, Mail, MapPin, CreditCard, Clock, ChevronRight, Lock, Trash2, FileText, LifeBuoy, MessageSquare, Send, Download } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { changePassword, currentEmail, SignInError } from '../lib/authRepo'
+import { checkNewPassword, strengthOf, isDemoAccount, MIN_LENGTH } from '../lib/password'
+import { paymentSummary } from '../lib/payments'
 import type {
   ConsumerProfile, ConsumerNotification, ConsumerAuditEntry,
   ConsumerHouseholdMember, ConsumerRefund, ConsumerPaymentMethod,
@@ -211,6 +214,18 @@ function ProfileTab({ profile, showToast }: { profile: ConsumerProfile; showToas
   const [city, setCity] = useState(profile.city)
   const [saving, setSaving] = useState(false)
   const [modal, setModal] = useState<null | 'password' | 'mfa' | 'payments' | 'sessions'>(null)
+  /* Counted from the table rather than written into the markup. This row said
+     "3 saved (1 expired)" whatever was actually stored, which is why the whole
+     section read as decoration — adding a card changed nothing on the screen
+     behind it. */
+  const [cards, setCards] = useState<ConsumerPaymentMethod[]>([])
+
+  const loadCards = useCallback(async () => {
+    const { data } = await supabase.from('consumer_payment_methods').select('*')
+    if (data) setCards(data as ConsumerPaymentMethod[])
+  }, [])
+
+  useEffect(() => { loadCards() }, [loadCards])
 
   const save = async () => {
     setSaving(true)
@@ -287,7 +302,7 @@ function ProfileTab({ profile, showToast }: { profile: ConsumerProfile; showToas
             <SecurityRow
               icon={<CreditCard size={16} />}
               label="Payment methods"
-              value="3 saved (1 expired)"
+              value={paymentSummary(cards)}
               action="Manage"
               onClick={() => setModal('payments')}
             />
@@ -309,7 +324,10 @@ function ProfileTab({ profile, showToast }: { profile: ConsumerProfile; showToas
         <MfaModal profile={profile} onClose={() => setModal(null)} showToast={showToast} />
       )}
       {modal === 'payments' && (
-        <PaymentsModal onClose={() => setModal(null)} showToast={showToast} />
+        <PaymentsModal
+          onClose={() => { setModal(null); loadCards() }}
+          showToast={showToast}
+        />
       )}
       {modal === 'sessions' && (
         <SessionsModal profile={profile} onClose={() => setModal(null)} showToast={showToast} />
@@ -354,14 +372,31 @@ function PasswordModal({ profile, onClose, showToast }: { profile: ConsumerProfi
   const [confirm, setConfirm] = useState('')
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
+  /* Keyed on the address the session is authenticated as, not profile.email — those
+     differ by design (priya.raman@example.com signs in; the profile shows
+     priya.raman@6dtech.co.in), and it is the sign-in identity that is shared. */
+  const [authEmail, setAuthEmail] = useState<string | null>(null)
+  useEffect(() => { currentEmail().then(setAuthEmail) }, [])
+  const demo = authEmail !== null && isDemoAccount(authEmail)
+  const strength = strengthOf(nw)
 
   const submit = async () => {
     setErr('')
-    if (!cur) { setErr('Enter your current password'); return }
-    if (nw.length < 12) { setErr('New password must be at least 12 characters'); return }
-    if (nw !== confirm) { setErr('Passwords do not match'); return }
-    if (nw === cur) { setErr('New password must be different from the current one'); return }
+    const check = checkNewPassword(cur, nw, confirm)
+    if (!check.ok) { setErr(check.reason!); return }
+
     setSaving(true)
+    try {
+      /* This used to stamp pwd_changed and write an audit row without ever calling
+         Supabase Auth — it reported success and the password did not change. It now
+         actually changes, which means the current password is genuinely checked. */
+      await changePassword(cur, nw)
+    } catch (e) {
+      setSaving(false)
+      setErr(e instanceof SignInError ? e.message : 'We could not change your password just now.')
+      return
+    }
+
     const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     await supabase.from('consumer_profile').update({ pwd_changed: today }).eq('id', 'me')
     await supabase.from('consumer_audit_log').insert({
@@ -386,13 +421,37 @@ function PasswordModal({ profile, onClose, showToast }: { profile: ConsumerProfi
         <Field label="Confirm new password" icon={<Lock size={14} />}>
           <input type="password" style={inputStyle} value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder="Re-enter new password" />
         </Field>
+        {nw.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ flex: 1, height: '4px', borderRadius: '2px', background: 'var(--border)', overflow: 'hidden' }}>
+              <div style={{
+                width: `${(strength.level / 3) * 100}%`, height: '100%',
+                background: strength.level >= 3 ? 'var(--success)' : strength.level === 2 ? 'var(--warning)' : 'var(--danger)',
+                transition: 'width 150ms ease',
+              }} />
+            </div>
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', minWidth: '64px' }}>{strength.label}</span>
+          </div>
+        )}
         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-          Must be at least 12 characters with mixed case, a number and a symbol. Cannot match your last 5 passwords.
+          At least {MIN_LENGTH} characters. A long passphrase is stronger than a short one with symbols in it.
         </div>
+        {/* The demo personas are shared — one visitor changing Priya's password would
+            lock out everybody else, and the credentials are printed on the sign-in
+            cards. Said plainly rather than failing at the server. */}
+        {demo && (
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--warning)', background: '#FEF3C7', padding: '10px 12px', borderRadius: 'var(--radius)', lineHeight: 1.5 }}>
+            This is a shared demonstration account, so its password is fixed — the
+            credentials on the sign-in cards have to keep working. Everything else on
+            this form is live: your current password is checked for real.
+          </div>
+        )}
         {err && <div style={{ fontSize: 'var(--text-sm)', color: 'var(--danger)', fontWeight: 600 }}>{err}</div>}
         <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={btnSecondary}>Cancel</button>
-          <button onClick={submit} disabled={saving} style={btnPrimary}>{saving ? 'Saving…' : 'Change password'}</button>
+          <button onClick={submit} disabled={saving || demo} style={{ ...btnPrimary, opacity: demo ? 0.5 : 1, cursor: demo ? 'not-allowed' : 'pointer' }}>
+            {saving ? 'Saving…' : 'Change password'}
+          </button>
         </div>
       </div>
     </Modal>
