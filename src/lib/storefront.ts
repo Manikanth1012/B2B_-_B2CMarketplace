@@ -195,3 +195,24 @@ export function productsForPage<T extends SellableProduct>(
 export function canAddToBasket(p: { stock: string }): boolean {
   return !p.stock.toLowerCase().includes('out')
 }
+
+/**
+ * A few real listings to stand for a category — what a prospective seller is shown
+ * under "what sells here". Showcase order, not catalogue order: what the operator
+ * flagged as a bestseller first, then what buyers rated highest, and `sort_order`
+ * only to break the remaining ties so the choice is stable between renders.
+ */
+export function exampleProducts<T extends SellableProduct>(
+  products: readonly T[],
+  categoryId: string,
+  limit = 3,
+): T[] {
+  return products
+    .filter(p => p.category_id === categoryId && isSellable(p))
+    .sort((a, b) =>
+      Number(b.badge === 'Bestseller') - Number(a.badge === 'Bestseller') ||
+      (b.rating ?? 0) - (a.rating ?? 0) ||
+      a.sort_order - b.sort_order ||
+      a.id.localeCompare(b.id))
+    .slice(0, limit)
+}

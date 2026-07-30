@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   promoStrip, bannerDestination, assignImages,
   retailCategories, enterpriseCategories, categoriesForPage, categoryDestination,
-  productsForPage, isSellable, canAddToBasket,
+  productsForPage, isSellable, canAddToBasket, exampleProducts,
   type PublicBanner, type SellableProduct,
 } from './storefront'
 import type { Category } from '../types'
@@ -188,6 +188,41 @@ describe('productsForPage', () => {
     const many = Array.from({ length: 30 }, (_, i) => product({ id: `p${i}`, category_id: 'consumer', sort_order: i }))
     expect(productsForPage(many, CATEGORIES, 'retail')).toHaveLength(12)
     expect(productsForPage(many, CATEGORIES, 'retail', 4)).toHaveLength(4)
+  })
+})
+
+describe('exampleProducts', () => {
+  const CATALOGUE = [
+    product({ id: 'plain', category_id: 'iot', rating: 4.9, sort_order: 5 }),
+    product({ id: 'best', category_id: 'iot', badge: 'Bestseller', rating: 3.1, sort_order: 9 }),
+    product({ id: 'rated', category_id: 'iot', rating: 4.4, sort_order: 1 }),
+    product({ id: 'dead', category_id: 'iot', badge: 'Bestseller', rating: 5, status: 'suspended', sort_order: 0 }),
+    product({ id: 'other', category_id: 'security', badge: 'Bestseller', sort_order: 1 }),
+  ]
+
+  /* A bestseller with a middling score still leads: it is the operator's own flag,
+     and the point of the section is to show a seller what moves. */
+  it('leads with what the operator flagged, then what buyers rated', () => {
+    expect(exampleProducts(CATALOGUE, 'iot').map(p => p.id)).toEqual(['best', 'plain', 'rated'])
+  })
+
+  it('stays inside the category', () => {
+    expect(exampleProducts(CATALOGUE, 'security').map(p => p.id)).toEqual(['other'])
+  })
+
+  it('never showcases a listing that is not live', () => {
+    expect(exampleProducts(CATALOGUE, 'iot').map(p => p.id)).not.toContain('dead')
+  })
+
+  it('caps the examples, and copes with a category that has none', () => {
+    expect(exampleProducts(CATALOGUE, 'iot', 2).map(p => p.id)).toEqual(['best', 'plain'])
+    expect(exampleProducts(CATALOGUE, 'content')).toEqual([])
+  })
+
+  it('does not depend on the order rows came back in', () => {
+    const shuffled = [...CATALOGUE].reverse()
+    expect(exampleProducts(shuffled, 'iot').map(p => p.id))
+      .toEqual(exampleProducts(CATALOGUE, 'iot').map(p => p.id))
   })
 })
 

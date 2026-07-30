@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
-import { ProductRail } from './ProductRail'
 import { PublicProductGrid } from './PublicProductGrid'
-import { BANNERS, RETAIL_PRODUCTS, ENTERPRISE_PRODUCTS, DEVICE_THUMBS } from '../../lib/assets'
-import { loadCatalogue, loadCategories } from '../../lib/storefrontRepo'
-import { productsForPage } from '../../lib/storefront'
+import { CategoryShowcase } from './CategoryShowcase'
+import { BANNERS, DEVICE_THUMBS } from '../../lib/assets'
+import { loadCatalogue, loadCategories, countByCategory } from '../../lib/storefrontRepo'
+import { productsForPage, categoriesForPage } from '../../lib/storefront'
 import type { Category, Product } from '../../types'
 import type { PublicPage, Persona } from '../../types/view'
 
@@ -14,7 +14,7 @@ type Aud = Exclude<PublicPage, 'landing'>
 const CONFIG: Record<Aud, {
   title: string; blurb: string; points: string[]
   cta: string; banner: string
-  rail: { title: string; subtitle: string; tiles: readonly { src: string; alt: string }[] }
+  rail: { title: string; subtitle: string }
   persona: Persona
 }> = {
   retail: {
@@ -23,7 +23,7 @@ const CONFIG: Record<Aud, {
     points: ['Plans and devices side by side', 'Reward points on every order', 'One bill, one support queue'],
     cta: 'Start shopping',
     banner: BANNERS[1],
-    rail: { title: 'Popular with shoppers', subtitle: 'Phones, wearables and entertainment', tiles: RETAIL_PRODUCTS },
+    rail: { title: 'Popular with shoppers', subtitle: 'Phones, wearables and entertainment' },
     persona: 'consumer',
   },
   enterprise: {
@@ -32,7 +32,7 @@ const CONFIG: Record<Aud, {
     points: ['Approval workflow before spend', 'Contract pricing on committed volume', 'Consolidated invoicing across sellers'],
     cta: 'Sign in to procure',
     banner: BANNERS[5],
-    rail: { title: 'Built for business', subtitle: 'Gateways, sensors, security and point of sale', tiles: ENTERPRISE_PRODUCTS },
+    rail: { title: 'Built for business', subtitle: 'Gateways, sensors, security and point of sale' },
     persona: 'enterprise',
   },
   partner: {
@@ -41,7 +41,7 @@ const CONFIG: Record<Aud, {
     points: ['Seven onboarding gates, five working days', 'Commission published before you list', 'Settlement you can reconcile line by line'],
     cta: 'Sign in to your seller console',
     banner: BANNERS[3],
-    rail: { title: 'What sells here', subtitle: 'Categories open to new sellers', tiles: ENTERPRISE_PRODUCTS },
+    rail: { title: 'What sells here', subtitle: 'All six marketplaces are open to new sellers — here is what is already listed in each' },
     persona: 'partner',
   },
 }
@@ -90,11 +90,18 @@ export function AudiencePage({ page, onSignIn, onApply, onAddToBasket }: {
         </div>
       </section>
 
-      {/* The catalogue itself. The partner page keeps the illustrative rail — it is
-          a pitch to sellers, not a shop — while the two buyer pages list real rows
+      {/* The catalogue itself. A seller wants to know which marketplaces they can
+          list into and what already sells in each, so the partner page shows the six
+          categories with real listings under them; the two buyer pages list rows
           with a working basket. */}
       {page === 'partner' ? (
-        <ProductRail title={c.rail.title} subtitle={c.rail.subtitle} tiles={c.rail.tiles} />
+        <CategoryShowcase
+          title={c.rail.title}
+          subtitle={c.rail.subtitle}
+          categories={categoriesForPage('partner', categories)}
+          products={catalogue}
+          counts={countByCategory(catalogue)}
+        />
       ) : (
         <PublicProductGrid
           title={c.rail.title}
