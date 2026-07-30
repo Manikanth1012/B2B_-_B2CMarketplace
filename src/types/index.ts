@@ -92,12 +92,20 @@ export interface OrderItem {
 
 export interface Subscription {
   id: string
+  /* Human-facing id (SUB-9101), as orders carry order_ref. The key stays a uuid. */
+  ref: string | null
   product_id: string
   product_name: string
+  seller: string | null
+  cycle: string | null
   status: string
   auto_renew: boolean
   started_at: string
   next_renewal: string | null
+  /* Cancelled: access runs to here. Paused: billing restarts here. Distinct facts —
+     see supabase/migrations/20260730090000_consumer_subscriptions.sql. */
+  ends_at: string | null
+  resumes_at: string | null
   price: number
 }
 
