@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { View, OperatorView, PartnerView, EnterpriseView, Persona, Session, Surface, PublicPage } from './types/view'
 import { supabase } from './lib/supabase'
+import { activeLines, basketCount } from './lib/basket'
 import { restoreSession, signOut } from './lib/authRepo'
 import type { CartItem, Product } from './types'
 import { LoginScreen } from './components/LoginScreen'
@@ -80,8 +81,11 @@ export default function App() {
       .select('*, product:products(*)')
       .order('created_at', { ascending: false })
     if (cart) {
-      setCartItems(cart as CartItem[])
-      setCartCount(cart.reduce((sum: number, item: CartItem) => sum + item.quantity, 0))
+      const lines = cart as CartItem[]
+      setCartItems(lines)
+      /* Saved lines are in the basket but not of it — the badge counts what is
+         actually being bought. */
+      setCartCount(basketCount(lines))
     }
   }, [])
 
@@ -132,6 +136,13 @@ export default function App() {
     await loadCart()
   }
 
+  /* Moving between basket and saved is a flag flip, not a copy — same row, same
+     quantity, so the two lists can never disagree about what is in them. */
+  const setSaved = async (itemId: string, saved: boolean) => {
+    await supabase.from('cart_items').update({ saved }).eq('id', itemId)
+    await loadCart()
+  }
+
   const removeFromCart = async (itemId: string) => {
     await supabase.from('cart_items').delete().eq('id', itemId)
     await loadCart()
@@ -156,6 +167,11 @@ export default function App() {
        owner-scoped, so there was nowhere to put it until now — this is the add
        they already asked for, completed on the other side of the sign-in.
        Dropped for any other persona: an operator's basket is not a thing. */
+    /* The basket is owner-scoped, so the mount-time load ran as a signed-out
+       visitor and came back empty. Without this the customer signs in to an empty
+       basket and only sees their real one after touching it. */
+    if (s.persona === 'consumer') void loadCart()
+
     const pending = pendingProduct
     setPendingProduct(null)
     if (pending && s.persona === 'consumer') {
@@ -321,7 +337,7 @@ export default function App() {
         )}
         {!loading && view === 'checkout' && (
           <Checkout
-            cartItems={cartItems}
+            cartItems={activeLines(cartItems)}
             onClearCart={clearCart}
             onComplete={() => navigate('home')}
           />
@@ -340,6 +356,7 @@ export default function App() {
         onClose={() => setCartOpen(false)}
         onUpdateQuantity={updateCartQuantity}
         onRemove={removeFromCart}
+        onSetSaved={setSaved}
         onCheckout={() => {
           setCartOpen(false)
           navigate('checkout')

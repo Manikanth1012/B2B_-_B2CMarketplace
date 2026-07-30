@@ -178,7 +178,9 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut, currentV
                 gap: '6px',
                 transition: 'background 150ms ease',
               }}
-              aria-label="Shopping cart"
+              /* The badge is a visual-only count — folding it into the label is the
+                 only way a screen reader hears how much is in the basket. */
+              aria-label={cartCount === 1 ? 'Shopping cart, 1 item' : `Shopping cart, ${cartCount} items`}
             >
               <ShoppingCart size={22} />
               {cartCount > 0 && (

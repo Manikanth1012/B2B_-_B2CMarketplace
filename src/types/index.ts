@@ -53,6 +53,10 @@ export interface CartItem {
   product_id: string
   quantity: number
   created_at: string
+  /* Set aside rather than being bought now. Saved lines stay in the basket — the
+     prototype renders them as a dimmed section of it — but are excluded from the
+     count, the totals and checkout. */
+  saved: boolean
   product?: Product
 }
 

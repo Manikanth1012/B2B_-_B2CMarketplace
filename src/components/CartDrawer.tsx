@@ -1,6 +1,10 @@
-import { X, Minus, Plus, Trash2, ShoppingBag } from 'lucide-react'
+import { X, Minus, Plus, Trash2, ShoppingBag, Bookmark, Undo2 } from 'lucide-react'
 import type { CartItem } from '../types'
 import { getProductImage } from '../lib/images'
+import {
+  activeLines, savedLines, basketCount, basketSubtotal, canCheckout,
+  canMoveToBasket, SAVED_CAVEAT,
+} from '../lib/basket'
 
 interface CartDrawerProps {
   open: boolean
@@ -9,13 +13,15 @@ interface CartDrawerProps {
   onUpdateQuantity: (itemId: string, quantity: number) => void
   onRemove: (itemId: string) => void
   onCheckout: () => void
+  onSetSaved: (itemId: string, saved: boolean) => void
 }
 
-export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, onCheckout }: CartDrawerProps) {
-  const subtotal = items.reduce((sum, item) => {
-    const price = item.product?.price || 0
-    return sum + price * item.quantity
-  }, 0)
+export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, onCheckout, onSetSaved }: CartDrawerProps) {
+  /* Saved lines live in the same basket but are not part of it: not counted, not
+     totalled, not bought. */
+  const active = activeLines(items)
+  const saved = savedLines(items)
+  const subtotal = basketSubtotal(items)
 
   return (
     <>
@@ -61,7 +67,7 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
         }}>
           <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <ShoppingBag size={20} />
-            Your Cart ({items.length})
+            Your Cart ({basketCount(items)})
           </h2>
           <button onClick={onClose} style={{ padding: '8px', borderRadius: 'var(--radius)' }}>
             <X size={20} />
@@ -77,7 +83,7 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
               <p style={{ fontSize: 'var(--text-sm)' }}>Browse the marketplace to add products.</p>
             </div>
           ) : (
-            items.map((item) => (
+            active.map((item) => (
               <div
                 key={item.id}
                 style={{
@@ -137,20 +143,85 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
                   </div>
                 </div>
 
-                <button
-                  onClick={() => onRemove(item.id)}
-                  style={{ padding: '4px', color: 'var(--text-tertiary)', alignSelf: 'flex-start' }}
-                  aria-label="Remove"
-                >
-                  <Trash2 size={16} />
-                </button>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignSelf: 'flex-start' }}>
+                  <button
+                    onClick={() => onSetSaved(item.id, true)}
+                    style={{ padding: '4px', color: 'var(--text-tertiary)' }}
+                    aria-label={`Save ${item.product?.name ?? 'item'} for later`}
+                    title="Save for later"
+                  >
+                    <Bookmark size={15} />
+                  </button>
+                  <button
+                    onClick={() => onRemove(item.id)}
+                    style={{ padding: '4px', color: 'var(--text-tertiary)' }}
+                    aria-label="Remove"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
               </div>
             ))
+          )}
+
+          {/* Saved for later — the prototype keeps these in the basket, dimmed,
+              rather than on a screen of their own. */}
+          {saved.length > 0 && (
+            <div style={{ marginTop: active.length > 0 ? '20px' : 0, paddingTop: '16px', borderTop: '1px solid var(--border)' }}>
+              <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Bookmark size={14} /> Saved for later ({saved.length})
+              </h3>
+              {/* The two questions people actually ask, answered before they ask. */}
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: '0 0 12px' }}>
+                {SAVED_CAVEAT}
+              </p>
+              {saved.map(item => {
+                const returnable = canMoveToBasket(item)
+                return (
+                  <div key={item.id} style={{
+                    display: 'flex', gap: '12px', padding: '12px', marginBottom: '8px',
+                    borderRadius: 'var(--radius)', border: '1px solid var(--border-light)',
+                    background: 'var(--bg-alt)', opacity: 0.92,
+                  }}>
+                    <div style={{ width: '48px', height: '48px', borderRadius: 'var(--radius)', overflow: 'hidden', flexShrink: 0, border: '1px solid var(--border-light)' }}>
+                      <img src={getProductImage(item.product_id)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{item.product?.seller}</div>
+                      <h4 style={{ fontSize: 'var(--text-sm)', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {item.product?.name}
+                      </h4>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '4px' }}>
+                        <button
+                          onClick={() => onSetSaved(item.id, false)}
+                          disabled={!returnable}
+                          className="btn btn-secondary btn-sm"
+                          style={{ display: 'flex', alignItems: 'center', gap: '5px', opacity: returnable ? 1 : 0.5, cursor: returnable ? 'pointer' : 'not-allowed' }}
+                          title={returnable ? undefined : 'Out of stock'}
+                        >
+                          <Undo2 size={12} /> {returnable ? 'Move to basket' : 'Out of stock'}
+                        </button>
+                        <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
+                          ${((item.product?.price || 0) * item.quantity).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => onRemove(item.id)}
+                      style={{ padding: '4px', color: 'var(--text-tertiary)', alignSelf: 'flex-start' }}
+                      aria-label="Remove"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                )
+              })}
+            </div>
           )}
         </div>
 
         {/* Footer */}
-        {items.length > 0 && (
+        {canCheckout(items) && (
           <div style={{ padding: '20px', borderTop: '1px solid var(--border)', background: 'var(--bg-alt)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
               <span style={{ color: 'var(--text-secondary)' }}>Subtotal</span>
