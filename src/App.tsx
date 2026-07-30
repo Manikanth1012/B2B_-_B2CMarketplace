@@ -27,6 +27,7 @@ import { AccountView } from './components/AccountView'
 import { OperatorShell } from './components/operator/OperatorShell'
 import { OperatorDashboard } from './components/operator/OperatorDashboard'
 import { OperatorOnboarding } from './components/operator/OperatorOnboarding'
+import { OperatorPartners } from './components/operator/OperatorPartners'
 import { OperatorCatalogue } from './components/operator/OperatorCatalogue'
 import { OperatorSettlement } from './components/operator/OperatorSettlement'
 import { OperatorInventory } from './components/operator/OperatorInventory'
@@ -228,7 +229,16 @@ export default function App() {
       <LoginScreen
         prefill={surface.prefill}
         onLogin={handleLogin}
-        notice={pendingProduct ? `Sign in to add "${pendingProduct.name}" to your basket.` : undefined}
+        /* Both notices exist for the same reason: the visitor arrives here as
+           the consequence of a click somewhere else, and a sign-in screen that
+           does not say why it appeared reads as having lost their place. */
+        notice={
+          pendingProduct
+            ? `Sign in to add "${pendingProduct.name}" to your basket.`
+            : applyIntent
+            ? 'Applying to sell starts in the seller console. Sign in as a partner and you will land on the onboarding journey — seven gates, five working days once we have what each one asks for.'
+            : undefined
+        }
       />
     )
   }
@@ -265,6 +275,7 @@ export default function App() {
       <OperatorShell view={opView} onNavigate={setOpView} onSignOut={handleSignOut}>
         {opView === 'op-dashboard' && <OperatorDashboard />}
         {opView === 'op-onboarding' && <OperatorOnboarding />}
+        {opView === 'op-partners' && <OperatorPartners />}
         {opView === 'op-catalogue' && <OperatorCatalogue />}
         {opView === 'op-settlement' && <OperatorSettlement />}
         {opView === 'op-inventory' && <OperatorInventory />}
@@ -289,11 +300,11 @@ export default function App() {
       <PartnerShell view={ptView} onNavigate={setPtView} onSignOut={handleSignOut}>
         {ptView === 'pt-dashboard' && <PartnerDashboard />}
         {ptView === 'pt-onboarding' && <PartnerOnboarding partnerId={session!.partnerId!} />}
-        {ptView === 'pt-listings' && <PartnerListings />}
-        {ptView === 'pt-newlisting' && <PartnerNewListing />}
+        {ptView === 'pt-listings' && <PartnerListings partnerId={session!.partnerId!} />}
+        {ptView === 'pt-newlisting' && <PartnerNewListing partnerId={session!.partnerId!} />}
         {ptView === 'pt-orders' && <PartnerOrders />}
         {ptView === 'pt-settlement' && <PartnerSettlement />}
-        {ptView === 'pt-plan' && <PartnerSettlementPlan />}
+        {ptView === 'pt-plan' && <PartnerSettlementPlan partnerId={session!.partnerId!} />}
         {ptView === 'pt-performance' && <PartnerPerformance />}
         {ptView === 'pt-integrations' && <PartnerIntegrations />}
         {ptView === 'pt-reviews' && <PartnerReviews partnerId={session?.partnerId ?? ''} />}
