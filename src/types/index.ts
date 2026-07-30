@@ -418,21 +418,27 @@ export interface SettlementStatement {
   sort_order: number
 }
 
+/* A stock line points at the product and the warehouse rather than naming them.
+   The names, the seller and the category are read through the joins, because
+   inventory is live state — there is nothing here worth snapshotting, and a
+   stored copy is a copy that goes stale. */
 export interface OperatorInventory {
   id: string
-  product_name: string
-  partner_name: string
-  warehouse: string
+  product_id: string
+  warehouse_id: string
   on_hand: number
   reserved: number
+  /* Generated in the database as on_hand − reserved. Read only. */
   available: number
   reorder_point: number
   inbound: number
   inbound_due: string | null
   unit_cost: number
   last_count: string | null
-  category: string
   sort_order: number
+  /* Present when the row was selected with the embeds below. */
+  product?: { id: string; name: string; seller: string; category_id: string; price: number }
+  warehouse?: { id: string; name: string; type: string; categories: string[] }
 }
 
 export interface OperatorWarehouse {
