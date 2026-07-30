@@ -7,7 +7,31 @@ import { supabase } from './supabase'
 import { canMove } from './partnerLifecycle'
 import type { PartnerStatus, LifecycleEvent, Transition } from './partnerLifecycle'
 import type { PartnerCategory, CommissionPlan, ListingRow } from './partnerCommerce'
+import type { Tier, PolicyRule, CategoryEvidence } from './partnerDirectory'
+import type { GateDocument } from './onboarding'
 import type { Category } from '../types'
+
+export interface Statement {
+  id: string
+  partner_id: string | null
+  partner_name: string
+  plan_id: string | null
+  period: string
+  gross: number
+  commission: number
+  commission_rate: number
+  fees: number
+  withholding: number
+  refunds: number
+  net: number
+  status: string
+  order_count: number
+  currency: string
+  approved_by: string | null
+  approved_at: string | null
+  disputed: boolean
+  sort_order: number
+}
 
 export interface PartnerRecord {
   id: string
@@ -21,6 +45,7 @@ export interface PartnerRecord {
   email: string
   joined: string
   plan_id: string | null
+  tier_id: string
 }
 
 export interface PartnerDirectoryRow extends PartnerRecord {
@@ -38,25 +63,28 @@ export interface DirectorySnapshot {
   rows: PartnerDirectoryRow[]
   categories: Category[]
   plans: CommissionPlan[]
+  tiers: Tier[]
   loadError?: string
 }
 
 /* One round trip per table rather than per partner. The alternative — a query
    inside a map over fifteen sellers — is sixty requests to render one screen. */
 export async function loadPartnerDirectory(): Promise<DirectorySnapshot> {
-  const [partnerRes, catRes, planRes, pcRes, prodRes, gateRes] = await Promise.all([
+  const [partnerRes, catRes, planRes, pcRes, prodRes, gateRes, tierRes] = await Promise.all([
     supabase.from('partners').select('*').order('id'),
     supabase.from('categories').select('*').order('sort_order'),
     supabase.from('commission_plans').select('*').order('sort_order'),
     supabase.from('partner_categories').select('*'),
     supabase.from('products').select('id,partner_id,status').not('partner_id', 'is', null),
     supabase.from('onboarding_gates').select('partner_id,gate_name,gate_order,status').order('gate_order'),
+    supabase.from('partner_tiers').select('*').order('sort_order'),
   ])
 
   const errors: string[] = []
   const note = (label: string, e: { message: string } | null) => { if (e) errors.push(`${label}: ${e.message}`) }
   note('partners', partnerRes.error); note('categories', catRes.error); note('plans', planRes.error)
   note('approved categories', pcRes.error); note('listings', prodRes.error); note('gates', gateRes.error)
+  note('tiers', tierRes.error)
 
   const partners = (partnerRes.data ?? []) as PartnerRecord[]
   const categories = (catRes.data ?? []) as Category[]
@@ -86,6 +114,7 @@ export async function loadPartnerDirectory(): Promise<DirectorySnapshot> {
 
   return {
     rows, categories, plans,
+    tiers: (tierRes.data ?? []) as Tier[],
     ...(errors.length > 0 ? { loadError: `Could not load the full partner directory (${errors.join('; ')}).` } : {}),
   }
 }
@@ -96,22 +125,36 @@ export interface PartnerDetail {
   approvals: PartnerCategory[]
   listings: ListingRow[]
   history: LifecycleEvent[]
+  /* What each category the seller applied for demands, and what they supplied
+     against it. The company gates say who they are; this says what they may
+     sell, and it is per category because the demands are. */
+  evidence: CategoryEvidence[]
+  rules: PolicyRule[]
+  /* Everything the seller has ever handed over, from the company gates. */
+  documents: GateDocument[]
+  statements: Statement[]
   loadError?: string
 }
 
 export async function loadPartnerDetail(partnerId: string): Promise<PartnerDetail> {
-  const [pRes, prodRes, pcRes, histRes] = await Promise.all([
+  const [pRes, prodRes, pcRes, histRes, evRes, ruleRes, docRes, stmtRes] = await Promise.all([
     supabase.from('partners').select('*, plan:commission_plans(*)').eq('id', partnerId).maybeSingle(),
     supabase.from('products').select('id,name,category_id,status,price,stock,listed')
       .eq('partner_id', partnerId).order('id'),
     supabase.from('partner_categories').select('*').eq('partner_id', partnerId),
     supabase.from('partner_lifecycle_events').select('*').eq('partner_id', partnerId),
+    supabase.from('partner_category_evidence').select('*').eq('partner_id', partnerId),
+    supabase.from('policy_rules').select('*').order('sort_order'),
+    supabase.from('onboarding_documents').select('*').eq('partner_id', partnerId).order('sort_order'),
+    supabase.from('settlement_statements').select('*').eq('partner_id', partnerId).order('sort_order', { ascending: false }),
   ])
 
   const errors: string[] = []
   const note = (label: string, e: { message: string } | null) => { if (e) errors.push(`${label}: ${e.message}`) }
   note('partner', pRes.error); note('listings', prodRes.error)
   note('approved categories', pcRes.error); note('lifecycle history', histRes.error)
+  note('category evidence', evRes.error); note('policy rules', ruleRes.error)
+  note('documents', docRes.error); note('statements', stmtRes.error)
 
   const raw = pRes.data as (PartnerRecord & { plan: CommissionPlan | null }) | null
 
@@ -121,6 +164,10 @@ export async function loadPartnerDetail(partnerId: string): Promise<PartnerDetai
     approvals: (pcRes.data ?? []) as PartnerCategory[],
     listings: (prodRes.data ?? []) as ListingRow[],
     history: (histRes.data ?? []) as LifecycleEvent[],
+    evidence: (evRes.data ?? []) as CategoryEvidence[],
+    rules: (ruleRes.data ?? []) as PolicyRule[],
+    documents: (docRes.data ?? []) as GateDocument[],
+    statements: (stmtRes.data ?? []) as Statement[],
     ...(errors.length > 0 ? { loadError: `Could not load the full partner record (${errors.join('; ')}).` } : {}),
   }
 }
@@ -132,6 +179,9 @@ export interface SellerRecord {
   plan: CommissionPlan | null
   approvals: PartnerCategory[]
   listings: ListingRow[]
+  evidence: CategoryEvidence[]
+  rules: PolicyRule[]
+  statements: Statement[]
   categories: Category[]
   loadError?: string
 }
@@ -161,6 +211,9 @@ export async function loadSellerRecord(partnerId: string): Promise<SellerRecord>
     plan: detail.plan,
     approvals: detail.approvals,
     listings: detail.listings,
+    evidence: detail.evidence,
+    rules: detail.rules,
+    statements: detail.statements,
     categories: (catRes.data ?? []) as Category[],
     ...(errors.length > 0 ? { loadError: errors.join(' ') } : {}),
   }

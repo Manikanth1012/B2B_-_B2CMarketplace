@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { CircleAlert as AlertCircle, Clock } from 'lucide-react'
+import { CircleAlert as AlertCircle, Clock, CircleCheck as Check } from 'lucide-react'
 import { SectionCard, EmptyState, Btn, Modal, FormField, TextInput, toast } from '../operator/shared'
 import { TechChecklist } from '../TechChecklist'
 import { JourneyRail, GateDetail, DocumentViewer, Callout } from '../OnboardingJourney'
@@ -8,9 +8,17 @@ import {
 } from '../../lib/onboardingRepo'
 import type { OnboardingSnapshot, ActionResult } from '../../lib/onboardingRepo'
 import { deriveTaskState, gateIdFor, journeyProgress, REQUIRED_EVENTS, SLA_DAYS } from '../../lib/onboarding'
+import { loadSellerRecord } from '../../lib/partnerRepo'
+import type { SellerRecord } from '../../lib/partnerRepo'
+import { categoryReadiness, EVIDENCE_MEANING } from '../../lib/partnerDirectory'
+import { fmtDate } from '../operator/shared'
 
 export function PartnerOnboarding({ partnerId }: { partnerId: string }) {
   const [snap, setSnap] = useState<OnboardingSnapshot | null>(null)
+  /* What each category the seller applied for asks of them. The gates are about
+     the company; this is about what they intend to sell, and a seller who
+     cannot see it cannot supply it. */
+  const [record, setRecord] = useState<SellerRecord | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedGate, setSelectedGate] = useState<string | null>(null)
   const [viewDoc, setViewDoc] = useState<string | null>(null)
@@ -18,8 +26,9 @@ export function PartnerOnboarding({ partnerId }: { partnerId: string }) {
   const [newEp, setNewEp] = useState({ name: '', url: '' })
 
   const reload = useCallback(async () => {
-    const s = await loadOnboarding(partnerId)
+    const [s, r] = await Promise.all([loadOnboarding(partnerId), loadSellerRecord(partnerId)])
     setSnap(s)
+    setRecord(r)
     setSelectedGate(prev => {
       if (prev && s.journey.some(j => j.row.id === prev)) return prev
       const p = journeyProgress(s.journey)
@@ -147,6 +156,8 @@ export function PartnerOnboarding({ partnerId }: { partnerId: string }) {
         </SectionCard>
       )}
 
+      {record && <CategoryRequirements record={record} />}
+
       <SectionCard
         title="What is outstanding"
         subtitle={open.length ? `${open.length} on the gate you are at` : 'Nothing outstanding'}
@@ -209,4 +220,112 @@ export function PartnerOnboarding({ partnerId }: { partnerId: string }) {
       </Modal>
     </div>
   )
+}
+
+
+/* --------------------------------------------- category-level onboarding -- */
+
+function CategoryRequirements({ record }: { record: SellerRecord }) {
+  const today = new Date()
+  const catName = (id: string) => record.categories.find(c => c.id === id)?.name ?? id
+  const rule = (id: string) => record.rules.find(r => r.id === id)
+
+  if (record.approvals.length === 0) return null
+
+  const ordered = [...record.approvals].sort((a, b) =>
+    (record.categories.find(c => c.id === a.category_id)?.sort_order ?? 99) -
+    (record.categories.find(c => c.id === b.category_id)?.sort_order ?? 99))
+
+  return (
+    <SectionCard
+      title="What each marketplace asks of you"
+      subtitle="Separate from the seven gates — these depend on what you sell, not on who you are"
+    >
+      <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {ordered.map(a => {
+          const readiness = categoryReadiness(a.category_id, record.evidence, a.approved_at !== null, today)
+          const mine = record.evidence
+            .filter(e => e.category_id === a.category_id)
+            .sort((x, y) => x.rule_id.localeCompare(y.rule_id))
+          const tone = !readiness.approved ? 'warning' : readiness.clear ? 'success' : 'danger'
+
+          return (
+            <div key={a.category_id} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+              <div style={{
+                padding: '10px 13px', display: 'flex', gap: '9px', alignItems: 'center', flexWrap: 'wrap',
+                background: tone === 'success' ? 'var(--success-bg)' : tone === 'danger' ? 'var(--danger-bg)' : 'var(--warning-bg)',
+                borderBottom: '1px solid var(--border)',
+              }}>
+                <strong style={{ fontSize: 'var(--text-sm)', color: 'var(--text)' }}>{catName(a.category_id)}</strong>
+                <span style={{ fontSize: '11px', color: 'var(--text-secondary)', flex: 1, minWidth: '200px' }}>
+                  {!readiness.approved
+                    ? `Not open yet — ${readiness.outstanding.length} document${readiness.outstanding.length === 1 ? '' : 's'} outstanding`
+                    : readiness.clear
+                    ? `Open — ${readiness.satisfied} of ${readiness.total} rules satisfied`
+                    : 'Open, but something needs your attention'}
+                </span>
+              </div>
+
+              {readiness.expired.length > 0 && (
+                <div style={{ padding: '9px 13px', background: 'var(--danger-bg)', borderBottom: '1px solid var(--border)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+                  <strong style={{ color: 'var(--danger)' }}>Something has expired.</strong>{' '}
+                  Your existing listings continue, but nothing new can be published here until it is renewed.
+                </div>
+              )}
+              {readiness.expiring.length > 0 && (
+                <div style={{ padding: '9px 13px', background: 'var(--warning-bg)', borderBottom: '1px solid var(--border)', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+                  Renew before {readiness.expiring.map(e => fmtDate(e.expires_on)).join(', ')} to keep listing here.
+                </div>
+              )}
+
+              <div>
+                {mine.map((e, i) => {
+                  const r = rule(e.rule_id)
+                  const expired = e.expires_on ? Date.parse(e.expires_on) < today.getTime() : false
+                  const yours = e.state === 'outstanding' || e.state === 'rejected'
+                  return (
+                    <div key={e.id} style={{
+                      display: 'flex', gap: '9px', padding: '9px 13px', alignItems: 'flex-start',
+                      borderTop: i === 0 ? 'none' : '1px solid var(--border-light)',
+                    }}>
+                      <span style={{ flexShrink: 0, marginTop: '1px', color: yours || expired ? 'var(--danger)' : e.state === 'standing' ? 'var(--text-tertiary)' : 'var(--success)' }}>
+                        {yours || expired ? <AlertCircle size={14} /> : e.state === 'standing' ? <Clock size={14} /> : <CheckCircleIcon />}
+                      </span>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text)' }}>
+                          {r?.name ?? e.rule_id}
+                        </div>
+                        {r && <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '1px' }}>{r.descr}</div>}
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '3px' }}>
+                          {EVIDENCE_MEANING[e.state]}
+                        </div>
+                        {e.document && (
+                          <div style={{ fontSize: '11px', color: expired ? 'var(--danger)' : 'var(--text-tertiary)', marginTop: '2px' }}>
+                            {e.document}
+                            {e.expires_on && ` · ${expired ? 'expired' : 'valid to'} ${fmtDate(e.expires_on)}`}
+                          </div>
+                        )}
+                      </div>
+                      {/* Who has to act. A seller reading a compliance list needs
+                          to know which lines are theirs. */}
+                      <span style={{
+                        flexShrink: 0, fontSize: '10px', fontWeight: 700,
+                        color: yours ? 'var(--danger)' : 'var(--text-tertiary)',
+                      }}>
+                        {yours ? 'You' : e.state === 'submitted' ? 'With us' : '—'}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </SectionCard>
+  )
+}
+
+function CheckCircleIcon() {
+  return <Check size={14} />
 }

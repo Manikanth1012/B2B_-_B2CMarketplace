@@ -7,6 +7,7 @@ import { CircleAlert as AlertCircle, Clock } from 'lucide-react'
 import { clearGate, loadOnboarding } from '../../lib/onboardingRepo'
 import type { OnboardingSnapshot } from '../../lib/onboardingRepo'
 import { loadPartnerDirectory } from '../../lib/partnerRepo'
+import { matchesSearch } from '../../lib/partnerDirectory'
 import type { PartnerDirectoryRow } from '../../lib/partnerRepo'
 import { canClearGate, gateIdFor, GATES, SLA_DAYS, deriveTaskState, journeyProgress } from '../../lib/onboarding'
 import type { JourneyStep } from '../../lib/onboarding'
@@ -27,6 +28,7 @@ export function OperatorOnboarding() {
   const [dirError, setDirError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [showAll, setShowAll] = useState(false)
+  const [queueSearch, setQueueSearch] = useState('')
   const [partnerId, setPartnerId] = useState<string | null>(null)
   const [snap, setSnap] = useState<OnboardingSnapshot | null>(null)
   const [selectedGate, setSelectedGate] = useState<string | null>(null)
@@ -63,7 +65,10 @@ export function OperatorOnboarding() {
   if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
   const inFlight = dir.filter(r => IN_FLIGHT.includes(r.status))
-  const queue = showAll ? dir : inFlight
+  /* Searchable once the list is every seller rather than the three in flight —
+     a scroll through a hundred names is not a queue. */
+  const queue = (showAll ? dir : inFlight)
+    .filter(r => matchesSearch(r, queueSearch))
   const active = dir.find(r => r.id === partnerId) ?? null
   const step = snap?.journey.find(s => s.row.id === selectedGate) ?? null
   const stepIndex = snap && step ? snap.journey.findIndex(s => s.row.id === step.row.id) : -1
@@ -94,7 +99,10 @@ export function OperatorOnboarding() {
     const { error: pErr } = await supabase.from('partners').insert({
       id, name: newPartner.name, type: newPartner.type, status: 'onboarding',
       country: newPartner.country || null, contact: newPartner.contact || null,
-      email: newPartner.email || null, joined: '—',
+      /* Every seller starts at the entry tier and is promoted from there. The
+         database defaults this too; naming it here keeps the insert readable
+         rather than depending on a default to be correct. */
+      email: newPartner.email || null, joined: '—', tier: 'Bronze', tier_id: 'bronze',
     })
     if (pErr) { toast(`Could not create the partner: ${pErr.message}`, 'error'); return }
 
@@ -156,7 +164,7 @@ export function OperatorOnboarding() {
             list anybody owes anything on. */}
         <SectionCard
           title={showAll ? 'All sellers' : 'Applications in flight'}
-          subtitle={showAll ? `${dir.length} sellers` : `${inFlight.length} of ${dir.length} sellers`}
+          subtitle={showAll ? `${queue.length} of ${dir.length} sellers` : `${inFlight.length} of ${dir.length} sellers`}
           action={
             <button onClick={() => setShowAll(v => !v)} style={{
               fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--brand-navy)',
@@ -164,7 +172,22 @@ export function OperatorOnboarding() {
             }}>{showAll ? 'In flight only' : 'Show all'}</button>
           }
         >
-          {queue.length === 0 ? <EmptyState message="No applications in flight" /> : (
+          {showAll && (
+            <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--border-light)' }}>
+              <input
+                value={queueSearch}
+                onChange={e => setQueueSearch(e.target.value)}
+                placeholder="Search seller, id or country"
+                style={{
+                  width: '100%', padding: '6px 10px', borderRadius: 'var(--radius)',
+                  border: '1px solid var(--border)', fontSize: 'var(--text-xs)', outline: 'none', color: 'var(--text)',
+                }}
+              />
+            </div>
+          )}
+          {queue.length === 0 ? (
+            <EmptyState message={queueSearch ? 'No seller matches that' : 'No applications in flight'} />
+          ) : (
             <ul style={{ listStyle: 'none', margin: 0, padding: 0, maxHeight: '620px', overflowY: 'auto' }}>
               {queue.map(r => (
                 <li key={r.id}>
