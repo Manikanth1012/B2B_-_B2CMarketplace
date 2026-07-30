@@ -377,6 +377,11 @@ export interface OperatorListing {
   stock_status: string
   version: number
   sort_order: number
+  /* The catalogue row this submission became. Null for pending and rejected
+     listings — that is the queue working, not missing data — and for approved ones
+     the catalogue has no equivalent of. See the migration that added it. */
+  product_id: string | null
+  partner_id: string | null
 }
 
 export interface SettlementStatement {

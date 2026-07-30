@@ -11,11 +11,17 @@ export function OperatorCatalogue() {
   const [addModal, setAddModal] = useState(false)
   const [rejectModal, setRejectModal] = useState<OperatorListing | null>(null)
   const [rejectReason, setRejectReason] = useState('')
+  /* What each linked product actually sells for, which is not always what the seller
+     submitted — ol-005 asked $899 and lists at $24. Keyed by SKU. */
+  const [live, setLive] = useState<Record<string, number>>({})
 
   useEffect(() => {
     supabase.from('operator_listings').select('*').order('sort_order').then(({ data }) => {
       if (data) setListings(data as OperatorListing[])
       setLoading(false)
+    })
+    supabase.from('products').select('id, price').then(({ data }) => {
+      if (data) setLive(Object.fromEntries((data as { id: string; price: number }[]).map(p => [p.id, p.price])))
     })
   }, [])
 
@@ -76,7 +82,7 @@ export function OperatorCatalogue() {
 
       <SectionCard title="Product Listings" subtitle={`${filtered.length} listings`}>
         {filtered.length === 0 ? <EmptyState message="No listings in this filter" /> : (
-          <Table headers={['Product', 'Partner', 'Category', 'Price', 'Margin', 'Status', 'Reviews', 'Actions']}>
+          <Table headers={['Product', 'Partner', 'Category', 'Price', 'Margin', 'Status', 'In catalogue', 'Reviews', 'Actions']}>
             {filtered.map(l => {
               const margin = ((l.price - l.cost) / l.price * 100).toFixed(0)
               return (
@@ -87,6 +93,23 @@ export function OperatorCatalogue() {
                   <Td right>${fmtMoney(l.price)}</Td>
                   <Td right style={{ color: Number(margin) < 20 ? 'var(--danger)' : 'var(--success)' }}>{margin}%</Td>
                   <Td right><StatusPill status={l.status} /></Td>
+                  {/* A submission is not the same thing as a live product. This column
+                      is the difference: which catalogue row the listing became, and
+                      the price it actually sells at rather than the one submitted.
+                      An approved listing with nothing here is the case worth seeing —
+                      it was signed off and never reached the shelf. */}
+                  <Td right>
+                    {l.product_id
+                      ? <span style={{ color: 'var(--text)' }}>
+                          {l.product_id}
+                          {live[l.product_id] !== undefined && (
+                            <span style={{ color: 'var(--text-tertiary)', marginLeft: '6px' }}>${fmtMoney(live[l.product_id])}</span>
+                          )}
+                        </span>
+                      : l.status === 'approved'
+                        ? <span style={{ color: 'var(--warning, #B45309)', fontWeight: 600 }}>Not listed</span>
+                        : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
+                  </Td>
                   <Td right>{l.reviews > 0 ? `${l.reviews} (${l.rating?.toFixed(1)})` : '—'}</Td>
                   <Td right>
                     <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
@@ -139,6 +162,9 @@ function ListingModal({ listing, open, onClose, onSave }: {
     id: '', product_name: '', partner_name: '', category: 'Consumer', price: 0, cost: 0, status: 'pending',
     submitted_at: new Date().toISOString(), reviewed_by: null, reviewed_at: null, rating: null, reviews: 0,
     stock_status: 'in', version: 1, sort_order: 0,
+    /* A new submission is not in the catalogue and has no partner resolved yet —
+       both are decided by review, not by the form. */
+    product_id: null, partner_id: null,
   })
 
   useEffect(() => {

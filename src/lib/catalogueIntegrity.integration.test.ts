@@ -74,6 +74,36 @@ describe('everything that references the catalogue', () => {
     }
   })
 
+  it('links approved review-queue listings to the catalogue they became', async () => {
+    /* operator_listings is the review queue, not a second catalogue. Reading it needs
+       the operator persona. */
+    await signOut()
+    await signIn('anika.sharma@aventa.com', 'operator123')
+    const { data } = await supabase
+      .from('operator_listings').select('id, status, product_id, partner_id')
+
+    for (const l of data ?? []) {
+      if (l.product_id) {
+        expect(find(l.product_id), `${l.id} links to a missing product`).toBeTruthy()
+        /* Only an approved submission can be in the catalogue. A pending or rejected
+           one carrying a product_id would mean something reached the shelf without
+           being signed off. */
+        expect(l.status, `${l.id} is ${l.status} but is linked to a live product`).toBe('approved')
+      } else {
+        /* Null is the normal case for pending and rejected, and for two approved
+           listings the catalogue genuinely has no equivalent of. */
+        expect(['approved', 'pending', 'rejected']).toContain(l.status)
+      }
+    }
+
+    const approved = (data ?? []).filter(l => l.status === 'approved')
+    expect(approved.length).toBeGreaterThan(0)
+    expect(approved.filter(l => l.product_id).length).toBe(5)
+
+    await signOut()
+    await signIn(CONSUMER.email, CONSUMER.password)
+  })
+
   it('is enforced by the database, not only by this test', async () => {
     /* The foreign keys added alongside the reconciliation. Without them the data can
        drift again between test runs; with them the write is refused at source. */
