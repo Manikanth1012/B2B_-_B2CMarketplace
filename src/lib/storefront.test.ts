@@ -9,7 +9,7 @@ import type { Category } from '../types'
 
 const banner = (o: Partial<PublicBanner> & { id: string }): PublicBanner => ({
   slot: 'storefront_strip', title: 'T', subtitle: null, cta: 'Go',
-  audience: 'consumer', weight: 50, sort_order: 1, ...o,
+  audience: 'consumer', destination: null, weight: 50, sort_order: 1, ...o,
 })
 
 const IMAGES = ['/a.webp', '/b.webp', '/c.webp', '/d.webp', '/e.webp', '/f.webp']
@@ -99,13 +99,29 @@ describe('promoStrip', () => {
 })
 
 describe('bannerDestination', () => {
-  it('sends a business audience to the enterprise page', () => {
-    expect(bannerDestination('enterprise')).toBe('enterprise')
-    expect(bannerDestination('B2B2X')).toBe('enterprise')
+  /* The operator's choice wins. Audience is who the banner is shown to; the
+     destination is where the click lands, and they are not the same question. */
+  it('uses the destination the operator chose', () => {
+    expect(bannerDestination({ audience: 'all', destination: 'partner' })).toBe('partner')
+    expect(bannerDestination({ audience: 'consumer', destination: 'enterprise' })).toBe('enterprise')
   })
-  it('sends everything else to retail', () => {
-    expect(bannerDestination('consumer')).toBe('retail')
-    expect(bannerDestination('all')).toBe('retail')
+
+  /* The bug this fixes: "Become a marketplace seller · Apply to sell" is shown to
+     everyone, so its audience is `all`, and inferring from that sent would-be
+     sellers to the retail shop. */
+  it('does not send an all-audience seller banner to retail', () => {
+    expect(bannerDestination({ audience: 'all', destination: 'partner' })).not.toBe('retail')
+  })
+
+  it('falls back to the audience when no destination is set', () => {
+    expect(bannerDestination({ audience: 'enterprise', destination: null })).toBe('enterprise')
+    expect(bannerDestination({ audience: 'B2B2X', destination: null })).toBe('enterprise')
+    expect(bannerDestination({ audience: 'consumer', destination: null })).toBe('retail')
+    expect(bannerDestination({ audience: 'all' })).toBe('retail')
+  })
+
+  it('ignores a destination that is not a real page', () => {
+    expect(bannerDestination({ audience: 'enterprise', destination: 'nowhere' })).toBe('enterprise')
   })
 })
 

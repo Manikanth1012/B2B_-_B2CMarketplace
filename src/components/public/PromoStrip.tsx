@@ -23,7 +23,7 @@ export function PromoStrip({ slides, onNavigate }: {
       {slides.map(({ banner, image }) => (
         <button
           key={banner.id}
-          onClick={() => onNavigate(bannerDestination(banner.audience))}
+          onClick={() => onNavigate(bannerDestination(banner))}
           style={{
             position: 'relative', display: 'block', width: '100%', padding: 0,
             border: 'none', borderRadius: 'var(--radius-md)', overflow: 'hidden',

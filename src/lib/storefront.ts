@@ -15,6 +15,9 @@ export interface PublicBanner {
   subtitle: string | null
   cta: string
   audience: string
+  /* Where the call to action goes, chosen by the operator. Null falls back to the
+     audience, which is what the strip used to infer for everything. */
+  destination: string | null
   weight: number
   sort_order: number
 }
@@ -88,10 +91,22 @@ export function promoStrip(
   return live.map(banner => ({ banner, image: art[banner.id] }))
 }
 
-/** Where a banner's call to action goes. The public front has three destinations
-    and no per-banner link column, so the audience the operator chose decides. */
-export function bannerDestination(audience: string): PublicPage {
-  const a = audience.toLowerCase()
+const PAGES: readonly string[] = ['landing', 'retail', 'enterprise', 'partner']
+
+/**
+ * Where a banner's call to action goes.
+ *
+ * This used to be inferred from `audience` alone, which conflates two things:
+ * audience is who the banner is *shown to*, the destination is where the click
+ * *lands*. "Become a marketplace seller · Apply to sell" is shown to everyone, so its
+ * audience is `all`, and inferring from that sent would-be sellers to the retail shop.
+ * The operator now chooses; the old inference remains as the fallback.
+ */
+export function bannerDestination(banner: { audience: string; destination?: string | null }): PublicPage {
+  const chosen = banner.destination?.toLowerCase()
+  if (chosen && PAGES.includes(chosen)) return chosen as PublicPage
+
+  const a = banner.audience.toLowerCase()
   if (a.includes('enterprise') || a.includes('b2b')) return 'enterprise'
   if (a.includes('partner')) return 'partner'
   return 'retail'

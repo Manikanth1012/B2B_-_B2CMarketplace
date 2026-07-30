@@ -154,10 +154,15 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut, currentV
                     </div>
                   </div>
                   <div style={{ padding: '4px' }}>
-                    <AcctItem icon={<User size={16} />} label="My details" onClick={() => { onNavigate('account'); setAcctOpen(false) }} />
-                    <AcctItem icon={<Bell size={16} />} label="Notification preferences" onClick={() => { onNavigate('account'); setAcctOpen(false) }} />
-                    <AcctItem icon={<Shield size={16} />} label="Sign-in & security" onClick={() => { onNavigate('account'); setAcctOpen(false) }} />
-                    <AcctItem icon={<Star size={16} />} label="My permissions" onClick={() => { onNavigate('account'); setAcctOpen(false) }} />
+                    {/* Every one of these used to call onNavigate('account') with no
+                        tab, so all four landed on My details and three of them looked
+                        broken. Each now names the tab it means. */}
+                    <AcctItem icon={<User size={16} />} label="My details" onClick={() => { onNavigate('account', { tab: 'profile' }); setAcctOpen(false) }} />
+                    <AcctItem icon={<Bell size={16} />} label="Notification preferences" onClick={() => { onNavigate('account', { tab: 'notifications' }); setAcctOpen(false) }} />
+                    <AcctItem icon={<Shield size={16} />} label="Sign-in & security" onClick={() => { onNavigate('account', { tab: 'security' }); setAcctOpen(false) }} />
+                    {/* Household is where this account's roles and spend caps live —
+                        what this person may and may not do. */}
+                    <AcctItem icon={<Star size={16} />} label="My permissions" onClick={() => { onNavigate('account', { tab: 'household' }); setAcctOpen(false) }} />
                     <AcctItem icon={<BookOpen size={16} />} label="How things work" onClick={() => { onNavigate('kb'); setAcctOpen(false) }} />
                   </div>
                   <div style={{ padding: '4px', borderTop: '1px solid var(--border-light)' }}>

@@ -15,10 +15,10 @@ import type {
   ConsumerBill, ConsumerTicket, TicketMessage,
 } from '../types'
 
-type Tab = 'profile' | 'notifications' | 'activity' | 'household' | 'refunds' | 'bills' | 'support'
+type Tab = 'profile' | 'security' | 'notifications' | 'activity' | 'household' | 'refunds' | 'bills' | 'support'
 
 function isTab(v: string): v is Tab {
-  return ['profile', 'notifications', 'activity', 'household', 'refunds', 'bills', 'support'].includes(v)
+  return ['profile', 'security', 'notifications', 'activity', 'household', 'refunds', 'bills', 'support'].includes(v)
 }
 
 const CHANNELS = ['Push', 'SMS', 'Email']
@@ -52,6 +52,13 @@ export function AccountView({ initialTab, onWatchesChanged }: {
   onWatchesChanged?: () => void
 }) {
   const [tab, setTab] = useState<Tab>(initialTab && isTab(initialTab) ? initialTab : 'profile')
+
+  /* initialTab is read once at mount, so choosing a different item from the account
+     menu while already on this screen would change nothing — the same "the link does
+     not work" symptom, one layer down. */
+  useEffect(() => {
+    if (initialTab && isTab(initialTab)) setTab(initialTab)
+  }, [initialTab])
   const [profile, setProfile] = useState<ConsumerProfile | null>(null)
   const [notifications, setNotifications] = useState<ConsumerNotification[]>([])
   const [auditLog, setAuditLog] = useState<ConsumerAuditEntry[]>([])
@@ -128,6 +135,7 @@ export function AccountView({ initialTab, onWatchesChanged }: {
 
   const tabs: { id: Tab; label: string; icon: typeof User }[] = [
     { id: 'profile', label: 'My details', icon: User },
+    { id: 'security', label: 'Sign-in & security', icon: Shield },
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'activity', label: 'Account activity', icon: History },
     { id: 'household', label: 'Household', icon: Users },
@@ -187,6 +195,12 @@ export function AccountView({ initialTab, onWatchesChanged }: {
 
       {/* Tab content */}
       {tab === 'profile' && <ProfileTab profile={profile} showToast={showToast} onWatchesChanged={onWatchesChanged} />}
+      {tab === 'security' && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+          <SecurityTab profile={profile} showToast={showToast} />
+          <PrivacyCard profile={profile} showToast={showToast} />
+        </div>
+      )}
       {tab === 'notifications' && (
         <NotificationsTab
           notifications={notifications}
@@ -357,8 +371,6 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
 
         <MyReviewsCard showToast={showToast} />
 
-        <PrivacyCard profile={profile} showToast={showToast} />
-
         {/* Account summary */}
         <Card icon={<Star size={18} />} title="Account summary">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -372,6 +384,28 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
         </Card>
 
         {/* Security */}
+      </div>
+
+    </>
+  )
+}
+
+
+/* Sign-in and security, its own tab. It used to be one card at the bottom of My
+   details, which had grown to eight cards — and the account menu's "Sign-in &
+   security" had nowhere to point at. */
+function SecurityTab({ profile, showToast }: { profile: ConsumerProfile; showToast: (m: string) => void }) {
+  const [modal, setModal] = useState<null | 'password' | 'mfa' | 'payments' | 'sessions'>(null)
+  const [cards, setCards] = useState<ConsumerPaymentMethod[]>([])
+
+  const loadCards = useCallback(async () => {
+    const { data } = await supabase.from('consumer_payment_methods').select('*')
+    if (data) setCards(data as ConsumerPaymentMethod[])
+  }, [])
+  useEffect(() => { loadCards() }, [loadCards])
+
+  return (
+    <>
         <Card icon={<Shield size={18} />} title="Sign-in & security">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <SecurityRow
@@ -405,23 +439,10 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
             />
           </div>
         </Card>
-      </div>
-
-      {modal === 'password' && (
-        <PasswordModal profile={profile} onClose={() => setModal(null)} showToast={showToast} />
-      )}
-      {modal === 'mfa' && (
-        <MfaModal profile={profile} onClose={() => setModal(null)} showToast={showToast} />
-      )}
-      {modal === 'payments' && (
-        <PaymentsModal
-          onClose={() => { setModal(null); loadCards() }}
-          showToast={showToast}
-        />
-      )}
-      {modal === 'sessions' && (
-        <SessionsModal profile={profile} onClose={() => setModal(null)} showToast={showToast} />
-      )}
+      {modal === 'password' && <PasswordModal profile={profile} onClose={() => setModal(null)} showToast={showToast} />}
+      {modal === 'mfa' && <MfaModal profile={profile} onClose={() => setModal(null)} showToast={showToast} />}
+      {modal === 'payments' && <PaymentsModal onClose={() => { setModal(null); loadCards() }} showToast={showToast} />}
+      {modal === 'sessions' && <SessionsModal profile={profile} onClose={() => setModal(null)} showToast={showToast} />}
     </>
   )
 }

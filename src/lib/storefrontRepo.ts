@@ -13,7 +13,7 @@ import { isSellable } from './storefront'
 export async function loadPromoBanners(): Promise<PublicBanner[]> {
   const { data, error } = await supabase
     .from('public_banners')
-    .select('id,slot,title,subtitle,cta,audience,weight,sort_order')
+    .select('id,slot,title,subtitle,cta,audience,destination,weight,sort_order')
   if (error) return []
   return (data ?? []) as PublicBanner[]
 }
