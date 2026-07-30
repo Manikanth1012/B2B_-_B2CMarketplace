@@ -8,6 +8,10 @@ interface LoginScreenProps {
   /* Preselects a card, so arriving from an audience page lands on the right
      one. It only chooses the prefilled credentials. */
   prefill?: Persona
+  /* Why the visitor is here, when they did not come looking for the login screen
+     — adding to the basket sends them through it. Without this the redirect looks
+     like the site lost their click. */
+  notice?: string
 }
 
 const DEMO_CREDENTIALS: Record<Persona, { email: string; password: string }> = {
@@ -56,7 +60,7 @@ const PERSONA_META: Record<Persona, { label: string; sub: string; user: string; 
   },
 }
 
-export function LoginScreen({ onLogin, prefill }: LoginScreenProps) {
+export function LoginScreen({ onLogin, prefill, notice }: LoginScreenProps) {
   const [selected, setSelected] = useState<Persona | null>(prefill ?? null)
   const [email, setEmail] = useState(prefill ? DEMO_CREDENTIALS[prefill].email : '')
   const [password, setPassword] = useState(prefill ? DEMO_CREDENTIALS[prefill].password : '')
@@ -107,6 +111,21 @@ export function LoginScreen({ onLogin, prefill }: LoginScreenProps) {
       </div>
 
       <div style={{ width: '100%', maxWidth: 440 }}>
+        {notice && (
+          <div
+            /* Announced, because arriving here is the consequence of a click the
+               visitor made somewhere else. */
+            role="status"
+            style={{
+              marginBottom: 'var(--space-6)', padding: 'var(--space-4)',
+              borderRadius: 'var(--radius)', background: 'rgba(0,166,166,0.16)',
+              border: '1px solid rgba(0,166,166,0.4)', color: 'white',
+              fontSize: 'var(--text-sm)', textAlign: 'center', lineHeight: 1.5,
+            }}
+          >
+            {notice}
+          </div>
+        )}
         {!selected ? (
           <>
             <div style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>

@@ -1,5 +1,10 @@
+import { useState, useEffect } from 'react'
 import { ProductRail } from './ProductRail'
+import { PublicProductGrid } from './PublicProductGrid'
 import { BANNERS, RETAIL_PRODUCTS, ENTERPRISE_PRODUCTS, DEVICE_THUMBS } from '../../lib/assets'
+import { loadCatalogue, loadCategories } from '../../lib/storefrontRepo'
+import { productsForPage } from '../../lib/storefront'
+import type { Category, Product } from '../../types'
 import type { PublicPage, Persona } from '../../types/view'
 
 type Aud = Exclude<PublicPage, 'landing'>
@@ -41,12 +46,25 @@ const CONFIG: Record<Aud, {
   },
 }
 
-export function AudiencePage({ page, onSignIn, onApply }: {
+export function AudiencePage({ page, onSignIn, onApply, onAddToBasket }: {
   page: Aud
   onSignIn: (p: Persona) => void
   onApply: () => void
+  onAddToBasket: (p: Product) => void
 }) {
   const c = CONFIG[page]
+  const [catalogue, setCatalogue] = useState<Product[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+
+  useEffect(() => {
+    loadCatalogue().then(setCatalogue)
+    loadCategories().then(setCategories)
+  }, [])
+
+  /* The same rows the operator's catalogue holds — name, seller, price, rating —
+     narrowed to the categories this page covers and to what is actually live. */
+  const products = productsForPage(catalogue, categories, page)
+
   return (
     <>
       <section style={{ background: 'var(--brand-navy)', color: 'white' }}>
@@ -72,7 +90,19 @@ export function AudiencePage({ page, onSignIn, onApply }: {
         </div>
       </section>
 
-      <ProductRail title={c.rail.title} subtitle={c.rail.subtitle} tiles={c.rail.tiles} />
+      {/* The catalogue itself. The partner page keeps the illustrative rail — it is
+          a pitch to sellers, not a shop — while the two buyer pages list real rows
+          with a working basket. */}
+      {page === 'partner' ? (
+        <ProductRail title={c.rail.title} subtitle={c.rail.subtitle} tiles={c.rail.tiles} />
+      ) : (
+        <PublicProductGrid
+          title={c.rail.title}
+          subtitle={c.rail.subtitle}
+          products={products}
+          onAdd={onAddToBasket}
+        />
+      )}
 
       <section className="container" style={{ padding: '8px 24px 48px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
         {DEVICE_THUMBS.slice(page === 'retail' ? 0 : 18, page === 'retail' ? 3 : 21).map(src => (
