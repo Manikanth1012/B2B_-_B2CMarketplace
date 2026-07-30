@@ -2,11 +2,8 @@
    never the client directly, so the rules in onboarding.ts sit on exactly one
    read path and one write path. */
 import { supabase } from './supabase'
-import { techStatus, canClearGate, nextGate, gateIdFor, buildJourney } from './onboarding'
-import type {
-  GateRow, TaskRow, Endpoint, TestCall, SandboxRun, TechStatus,
-  Submission, GateDocument, JourneyStep,
-} from './onboarding'
+import { techStatus, canClearGate, nextGate, gateIdFor } from './onboarding'
+import type { GateRow, TaskRow, Endpoint, TestCall, SandboxRun, TechStatus } from './onboarding'
 
 export interface OnboardingSnapshot {
   gates: GateRow[]
@@ -16,10 +13,6 @@ export interface OnboardingSnapshot {
   run: SandboxRun | null
   tech: TechStatus
   partnerName: string
-  /* The gates with their submissions and documents attached — what the journey
-     rail and the gate inspector both read, assembled once rather than joined
-     again in each component. */
-  journey: JourneyStep[]
   /* Set when any of the underlying reads failed. An empty snapshot and a
      failed-to-load snapshot must never render the same way — the first means
      "nothing outstanding", the second means "we don't know". */
@@ -27,13 +20,11 @@ export interface OnboardingSnapshot {
 }
 
 export async function loadOnboarding(partnerId: string): Promise<OnboardingSnapshot> {
-  const [gatesRes, tasksRes, epRes, partnerRes, subRes, docRes] = await Promise.all([
+  const [gatesRes, tasksRes, epRes, partnerRes] = await Promise.all([
     supabase.from('onboarding_gates').select('*').eq('partner_id', partnerId).order('gate_order'),
     supabase.from('onboarding_tasks').select('*').eq('partner_id', partnerId),
     supabase.from('partner_endpoints').select('*').eq('partner_id', partnerId).order('id'),
     supabase.from('partners').select('id,name').eq('id', partnerId).maybeSingle(),
-    supabase.from('onboarding_submissions').select('*').eq('partner_id', partnerId),
-    supabase.from('onboarding_documents').select('*').eq('partner_id', partnerId).order('sort_order'),
   ])
 
   const errors: string[] = []
@@ -41,8 +32,6 @@ export async function loadOnboarding(partnerId: string): Promise<OnboardingSnaps
   if (tasksRes.error) errors.push(`tasks: ${tasksRes.error.message}`)
   if (epRes.error) errors.push(`endpoints: ${epRes.error.message}`)
   if (partnerRes.error) errors.push(`partner: ${partnerRes.error.message}`)
-  if (subRes.error) errors.push(`submissions: ${subRes.error.message}`)
-  if (docRes.error) errors.push(`documents: ${docRes.error.message}`)
 
   const endpoints = (epRes.data ?? []) as Endpoint[]
 
@@ -62,19 +51,27 @@ export async function loadOnboarding(partnerId: string): Promise<OnboardingSnaps
   if (runErr) errors.push(`sandbox run: ${runErr.message}`)
   const run = (runRow ?? null) as SandboxRun | null
 
-  const gates = (gatesRes.data ?? []) as GateRow[]
-  const submissions = (subRes.data ?? []) as Submission[]
-  const documents = (docRes.data ?? []) as GateDocument[]
-
   return {
-    gates,
+    gates: (gatesRes.data ?? []) as GateRow[],
     tasks: (tasksRes.data ?? []) as TaskRow[],
     endpoints, calls, run,
     tech: techStatus(endpoints, calls, run),
     partnerName: partnerRes.data?.name ?? partnerId,
-    journey: buildJourney(gates as JourneyStep['row'][], submissions, documents),
     ...(errors.length > 0 ? { loadError: `Could not load the full onboarding record (${errors.join('; ')}).` } : {}),
   }
+}
+
+/* The operator's partner picker. */
+export async function loadPartnerNames(): Promise<{ id: string; name: string }[]> {
+  const { data } = await supabase
+    .from('onboarding_gates')
+    .select('partner_id, partner:partners(id,name)')
+    .returns<{ partner_id: string; partner: { id: string; name: string } | null }[]>()
+  const seen = new Map<string, string>()
+  ;(data ?? []).forEach(r => {
+    if (!seen.has(r.partner_id)) seen.set(r.partner_id, r.partner?.name ?? r.partner_id)
+  })
+  return [...seen].map(([id, name]) => ({ id, name }))
 }
 
 export type ClearResult =

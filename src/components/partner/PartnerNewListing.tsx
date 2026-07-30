@@ -1,44 +1,22 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Store, ChevronLeft, ChevronRight, Check } from 'lucide-react'
 import { SectionCard, FormField, TextInput, TextArea, Select, Btn, toast } from '../operator/shared'
-import { Callout } from '../OnboardingJourney'
-import { loadSellerRecord } from '../../lib/partnerRepo'
-import type { SellerRecord } from '../../lib/partnerRepo'
-import { canListIn, rateAt, approvedCategories } from '../../lib/partnerCommerce'
+import { PARTNER_PROFILE, PARTNER_PLAN, VERTICAL_NAMES } from './data'
 
 const STEPS = ['Marketplace and type', 'Details and media', 'Pricing and commission', 'Fulfilment', 'Compliance', 'Review and submit']
 
-/* The marketplace picker offers the categories this seller was approved for and
-   no others. It used to offer a hard-coded pair that had drifted from the
-   record — a Security option to a seller approved for IoT and Devices — which
-   is a listing the catalogue desk would have had to reject after the seller had
-   done all six steps of work. */
-export function PartnerNewListing({ partnerId }: { partnerId: string }) {
-  const [rec, setRec] = useState<SellerRecord | null>(null)
-  const [loading, setLoading] = useState(true)
+export function PartnerNewListing() {
   const [step, setStep] = useState(0)
-  const [vertical, setVertical] = useState('')
+  const [vertical, setVertical] = useState('iot')
   const [name, setName] = useState('')
   const [desc, setDesc] = useState('')
   const [price, setPrice] = useState('')
   const [cost, setCost] = useState('')
   const [model, setModel] = useState('oneoff')
 
-  useEffect(() => {
-    loadSellerRecord(partnerId).then(r => {
-      setRec(r)
-      /* Open on a category they may actually use, so the first thing on screen
-         is not an option that will be refused. */
-      setVertical(prev => prev || approvedCategories(r.approvals, r.categories)[0] || '')
-      setLoading(false)
-    })
-  }, [partnerId])
-
   const priceNum = parseFloat(price) || 0
   const costNum = parseFloat(cost) || 0
-  /* The rate the seller is actually settled at, read from their plan. */
-  const rate = rec?.plan ? rateAt(rec.plan, 0) : 0
-  const comm = +(priceNum * rate / 100).toFixed(2)
+  const comm = +(priceNum * PARTNER_PLAN.base / 100).toFixed(2)
   const fee = +(priceNum * 0.019 + 0.20).toFixed(2)
   const net = +(priceNum - comm - fee).toFixed(2)
   const margin = costNum > 0 ? +(net - costNum).toFixed(2) : net
@@ -48,12 +26,6 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
       toast('A listing needs a name and a price before it can be submitted', 'error')
       return
     }
-    /* Checked again at submit, not only when the picker was built: the approval
-       can be withdrawn between opening this wizard and finishing it. */
-    if (rec) {
-      const verdict = canListIn(vertical, rec.approvals, id => rec.categories.find(c => c.id === id)?.name ?? id)
-      if (!verdict.ok) { toast(verdict.reason, 'error'); return }
-    }
     toast(`${name} submitted — now in the marketplace review queue`)
     setStep(0)
     setName('')
@@ -62,42 +34,21 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
     setDesc('')
   }
 
-  if (loading) {
-    return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
-  }
-
-  const approved = rec ? approvedCategories(rec.approvals, rec.categories) : []
-
-  /* Nothing to sell in is not an empty form — it is a different answer, and
-     walking somebody through six steps that end in a refusal is worse than
-     saying so at the top. */
-  if (approved.length === 0) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-        <div>
-          <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>New listing</h1>
-        </div>
-        <Callout tone="warning" title="You are not approved to sell in any category yet">
-          Approval is granted when your application clears, and it is what every listing is checked against.
-          The onboarding page shows which gate you are on.
-        </Callout>
-      </div>
-    )
-  }
-
   const bodies: React.ReactNode[] = [
     // Step 0: Marketplace and type
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-        <FormField label="Which marketplace" hint="Only the categories you were approved to sell in.">
+        <FormField label="Which marketplace">
           <Select value={vertical} onChange={e => setVertical(e.target.value)}>
-            {approved.map(id => (
-              <option key={id} value={id}>{rec?.categories.find(c => c.id === id)?.name ?? id}</option>
-            ))}
+            {PARTNER_PROFILE.verticals.map(v => <option key={v} value={v}>{VERTICAL_NAMES[v] || v}</option>)}
           </Select>
         </FormField>
-        <FormField label="Sub-category" hint="How buyers narrow a search inside that marketplace.">
-          <TextInput placeholder="e.g. Sensors" />
+        <FormField label="Category" hint="Auto-detected from your existing catalogue">
+          <Select>
+            <option>Sensors</option>
+            <option>Bundles</option>
+            <option>Security</option>
+          </Select>
         </FormField>
       </div>
       <div>
@@ -194,7 +145,7 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: 'var(--text-sm)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-tertiary)' }}>Sale price</span><span style={{ fontWeight: 600 }}>${fmt(priceNum)}</span></div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-tertiary)' }}>Commission at {rate}%{rec?.plan ? ` · ${rec.plan.name}` : ''}</span><span>less ${fmt(comm)}</span></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-tertiary)' }}>Commission at {PARTNER_PLAN.base}%</span><span>less ${fmt(comm)}</span></div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}><span style={{ color: 'var(--text-tertiary)' }}>Payment and per-order fees</span><span>less ${fmt(fee)}</span></div>
             <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid var(--border)' }}><span style={{ fontWeight: 700 }}>{costNum > 0 ? 'Your margin' : 'Settles to you'}</span><span style={{ fontWeight: 800 }}>${fmt(margin)}</span></div>
           </div>
@@ -302,7 +253,7 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
           </div>
           <div style={{ padding: '12px' }}>
             <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{name || 'Untitled listing'}</div>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>{rec?.partner?.name ?? partnerId}</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>{PARTNER_PROFILE.name}</div>
             <div style={{ fontWeight: 700, marginTop: '8px' }}>{priceNum ? `$${fmt(priceNum)}` : '—'}</div>
           </div>
         </div>
@@ -310,14 +261,14 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
       <div>
         <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: '10px' }}>Summary</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: 'var(--text-sm)' }}>
-          <SummaryRow label="Marketplace" value={rec?.categories.find(c => c.id === vertical)?.name ?? vertical} />
+          <SummaryRow label="Marketplace" value={VERTICAL_NAMES[vertical] || vertical} />
           <SummaryRow label="Price" value={priceNum ? `$${fmt(priceNum)}${model === 'monthly' ? ' per month' : ''}` : 'Not set'} />
-          <SummaryRow label="Commission" value={`${rate}% · ${priceNum ? `$${fmt(comm)}` : '—'}`} />
+          <SummaryRow label="Commission" value={`${PARTNER_PLAN.base}% · ${priceNum ? `$${fmt(comm)}` : '—'}`} />
           <SummaryRow label="You receive" value={priceNum ? `$${fmt(net)}` : '—'} />
           <SummaryRow label="Fulfilment" value="Shipped by you" />
         </div>
         <div style={{ marginTop: '16px', padding: '12px', borderRadius: 'var(--radius)', background: 'var(--warning-bg)', border: '1px solid var(--warning)', fontSize: 'var(--text-xs)', color: 'var(--warning)' }}>
-          <strong>After you submit:</strong> The catalogue team reviews within one working day. You are told why if it is rejected, and can resubmit. Listing is free — you pay {rate}% commission only when it sells.
+          <strong>After you submit:</strong> The catalogue team reviews within one working day. You are told why if it is rejected, and can resubmit. Listing is free — you pay {PARTNER_PLAN.base}% commission only when it sells.
         </div>
       </div>
     </div>,

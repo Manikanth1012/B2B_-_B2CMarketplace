@@ -3,7 +3,7 @@ import {
   Star,
   LayoutDashboard, Users, Package, DollarSign, Warehouse, Ticket,
   Shield, Code, Bell, Tag, TrendingUp, Settings, ChevronDown,
-  Search, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store
+  Search, Bell as BellIcon, LogOut, Menu, X, BookOpen
 } from 'lucide-react'
 import type { OperatorView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
@@ -21,7 +21,6 @@ const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; i
     items: [
       { id: 'op-dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
       { id: 'op-onboarding', label: 'Partner Onboarding', icon: <Users size={18} /> },
-      { id: 'op-partners', label: 'Sellers', icon: <Store size={18} /> },
       { id: 'op-catalogue', label: 'Catalogue Review', icon: <Package size={18} /> },
     ]
   },
