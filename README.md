@@ -4,12 +4,80 @@ Working HTML for a telecom marketplace platform spanning the marketplace categor
 
 Open `index.html` and pick a persona. Every file is self-contained — no server, no build step, no network dependency except the Poppins webfont, which falls back to system sans-serif offline.
 
+The React application in `src/` is a separate thing from those prototypes and does need a server — see **[Running the React app](#running-the-react-app)**.
+
 | File | Persona | Brand | Marketplaces covered | Screens |
 |---|---|---|---|---|
 | `consumer.html` | Priya Raman — consumer shopper | 6D | Consumer, Device, Digital content | 10 |
 | `partner.html` | Nimbus Sensors — partner / seller | 6D | Partner, IoT, Device | 11 |
 | `operator.html` | Ananya Krishnan — marketplace operator | 6D | All six | 11 |
 | `enterprise.html` | Brightline Foods — enterprise buyer | Neutral / white-label | IoT, Security, Device | 11 |
+
+---
+
+## Running the React app
+
+Vite + React + TypeScript against a hosted Supabase project. There is no local
+database — the app talks to Supabase directly.
+
+**Run every command from the repository root**, the folder holding `package.json`.
+Running `npm run dev` from your home directory fails with *"Could not read
+package.json"*; that is the wrong working directory, not a broken install.
+
+```bash
+git clone https://github.com/Manikanth1012/B2B_-_B2CMarketplace.git
+cd B2B_-_B2CMarketplace
+npm install
+cp .env.example .env      # then fill in the two values
+npm run dev               # http://localhost:5173
+```
+
+Node 18 or newer.
+
+### Windows PowerShell
+
+PowerShell refuses to run `npm.ps1` under the default execution policy:
+
+```
+npm : File C:\Program Files\nodejs\npm.ps1 cannot be loaded because
+running scripts is disabled on this system.
+```
+
+Two ways past it. Either allow locally-created scripts for your own account, once:
+
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+
+…or leave the policy alone and call the batch shim instead, which is not affected:
+
+```powershell
+npm.cmd install
+npm.cmd run dev
+```
+
+`cmd.exe` and Git Bash are unaffected either way.
+
+### Environment
+
+`.env` is gitignored, so every clone needs its own — copy `.env.example` and fill in
+`VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` from **Project Settings → API** in
+the Supabase dashboard. Both are read at build time, so **restart the dev server**
+after editing; a page refresh will not pick them up. A blank page with *"Missing
+Supabase environment variables"* in the console means this file.
+
+### Scripts
+
+| Command | What it does |
+|---|---|
+| `npm run dev` | Dev server on :5173 |
+| `npm run build` | Type-check and build to `dist/` |
+| `npm test` | Unit tests — no network |
+| `npm run test:integration` | Integration tests **against the live project** |
+
+`npm run test:integration` signs in as the seeded demo personas and writes to the
+real database. It cleans up after itself, but do not point it at anything you would
+mind it touching.
 
 ---
 
