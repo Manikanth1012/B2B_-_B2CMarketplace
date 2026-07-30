@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Package, Clock, Check, Truck, X, MapPin, CircleAlert as AlertCircle, ChevronRight, Download } from 'lucide-react'
+import { Package, Clock, Check, Truck, X, MapPin, CircleAlert as AlertCircle, ChevronRight, Download, LifeBuoy } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Order, OrderItem } from '../types'
+import { canRaiseTicket } from '../lib/orderTickets'
+import { RaiseTicketModal } from './RaiseTicketModal'
 
 function fmtMoney(n: number): string {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -14,6 +16,8 @@ export function OrdersView() {
   const [orderItems, setOrderItems] = useState<Record<string, OrderItem[]>>({})
   const [loading, setLoading] = useState(true)
   const [detailOrder, setDetailOrder] = useState<Order | null>(null)
+  const [ticketOrder, setTicketOrder] = useState<Order | null>(null)
+  const [raised, setRaised] = useState<string | null>(null)
 
   const loadOrders = useCallback(async () => {
     const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false })
@@ -183,22 +187,67 @@ export function OrdersView() {
                       </>
                     )}
                   </div>
-                  <button
-                    onClick={() => setDetailOrder(order)}
-                    style={{
-                      padding: '6px 16px', borderRadius: 'var(--radius)', border: '1px solid var(--border)',
-                      background: 'white', color: 'var(--text-secondary)', fontWeight: 600,
-                      fontSize: 'var(--text-xs)', cursor: 'pointer',
-                    }}
-                  >
-                    Details
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    {/* Only while there is still something to chase. A refunded order
+                        is concluded, and a refund dispute is its own flow. */}
+                    {canRaiseTicket(order) && (
+                      <button
+                        onClick={() => setTicketOrder(order)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: '6px',
+                          padding: '6px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)',
+                          background: 'white', color: 'var(--text-secondary)', fontWeight: 600,
+                          fontSize: 'var(--text-xs)', cursor: 'pointer',
+                        }}
+                      >
+                        <LifeBuoy size={13} /> Get help
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setDetailOrder(order)}
+                      style={{
+                        padding: '6px 16px', borderRadius: 'var(--radius)', border: '1px solid var(--border)',
+                        background: 'white', color: 'var(--text-secondary)', fontWeight: 600,
+                        fontSize: 'var(--text-xs)', cursor: 'pointer',
+                      }}
+                    >
+                      Details
+                    </button>
+                  </div>
                 </div>
               </div>
             )
           })}
         </div>
       </div>
+
+      {ticketOrder && (
+        <RaiseTicketModal
+          order={ticketOrder}
+          raisedBy={ticketOrder.buyer_name || 'You'}
+          onClose={() => setTicketOrder(null)}
+          onRaised={(id) => { setTicketOrder(null); setRaised(id) }}
+        />
+      )}
+
+      {/* Confirmed in place rather than by silently closing — a support request that
+          leaves no trace is indistinguishable from one that failed. */}
+      {raised && (
+        <div
+          role="status"
+          style={{
+            position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
+            background: 'var(--brand-navy)', color: 'white', padding: '12px 20px',
+            borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)', zIndex: 400,
+            display: 'flex', alignItems: 'center', gap: '12px', fontSize: 'var(--text-sm)',
+          }}
+        >
+          Ticket {raised} raised — we will be in touch.
+          <button onClick={() => setRaised(null)} aria-label="Dismiss" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', padding: 0 }}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       {/* Detail modal */}
       {detailOrder && (
