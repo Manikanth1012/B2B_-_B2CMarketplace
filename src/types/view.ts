@@ -14,6 +14,7 @@ export type OperatorView =
   | 'op-channels'
   | 'op-roles'
   | 'op-audit'
+  | 'op-reviews'
   | 'op-kb'
 
 export type PartnerView =
@@ -29,6 +30,7 @@ export type PartnerView =
   | 'pt-support'
   | 'pt-team'
   | 'pt-audit'
+  | 'pt-reviews'
   | 'pt-profile'
   | 'pt-kb'
 

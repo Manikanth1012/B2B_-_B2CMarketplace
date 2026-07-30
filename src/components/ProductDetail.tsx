@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Star, Minus, Plus, Shield, Truck, Zap, Check } from 'lucide-react'
 import type { Product } from '../types'
 import { getProductImage } from '../lib/images'
+import { supabase } from '../lib/supabase'
+import { aggregate, orderForDisplay, stars, type Review } from '../lib/reviews'
 
 import type { View } from '../types/view'
 
@@ -23,6 +25,16 @@ const catColors: Record<string, string> = {
 export function ProductDetail({ product, onAddToCart, onNavigate }: ProductDetailProps) {
   const [quantity, setQuantity] = useState(1)
   const [activeTab, setActiveTab] = useState<'description' | 'specs' | 'reviews'>('description')
+  const [reviews, setReviews] = useState<Review[]>([])
+
+  /* Published reviews only — the read policy allows nothing else to anyone but the
+     author and the operator, so this is the public view by construction. */
+  useEffect(() => {
+    supabase.from('product_reviews').select('*').eq('product_id', product.id)
+      .then(({ data }) => setReviews(orderForDisplay((data ?? []) as Review[])))
+  }, [product.id])
+
+  const agg = aggregate(reviews)
   const color = catColors[product.category_id] || 'var(--brand-accent)'
   const hasDiscount = product.was_price && product.was_price > product.price
   const outOfStock = product.stock === 'out'
@@ -315,9 +327,14 @@ export function ProductDetail({ product, onAddToCart, onNavigate }: ProductDetai
             </div>
           )}
           {activeTab === 'reviews' && (
-            <div style={{ maxWidth: '720px' }}>
-              {product.rating && product.reviews > 0 ? (
-                <div style={{ display: 'flex', gap: '32px', marginBottom: '32px' }}>
+            <div style={{ maxWidth: '760px' }}>
+              {/* The catalogue's all-time figure, kept as-is. The bars beside it used
+                  to be invented — 65% for the modal star, 20% below it, 5% for the
+                  rest, computed from nothing. They now come from published reviews,
+                  and say so, because two numbers that disagree are better than one
+                  that is made up. */}
+              {product.rating !== null && product.reviews > 0 && (
+                <div style={{ display: 'flex', gap: '32px', marginBottom: '28px', alignItems: 'center' }}>
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: 'var(--text-5xl)', fontWeight: 800, color: 'var(--text)' }}>
                       {product.rating.toFixed(1)}
@@ -328,26 +345,62 @@ export function ProductDetail({ product, onAddToCart, onNavigate }: ProductDetai
                       ))}
                     </div>
                     <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
-                      {product.reviews} reviews
+                      {product.reviews.toLocaleString()} all-time
                     </div>
                   </div>
+
                   <div style={{ flex: 1 }}>
-                    {[5, 4, 3, 2, 1].map((star) => {
-                      const pct = star === Math.round(product.rating!) ? 65 : star === Math.round(product.rating!) - 1 ? 20 : 5
-                      return (
-                        <div key={star} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                          <span style={{ fontSize: 'var(--text-xs)', width: '20px' }}>{star}★</span>
-                          <div style={{ flex: 1, height: '6px', background: 'var(--gray-100)', borderRadius: '3px', overflow: 'hidden' }}>
-                            <div style={{ width: `${pct}%`, height: '100%', background: '#F5A623' }} />
-                          </div>
-                          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', width: '40px' }}>{pct}%</span>
+                    {agg.count > 0 ? (
+                      <>
+                        <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: '8px' }}>
+                          {agg.average} from {agg.count} review{agg.count === 1 ? '' : 's'} on the marketplace
                         </div>
-                      )
-                    })}
+                        {[5, 4, 3, 2, 1].map((star) => {
+                          const c = agg.distribution[star - 1]
+                          const pct = agg.count > 0 ? Math.round((c / agg.count) * 100) : 0
+                          return (
+                            <div key={star} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                              <span style={{ fontSize: 'var(--text-xs)', width: '20px' }}>{star}★</span>
+                              <div style={{ flex: 1, height: '6px', background: 'var(--gray-100)', borderRadius: '3px', overflow: 'hidden' }}>
+                                <div style={{ width: `${pct}%`, height: '100%', background: '#F5A623' }} />
+                              </div>
+                              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', width: '28px', textAlign: 'right' }}>{c}</span>
+                            </div>
+                          )
+                        })}
+                      </>
+                    ) : (
+                      <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', margin: 0 }}>
+                        No reviews written on the marketplace yet.
+                      </p>
+                    )}
                   </div>
                 </div>
+              )}
+
+              {reviews.length === 0 ? (
+                <p style={{ color: 'var(--text-tertiary)' }}>No reviews yet. Buy this and you can be the first.</p>
               ) : (
-                <p style={{ color: 'var(--text-tertiary)' }}>No reviews yet. Be the first to review this product.</p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                  {reviews.map(r => (
+                    <div key={r.id} style={{ borderTop: '1px solid var(--border-light)', paddingTop: '16px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                        <span style={{ color: '#F5A623', letterSpacing: '1px' }}>{stars(r.rating)}</span>
+                        <span style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>{r.title}</span>
+                        <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                          {r.author} · {r.submitted}
+                        </span>
+                      </div>
+                      <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: '8px 0 0', lineHeight: 1.6 }}>{r.body}</p>
+                      {r.reply_text && (
+                        <div style={{ marginTop: '10px', marginLeft: '12px', paddingLeft: '12px', borderLeft: '3px solid var(--brand-accent-dark)' }}>
+                          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>{r.reply_by} replied</div>
+                          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: '3px 0 0', lineHeight: 1.55 }}>{r.reply_text}</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
             </div>
           )}

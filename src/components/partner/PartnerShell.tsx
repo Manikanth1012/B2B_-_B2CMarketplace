@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import {
+  Star,
   LayoutDashboard, Route, Package, ShoppingCart, Wallet, FileText,
   BarChart3, Plug, LifeBuoy, Users, History, User, ChevronDown,
   Search, Bell as BellIcon, LogOut, Menu, X, Store, BookOpen
@@ -42,6 +43,7 @@ const NAV_SECTIONS: { label: string; items: { id: PartnerView; label: string; ic
     items: [
       { id: 'pt-performance', label: 'Performance', icon: <BarChart3 size={18} /> },
       { id: 'pt-integrations', label: 'Integrations', icon: <Plug size={18} /> },
+      { id: 'pt-reviews', label: 'Reviews', icon: <Star size={18} /> },
       { id: 'pt-support', label: 'Disputes & Support', icon: <LifeBuoy size={18} /> },
     ]
   },

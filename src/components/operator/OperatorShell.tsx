@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import {
+  Star,
   LayoutDashboard, Users, Package, DollarSign, Warehouse, Ticket,
   Shield, Code, Bell, Tag, TrendingUp, Settings, ChevronDown,
   Search, Bell as BellIcon, LogOut, Menu, X, BookOpen
@@ -44,6 +45,7 @@ const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; i
   {
     label: 'Governance',
     items: [
+      { id: 'op-reviews', label: 'Reviews', icon: <Star size={18} /> },
       { id: 'op-roles', label: 'Roles & Users', icon: <Shield size={18} /> },
       { id: 'op-audit', label: 'Audit Trail', icon: <Settings size={18} /> },
       { id: 'op-kb', label: 'Knowledge base', icon: <BookOpen size={18} /> },

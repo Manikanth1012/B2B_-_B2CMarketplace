@@ -38,6 +38,7 @@ import { OperatorBanners } from './components/operator/OperatorBanners'
 import { OperatorChannels } from './components/operator/OperatorChannels'
 import { OperatorRoles } from './components/operator/OperatorRoles'
 import { OperatorAudit } from './components/operator/OperatorAudit'
+import { OperatorReviews } from './components/operator/OperatorReviews'
 import { ToastHost, toast } from './components/operator/shared'
 import { PartnerShell } from './components/partner/PartnerShell'
 import { PartnerDashboard } from './components/partner/PartnerDashboard'
@@ -51,6 +52,7 @@ import { PartnerPerformance } from './components/partner/PartnerPerformance'
 import { PartnerIntegrations } from './components/partner/PartnerIntegrations'
 import { PartnerSupport } from './components/partner/PartnerSupport'
 import { PartnerTeam, PartnerAudit, PartnerProfile } from './components/partner/PartnerMisc'
+import { PartnerReviews } from './components/partner/PartnerReviews'
 import { EnterpriseShell } from './components/enterprise/EnterpriseShell'
 import { EnterpriseDashboard } from './components/enterprise/EnterpriseDashboard'
 import { EnterpriseBrowse } from './components/enterprise/EnterpriseBrowse'
@@ -273,6 +275,7 @@ export default function App() {
         {opView === 'op-banners' && <OperatorBanners />}
         {opView === 'op-channels' && <OperatorChannels />}
         {opView === 'op-roles' && <OperatorRoles />}
+        {opView === 'op-reviews' && <OperatorReviews />}
         {opView === 'op-audit' && <OperatorAudit />}
         {opView === 'op-kb' && <KnowledgeBase persona="operator" title="Knowledge base" />}
         {/* No feedbackAs: the operator is the queue. */}
@@ -293,6 +296,7 @@ export default function App() {
         {ptView === 'pt-plan' && <PartnerSettlementPlan />}
         {ptView === 'pt-performance' && <PartnerPerformance />}
         {ptView === 'pt-integrations' && <PartnerIntegrations />}
+        {ptView === 'pt-reviews' && <PartnerReviews partnerId={session?.partnerId ?? ''} />}
         {ptView === 'pt-support' && <PartnerSupport />}
         {ptView === 'pt-team' && <PartnerTeam />}
         {ptView === 'pt-audit' && <PartnerAudit />}

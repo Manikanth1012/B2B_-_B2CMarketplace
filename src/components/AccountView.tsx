@@ -8,6 +8,7 @@ import { LANGUAGES, TIME_ZONES, DATA_UNITS, effectivePreferences, isAuditable } 
 import { PrivacyCard } from './PrivacyCard'
 import { AddressBookCard } from './AddressBookCard'
 import { StockWatchCard } from './StockWatchCard'
+import { MyReviewsCard } from './MyReviewsCard'
 import type {
   ConsumerProfile, ConsumerNotification, ConsumerAuditEntry,
   ConsumerHouseholdMember, ConsumerRefund, ConsumerPaymentMethod,
@@ -353,6 +354,8 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
         <AddressBookCard showToast={showToast} />
 
         <StockWatchCard showToast={showToast} onChanged={onWatchesChanged} />
+
+        <MyReviewsCard showToast={showToast} />
 
         <PrivacyCard profile={profile} showToast={showToast} />
 
