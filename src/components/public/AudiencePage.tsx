@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { PublicProductGrid } from './PublicProductGrid'
 import { CategoryShowcase } from './CategoryShowcase'
-import { BANNERS, DEVICE_THUMBS } from '../../lib/assets'
+import { BANNERS } from '../../lib/assets'
 import { loadCatalogue, loadCategories, countByCategory } from '../../lib/storefrontRepo'
 import { productsForPage, categoriesForPage } from '../../lib/storefront'
 import type { Category, Product } from '../../types'
@@ -110,12 +110,6 @@ export function AudiencePage({ page, onSignIn, onApply, onAddToBasket }: {
           onAdd={onAddToBasket}
         />
       )}
-
-      <section className="container" style={{ padding: '8px 24px 48px', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
-        {DEVICE_THUMBS.slice(page === 'retail' ? 0 : 18, page === 'retail' ? 3 : 21).map(src => (
-          <img key={src} src={src} alt="" loading="lazy" style={{ width: '100%', borderRadius: 'var(--radius-md)' }} />
-        ))}
-      </section>
     </>
   )
 }
