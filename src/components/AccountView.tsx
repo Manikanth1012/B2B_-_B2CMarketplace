@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
-import { User, Bell, History, Users, RotateCcw, Check, X, Plus, Minus, CircleAlert as AlertCircle, Info, Shield, Wallet, Star, Phone, Mail, MapPin, CreditCard, Clock, ChevronRight, Lock, Trash2, FileText, LifeBuoy, MessageSquare, Send, Download } from 'lucide-react'
+import { User, Bell, History, Users, RotateCcw, Check, X, Plus, Minus, CircleAlert as AlertCircle, Info, Shield, Wallet, Star, Phone, Mail, MapPin, CreditCard, Clock, ChevronRight, Lock, Trash2, FileText, LifeBuoy, MessageSquare, Send, Download, Globe } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { changePassword, currentEmail, SignInError } from '../lib/authRepo'
 import { checkNewPassword, strengthOf, isDemoAccount, MIN_LENGTH } from '../lib/password'
 import { paymentSummary } from '../lib/payments'
+import { LANGUAGES, TIME_ZONES, DATA_UNITS, effectivePreferences, isAuditable } from '../lib/preferences'
 import type {
   ConsumerProfile, ConsumerNotification, ConsumerAuditEntry,
   ConsumerHouseholdMember, ConsumerRefund, ConsumerPaymentMethod,
@@ -219,6 +220,10 @@ function ProfileTab({ profile, showToast }: { profile: ConsumerProfile; showToas
      section read as decoration — adding a card changed nothing on the screen
      behind it. */
   const [cards, setCards] = useState<ConsumerPaymentMethod[]>([])
+  const prefs = effectivePreferences(profile)
+  const [language, setLanguage] = useState(prefs.language)
+  const [timeZone, setTimeZone] = useState(prefs.timeZone)
+  const [units, setUnits] = useState(prefs.units)
 
   const loadCards = useCallback(async () => {
     const { data } = await supabase.from('consumer_payment_methods').select('*')
@@ -234,6 +239,33 @@ function ProfileTab({ profile, showToast }: { profile: ConsumerProfile; showToas
     }).eq('id', 'me')
     setSaving(false)
     showToast('Your details have been saved')
+  }
+
+  /* Preferences save on change rather than behind the button — a picker that needs a
+     separate Save is the commonest way a setting silently fails to stick. */
+  const savePreference = async (
+    field: 'language' | 'timeZone' | 'units',
+    value: string,
+    label: string,
+  ) => {
+    const column = field === 'language' ? 'preferred_language' : field === 'timeZone' ? 'time_zone' : 'data_units'
+    await supabase.from('consumer_profile').update({ [column]: value }).eq('id', 'me')
+
+    /* Language and time zone change what the customer is sent and when, so an agent
+       looking at a "why did I get this in English" complaint needs the date. Data
+       units are cosmetic and are not worth a log line. */
+    if (isAuditable(field)) {
+      const now = new Date()
+      await supabase.from('consumer_audit_log').insert({
+        id: 'AUD-CU-' + Date.now(),
+        when_date: now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + ' ' +
+                   now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
+        action: field === 'language' ? 'preference.language' : 'preference.timezone',
+        label: `${label} changed`, category: 'Preferences', severity: 'info',
+        detail: `Set to ${value}`,
+      })
+    }
+    showToast(`${label} updated`)
   }
 
   return (
@@ -266,6 +298,44 @@ function ProfileTab({ profile, showToast }: { profile: ConsumerProfile; showToas
             >
               {saving ? 'Saving…' : 'Save changes'}
             </button>
+          </div>
+        </Card>
+
+        {/* Preferences — the prototype's three-up grid. Language decides what the
+            marketplace writes to this customer in; the marketplace serves India, UAE
+            and Kenya, so the options are those regions'. */}
+        <Card icon={<Globe size={18} />} title="Preferences" subtitle="How we talk to you">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <Field label="Preferred language" icon={<Globe size={14} />}>
+              <select
+                style={inputStyle}
+                value={language}
+                onChange={(e) => { setLanguage(e.target.value as typeof language); savePreference('language', e.target.value, 'Preferred language') }}
+              >
+                {LANGUAGES.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+              </select>
+            </Field>
+            <Field label="Time zone" icon={<Clock size={14} />}>
+              <select
+                style={inputStyle}
+                value={timeZone}
+                onChange={(e) => { setTimeZone(e.target.value); savePreference('timeZone', e.target.value, 'Time zone') }}
+              >
+                {TIME_ZONES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </Field>
+            <Field label="Data units" icon={<Info size={14} />}>
+              <select
+                style={inputStyle}
+                value={units}
+                onChange={(e) => { setUnits(e.target.value as typeof units); savePreference('units', e.target.value, 'Data units') }}
+              >
+                {DATA_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </Field>
+            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: 0, lineHeight: 1.5 }}>
+              Bills, order updates and support replies follow your language. Changes save straight away.
+            </p>
           </div>
         </Card>
 

@@ -214,6 +214,11 @@ export interface ConsumerProfile {
   mfa_enabled: boolean
   active_sessions: number
   pwd_changed: string
+  /* How the marketplace talks to this customer. Defaulted in the database rather
+     than nullable, so every screen has an effective answer without inventing one. */
+  preferred_language: string
+  time_zone: string
+  data_units: string
 }
 
 export interface ConsumerPaymentMethod {
