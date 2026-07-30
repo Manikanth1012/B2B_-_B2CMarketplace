@@ -219,6 +219,10 @@ export interface ConsumerProfile {
   preferred_language: string
   time_zone: string
   data_units: string
+  /* Closure is scheduled, not immediate — 30 days' notice, withdrawable until then. */
+  closure_requested_at: string | null
+  closure_effective: string | null
+  closure_reason: string | null
 }
 
 export interface ConsumerPaymentMethod {

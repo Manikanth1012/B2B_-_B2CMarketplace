@@ -5,6 +5,7 @@ import { changePassword, currentEmail, SignInError } from '../lib/authRepo'
 import { checkNewPassword, strengthOf, isDemoAccount, MIN_LENGTH } from '../lib/password'
 import { paymentSummary } from '../lib/payments'
 import { LANGUAGES, TIME_ZONES, DATA_UNITS, effectivePreferences, isAuditable } from '../lib/preferences'
+import { PrivacyCard } from './PrivacyCard'
 import type {
   ConsumerProfile, ConsumerNotification, ConsumerAuditEntry,
   ConsumerHouseholdMember, ConsumerRefund, ConsumerPaymentMethod,
@@ -338,6 +339,8 @@ function ProfileTab({ profile, showToast }: { profile: ConsumerProfile; showToas
             </p>
           </div>
         </Card>
+
+        <PrivacyCard profile={profile} showToast={showToast} />
 
         {/* Account summary */}
         <Card icon={<Star size={18} />} title="Account summary">
