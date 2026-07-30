@@ -1,7 +1,8 @@
-import { useState } from 'react'
-import { Check, CreditCard, Wallet, Building2, Smartphone } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { Check, CreditCard, Wallet, Building2, Smartphone, MapPin } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { CartItem } from '../types'
+import { orderedAddresses, defaultAddress, formatAddress, type Address } from '../lib/addresses'
 
 interface CheckoutProps {
   cartItems: CartItem[]
@@ -20,6 +21,29 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
   const [paymentMethod, setPaymentMethod] = useState('card')
   const [processing, setProcessing] = useState(false)
   const [orderRef, setOrderRef] = useState('')
+  /* The address book. Typing the same address on every order was the whole problem —
+     the saved ones are offered first and free text stays as the fallback. */
+  const [addresses, setAddresses] = useState<Address[]>([])
+  const [chosen, setChosen] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase.from('consumer_addresses').select('*').then(({ data }) => {
+      const rows = (data ?? []) as Address[]
+      setAddresses(rows)
+      const preferred = defaultAddress(rows)
+      if (preferred) {
+        setChosen(preferred.id)
+        setAddress(preferred.line1)
+        setCity(preferred.city)
+      }
+    })
+  }, [])
+
+  const pick = (a: Address) => {
+    setChosen(a.id)
+    setAddress(a.line1)
+    setCity(a.city)
+  }
 
   const subtotal = cartItems.reduce((sum, item) => sum + (item.product?.price || 0) * item.quantity, 0)
   const tax = subtotal * 0.18
@@ -164,11 +188,46 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
             {step === 'details' && (
               <div className="fade-in">
                 <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 600, marginBottom: '20px' }}>Delivery details</h2>
+                {addresses.length > 0 && (
+                  <div style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {orderedAddresses(addresses).map(a => (
+                      <button
+                        key={a.id}
+                        onClick={() => pick(a)}
+                        aria-pressed={chosen === a.id}
+                        style={{
+                          display: 'flex', alignItems: 'flex-start', gap: '10px', textAlign: 'left',
+                          padding: '12px 14px', borderRadius: 'var(--radius)', cursor: 'pointer',
+                          border: `1px solid ${chosen === a.id ? 'var(--brand-accent-dark)' : 'var(--border)'}`,
+                          background: chosen === a.id ? 'rgba(0,166,166,0.06)' : 'white',
+                        }}
+                      >
+                        <MapPin size={15} style={{ marginTop: '2px', color: chosen === a.id ? 'var(--brand-accent-dark)' : 'var(--text-tertiary)', flexShrink: 0 }} />
+                        <span style={{ minWidth: 0 }}>
+                          <span style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 700 }}>
+                            {a.label}{a.is_default && <span style={{ fontWeight: 500, color: 'var(--text-tertiary)' }}> · default</span>}
+                          </span>
+                          <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+                            {formatAddress(a)}
+                          </span>
+                          {a.notes && (
+                            <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                              {a.notes}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+                    ))}
+                    <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: '2px 0 0' }}>
+                      Or type a different address below. Manage saved addresses in My details.
+                    </p>
+                  </div>
+                )}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
                   <Input label="Full name" value={name} onChange={setName} required />
                   <Input label="Email" value={email} onChange={setEmail} type="email" required />
-                  <Input label="Address" value={address} onChange={setAddress} full />
-                  <Input label="City" value={city} onChange={setCity} />
+                  <Input label="Address" value={address} onChange={(v) => { setAddress(v); setChosen(null) }} full />
+                  <Input label="City" value={city} onChange={(v) => { setCity(v); setChosen(null) }} />
                   <div>
                     <label style={{ fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: '6px', display: 'block' }}>Country</label>
                     <select

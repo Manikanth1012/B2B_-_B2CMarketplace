@@ -6,6 +6,7 @@ import { checkNewPassword, strengthOf, isDemoAccount, MIN_LENGTH } from '../lib/
 import { paymentSummary } from '../lib/payments'
 import { LANGUAGES, TIME_ZONES, DATA_UNITS, effectivePreferences, isAuditable } from '../lib/preferences'
 import { PrivacyCard } from './PrivacyCard'
+import { AddressBookCard } from './AddressBookCard'
 import type {
   ConsumerProfile, ConsumerNotification, ConsumerAuditEntry,
   ConsumerHouseholdMember, ConsumerRefund, ConsumerPaymentMethod,
@@ -339,6 +340,8 @@ function ProfileTab({ profile, showToast }: { profile: ConsumerProfile; showToas
             </p>
           </div>
         </Card>
+
+        <AddressBookCard showToast={showToast} />
 
         <PrivacyCard profile={profile} showToast={showToast} />
 
