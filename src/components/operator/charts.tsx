@@ -114,7 +114,10 @@ export function ColumnChart({ data, height = 160, format = money0, colour, label
 
 /* -------------------------------------------------------------- donut ---- */
 
-export interface Slice { label: string; value: number }
+/* `colour` pins a slice to its entity. Without it the donut colours by array
+   position, so filtering out an empty slice repaints every survivor — the one
+   thing a categorical palette must never do. */
+export interface Slice { label: string; value: number; colour?: string }
 
 /**
  * Identity plus share of a whole, for a handful of slices. Carries a legend with the
@@ -154,7 +157,7 @@ export function DonutChart({ data, centre, centreSub, format = money0, label }: 
                   key={d.label}
                   cx="75" cy="75" r={R}
                   fill="none"
-                  stroke={seriesColour(i)}
+                  stroke={d.colour ?? seriesColour(i)}
                   strokeWidth={hover === i ? STROKE + 3 : STROKE}
                   strokeDasharray={dash}
                   strokeDashoffset={-offset}
@@ -184,7 +187,7 @@ export function DonutChart({ data, centre, centreSub, format = money0, label }: 
             onMouseLeave={() => setHover(null)}
             style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: 'var(--text-xs)' }}
           >
-            <span aria-hidden style={{ width: '10px', height: '10px', borderRadius: '2px', background: seriesColour(i), flexShrink: 0 }} />
+            <span aria-hidden style={{ width: '10px', height: '10px', borderRadius: '2px', background: d.colour ?? seriesColour(i), flexShrink: 0 }} />
             <span style={{ color: 'var(--text-secondary)', minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.label}</span>
             <span style={{ marginLeft: 'auto', fontWeight: 700, color: 'var(--text)' }}>{format(d.value)}</span>
             <span style={{ color: AXIS, width: '34px', textAlign: 'right' }}>{Math.round((d.value / total) * 100)}%</span>

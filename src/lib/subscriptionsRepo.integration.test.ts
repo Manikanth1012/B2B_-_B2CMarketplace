@@ -23,6 +23,13 @@ describe('the consumer subscriptions', () => {
     const subs = await load()
     expect(subs.map(s => s.ref)).toEqual([
       'SUB-9101', 'SUB-9102', 'SUB-9103', 'SUB-9104', 'SUB-9105', 'SUB-9106',
+      /* SUB-9107 is not from the prototype. It was added when the product
+         dependency rules were written down: the shopper owns a delivered Nimbus
+         occupancy sensor, and PRL-20 says a sensor with no connectivity plan
+         reports to nothing. Supplying the plan was the fix — deleting the order
+         would have been a demo of a marketplace that sells things that do not
+         work. */
+      'SUB-9107',
     ])
   })
 
@@ -43,12 +50,12 @@ describe('the consumer subscriptions', () => {
     }
   })
 
-  it('has four billing, one paused and one cancelled', async () => {
+  it('has five billing, one paused and one cancelled', async () => {
     const subs = await load()
-    expect(subs.filter(isActive)).toHaveLength(4)
+    expect(subs.filter(isActive)).toHaveLength(5)
     expect(subs.filter(s => s.status === 'paused')).toHaveLength(1)
     expect(subs.filter(s => s.status === 'cancelled')).toHaveLength(1)
-    expect(monthlyTotal(subs)).toBeCloseTo(52.88, 2)
+    expect(monthlyTotal(subs)).toBeCloseTo(54.28, 2)
   })
 
   it('gives the dormant rows the date that explains them', async () => {

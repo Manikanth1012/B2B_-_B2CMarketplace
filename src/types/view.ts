@@ -3,6 +3,7 @@ export type View = 'home' | 'category' | 'product' | 'checkout' | 'orders' | 'su
 export type OperatorView =
   | 'op-dashboard'
   | 'op-onboarding'
+  | 'op-partners'
   | 'op-catalogue'
   | 'op-settlement'
   | 'op-inventory'
