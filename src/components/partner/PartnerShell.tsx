@@ -52,6 +52,7 @@ const NAV_SECTIONS: { label: string; items: { id: PartnerView; label: string; ic
   {
     label: 'Account',
     items: [
+      { id: 'pt-notifications', label: 'Notifications', icon: <BellIcon size={18} /> },
       { id: 'pt-team', label: 'Your Team', icon: <Users size={18} /> },
       { id: 'pt-audit', label: 'Audit Log', icon: <History size={18} /> },
       { id: 'pt-profile', label: 'My Details', icon: <User size={18} /> },

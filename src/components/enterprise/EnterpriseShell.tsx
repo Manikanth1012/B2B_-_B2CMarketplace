@@ -37,6 +37,7 @@ const NAV_SECTIONS: { label: string; items: { id: EnterpriseView; label: string;
   {
     label: 'Account',
     items: [
+      { id: 'en-notifications', label: 'Notifications', icon: <BellIcon size={18} /> },
       { id: 'en-team', label: 'Team & Roles', icon: <Users size={18} /> },
       { id: 'en-audit', label: 'Audit Log', icon: <History size={18} /> },
       { id: 'en-profile', label: 'My Details', icon: <User size={18} /> },

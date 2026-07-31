@@ -3,7 +3,7 @@ import {
   Star,
   LayoutDashboard, Users, Package, DollarSign, Warehouse, Ticket,
   Shield, Code, Bell, Tag, TrendingUp, Settings, ChevronDown,
-  Search, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store, Wallet as WalletIcon, MessageSquareWarning, RotateCcw, Gift, Scale, BookText
+  Search, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store, Wallet as WalletIcon, MessageSquareWarning, RotateCcw, Gift, Scale, BookText, Radio
 } from 'lucide-react'
 import type { OperatorView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
@@ -45,7 +45,8 @@ const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; i
       { id: 'op-developer', label: 'Developer Portal', icon: <Code size={18} /> },
       { id: 'op-promotions', label: 'Promotions', icon: <Tag size={18} /> },
       { id: 'op-banners', label: 'Storefront Banners', icon: <Bell size={18} /> },
-      { id: 'op-channels', label: 'Channels', icon: <BellIcon size={18} /> },
+      { id: 'op-notifications', label: 'Notifications', icon: <BellIcon size={18} /> },
+      { id: 'op-channels', label: 'Channels', icon: <Radio size={18} /> },
     ]
   },
   {

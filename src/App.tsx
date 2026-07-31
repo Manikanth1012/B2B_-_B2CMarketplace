@@ -56,11 +56,13 @@ import { PartnerIntegrations } from './components/partner/PartnerIntegrations'
 import { PartnerSupport } from './components/partner/PartnerSupport'
 import { PartnerTeam, PartnerAudit } from './components/partner/PartnerMisc'
 import { PartnerDetails } from './components/partner/PartnerDetails'
+import { PartnerNotifications } from './components/partner/PartnerNotifications'
 import { PartnerRefunds } from './components/partner/PartnerRefunds'
 import { OperatorRefunds } from './components/operator/OperatorRefunds'
 import { OperatorRewards } from './components/operator/OperatorRewards'
 import { OperatorRevenueShare } from './components/operator/OperatorRevenueShare'
 import { OperatorLedger } from './components/operator/OperatorLedger'
+import { OperatorNotifications } from './components/operator/OperatorNotifications'
 import { PartnerRewards } from './components/partner/PartnerRewards'
 import { PartnerReviews } from './components/partner/PartnerReviews'
 import { EnterpriseShell } from './components/enterprise/EnterpriseShell'
@@ -68,6 +70,7 @@ import { EnterpriseDashboard } from './components/enterprise/EnterpriseDashboard
 import { EnterpriseBrowse } from './components/enterprise/EnterpriseBrowse'
 import { EnterpriseApprovals, EnterpriseOrders, EnterpriseSubs, EnterpriseMarketplace } from './components/enterprise/EnterpriseViews'
 import { EnterpriseTeam, EnterpriseAudit, EnterpriseProfile } from './components/enterprise/EnterpriseMisc'
+import { EnterpriseNotifications } from './components/enterprise/EnterpriseNotifications'
 import { KnowledgeBase } from './components/KnowledgeBase'
 
 export default function App() {
@@ -293,6 +296,7 @@ export default function App() {
         {opView === 'op-developer' && <OperatorDeveloper />}
         {opView === 'op-promotions' && <OperatorPromotions />}
         {opView === 'op-banners' && <OperatorBanners />}
+        {opView === 'op-notifications' && <OperatorNotifications />}
         {opView === 'op-channels' && <OperatorChannels />}
         {opView === 'op-roles' && <OperatorRoles />}
         {opView === 'op-reviews' && <OperatorReviews />}
@@ -326,6 +330,7 @@ export default function App() {
         {ptView === 'pt-support' && <PartnerSupport partnerId={session!.partnerId!} />}
         {ptView === 'pt-refunds' && <PartnerRefunds partnerId={session!.partnerId!} />}
         {ptView === 'pt-rewards' && <PartnerRewards partnerId={session!.partnerId!} />}
+        {ptView === 'pt-notifications' && <PartnerNotifications partnerId={session!.partnerId!} />}
         {ptView === 'pt-team' && <PartnerTeam partnerId={session!.partnerId!} />}
         {ptView === 'pt-audit' && <PartnerAudit />}
         {ptView === 'pt-profile' && <PartnerDetails partnerId={session!.partnerId!} />}
@@ -346,6 +351,7 @@ export default function App() {
         {enView === 'en-approvals' && <EnterpriseApprovals />}
         {enView === 'en-orders' && <EnterpriseOrders />}
         {enView === 'en-subs' && <EnterpriseSubs />}
+        {enView === 'en-notifications' && <EnterpriseNotifications />}
         {enView === 'en-team' && <EnterpriseTeam />}
         {enView === 'en-audit' && <EnterpriseAudit />}
         {enView === 'en-profile' && <EnterpriseProfile />}

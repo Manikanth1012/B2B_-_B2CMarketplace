@@ -33,8 +33,13 @@ export async function restoreSession(): Promise<Session | null> {
   return sessionFromAppMetadata(data.session.user.app_metadata)
 }
 
+/* Signs out of this browser only.
+ *
+ * The default is `global`, which revokes every refresh token the person holds
+ * — signing out on a laptop would sign them out on their phone mid-order. The
+ * app has no "sign out everywhere" control, so nobody ever asked for that. */
 export async function signOut(): Promise<void> {
-  await supabase.auth.signOut()
+  await supabase.auth.signOut({ scope: 'local' })
 }
 
 /** The address the session is actually authenticated as. Not the same thing as
