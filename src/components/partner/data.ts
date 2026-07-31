@@ -1,15 +1,20 @@
 // Static demo data for the Partner persona — Nimbus Sensors
 // Mirrors the prototype's PMAP['PTR-1004'] partner
 
+/* Kept in step with the `partners` row it names. It had drifted badly — India
+   for a company registered in Munich, Gold for a Silver-tier seller, and
+   Security for a marketplace they have only applied to — and every screen that
+   read it repeated the drift. Screens that can read the database now do; this
+   is what is left for the two that cannot yet. */
 export const PARTNER_PROFILE = {
   id: 'PTR-1004',
   name: 'Nimbus Sensors',
   contact: 'Rajesh Kumar',
-  tier: 'Gold',
+  tier: 'Silver',
   joined: 'Sep 2024',
   rating: 4.6,
-  country: 'India',
-  verticals: ['iot', 'security'] as string[],
+  country: 'Germany',
+  verticals: ['iot', 'device'] as string[],
   status: 'active',
 }
 

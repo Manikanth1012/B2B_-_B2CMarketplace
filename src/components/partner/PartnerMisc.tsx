@@ -1,13 +1,27 @@
-import { Users, Shield, History, User, Mail, Phone, MapPin, Building, FileText } from 'lucide-react'
-import { SectionCard, Table, Td, StatusPill, Btn, toast } from '../operator/shared'
+import { useState, useEffect } from 'react'
+import { SectionCard, Table, Td, StatusPill, Btn, toast, fmtDate } from '../operator/shared'
 import { PARTNER_PROFILE } from './data'
+import { loadMyDetails } from '../../lib/partnerDetailsRepo'
+import { ROLE_LABEL, ROLE_SCOPE, securityGaps } from '../../lib/partnerDetails'
+import type { PartnerUser } from '../../lib/partnerDetails'
 
-export function PartnerTeam() {
-  const team = [
-    { name: 'Rajesh Kumar', email: 'rajesh.kumar@nimbussensors.com', role: 'Seller Admin', status: 'active', mfa: true },
-    { name: 'Priya Nair', email: 'priya.nair@nimbussensors.com', role: 'Fulfilment Operator', status: 'active', mfa: false },
-    { name: 'Arjun Mehta', email: 'arjun.mehta@nimbussensors.com', role: 'Finance', status: 'active', mfa: true },
-  ]
+/* The roster is the same rows My details reads. It used to be three names in a
+   TypeScript array, which meant this page and that one could disagree about who
+   works here — and once they do, neither is worth reading. */
+export function PartnerTeam({ partnerId }: { partnerId: string }) {
+  const [team, setTeam] = useState<PartnerUser[] | null>(null)
+  const [me, setMe] = useState<PartnerUser | null>(null)
+
+  useEffect(() => {
+    void loadMyDetails(partnerId).then(d => {
+      setMe(d.me)
+      setTeam(d.me ? [d.me, ...d.colleagues] : d.colleagues)
+    })
+  }, [partnerId])
+
+  if (!team) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+
+  const gaps = securityGaps(team)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -18,7 +32,9 @@ export function PartnerTeam() {
             People at {PARTNER_PROFILE.name}. Only the seller admin can publish listings and act on onboarding.
           </p>
         </div>
-        <Btn variant="primary">Invite a colleague</Btn>
+        <Btn variant="primary" onClick={() => toast('Invitations are sent by the marketplace desk in this build', 'info')}>
+          Invite a colleague
+        </Btn>
       </div>
 
       <div style={{
@@ -29,8 +45,23 @@ export function PartnerTeam() {
         These are people at <strong>{PARTNER_PROFILE.name}</strong>, not marketplace staff. The marketplace never sees your team list; it only sees which of you acted on an order.
       </div>
 
-      <SectionCard title="Your Team" subtitle={`${team.length} members`}>
-        <Table headers={['Name', 'Email', 'Role', 'MFA', 'Status', '']}>
+      {gaps.length > 0 && (
+        <div style={{
+          padding: '14px 18px', borderRadius: 'var(--radius-md)',
+          background: 'var(--warning-bg)', borderLeft: '3px solid var(--warning)',
+          fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.6,
+        }}>
+          <strong style={{ color: 'var(--warning)', display: 'block', marginBottom: '4px' }}>
+            {gaps.length} thing{gaps.length === 1 ? '' : 's'} worth fixing on these sign-ins
+          </strong>
+          {gaps.map((g, i) => (
+            <div key={i}><strong>{g.who} — {g.what}.</strong> {g.why}</div>
+          ))}
+        </div>
+      )}
+
+      <SectionCard title="Your Team" subtitle={`${team.length} ${team.length === 1 ? 'person' : 'people'}`}>
+        <Table headers={['Name', 'Email', 'Role', 'MFA', 'Last active', 'Status', '']}>
           {team.map(m => (
             <tr key={m.email}>
               <Td>
@@ -38,14 +69,28 @@ export function PartnerTeam() {
                   <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#5E4B9B', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 'var(--text-xs)', flexShrink: 0 }}>
                     {m.name.split(' ').map(w => w[0]).join('')}
                   </div>
-                  <span style={{ fontWeight: 600 }}>{m.name}</span>
+                  <div>
+                    <div style={{ fontWeight: 600 }}>{m.name}{m.id === me?.id && <span style={{ color: 'var(--text-tertiary)', fontWeight: 500 }}> · you</span>}</div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{m.job_title}</div>
+                  </div>
                 </div>
               </Td>
               <Td>{m.email}</Td>
-              <Td>{m.role}</Td>
+              <Td>
+                <div>{ROLE_LABEL[m.role]}</div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{ROLE_SCOPE[m.role]}</div>
+              </Td>
               <Td right>{m.mfa ? <StatusPill status="active" /> : <StatusPill status="draft" />}</Td>
+              <Td right style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{m.last_active ?? '—'}</Td>
               <Td right><StatusPill status={m.status} /></Td>
-              <Td right><Btn variant="secondary" size="sm" onClick={() => toast('Team member detail opened')}>Edit</Btn></Td>
+              <Td right>
+                <Btn variant="secondary" size="sm"
+                     onClick={() => toast(m.id === me?.id
+                       ? 'Your own details are under My details'
+                       : `${m.name} last changed their password ${m.pwd_changed ? fmtDate(m.pwd_changed) : 'never'}`, 'info')}>
+                  {m.id === me?.id ? 'That is you' : 'Detail'}
+                </Btn>
+              </Td>
             </tr>
           ))}
         </Table>
@@ -96,61 +141,3 @@ export function PartnerAudit() {
     </div>
   )
 }
-
-export function PartnerProfile() {
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div>
-        <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>My Details</h1>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-          Name, contact, time zone and cover while you are away.
-        </p>
-      </div>
-
-      <SectionCard title="Contact Information" subtitle="What the marketplace holds about you">
-        <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-          <DetailRow icon={<User size={16} />} label="Name" value={PARTNER_PROFILE.contact} />
-          <DetailRow icon={<Building size={16} />} label="Company" value={PARTNER_PROFILE.name} />
-          <DetailRow icon={<Mail size={16} />} label="Email" value="rajesh.kumar@nimbussensors.com" />
-          <DetailRow icon={<Phone size={16} />} label="Phone" value="+91 98765 43210" />
-          <DetailRow icon={<MapPin size={16} />} label="Country" value={PARTNER_PROFILE.country} />
-          <DetailRow icon={<Shield size={16} />} label="Partner ID" value={PARTNER_PROFILE.id} />
-        </div>
-      </SectionCard>
-
-      <SectionCard title="Compliance Documents" subtitle="What you handed over at onboarding">
-        <div style={{ padding: '20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {[
-            { name: 'Certificate of incorporation', status: 'verified', when: '09 Sep 2024' },
-            { name: 'Beneficial ownership declaration', status: 'verified', when: '09 Sep 2024' },
-            { name: 'Bank verification letter', status: 'verified', when: '13 Sep 2024' },
-            { name: 'Tax residency certificate', status: 'expiring', when: 'Expires 11 Sep 2026' },
-          ].map(d => (
-            <div key={d.name} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '12px 14px', border: '1px solid var(--border)', borderRadius: 'var(--radius)' }}>
-              <FileText size={18} style={{ color: 'var(--text-tertiary)' }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{d.name}</div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{d.when}</div>
-              </div>
-              <StatusPill status={d.status === 'verified' ? 'verified' : 'degraded'} />
-              <Btn variant="secondary" size="sm" onClick={() => toast('Document opened')}>View</Btn>
-            </div>
-          ))}
-        </div>
-      </SectionCard>
-    </div>
-  )
-}
-
-function DetailRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-      <span style={{ color: 'var(--text-tertiary)' }}>{icon}</span>
-      <div>
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{label}</div>
-        <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{value}</div>
-      </div>
-    </div>
-  )
-}
-

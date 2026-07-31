@@ -18,6 +18,7 @@ import {
   SectionCard, EmptyState, Btn, Modal, FormField, TextArea, toast, fmtDate, fmtMoney, fmtInt,
 } from './shared'
 import { Callout, DocumentViewer } from '../OnboardingJourney'
+import { PartnerSettlementTab } from './PartnerSettlementTab'
 import { ColumnChart, DonutChart } from './charts'
 import {
   loadPartnerDirectory, loadPartnerDetail, movePartner,
@@ -49,12 +50,13 @@ const PAGE_SIZE = 12
    because widening what somebody may sell is the same kind of decision. */
 const ACTOR = 'Marketplace onboarding desk'
 
-type Tab = 'overview' | 'categories' | 'listings' | 'documents' | 'bills' | 'history'
+type Tab = 'overview' | 'categories' | 'listings' | 'settlement' | 'documents' | 'bills' | 'history'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview',   label: 'Overview' },
   { id: 'categories', label: 'Categories' },
   { id: 'listings',   label: 'Listings' },
+  { id: 'settlement', label: 'Settlement & contacts' },
   { id: 'documents',  label: 'Documents' },
   { id: 'bills',      label: 'Bills' },
   { id: 'history',    label: 'History' },
@@ -351,6 +353,9 @@ export function OperatorPartners() {
                           onChanged={async () => { await Promise.all([refresh(), reloadDetail(detail!.partner!.id)]) }} />
             )}
             {tab === 'listings' && <Listings detail={detail!} catName={catName} />}
+            {tab === 'settlement' && (
+              <PartnerSettlementTab partnerId={partner.id} partnerName={partner.name} country={partner.country} />
+            )}
             {tab === 'documents' && <Documents detail={detail!} catName={catName} onView={setViewDoc} />}
             {tab === 'bills' && <Bills detail={detail!} />}
             {tab === 'history' && <History detail={detail!} />}

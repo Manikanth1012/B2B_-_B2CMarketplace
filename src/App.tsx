@@ -54,7 +54,8 @@ import { PartnerSettlementPlan } from './components/partner/PartnerSettlementPla
 import { PartnerPerformance } from './components/partner/PartnerPerformance'
 import { PartnerIntegrations } from './components/partner/PartnerIntegrations'
 import { PartnerSupport } from './components/partner/PartnerSupport'
-import { PartnerTeam, PartnerAudit, PartnerProfile } from './components/partner/PartnerMisc'
+import { PartnerTeam, PartnerAudit } from './components/partner/PartnerMisc'
+import { PartnerDetails } from './components/partner/PartnerDetails'
 import { PartnerReviews } from './components/partner/PartnerReviews'
 import { EnterpriseShell } from './components/enterprise/EnterpriseShell'
 import { EnterpriseDashboard } from './components/enterprise/EnterpriseDashboard'
@@ -313,9 +314,9 @@ export default function App() {
         {ptView === 'pt-integrations' && <PartnerIntegrations />}
         {ptView === 'pt-reviews' && <PartnerReviews partnerId={session?.partnerId ?? ''} />}
         {ptView === 'pt-support' && <PartnerSupport partnerId={session!.partnerId!} />}
-        {ptView === 'pt-team' && <PartnerTeam />}
+        {ptView === 'pt-team' && <PartnerTeam partnerId={session!.partnerId!} />}
         {ptView === 'pt-audit' && <PartnerAudit />}
-        {ptView === 'pt-profile' && <PartnerProfile />}
+        {ptView === 'pt-profile' && <PartnerDetails partnerId={session!.partnerId!} />}
         {ptView === 'pt-kb' && <KnowledgeBase persona="partner" title="Knowledge base" feedbackAs={{ actor: 'Rajesh Kumar', org: 'Nimbus Sensors' }} />}
       </PartnerShell>
     )
