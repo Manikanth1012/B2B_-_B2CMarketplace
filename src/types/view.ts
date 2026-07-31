@@ -18,6 +18,7 @@ export type OperatorView =
   | 'op-reviews'
   | 'op-feedback'
   | 'op-wallets'
+  | 'op-refunds'
   | 'op-kb'
 
 export type PartnerView =
@@ -31,6 +32,7 @@ export type PartnerView =
   | 'pt-performance'
   | 'pt-integrations'
   | 'pt-support'
+  | 'pt-refunds'
   | 'pt-team'
   | 'pt-audit'
   | 'pt-reviews'

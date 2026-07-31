@@ -277,18 +277,6 @@ export interface ConsumerHouseholdMember {
   is_you: boolean
 }
 
-export interface ConsumerRefund {
-  id: string
-  order_ref: string
-  item: string
-  seller: string
-  amount: number
-  reason: string
-  state: string
-  decided: string | null
-  note: string | null
-}
-
 export interface ConsumerBill {
   id: string
   period: string

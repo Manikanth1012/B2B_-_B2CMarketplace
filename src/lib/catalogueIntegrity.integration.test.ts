@@ -46,7 +46,7 @@ describe('everything that references the catalogue', () => {
 
   it('refunds the consumer for items their orders actually contain', async () => {
     const [{ data: refunds }, { data: items }] = await Promise.all([
-      supabase.from('consumer_refunds').select('order_ref, item'),
+      supabase.from('refunds').select('order_ref, item'),
       supabase.from('order_items').select('product_name, order:orders(order_ref)')
         .returns<{ product_name: string; order: { order_ref: string } | null }[]>(),
     ])

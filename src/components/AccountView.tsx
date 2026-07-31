@@ -12,9 +12,13 @@ import { StockWatchCard } from './StockWatchCard'
 import { MyReviewsCard } from './MyReviewsCard'
 import type {
   ConsumerProfile, ConsumerNotification, ConsumerAuditEntry,
-  ConsumerHouseholdMember, ConsumerRefund, ConsumerPaymentMethod,
+  ConsumerHouseholdMember, ConsumerPaymentMethod,
   ConsumerBill, ConsumerTicket, TicketMessage,
 } from '../types'
+import { loadMyRefunds, requestRefund } from '../lib/refundRepo'
+import type { RefundBook } from '../lib/refundRepo'
+import { STATES, REASONS, REASON_LIST, sla, ownership, autoApproves } from '../lib/refunds'
+import type { RefundPolicy, RefundReason } from '../lib/refunds'
 
 type Tab = 'profile' | 'security' | 'notifications' | 'activity' | 'household' | 'wallet' | 'refunds' | 'bills' | 'support'
 
@@ -64,27 +68,27 @@ export function AccountView({ initialTab, onWatchesChanged }: {
   const [notifications, setNotifications] = useState<ConsumerNotification[]>([])
   const [auditLog, setAuditLog] = useState<ConsumerAuditEntry[]>([])
   const [household, setHousehold] = useState<ConsumerHouseholdMember[]>([])
-  const [refunds, setRefunds] = useState<ConsumerRefund[]>([])
+  const [refundBook, setRefundBook] = useState<RefundBook>({ refunds: [], policy: null, windows: [] })
   const [bills, setBills] = useState<ConsumerBill[]>([])
   const [tickets, setTickets] = useState<ConsumerTicket[]>([])
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState('')
 
   const loadData = useCallback(async () => {
-    const [pRes, nRes, aRes, hRes, rRes, bRes, tRes] = await Promise.all([
+    const [pRes, nRes, aRes, hRes, bRes, tRes, refunds] = await Promise.all([
       supabase.from('consumer_profile').select('*').eq('id', 'me').maybeSingle(),
       supabase.from('consumer_notifications').select('*').order('id'),
       supabase.from('consumer_audit_log').select('*').order('when_date', { ascending: false }),
       supabase.from('consumer_household').select('*').order('joined'),
-      supabase.from('consumer_refunds').select('*').order('id'),
       supabase.from('consumer_bills').select('*').order('id', { ascending: false }),
       supabase.from('consumer_tickets').select('*').order('id', { ascending: false }),
+      loadMyRefunds(),
     ])
     if (pRes.data) setProfile(pRes.data as ConsumerProfile)
     if (nRes.data) setNotifications(nRes.data as ConsumerNotification[])
     if (aRes.data) setAuditLog(aRes.data as ConsumerAuditEntry[])
     if (hRes.data) setHousehold(hRes.data as ConsumerHouseholdMember[])
-    if (rRes.data) setRefunds(rRes.data as ConsumerRefund[])
+    setRefundBook(refunds)
     if (bRes.data) setBills(bRes.data as ConsumerBill[])
     if (tRes.data) setTickets(tRes.data as ConsumerTicket[])
     setLoading(false)
@@ -213,7 +217,7 @@ export function AccountView({ initialTab, onWatchesChanged }: {
       {tab === 'activity' && <ActivityTab log={auditLog} />}
       {tab === 'household' && <HouseholdTab members={household} showToast={showToast} />}
       {tab === 'wallet' && <WalletTab />}
-      {tab === 'refunds' && <RefundsTab refunds={refunds} />}
+      {tab === 'refunds' && <RefundsTab book={refundBook} onChanged={loadData} showToast={showToast} />}
       {tab === 'bills' && <BillsTab bills={bills} showToast={showToast} />}
       {tab === 'support' && <SupportTab tickets={tickets} showToast={showToast} />}
 
@@ -1279,56 +1283,256 @@ const btnSecondarySmall: React.CSSProperties = {
 }
 
 /* ============================== REFUNDS TAB ============================== */
-function RefundsTab({ refunds }: { refunds: ConsumerRefund[] }) {
-  const total = refunds.filter((r) => r.state === 'refunded' || r.state === 'partial')
-    .reduce((a, r) => a + r.amount, 0)
+/* The customer's side of the same record the seller and the marketplace read.
+   It used to be a list in a table only this page could see, so nobody who could
+   act on a refund could see one. What changed here is the two things a customer
+   actually wants: who is deciding and by when, and a way to ask in the first
+   place. */
+function RefundsTab({ book, onChanged, showToast }: {
+  book: RefundBook; onChanged: () => Promise<void> | void; showToast: (m: string) => void
+}) {
+  const [asking, setAsking] = useState(false)
+  const now = new Date()
+  const back = book.refunds
+    .filter((r) => r.state === 'refunded' || r.state === 'partial')
+    .reduce((a, r) => a + Number(r.refunded ?? 0), 0)
+  const waiting = book.refunds.filter((r) => !STATES[r.state].final)
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}>
-        <StatBox icon={<RotateCcw size={20} />} label="Total refunds" value={fmtMoney(total)} />
-        <StatBox icon={<Clock size={20} />} label="Pending" value={String(refunds.filter((r) => r.state === 'pending').length)} />
-        <StatBox icon={<Check size={20} />} label="Completed" value={String(refunds.filter((r) => r.state === 'refunded').length)} />
+        <StatBox icon={<RotateCcw size={20} />} label="Money back" value={fmtMoney(back)} />
+        <StatBox icon={<Clock size={20} />} label="Still waiting" value={String(waiting.length)} />
+        <StatBox icon={<Check size={20} />} label="Requests made" value={String(book.refunds.length)} />
       </div>
 
-      <Card icon={<RotateCcw size={18} />} title="Your refunds" subtitle={`${refunds.length} refund requests on record`}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-          {refunds.map((r) => {
-            const st = REFUND_STATES[r.state] || REFUND_STATES.pending
-            return (
-              <div key={r.id} style={{
-                display: 'flex', gap: '16px', alignItems: 'flex-start',
-                padding: '16px 0', borderBottom: '1px solid var(--border-light)',
-              }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', marginBottom: '2px' }}>
-                    {r.item}
-                  </div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
-                    {r.id} · Order {r.order_ref} · {r.seller}
-                  </div>
-                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>{r.reason}</div>
-                  {r.note && (
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-                      {r.decided ? `Decided ${r.decided} — ` : ''}{r.note}
-                    </div>
-                  )}
-                </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontWeight: 800, fontSize: 'var(--text-lg)', marginBottom: '4px' }}>{fmtMoney(r.amount)}</div>
-                  <span style={{
-                    padding: '4px 10px', borderRadius: 'var(--radius-full)',
-                    fontSize: 'var(--text-xs)', fontWeight: 600,
-                    background: st.bg, color: st.color,
-                  }}>
-                    {st.label}
-                  </span>
-                </div>
-              </div>
-            )
-          })}
+      <Card icon={<RotateCcw size={18} />} title="Your refunds" subtitle={`${book.refunds.length} on record`}>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+          <button onClick={() => setAsking(true)} style={btnPrimary}>Ask for a refund</button>
         </div>
+        {book.refunds.length === 0 ? (
+          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', padding: '8px 0' }}>
+            Nothing yet. If something never arrived, arrived broken or was charged twice, ask here and
+            whoever sold it has two days to answer.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+            {book.refunds.map((r) => {
+              const spec = STATES[r.state]
+              const clock = book.policy ? sla(r, book.policy, now) : null
+              const own = ownership(r)
+              return (
+                <div key={r.id} style={{
+                  display: 'flex', gap: '16px', alignItems: 'flex-start',
+                  padding: '16px 0', borderBottom: '1px solid var(--border-light)',
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', marginBottom: '2px' }}>{r.item}</div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
+                      {r.id} · Order {r.order_ref} · {r.seller}
+                    </div>
+                    <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                      {REASONS[r.reason].label}
+                    </div>
+                    {/* Who is deciding and by when. It is the question a customer
+                        is actually asking when they open this page — but only
+                        while somebody is still deciding. An agreed refund is
+                        waiting on the payment run, not on a person, and saying
+                        "the seller is deciding this" underneath "Approved" is
+                        the page contradicting itself. */}
+                    {(r.state === 'requested' || r.state === 'escalated') && (
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: '5px', lineHeight: 1.5 }}>
+                        <strong>{own.owner === 'marketplace' ? 'The marketplace' : r.seller} is deciding this.</strong>
+                        {clock && clock.level !== 'settled' ? ` ${clock.text}` : ''}
+                      </div>
+                    )}
+                    {r.decision_note && (
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '5px', lineHeight: 1.5 }}>
+                        {r.decided_on ? `Decided ${r.decided_on} by ${r.decided_by} — ` : ''}{r.decision_note}
+                      </div>
+                    )}
+                    {r.escalated_why && (
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '5px', lineHeight: 1.5 }}>
+                        Taken over by the marketplace: {r.escalated_why}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: 'var(--text-lg)', marginBottom: '4px' }}>
+                      {fmtMoney(Number(r.refunded ?? r.amount))}
+                    </div>
+                    {r.state === 'partial' && (
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
+                        of {fmtMoney(Number(r.amount))} asked for
+                      </div>
+                    )}
+                    <span style={{
+                      padding: '4px 10px', borderRadius: 'var(--radius-full)',
+                      fontSize: 'var(--text-xs)', fontWeight: 600,
+                      background: spec.final ? (r.state === 'declined' ? '#FEE2E2' : '#DCFCE7') : '#FEF3C7',
+                      color: spec.final ? (r.state === 'declined' ? 'var(--danger)' : 'var(--success)') : 'var(--warning)',
+                    }}>{spec.label}</span>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </Card>
+
+      {book.policy && (
+        <Card icon={<Clock size={18} />} title="What you are entitled to" subtitle="The rules everybody here plays by">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
+            <div>{book.policy.escalation_rule}</div>
+            <div>{book.policy.store_credit}</div>
+            {book.windows.length > 0 && (
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                {book.windows.map((w) => `${w.category_id}: ${w.days} days`).join(' · ')}
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {asking && book.policy && (
+        <AskForRefund policy={book.policy} onClose={() => setAsking(false)}
+                      onDone={async () => { setAsking(false); await onChanged() }} showToast={showToast} />
+      )}
     </div>
+  )
+}
+
+interface RefundableOrder {
+  order_ref: string; product_id: string; item: string; category_id: string | null
+  partner_id: string | null; seller: string; first_party: boolean
+  customer: string; amount: number; placed: string
+}
+
+/* Raising one. The order picker is the point: a refund against an order that
+   does not exist is a support ticket, not a refund, and typing an order number
+   by hand is how you get one. */
+function AskForRefund({ policy, onClose, onDone, showToast }: {
+  policy: RefundPolicy
+  onClose: () => void
+  onDone: () => Promise<void>
+  showToast: (m: string) => void
+}) {
+  const [orders, setOrders] = useState<RefundableOrder[] | null>(null)
+  const [pick, setPick] = useState('')
+  const [reason, setReason] = useState<RefundReason>('faulty')
+  const [detail, setDetail] = useState('')
+  const [evidence, setEvidence] = useState('')
+  const [err, setErr] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    void (async () => {
+      const [oRes, iRes, pRes, existing] = await Promise.all([
+        supabase.from('orders').select('id,order_ref,buyer_name,placed_date,total'),
+        supabase.from('order_items').select('order_id,product_id,product_name,price,quantity'),
+        supabase.from('products').select('id,category_id,partner_id,seller'),
+        supabase.from('refunds').select('order_ref,product_id'),
+      ])
+      const products = (pRes.data ?? []) as { id: string; category_id: string | null; partner_id: string | null; seller: string }[]
+      const claimed = new Set(((existing.data ?? []) as { order_ref: string; product_id: string }[])
+        .map((r) => `${r.order_ref}::${r.product_id}`))
+      const rows: RefundableOrder[] = []
+      for (const o of (oRes.data ?? []) as { id: string; order_ref: string; buyer_name: string; placed_date: string; total: number }[]) {
+        for (const i of (iRes.data ?? []) as { order_id: string; product_id: string; product_name: string; price: number; quantity: number }[]) {
+          if (i.order_id !== o.id) continue
+          if (claimed.has(`${o.order_ref}::${i.product_id}`)) continue
+          const p = products.find((x) => x.id === i.product_id)
+          rows.push({
+            order_ref: o.order_ref, product_id: i.product_id, item: i.product_name,
+            category_id: p?.category_id ?? null, partner_id: p?.partner_id ?? null,
+            seller: p?.seller ?? 'Aventa Telecom', first_party: !p?.partner_id,
+            customer: o.buyer_name, amount: Number(i.price) * Number(i.quantity),
+            placed: o.placed_date,
+          })
+        }
+      }
+      setOrders(rows)
+      if (rows.length > 0) setPick(`${rows[0].order_ref}::${rows[0].product_id}`)
+    })()
+  }, [])
+
+  const chosen = orders?.find((o) => `${o.order_ref}::${o.product_id}` === pick) ?? null
+  const auto = chosen ? autoApproves(reason, chosen.amount, policy) : null
+
+  return (
+    <Modal title="Ask for a refund" onClose={onClose}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        {orders === null ? (
+          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>Loading your orders…</div>
+        ) : orders.length === 0 ? (
+          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
+            Every item on your orders already has a refund request against it. To raise a second one on the
+            same item, contact support — a duplicate request would only sit behind the first.
+          </div>
+        ) : (
+          <>
+            <Field label="Which order" icon={<RotateCcw size={14} />}>
+              <select style={inputStyle} value={pick} onChange={(e) => setPick(e.target.value)}>
+                {orders.map((o) => (
+                  <option key={`${o.order_ref}::${o.product_id}`} value={`${o.order_ref}::${o.product_id}`}>
+                    {o.item} — {fmtMoney(o.amount)} · {o.order_ref} · {o.placed}
+                  </option>
+                ))}
+              </select>
+            </Field>
+
+            <Field label="What went wrong" icon={<AlertCircle size={14} />}>
+              <select style={inputStyle} value={reason} onChange={(e) => setReason(e.target.value as RefundReason)}>
+                {REASON_LIST.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
+              </select>
+            </Field>
+
+            <Field label="In your own words" icon={<MessageSquare size={14} />}>
+              <textarea style={{ ...inputStyle, minHeight: '80px', resize: 'vertical' }}
+                        value={detail} onChange={(e) => setDetail(e.target.value)}
+                        placeholder="A line or two on what happened. The seller reads this." />
+            </Field>
+
+            <Field label="Anything that backs it up" icon={<FileText size={14} />}>
+              <input style={inputStyle} value={evidence} onChange={(e) => setEvidence(e.target.value)}
+                     placeholder={REASONS[reason].evidence} />
+            </Field>
+
+            {chosen && auto && (
+              <div style={{
+                fontSize: 'var(--text-xs)', lineHeight: 1.6, padding: '10px 12px',
+                borderRadius: 'var(--radius)',
+                background: auto.yes ? '#DCFCE7' : 'var(--bg-alt)',
+                color: auto.yes ? 'var(--success)' : 'var(--text-secondary)',
+              }}>
+                {auto.yes
+                  ? `This one is agreed on the spot — ${auto.because.charAt(0).toLowerCase()}${auto.because.slice(1)}`
+                  : `${chosen.first_party ? 'The marketplace' : chosen.seller} has ${policy.seller_sla_hours} hours to answer. If none comes, the marketplace decides it — you do not have to chase anybody.`}
+              </div>
+            )}
+            {err && <div style={{ fontSize: 'var(--text-sm)', color: 'var(--danger)', fontWeight: 600 }}>{err}</div>}
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button onClick={onClose} style={btnSecondary}>Cancel</button>
+              <button
+                disabled={saving || !chosen}
+                onClick={async () => {
+                  if (!chosen) return
+                  setSaving(true); setErr('')
+                  const r = await requestRefund({ order: chosen, policy, reason, detail, evidence })
+                  setSaving(false)
+                  if (!r.ok) { setErr(r.reason); return }
+                  showToast(r.note ?? 'Refund requested')
+                  await onDone()
+                }}
+                style={{ ...btnPrimary, opacity: saving || !chosen ? 0.5 : 1 }}
+              >
+                {saving ? 'Sending…' : 'Ask for it back'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
   )
 }
 

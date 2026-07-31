@@ -3,7 +3,7 @@ import {
   Star,
   LayoutDashboard, Route, Package, ShoppingCart, Wallet, FileText,
   BarChart3, Plug, LifeBuoy, Users, History, User, ChevronDown,
-  Search, Bell as BellIcon, LogOut, Menu, X, Store, BookOpen
+  Search, Bell as BellIcon, LogOut, Menu, X, Store, BookOpen, RotateCcw
 } from 'lucide-react'
 import type { PartnerView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
@@ -34,6 +34,7 @@ const NAV_SECTIONS: { label: string; items: { id: PartnerView; label: string; ic
     label: 'Trade',
     items: [
       { id: 'pt-orders', label: 'Orders', icon: <ShoppingCart size={18} /> },
+      { id: 'pt-refunds', label: 'Refunds', icon: <RotateCcw size={18} /> },
       { id: 'pt-settlement', label: 'Settlement', icon: <Wallet size={18} /> },
       { id: 'pt-plan', label: 'Settlement Plan', icon: <FileText size={18} /> },
     ]

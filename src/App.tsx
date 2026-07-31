@@ -56,6 +56,8 @@ import { PartnerIntegrations } from './components/partner/PartnerIntegrations'
 import { PartnerSupport } from './components/partner/PartnerSupport'
 import { PartnerTeam, PartnerAudit } from './components/partner/PartnerMisc'
 import { PartnerDetails } from './components/partner/PartnerDetails'
+import { PartnerRefunds } from './components/partner/PartnerRefunds'
+import { OperatorRefunds } from './components/operator/OperatorRefunds'
 import { PartnerReviews } from './components/partner/PartnerReviews'
 import { EnterpriseShell } from './components/enterprise/EnterpriseShell'
 import { EnterpriseDashboard } from './components/enterprise/EnterpriseDashboard'
@@ -291,6 +293,7 @@ export default function App() {
         {opView === 'op-roles' && <OperatorRoles />}
         {opView === 'op-reviews' && <OperatorReviews />}
         {opView === 'op-wallets' && <OperatorWallets />}
+        {opView === 'op-refunds' && <OperatorRefunds />}
         {opView === 'op-feedback' && <OperatorContentFeedback />}
         {opView === 'op-audit' && <OperatorAudit />}
         {opView === 'op-kb' && <KnowledgeBase persona="operator" title="Knowledge base" />}
@@ -314,6 +317,7 @@ export default function App() {
         {ptView === 'pt-integrations' && <PartnerIntegrations />}
         {ptView === 'pt-reviews' && <PartnerReviews partnerId={session?.partnerId ?? ''} />}
         {ptView === 'pt-support' && <PartnerSupport partnerId={session!.partnerId!} />}
+        {ptView === 'pt-refunds' && <PartnerRefunds partnerId={session!.partnerId!} />}
         {ptView === 'pt-team' && <PartnerTeam partnerId={session!.partnerId!} />}
         {ptView === 'pt-audit' && <PartnerAudit />}
         {ptView === 'pt-profile' && <PartnerDetails partnerId={session!.partnerId!} />}
