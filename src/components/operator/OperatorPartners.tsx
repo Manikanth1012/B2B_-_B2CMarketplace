@@ -12,14 +12,17 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Search, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, FileText,
-  CircleCheck as CheckCircle, CircleAlert as AlertCircle, Circle, Clock, TriangleAlert,
+  CircleCheck as CheckCircle, CircleAlert as AlertCircle, Circle, Clock, TriangleAlert, Plus,
 } from 'lucide-react'
 import {
   SectionCard, EmptyState, Btn, Modal, FormField, TextArea, toast, fmtDate, fmtMoney, fmtInt,
 } from './shared'
 import { Callout, DocumentViewer } from '../OnboardingJourney'
 import { ColumnChart, DonutChart } from './charts'
-import { loadPartnerDirectory, loadPartnerDetail, movePartner } from '../../lib/partnerRepo'
+import {
+  loadPartnerDirectory, loadPartnerDetail, movePartner,
+  addPartnerCategory, approvePartnerCategory, withdrawPartnerCategory,
+} from '../../lib/partnerRepo'
 import type { PartnerDirectoryRow, PartnerDetail, Statement } from '../../lib/partnerRepo'
 import { transitionsFrom, statusMeaning, orderedHistory, canMove } from '../../lib/partnerLifecycle'
 import type { PartnerStatus } from '../../lib/partnerLifecycle'
@@ -31,6 +34,9 @@ import {
 } from '../../lib/partnerDirectory'
 import type { Filters, SortKey, Tier, CategoryEvidence, PolicyRule } from '../../lib/partnerDirectory'
 import type { Category } from '../../types'
+import {
+  addableCategories, canAddCategory, canApproveCategory, canWithdrawCategory, blockingRules,
+} from '../../lib/partnerCategories'
 
 const STATUS_INK: Record<string, string> = {
   live: 'var(--success)', onboarding: 'var(--info)', review: 'var(--warning)',
@@ -38,6 +44,10 @@ const STATUS_INK: Record<string, string> = {
 }
 
 const PAGE_SIZE = 12
+
+/* The desk that owns seller eligibility. Same actor the lifecycle moves record,
+   because widening what somebody may sell is the same kind of decision. */
+const ACTOR = 'Marketplace onboarding desk'
 
 type Tab = 'overview' | 'categories' | 'listings' | 'documents' | 'bills' | 'history'
 
@@ -336,7 +346,10 @@ export function OperatorPartners() {
                 othersOnPlan={detail?.plan ? rows.filter(r => r.plan_id === detail.plan!.id && r.id !== partner.id).length : 0}
               />
             )}
-            {tab === 'categories' && <Categories detail={detail!} categories={categories} catName={catName} />}
+            {tab === 'categories' && (
+              <Categories detail={detail!} categories={categories} catName={catName}
+                          onChanged={async () => { await Promise.all([refresh(), reloadDetail(detail!.partner!.id)]) }} />
+            )}
             {tab === 'listings' && <Listings detail={detail!} catName={catName} />}
             {tab === 'documents' && <Documents detail={detail!} catName={catName} onView={setViewDoc} />}
             {tab === 'bills' && <Bills detail={detail!} />}
@@ -481,20 +494,73 @@ function PlanBody({ plan, catName, othersOnPlan }: {
 
 /* ------------------------------------------------------- categories tab -- */
 
-function Categories({ detail, categories, catName }: {
+function Categories({ detail, categories, catName, onChanged }: {
   detail: PartnerDetail; categories: Category[]; catName: (id: string) => string
+  onChanged: () => Promise<void>
 }) {
   const today = new Date()
   const rule = (id: string): PolicyRule | undefined => detail.rules.find(r => r.id === id)
+  const [adding, setAdding] = useState(false)
+  const [withdrawing, setWithdrawing] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
+  const partner = detail.partner!
   const applied = [...detail.approvals].sort((a, b) =>
     (categories.find(c => c.id === a.category_id)?.sort_order ?? 99) -
     (categories.find(c => c.id === b.category_id)?.sort_order ?? 99))
 
+  const addable = addableCategories(categories, detail.approvals)
+
+  const run = async (fn: () => Promise<{ ok: boolean; reason?: string; note?: string }>, ok: string) => {
+    setBusy(true)
+    try {
+      const res = await fn()
+      if (!res.ok) { toast(res.reason ?? 'That did not work', 'error'); return false }
+      toast(res.note ?? ok)
+      await onChanged()
+      return true
+    } finally { setBusy(false) }
+  }
+
+  const addSection = (
+    <SectionCard
+      title="Add a category"
+      subtitle={addable.length === 0
+        ? 'This seller already holds every marketplace.'
+        : `${addable.length} this seller does not hold`}
+      action={addable.length > 0 && (
+        <Btn size="sm" onClick={() => setAdding(true)} disabled={busy}><Plus size={13} /> Add a category</Btn>
+      )}>
+      <div style={{ padding: '12px 20px' }}>
+        <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', margin: 0 }}>
+          {addable.length === 0
+            ? 'Nothing left to add.'
+            : `Adding one opens an application, not a marketplace: ${addable.map(c => c.name).join(', ')}. It lands unapproved with its evidence outstanding, and opens when the rules that category enforces are satisfied.`}
+        </p>
+      </div>
+    </SectionCard>
+  )
+
   if (applied.length === 0) {
-    return <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: 0 }}>
-      No categories on record. This seller cannot list anything.
-    </p>
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <Callout tone="warning" title="No categories on record">
+          This seller cannot list anything until they hold at least one category.
+        </Callout>
+        {addSection}
+        {adding && (
+          <AddCategoryDialog
+            partnerName={partner.name} partnerStatus={partner.status}
+            addable={addable} approvals={detail.approvals} categories={categories}
+            onClose={() => setAdding(false)}
+            onSubmit={async (categoryId, reason) => {
+              const done = await run(() => addPartnerCategory({ partnerId: partner.id, categoryId, actor: ACTOR, reason }), 'Category added')
+              if (done) setAdding(false)
+            }}
+          />
+        )}
+      </div>
+    )
   }
 
   return (
@@ -505,6 +571,8 @@ function Categories({ detail, categories, catName }: {
         approval per market, content needs distribution rights. Adding a category is a change to the
         seller's agreement, not a setting.
       </Callout>
+
+      {addSection}
 
       {applied.map(a => {
         const readiness = categoryReadiness(a.category_id, detail.evidence, a.approved_at !== null, today)
@@ -530,6 +598,29 @@ function Categories({ detail, categories, catName }: {
                 {readiness.satisfied} of {readiness.total} rules satisfied
                 {a.approved_at && ` · approved ${fmtDate(a.approved_at)}${a.approved_by ? ` by ${a.approved_by}` : ''}`}
               </span>
+
+              {/* The two decisions this category is waiting on. Approve is
+                  disabled with its reason on the row rather than refusing after
+                  a round trip; withdraw always asks, because it narrows what
+                  somebody is contractually allowed to sell. */}
+              <div style={{ display: 'flex', gap: '6px' }}>
+                {!a.approved_at && (() => {
+                  const verdict = canApproveCategory(
+                    partner.id, a.category_id, detail.approvals, detail.evidence, detail.matrix, detail.rules)
+                  const blocking = blockingRules(partner.id, a.category_id, detail.evidence, detail.matrix, detail.rules)
+                  return (
+                    <Btn size="sm" disabled={!verdict.ok || busy}
+                         title={verdict.ok ? `Open ${catName(a.category_id)} for this seller` : (verdict as { reason: string }).reason}
+                         onClick={() => void run(
+                           () => approvePartnerCategory({ partnerId: partner.id, categoryId: a.category_id, actor: ACTOR }),
+                           `${catName(a.category_id)} is open`)}>
+                      {blocking.length > 0 ? `Blocked — ${blocking.length} rule${blocking.length === 1 ? '' : 's'}` : 'Approve'}
+                    </Btn>
+                  )
+                })()}
+                <Btn size="sm" variant="secondary" disabled={busy}
+                     onClick={() => setWithdrawing(a.category_id)}>Withdraw</Btn>
+              </div>
             </div>
 
             {/* Approved and clear are different things, and the difference is
@@ -562,7 +653,126 @@ function Categories({ detail, categories, catName }: {
           </div>
         )
       })}
+
+      {adding && (
+        <AddCategoryDialog
+          partnerName={partner.name} partnerStatus={partner.status}
+          addable={addable} approvals={detail.approvals} categories={categories}
+          onClose={() => setAdding(false)}
+          onSubmit={async (categoryId, reason) => {
+            const done = await run(() => addPartnerCategory({ partnerId: partner.id, categoryId, actor: ACTOR, reason }), 'Category added')
+            if (done) setAdding(false)
+          }}
+        />
+      )}
+
+      {withdrawing && (
+        <WithdrawCategoryDialog
+          categoryName={catName(withdrawing)}
+          partnerName={partner.name}
+          verdict={canWithdrawCategory(withdrawing, detail.approvals, detail.listings)}
+          onClose={() => setWithdrawing(null)}
+          onSubmit={async reason => {
+            const done = await run(
+              () => withdrawPartnerCategory({ partnerId: partner.id, categoryId: withdrawing, actor: ACTOR, reason }),
+              'Category withdrawn')
+            if (done) setWithdrawing(null)
+          }}
+        />
+      )}
     </div>
+  )
+}
+
+/* Adding a category asks for a reason for the same purpose the lifecycle move
+   does: the next person to open this record needs to know who widened the
+   agreement and on what basis. */
+function AddCategoryDialog({ partnerName, partnerStatus, addable, approvals, categories, onClose, onSubmit }: {
+  partnerName: string
+  partnerStatus: string
+  addable: { id: string; name: string }[]
+  approvals: PartnerDetail['approvals']
+  categories: Category[]
+  onClose: () => void
+  onSubmit: (categoryId: string, reason: string) => void
+}) {
+  const [categoryId, setCategoryId] = useState(addable[0]?.id ?? '')
+  const [reason, setReason] = useState('')
+
+  const verdict = canAddCategory(
+    partnerStatus, categoryId,
+    categories.map(c => ({ id: c.id, name: c.name, sort_order: c.sort_order })),
+    approvals)
+  const problem = !verdict.ok ? (verdict as { reason: string }).reason
+    : !reason.trim() ? 'Say why this category is being added.'
+    : null
+
+  return (
+    <Modal open onClose={onClose} title={`Add a category to ${partnerName}`}
+      footer={<>
+        <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
+        <Btn size="sm" disabled={!!problem} onClick={() => onSubmit(categoryId, reason)}>Add the category</Btn>
+      </>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <Callout tone="info">
+          This opens an application, not a marketplace. The category lands unapproved with the rules it
+          enforces written out as what the seller now owes, and it opens only once those are satisfied —
+          so adding it here cannot by itself put anything on sale.
+        </Callout>
+
+        <FormField label="Category" required>
+          <select value={categoryId} onChange={e => setCategoryId(e.target.value)}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', fontSize: 'var(--text-sm)' }}>
+            {addable.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </select>
+        </FormField>
+
+        <FormField label="Why" required hint="Recorded against the seller and kept in the audit trail.">
+          <TextArea value={reason} onChange={e => setReason(e.target.value)} rows={3}
+                    placeholder="e.g. Signed addendum 4 to the reseller agreement, countersigned 30 Jul 2026." />
+        </FormField>
+
+        {problem && <Callout tone="danger">{problem}</Callout>}
+      </div>
+    </Modal>
+  )
+}
+
+function WithdrawCategoryDialog({ categoryName, partnerName, verdict, onClose, onSubmit }: {
+  categoryName: string
+  partnerName: string
+  verdict: { ok: true } | { ok: false; reason: string }
+  onClose: () => void
+  onSubmit: (reason: string) => void
+}) {
+  const [reason, setReason] = useState('')
+  const problem = !verdict.ok ? verdict.reason : !reason.trim() ? 'Say why it is being withdrawn.' : null
+
+  return (
+    <Modal open onClose={onClose} title={`Withdraw ${categoryName} from ${partnerName}`}
+      footer={<>
+        <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
+        <Btn size="sm" disabled={!!problem} onClick={() => onSubmit(reason)}>Withdraw the category</Btn>
+      </>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {verdict.ok ? (
+          <Callout tone="warning">
+            This seller will no longer be able to list in {categoryName}, and the evidence they supplied
+            against it is cleared with it. Their agreement narrows — this is not a filter.
+          </Callout>
+        ) : (
+          <Callout tone="danger" title="This cannot be withdrawn yet">{verdict.reason}</Callout>
+        )}
+
+        <FormField label="Why" required hint="The seller is told, and it is kept in the audit trail.">
+          <TextArea value={reason} onChange={e => setReason(e.target.value)} rows={3}
+                    disabled={!verdict.ok}
+                    placeholder="e.g. Type approval lapsed in two of three markets and was not renewed within the 60-day grace." />
+        </FormField>
+
+        {problem && verdict.ok && <Callout tone="danger">{problem}</Callout>}
+      </div>
+    </Modal>
   )
 }
 
