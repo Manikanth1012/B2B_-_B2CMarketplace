@@ -508,6 +508,7 @@ export function previewBundle(
   const stub: ProductRow = {
     id: '__draft', category_id: '', sub_category: '', name: draft.name || 'New bundle',
     partner_id: null, seller: 'Aventa Telecom', price: draft.price, was_price: null, cost: 0,
+    floor_price: draft.price, list_price: draft.price, price_includes_tax: true, tax_rate: 18,
     model: 'oneoff', fulfil: 'instant', rating: 0, reviews: 0, stock: 'in', status: 'live',
     listed: null, description: '', tags: [], comm: 0, badge: null, specs: {}, sort_order: 0,
   }
@@ -552,6 +553,12 @@ export interface SellerSubmission {
   model: string
   fulfil: string
   tags: string[]
+  /* The band the operator may move within, and the basis the price is quoted
+     on. A listing without a floor can never go in a bundle. */
+  floorPrice: number
+  listPrice: number
+  priceIncludesTax: boolean
+  taxRate: number
 }
 
 /**
@@ -602,6 +609,8 @@ export async function submitForReview(
     id, category_id: draft.categoryId, sub_category: draft.subCategory || 'General',
     name: draft.name, partner_id: draft.partnerId, seller: (partner as { name: string }).name,
     price: draft.price, was_price: null, cost: draft.cost,
+    floor_price: draft.floorPrice, list_price: draft.listPrice,
+    price_includes_tax: draft.priceIncludesTax, tax_rate: draft.taxRate,
     model: draft.model, fulfil: draft.fulfil,
     rating: 0, reviews: 0, stock: 'in', status: 'pending',
     listed: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),

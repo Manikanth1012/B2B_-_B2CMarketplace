@@ -23,6 +23,7 @@ import {
 } from '../../lib/catalogueRepo'
 import type { CatalogueSnapshot, BundleDraft, PackDraft } from '../../lib/catalogueRepo'
 import { compose, compositionProblem, compositionWarnings, maxComponentDiscount, priceBasis } from '../../lib/federation'
+import { checkBundleAgainstFloors, bundleRoom, bases, headroom } from '../../lib/pricing'
 import type { ComponentPick, TelcoItem } from '../../lib/federation'
 import { canApprove, summarise, bundleView, rulesFor, applyPolicy, policyFailures, splitOf } from '../../lib/catalogue'
 import type { ProductRow, Submission } from '../../lib/catalogue'
@@ -673,6 +674,50 @@ function ProductInspector({ product, snap, today, onClose, catName, onDecide }: 
 
           <section>
             <SubHead>Commission</SubHead>
+            {/* The band, before the money split. What the seller agreed to
+                accept is what decides whether this can go in a bundle at all,
+                and the basis decides whether the price above means what the
+                reader thinks it does. */}
+            {(() => {
+              const room = headroom({
+                price: Number(product.price),
+                floor_price: Number(product.floor_price ?? product.price),
+                list_price: Number(product.list_price ?? product.price),
+              })
+              const tax = bases({
+                price: Number(product.price),
+                price_includes_tax: product.price_includes_tax ?? true,
+                tax_rate: Number(product.tax_rate ?? 0),
+              })
+              return (
+                <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '12px 14px' }}>
+                  <div style={{ fontSize: 'var(--text-xs)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--text-secondary)', marginBottom: '7px' }}>
+                    Price band
+                  </div>
+                  {([
+                    ['Minimum the seller accepts', `$${fmtMoney(Number(product.floor_price ?? product.price))}`],
+                    ['Asking price', `$${fmtMoney(Number(product.price))} ${tax.quotedIn === 'gross' ? 'including tax' : 'excluding tax'}`],
+                    ['Maximum (RRP)', `$${fmtMoney(Number(product.list_price ?? product.price))}`],
+                    ['Buyer pays / seller books', `$${fmtMoney(tax.gross)} / $${fmtMoney(tax.net)} at ${tax.rate}%`],
+                  ] as [string, string][]).map(([k, v]) => (
+                    <div key={k} style={{ display: 'flex', gap: '10px', fontSize: 'var(--text-xs)', padding: '2px 0' }}>
+                      <span style={{ flex: 1, color: 'var(--text-secondary)' }}>{k}</span>
+                      <span style={{ fontWeight: 600 }}>{v}</span>
+                    </div>
+                  ))}
+                  <div style={{
+                    marginTop: '7px', paddingTop: '7px', borderTop: '1px solid var(--border-light)',
+                    fontSize: 'var(--text-xs)', fontWeight: 700,
+                    color: room.none ? 'var(--danger)' : 'var(--success)',
+                  }}>
+                    {room.none
+                      ? 'No discount room — this cannot go into a bundle.'
+                      : `You may discount up to $${fmtMoney(room.amount)} (${room.pct}%) when composing a bundle.`}
+                  </div>
+                </div>
+              )
+            })()}
+
             {split.firstParty ? (
               <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', margin: 0 }}>
                 First party — the operator sells this itself. There is no partner, so no commission is taken and
@@ -924,15 +969,31 @@ function BundleBuilder({ snap, onClose, onCreate }: {
     price: parseFloat(price) || 0, model, fulfil: 'provisioned', components: picked,
   }
   const preview = previewBundle(draft, snap.products)
-  const partsTotal = preview?.partsTotal ?? 0
-  const saving = +(partsTotal - (parseFloat(price) || 0)).toFixed(2)
   const sellers = [...new Set(picked.map(p => snap.products.find(x => x.id === p.productId)?.seller).filter(Boolean))]
+
+  /* What each seller agreed to accept. Composing a bundle spends somebody
+     else's margin, and until the floors existed the only honest discount was
+     none — so this is the number the builder was missing. */
+  const components = picked.flatMap(pk => {
+    const p = snap.products.find(x => x.id === pk.productId)
+    if (!p) return []
+    return [{
+      productId: p.id, name: p.name, quantity: pk.quantity,
+      price: Number(p.price), floor_price: Number(p.floor_price ?? p.price),
+    }]
+  })
+  const room = bundleRoom(components)
+  const partsTotal = room.partsTotal
+  const saving = +(partsTotal - (parseFloat(price) || 0)).toFixed(2)
+  const floorCheck = picked.length >= 2 && parseFloat(price) > 0
+    ? checkBundleAgainstFloors(parseFloat(price), components)
+    : null
 
   const problem =
     !name.trim() ? 'Give the bundle a name.'
     : picked.length < 2 ? 'A bundle is two or more things sold together. With one component it is just the product.'
     : !(parseFloat(price) > 0) ? 'Set a price.'
-    : saving <= 0 ? `At $${(parseFloat(price) || 0).toFixed(2)} this costs the same or more than buying the parts separately ($${partsTotal.toFixed(2)}).`
+    : floorCheck && !floorCheck.ok ? floorCheck.reason
     : null
 
   return (
@@ -982,6 +1043,10 @@ function BundleBuilder({ snap, onClose, onCreate }: {
                       <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>{p.name}</div>
                       <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
                         {p.seller}{p.partner_id === null ? ' · first party' : ''} · ${fmtMoney(p.price)} each
+                        {p.floor_price !== undefined && (
+                          <> · will go to <strong>${fmtMoney(Number(p.floor_price))}</strong>
+                            {' '}({headroom({ price: Number(p.price), floor_price: Number(p.floor_price), list_price: Number(p.list_price ?? p.price) }).pct}% room)</>
+                        )}
                       </div>
                     </div>
                     <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>${fmtMoney(p.price * pk.quantity)}</span>
@@ -1031,6 +1096,32 @@ function BundleBuilder({ snap, onClose, onCreate }: {
         <FormField label="Description" hint="What the bundle is for. Left blank, it lists what is inside.">
           <TextArea value={description} onChange={e => setDescription(e.target.value)} rows={2} />
         </FormField>
+
+        {/* What the sellers agreed to. Without this the operator is discounting
+            somebody else's margin and finding out on their settlement. */}
+        {picked.length >= 2 && (
+          <div style={{ padding: '11px 13px', borderRadius: 'var(--radius-md)', background: 'var(--bg-alt)', border: '1px solid var(--border)' }}>
+            <div style={{ display: 'flex', gap: '10px', fontSize: 'var(--text-xs)', padding: '2px 0' }}>
+              <span style={{ flex: 1, color: 'var(--text-secondary)' }}>Parts at their asking prices</span>
+              <span style={{ fontWeight: 600 }}>${fmtMoney(room.partsTotal)}</span>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', fontSize: 'var(--text-xs)', padding: '2px 0' }}>
+              <span style={{ flex: 1, color: 'var(--text-secondary)' }}>The least these sellers will accept</span>
+              <span style={{ fontWeight: 800 }}>${fmtMoney(room.floorTotal)}</span>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', fontSize: 'var(--text-xs)', padding: '2px 0' }}>
+              <span style={{ flex: 1, color: 'var(--text-secondary)' }}>Deepest discount you may set</span>
+              <span style={{ fontWeight: 800, color: 'var(--success)' }}>
+                ${fmtMoney(room.maxDiscount)} ({room.maxDiscountPct}%)
+              </span>
+            </div>
+            {room.tightest.length > 0 && (
+              <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '5px' }}>
+                Least room: {room.tightest.map(t => `${t.name} ${t.roomPct}%`).join(' · ')}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* The saving, computed while the price is still being typed. */}
         <div style={{

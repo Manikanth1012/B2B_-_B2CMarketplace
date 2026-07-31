@@ -300,7 +300,7 @@ export default function App() {
       <PartnerShell view={ptView} onNavigate={setPtView} onSignOut={handleSignOut}>
         {ptView === 'pt-dashboard' && <PartnerDashboard />}
         {ptView === 'pt-onboarding' && <PartnerOnboarding partnerId={session!.partnerId!} />}
-        {ptView === 'pt-listings' && <PartnerListings partnerId={session!.partnerId!} />}
+        {ptView === 'pt-listings' && <PartnerListings partnerId={session!.partnerId!} onNewListing={() => setPtView('pt-newlisting')} />}
         {ptView === 'pt-newlisting' && <PartnerNewListing partnerId={session!.partnerId!} />}
         {ptView === 'pt-orders' && <PartnerOrders />}
         {ptView === 'pt-settlement' && <PartnerSettlement />}

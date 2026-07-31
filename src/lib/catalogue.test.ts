@@ -9,6 +9,7 @@ import {
 const product = (o: Partial<ProductRow> & { id: string; name: string }): ProductRow => ({
   category_id: 'device', sub_category: 'Phones', partner_id: 'PTR-1002', seller: 'Kestrel Devices',
   price: 749, was_price: null, cost: 520, model: 'oneoff', fulfil: 'shipped',
+  floor_price: 620, list_price: 799, price_includes_tax: true, tax_rate: 18,
   rating: 4.4, reviews: 100, stock: 'in', status: 'live', listed: '02 Mar 2024',
   description: '', tags: [], comm: 9, badge: null, specs: {}, sort_order: 1, ...o,
 })

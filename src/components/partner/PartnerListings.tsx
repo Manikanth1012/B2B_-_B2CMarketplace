@@ -13,7 +13,11 @@ import { listingState, listingBreakdown, rateAt } from '../../lib/partnerCommerc
 /* Reads the seller's real catalogue rows rather than a hard-coded list. The
    static one carried five products, two of them in a marketplace this seller is
    not approved for, and none of them existed in the catalogue buyers see. */
-export function PartnerListings({ partnerId }: { partnerId: string }) {
+export function PartnerListings({ partnerId, onNewListing }: {
+  partnerId: string
+  /* The console owns navigation, so the page asks rather than routing itself. */
+  onNewListing?: () => void
+}) {
   const [rec, setRec] = useState<SellerRecord | null>(null)
   /* What the catalogue desk did with each submission, and anything they have
      asked. A seller who cannot see why a listing was refused cannot fix it. */
@@ -60,7 +64,7 @@ export function PartnerListings({ partnerId }: { partnerId: string }) {
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <Btn variant="secondary" onClick={() => toast('Bulk upload — CSV or catalogue feed')}><Download size={14} /> Bulk upload</Btn>
-          <Btn variant="primary"><Plus size={14} /> New listing</Btn>
+          <Btn variant="primary" onClick={onNewListing}><Plus size={14} /> New listing</Btn>
         </div>
       </div>
 

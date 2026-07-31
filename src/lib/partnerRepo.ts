@@ -219,6 +219,13 @@ export interface SellerRecord {
   rules: PolicyRule[]
   statements: Statement[]
   categories: Category[]
+  /* Everything the seller handed over at the seven company gates. They supplied
+     these; not showing them back is the console keeping the seller's own
+     paperwork from them. */
+  documents: GateDocument[]
+  /* Which rules each marketplace applies, so the seller can be told what a
+     marketplace they do *not* hold would ask of them before they apply. */
+  matrix: MatrixRow[]
   loadError?: string
 }
 
@@ -251,7 +258,77 @@ export async function loadSellerRecord(partnerId: string): Promise<SellerRecord>
     rules: detail.rules,
     statements: detail.statements,
     categories: (catRes.data ?? []) as Category[],
+    documents: detail.documents,
+    matrix: detail.matrix,
     ...(errors.length > 0 ? { loadError: errors.join(' ') } : {}),
+  }
+}
+
+/**
+ * A seller applying for another marketplace themselves.
+ *
+ * The same two-step the operator uses, from the other side: this files an
+ * application with its evidence outstanding, and the operator still decides. A
+ * seller cannot approve themselves — the insert policy refuses any row that
+ * arrives already approved, so this is safe even though the seller is the one
+ * writing it.
+ */
+export async function applyForCategory(
+  { partnerId, categoryId, note }: { partnerId: string; categoryId: string; note: string },
+): Promise<Result> {
+  if (!note.trim()) {
+    return { ok: false, reason: 'Say why you want to sell here. The marketplace desk reads it alongside your evidence.' }
+  }
+
+  const [catRes, pcRes, matrixRes, ruleRes, pRes] = await Promise.all([
+    supabase.from('categories').select('*').order('sort_order'),
+    supabase.from('partner_categories').select('*').eq('partner_id', partnerId),
+    supabase.from('category_policy_rules').select('*').eq('category_id', categoryId),
+    supabase.from('policy_rules').select('*'),
+    supabase.from('partners').select('id,name,status').eq('id', partnerId).maybeSingle(),
+  ])
+
+  const categories = (catRes.data ?? []) as (CategoryRow & { self_apply?: boolean })[]
+  const category = categories.find(c => c.id === categoryId)
+  if (!category) return { ok: false, reason: 'That marketplace does not exist.' }
+  if (category.self_apply === false) {
+    return { ok: false, reason: `${category.name} is not open to applications — the marketplace places sellers there itself.` }
+  }
+
+  const partner = pRes.data as { status: string } | null
+  const verdict = canAddCategory(partner?.status ?? 'unknown', categoryId, categories,
+    (pcRes.data ?? []) as Approval[])
+  if (!verdict.ok) return verdict
+
+  const { error: insErr } = await supabase.from('partner_categories').insert({
+    partner_id: partnerId, category_id: categoryId, approved_at: null, approved_by: null,
+  })
+  if (insErr) return { ok: false, reason: `The application was not filed: ${insErr.message}` }
+
+  const opening = openingEvidence(
+    categoryId,
+    (matrixRes.data ?? []) as MatrixRow[],
+    (ruleRes.data ?? []) as PolicyRuleRow[],
+  )
+  const { error: evErr } = opening.length > 0
+    ? await supabase.from('partner_category_evidence').insert(opening.map((o: ReturnType<typeof openingEvidence>[number]) => ({
+        id: `pce-${partnerId.slice(4)}-${categoryId}-${o.rule_id}`,
+        partner_id: partnerId, category_id: categoryId, rule_id: o.rule_id,
+        state: o.state, document: o.document,
+        note: o.state === 'outstanding' ? `Owed since ${todayLabel()} — applied for by the seller.` : null,
+      })))
+    : { error: null }
+
+  await writeAudit('Seller self-service', 'partner.category.applied', `${partnerId}/${categoryId}`,
+    null, 'applied', 'info', note)
+
+  if (evErr) {
+    return { ok: true, note: `Applied for ${category.name}, but the checklist was not written (${evErr.message}). Tell the marketplace desk.` }
+  }
+  const owed = opening.filter((o: ReturnType<typeof openingEvidence>[number]) => o.state === 'outstanding').length
+  return {
+    ok: true,
+    note: `Applied for ${category.name}. ${owed} document${owed === 1 ? '' : 's'} ${owed === 1 ? 'is' : 'are'} needed before it can open.`,
   }
 }
 

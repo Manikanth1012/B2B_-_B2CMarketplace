@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
-import { CircleAlert as AlertCircle, Clock, CircleCheck as Check } from 'lucide-react'
-import { SectionCard, EmptyState, Btn, Modal, FormField, TextInput, toast } from '../operator/shared'
+import { CircleAlert as AlertCircle, Clock, CircleCheck as Check, FileText, Plus } from 'lucide-react'
+import { SectionCard, EmptyState, Btn, Modal, FormField, TextInput, TextArea, Select, toast } from '../operator/shared'
 import { TechChecklist } from '../TechChecklist'
 import { JourneyRail, GateDetail, DocumentViewer, Callout } from '../OnboardingJourney'
 import {
@@ -8,7 +8,7 @@ import {
 } from '../../lib/onboardingRepo'
 import type { OnboardingSnapshot, ActionResult } from '../../lib/onboardingRepo'
 import { deriveTaskState, gateIdFor, journeyProgress, REQUIRED_EVENTS, SLA_DAYS } from '../../lib/onboarding'
-import { loadSellerRecord } from '../../lib/partnerRepo'
+import { loadSellerRecord, applyForCategory } from '../../lib/partnerRepo'
 import type { SellerRecord } from '../../lib/partnerRepo'
 import { categoryReadiness, EVIDENCE_MEANING } from '../../lib/partnerDirectory'
 import { fmtDate } from '../operator/shared'
@@ -156,7 +156,13 @@ export function PartnerOnboarding({ partnerId }: { partnerId: string }) {
         </SectionCard>
       )}
 
-      {record && <CategoryRequirements record={record} />}
+      {record && (
+        <CategoryRequirements
+          record={record}
+          onOpenDoc={setViewDoc}
+          onApplied={async () => { await reload() }}
+        />
+      )}
 
       <SectionCard
         title="What is outstanding"
@@ -225,16 +231,27 @@ export function PartnerOnboarding({ partnerId }: { partnerId: string }) {
 
 /* --------------------------------------------- category-level onboarding -- */
 
-function CategoryRequirements({ record }: { record: SellerRecord }) {
+function CategoryRequirements({ record, onOpenDoc, onApplied }: {
+  record: SellerRecord
+  onOpenDoc: (name: string) => void
+  onApplied: () => Promise<void>
+}) {
+  const [applying, setApplying] = useState(false)
   const today = new Date()
   const catName = (id: string) => record.categories.find(c => c.id === id)?.name ?? id
   const rule = (id: string) => record.rules.find(r => r.id === id)
 
-  if (record.approvals.length === 0) return null
 
   const ordered = [...record.approvals].sort((a, b) =>
     (record.categories.find(c => c.id === a.category_id)?.sort_order ?? 99) -
     (record.categories.find(c => c.id === b.category_id)?.sort_order ?? 99))
+
+  /* Marketplaces this seller does not hold and may ask for themselves. The
+     operator's own shelves are listed too, marked by invitation, because a
+     seller looking for one needs to know it exists and why it is shut. */
+  const openToApply = record.categories.filter(c =>
+    !record.approvals.some(a => a.category_id === c.id) &&
+    (c as { self_apply?: boolean }).self_apply !== false)
 
   return (
     <SectionCard
@@ -299,10 +316,37 @@ function CategoryRequirements({ record }: { record: SellerRecord }) {
                         <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '3px' }}>
                           {EVIDENCE_MEANING[e.state]}
                         </div>
+                        {/* What was actually handed over, openable. A seller
+                            being told a rule is satisfied without being shown
+                            what satisfied it cannot check the marketplace is
+                            holding the right document. */}
                         {e.document && (
-                          <div style={{ fontSize: '11px', color: expired ? 'var(--danger)' : 'var(--text-tertiary)', marginTop: '2px' }}>
-                            {e.document}
-                            {e.expires_on && ` · ${expired ? 'expired' : 'valid to'} ${fmtDate(e.expires_on)}`}
+                          <div style={{ marginTop: '4px' }}>
+                            <button
+                              onClick={() => onOpenDoc(e.document!)}
+                              style={{
+                                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                                background: 'var(--bg-alt)', border: '1px solid var(--border)',
+                                borderRadius: 'var(--radius-sm)', padding: '4px 8px',
+                                cursor: 'pointer', fontSize: '11px', color: 'var(--brand-navy)',
+                                fontWeight: 600, textAlign: 'left',
+                              }}>
+                              <FileText size={11} />
+                              {e.document}
+                              {e.kind && <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}>
+                                {' '}· {e.kind}{e.size ? ` ${e.size}` : ''}
+                              </span>}
+                            </button>
+                            <div style={{ fontSize: '10px', color: expired ? 'var(--danger)' : 'var(--text-tertiary)', marginTop: '2px' }}>
+                              {e.submitted_at && `You sent it ${fmtDate(e.submitted_at)}${e.submitted_by ? ` — ${e.submitted_by}` : ''}. `}
+                              {e.reviewed_at && `Accepted ${fmtDate(e.reviewed_at)}${e.reviewed_by ? ` by ${e.reviewed_by}` : ''}. `}
+                              {e.expires_on && `${expired ? 'Expired' : 'Valid to'} ${fmtDate(e.expires_on)}.`}
+                            </div>
+                            {e.note && (
+                              <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginTop: '2px', fontStyle: 'italic' }}>
+                                {e.note}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -321,8 +365,134 @@ function CategoryRequirements({ record }: { record: SellerRecord }) {
             </div>
           )
         })}
+
+        {ordered.length === 0 && (
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: 0 }}>
+            You are not on any marketplace yet. Apply for one below and the marketplace desk will tell you
+            what it needs.
+          </p>
+        )}
       </div>
+
+      {/* Other marketplaces. A seller who can see what a shelf demands but has
+          no way to ask for it has been shown a door with no handle. */}
+      <div style={{ borderTop: '1px solid var(--border)', padding: '16px 20px' }}>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'baseline', flexWrap: 'wrap', marginBottom: '8px' }}>
+          <strong style={{ fontSize: 'var(--text-sm)' }}>Sell somewhere else</strong>
+          <span style={{ fontSize: '11px', color: 'var(--text-tertiary)', flex: 1 }}>
+            Applying opens a checklist. It does not open the marketplace — that is still the desk's decision.
+          </span>
+          {openToApply.length > 0 && (
+            <Btn size="sm" onClick={() => setApplying(true)}><Plus size={13} /> Apply for a marketplace</Btn>
+          )}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+          {record.categories
+            .filter(c => !record.approvals.some(a => a.category_id === c.id))
+            .map(c => {
+              const open = (c as { self_apply?: boolean }).self_apply !== false
+              const asks = record.matrix.filter(m => m.category_id === c.id && m.level === 'enforce').length
+              return (
+                <div key={c.id} style={{ display: 'flex', gap: '9px', alignItems: 'baseline', flexWrap: 'wrap', fontSize: '11px' }}>
+                  <strong style={{ minWidth: '110px' }}>{c.name}</strong>
+                  <span style={{ color: 'var(--text-tertiary)', flex: 1, minWidth: '200px' }}>
+                    {(c as { self_apply_note?: string }).self_apply_note ?? c.blurb}
+                  </span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{asks} rule{asks === 1 ? '' : 's'} to satisfy</span>
+                  <span style={{ fontWeight: 700, color: open ? 'var(--success)' : 'var(--text-tertiary)' }}>
+                    {open ? 'Open to apply' : 'By invitation'}
+                  </span>
+                </div>
+              )
+            })}
+        </div>
+      </div>
+
+      {applying && (
+        <ApplyForMarketplace
+          options={openToApply}
+          matrix={record.matrix}
+          rules={record.rules}
+          onClose={() => setApplying(false)}
+          onSubmit={async (categoryId, note) => {
+            const res = await applyForCategory({ partnerId: record.partner!.id, categoryId, note })
+            if (!res.ok) { toast(res.reason, 'error'); return }
+            toast(res.note ?? 'Applied')
+            setApplying(false)
+            await onApplied()
+          }}
+        />
+      )}
     </SectionCard>
+  )
+}
+
+/* What a marketplace will ask of you, before you commit to asking for it. */
+function ApplyForMarketplace({ options, matrix, rules, onClose, onSubmit }: {
+  options: { id: string; name: string; blurb: string }[]
+  matrix: { category_id: string; rule_id: string; level: string }[]
+  rules: { id: string; name: string; descr: string }[]
+  onClose: () => void
+  onSubmit: (categoryId: string, note: string) => void
+}) {
+  const [categoryId, setCategoryId] = useState(options[0]?.id ?? '')
+  const [note, setNote] = useState('')
+
+  const asks = matrix
+    .filter(m => m.category_id === categoryId)
+    .map(m => ({ rule: rules.find(r => r.id === m.rule_id), level: m.level }))
+    .filter(x => x.rule)
+
+  return (
+    <Modal open onClose={onClose} title="Apply for a marketplace"
+      footer={<>
+        <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
+        <Btn size="sm" disabled={!categoryId || !note.trim()} onClick={() => onSubmit(categoryId, note)}>
+          Apply
+        </Btn>
+      </>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <Callout tone="info">
+          Applying files a request and opens a checklist of what this marketplace demands. Nothing you sell
+          appears there until the marketplace desk approves it and the checklist is satisfied.
+        </Callout>
+
+        <FormField label="Marketplace" required>
+          <Select value={categoryId} onChange={e => setCategoryId(e.target.value)}>
+            {options.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+        </FormField>
+
+        {asks.length > 0 && (
+          <div>
+            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, marginBottom: '6px' }}>
+              What it will ask you for
+            </div>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
+              {asks.map((a, i) => (
+                <div key={a.rule!.id} style={{
+                  padding: '8px 11px', borderTop: i === 0 ? 'none' : '1px solid var(--border-light)',
+                }}>
+                  <div style={{ fontSize: '11px', fontWeight: 700 }}>
+                    {a.rule!.name}
+                    <span style={{ fontWeight: 400, color: a.level === 'enforce' ? 'var(--danger)' : 'var(--text-tertiary)' }}>
+                      {' '}· {a.level === 'enforce' ? 'required' : 'advisory'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{a.rule!.descr}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <FormField label="Why you want to sell here" required
+                   hint="The desk reads this alongside your evidence.">
+          <TextArea value={note} onChange={e => setNote(e.target.value)} rows={3}
+                    placeholder="e.g. We already hold ISO 27001 for the IoT gateways and want to list the managed-firewall range." />
+        </FormField>
+      </div>
+    </Modal>
   )
 }
 

@@ -25,6 +25,13 @@ export interface ProductRow {
   description: string
   tags: string[]
   comm: number
+  /* The price band and its tax basis — see the listing-price-bands migration.
+     `floor_price` is what the seller agreed to accept, and it is the operator's
+     only honest answer to "how much may I discount this in a bundle". */
+  floor_price: number
+  list_price: number
+  price_includes_tax: boolean
+  tax_rate: number
   badge: string | null
   specs: Record<string, string>
   sort_order: number

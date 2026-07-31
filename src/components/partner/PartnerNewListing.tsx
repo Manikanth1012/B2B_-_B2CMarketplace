@@ -6,6 +6,7 @@ import { loadSellerRecord } from '../../lib/partnerRepo'
 import type { SellerRecord } from '../../lib/partnerRepo'
 import { canListIn, rateAt, approvedCategories } from '../../lib/partnerCommerce'
 import { submitForReview } from '../../lib/catalogueRepo'
+import { validateBand, bandWarnings, bases } from '../../lib/pricing'
 
 const STEPS = ['Marketplace and type', 'Details and media', 'Pricing and commission', 'Fulfilment', 'Compliance', 'Review and submit']
 
@@ -24,6 +25,13 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
   const [name, setName] = useState('')
   const [desc, setDesc] = useState('')
   const [price, setPrice] = useState('')
+  /* The band the operator may move within, and the basis the price is quoted
+     on. Both were decorative before: a "List price" input bound to nothing and
+     a discount dropdown that read as a promise and stored no answer. */
+  const [floor, setFloor] = useState('')
+  const [list, setList] = useState('')
+  const [includesTax, setIncludesTax] = useState(true)
+  const [taxRate, setTaxRate] = useState('18')
   const [cost, setCost] = useState('')
   const [model, setModel] = useState('oneoff')
 
@@ -44,6 +52,16 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
   const comm = +(priceNum * rate / 100).toFixed(2)
   const fee = +(priceNum * 0.019 + 0.20).toFixed(2)
   const net = +(priceNum - comm - fee).toFixed(2)
+  const floorNum = parseFloat(floor) || 0
+  const listNum = parseFloat(list) || 0
+  const rateNum = parseFloat(taxRate) || 0
+  const bandProblem = priceNum > 0
+    ? validateBand({ price: priceNum, floor: floorNum, list: listNum || priceNum, cost: costNum })
+    : null
+  const bandNotes = priceNum > 0
+    ? bandWarnings({ price: priceNum, floor: floorNum, list: listNum || priceNum, cost: costNum })
+    : []
+  const split = bases({ price: priceNum, price_includes_tax: includesTax, tax_rate: rateNum })
   const margin = costNum > 0 ? +(net - costNum).toFixed(2) : net
 
   /* This used to end in a toast and write nothing, so a seller could submit all
@@ -51,6 +69,7 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
      `pending` and the review record the catalogue desk decides on — the same
      two rows every other submission in the queue is made of. */
   const handleSubmit = async () => {
+    if (bandProblem) { toast(bandProblem, 'error'); return }
     if (!name.trim() || priceNum <= 0) {
       toast('A listing needs a name and a price before it can be submitted', 'error')
       return
@@ -67,6 +86,10 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
       draft: {
         partnerId, categoryId: vertical, subCategory: subCategory || 'General',
         name, description: desc, price: priceNum, cost: costNum,
+        floorPrice: floorNum || priceNum,
+        listPrice: listNum || priceNum,
+        priceIncludesTax: includesTax,
+        taxRate: rateNum,
         model, fulfil: model === 'oneoff' ? 'shipped' : 'provisioned',
         tags: [],
       },
@@ -77,6 +100,7 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
 
     toast(res.note ?? `${name} is in the marketplace review queue`)
     setStep(0); setName(''); setPrice(''); setCost(''); setDesc(''); setSubCategory('')
+    setFloor(''); setList('')
   }
 
   if (loading) {
@@ -167,15 +191,59 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
     // Step 2: Pricing
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
-        <FormField label="Cost price (USD)" hint="What it costs you. Nothing may be discounted below this.">
+        <FormField label="Cost price (USD)" hint="What it costs you to deliver. Never shown to buyers.">
           <TextInput type="number" value={cost} onChange={e => setCost(e.target.value)} placeholder="0.00" />
         </FormField>
-        <FormField label="List price" hint="The undiscounted price.">
-          <TextInput type="number" placeholder="0.00" />
-        </FormField>
-        <FormField label="Sale price (USD)" hint="What a buyer pays today.">
+        <FormField label="Asking price (USD)" hint="What a buyer pays today.">
           <TextInput type="number" value={price} onChange={e => setPrice(e.target.value)} placeholder="0.00" />
         </FormField>
+        <FormField label="Maximum price (USD)" hint="The most it is ever sold for — a saving is measured against this.">
+          <TextInput type="number" value={list} onChange={e => setList(e.target.value)} placeholder="0.00" />
+        </FormField>
+      </div>
+
+      {/* The basis. Getting this wrong misstates the price by the tax rate, so
+          the other side is shown rather than left to be worked out. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', alignItems: 'end' }}>
+        <FormField label="Your price is quoted">
+          <Select value={includesTax ? 'inc' : 'ex'} onChange={e => setIncludesTax(e.target.value === 'inc')}>
+            <option value="inc">Including tax — what the buyer pays</option>
+            <option value="ex">Excluding tax — the buyer adds it</option>
+          </Select>
+        </FormField>
+        <FormField label="Tax rate (%)">
+          <TextInput type="number" value={taxRate} onChange={e => setTaxRate(e.target.value)} />
+        </FormField>
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', paddingBottom: '8px' }}>
+          {priceNum > 0 && (
+            <>Buyer pays <strong>${split.gross.toFixed(2)}</strong>, you book{' '}
+              <strong>${split.net.toFixed(2)}</strong>, tax ${split.tax.toFixed(2)}.</>
+          )}
+        </div>
+      </div>
+
+      {/* The number the operator has never had. */}
+      <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '13px 15px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '16px', alignItems: 'start' }}>
+          <FormField label="Minimum price (USD)" required
+                     hint="The least you will accept.">
+            <TextInput type="number" value={floor} onChange={e => setFloor(e.target.value)} placeholder="0.00" />
+          </FormField>
+          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', paddingTop: '22px' }}>
+            This is what lets the marketplace put your listing in a bundle. It may discount down to this
+            figure and no further — below it is your margin, not theirs to spend. Leave it at your asking
+            price and nothing is ever discounted, which also means the bundles most volume comes from
+            cannot include you.
+            {priceNum > 0 && floorNum > 0 && floorNum < priceNum && (
+              <div style={{ marginTop: '5px', fontWeight: 700, color: 'var(--success)' }}>
+                You are offering up to ${(priceNum - floorNum).toFixed(2)} off —{' '}
+                {Math.round(((priceNum - floorNum) / priceNum) * 100)}% of the asking price.
+              </div>
+            )}
+          </div>
+        </div>
+        {bandProblem && <Callout tone="danger">{bandProblem}</Callout>}
+        {bandNotes.map((w, i) => <Callout key={i} tone="warning">{w}</Callout>)}
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
         <FormField label="Billing">
@@ -187,14 +255,6 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
         </FormField>
         <FormField label="Minimum order quantity">
           <TextInput type="number" defaultValue="1" style={{ width: '80px' }} />
-        </FormField>
-        <FormField label="Discount the operator may apply" hint="How far the marketplace may cut your price in a promotion.">
-          <Select>
-            <option>None — my price is my price</option>
-            <option>Up to a quarter of my margin</option>
-            <option>Up to half my margin</option>
-            <option>Down to my cost price</option>
-          </Select>
         </FormField>
       </div>
       {priceNum > 0 && (
