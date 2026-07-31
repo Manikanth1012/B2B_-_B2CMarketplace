@@ -50,6 +50,13 @@ export function PartnerReviews({ partnerId }: { partnerId: string }) {
   const agg = aggregate(reviews)
   const unanswered = awaitingReply(reviews)
   const all = orderForDisplay(reviews)
+  /* Reviews on this seller's products that a buyer has written but nobody can
+     read yet. The seller sees that they exist and where they are, because a
+     one-star that has not appeared is otherwise indistinguishable from a
+     one-star nobody wrote — and the first thing a seller does about the second
+     is open a ticket asking about the first. */
+  const inModeration = reviews.filter(r => r.status === 'pending')
+  const refused = reviews.filter(r => r.status === 'rejected')
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -78,6 +85,46 @@ export function PartnerReviews({ partnerId }: { partnerId: string }) {
               </div>
             )
           })}
+        </div>
+      )}
+
+      {(inModeration.length > 0 || refused.length > 0) && (
+        <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '16px 20px' }}>
+          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--text)' }}>
+            Not published
+          </div>
+          <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', margin: '2px 0 10px' }}>
+            Every review is screened and then read by the marketplace before it goes on your product page.
+            You cannot reply until one is published, and you cannot influence the decision — but you can see
+            it is happening.
+          </p>
+
+          {inModeration.map(r => (
+            <div key={r.id} style={{ display: 'flex', gap: '9px', alignItems: 'baseline', padding: '7px 0', borderTop: '1px solid var(--border-light)', flexWrap: 'wrap' }}>
+              <span style={{ color: 'var(--brand-gold, #F5A623)', letterSpacing: '1px', fontSize: '11px' }}>{stars(r.rating)}</span>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, flex: 1, minWidth: '140px' }}>{r.title}</span>
+              <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                {products[r.product_id]?.name} · {formatDateOnly(r.submitted)}
+              </span>
+              <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--warning)' }}>With the marketplace</span>
+            </div>
+          ))}
+
+          {refused.map(r => (
+            <div key={r.id} style={{ display: 'flex', gap: '9px', alignItems: 'baseline', padding: '7px 0', borderTop: '1px solid var(--border-light)', flexWrap: 'wrap' }}>
+              <span style={{ color: 'var(--text-tertiary)', letterSpacing: '1px', fontSize: '11px' }}>{stars(r.rating)}</span>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, flex: 1, minWidth: '140px', color: 'var(--text-secondary)' }}>{r.title}</span>
+              <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                {products[r.product_id]?.name} · {formatDateOnly(r.submitted)}
+              </span>
+              {/* The reason, not just the outcome. A seller who can see that a
+                  review was refused for carrying a phone number does not need to
+                  ask whether it was refused for being critical. */}
+              <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--danger)' }}>
+                Refused{r.reject_reason ? ` — ${r.reject_reason}` : ''}
+              </span>
+            </div>
+          ))}
         </div>
       )}
 
