@@ -10,7 +10,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
   Search, Package, TriangleAlert, CircleCheck as CheckCircle, CircleAlert as AlertCircle,
-  Circle, Clock, Layers, MessageSquareWarning, Plus, X,
+  Circle, Clock, Layers, MessageSquareWarning, Plus, X, Radio, Minus,
 } from 'lucide-react'
 import {
   SectionCard, EmptyState, Btn, Modal, FormField, TextArea, TextInput, Select,
@@ -19,9 +19,11 @@ import {
 import { Callout } from '../OnboardingJourney'
 import {
   loadCatalogue, approveListing, rejectListing, raiseQuery, publishFirstParty,
-  createBundle, previewBundle,
+  createBundle, previewBundle, composePack,
 } from '../../lib/catalogueRepo'
-import type { CatalogueSnapshot, BundleDraft } from '../../lib/catalogueRepo'
+import type { CatalogueSnapshot, BundleDraft, PackDraft } from '../../lib/catalogueRepo'
+import { compose, compositionProblem, compositionWarnings, maxComponentDiscount, priceBasis } from '../../lib/federation'
+import type { ComponentPick, TelcoItem } from '../../lib/federation'
 import { canApprove, summarise, bundleView, rulesFor, applyPolicy, policyFailures, splitOf } from '../../lib/catalogue'
 import type { ProductRow, Submission } from '../../lib/catalogue'
 
@@ -47,6 +49,7 @@ export function OperatorCatalogue() {
   const [openProduct, setOpenProduct] = useState<string | null>(null)
   const [decide, setDecide] = useState<{ sub: Submission; mode: 'approve' | 'reject' | 'query' } | null>(null)
   const [bundleOpen, setBundleOpen] = useState(false)
+  const [packOpen, setPackOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState('')
   const [stateFilter, setStateFilter] = useState('')
@@ -80,6 +83,12 @@ export function OperatorCatalogue() {
 
   const firstParty = snap.products.filter(p => p.partner_id === null)
   const bundles = snap.products.filter(p => snap.components.some(c => c.bundle_id === p.id))
+  /* A pack is a first-party listing composed from the rate card. More than one
+     federated component makes it a pack; exactly one makes it a rate-card item
+     resold as it stands, which is a different thing and reads differently. */
+  const packComponentsOf = (id: string) => snap.packComponents.filter(c => c.product_id === id)
+  const packs = snap.products.filter(p => packComponentsOf(p.id).length > 1)
+  const federatedSingles = snap.products.filter(p => packComponentsOf(p.id).length === 1)
 
   const act = async (fn: () => Promise<{ ok: boolean; reason?: string; note?: string }>, ok: string) => {
     const res = await fn()
@@ -99,7 +108,10 @@ export function OperatorCatalogue() {
             {firstParty.filter(p => p.status === 'live').length} sold first party
           </p>
         </div>
-        <Btn onClick={() => setBundleOpen(true)}><Plus size={14} /> Compose a bundle</Btn>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <Btn variant="secondary" onClick={() => setPackOpen(true)}><Radio size={14} /> Compose an operator pack</Btn>
+          <Btn onClick={() => setBundleOpen(true)}><Plus size={14} /> Compose a bundle</Btn>
+        </div>
       </div>
 
       {snap.loadError && <Callout tone="danger" title="Some of this screen did not load">{snap.loadError}</Callout>}
@@ -234,6 +246,57 @@ export function OperatorCatalogue() {
 
       {tab === 'firstparty' && (
         <>
+          {/* The rate card first, because it is where everything on this tab
+              comes from. Without it "first party" is only a statement about who
+              does not sell a thing. */}
+          <RateCard telco={snap.telco} rule={snap.bundleRule} used={snap.packComponents} />
+
+          <SectionCard
+            title={`Operator packs (${packs.length})`}
+            subtitle="Composed from the rate card above. The price is derived from the components, never typed."
+            action={<Btn size="sm" variant="secondary" onClick={() => setPackOpen(true)}><Plus size={13} /> Compose</Btn>}>
+            {packs.length === 0 ? (
+              <EmptyState message="No operator packs composed yet" />
+            ) : (
+              <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: '11px' }}>
+                {packs.map(p => (
+                  <PackRow key={p.id} product={p} lines={packComponentsOf(p.id)}
+                           catName={catName} onOpen={setOpenProduct} />
+                ))}
+              </div>
+            )}
+          </SectionCard>
+
+          {federatedSingles.length > 0 && (
+            <SectionCard title={`Federated singles (${federatedSingles.length})`}
+                         subtitle="One rate-card item, resold as it stands. The marketplace price is a channel decision, not a different product.">
+              <div style={{ padding: '10px 20px 14px' }}>
+                {federatedSingles.map(p => {
+                  const line = packComponentsOf(p.id)[0]
+                  const card = line.rc_at > 0 ? line.rc_at * line.quantity : line.nrc_at * line.quantity
+                  const delta = +(p.price - card).toFixed(2)
+                  return (
+                    <div key={p.id} style={{ display: 'flex', gap: '10px', alignItems: 'baseline', padding: '7px 0', borderBottom: '1px solid var(--border-light)', flexWrap: 'wrap' }}>
+                      <button onClick={() => setOpenProduct(p.id)}
+                              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--brand-navy)', minWidth: '160px', textAlign: 'left' }}>
+                        {p.name}
+                      </button>
+                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', flex: 1, minWidth: '180px' }}>
+                        {line.quantity > 1 ? `${line.quantity} × ` : ''}{line.name_at} ({line.telco_id})
+                      </span>
+                      <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>rate card ${fmtMoney(card)}</span>
+                      <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>sells at ${fmtMoney(p.price)}</span>
+                      <span style={{ fontSize: '10px', fontWeight: 700, minWidth: '92px', textAlign: 'right',
+                                     color: delta < 0 ? 'var(--success)' : delta > 0 ? 'var(--warning)' : 'var(--text-tertiary)' }}>
+                        {delta === 0 ? 'at rate card' : delta < 0 ? `${fmtMoney(Math.abs(delta))} discount` : `${fmtMoney(delta)} uplift`}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </SectionCard>
+          )}
+
           <SectionCard title="First-party listings"
                        subtitle="Federated from the operator's own catalogue. No partner, no commission, no settlement.">
             <div style={{ padding: '14px 20px' }}>
@@ -343,6 +406,20 @@ export function OperatorCatalogue() {
                   subject: 'Question on your listing', body: text, actor: ACTOR,
                 }), 'Query raised')
             if (done) setDecide(null)
+          }}
+        />
+      )}
+
+      {packOpen && (
+        <PackComposer
+          snap={snap}
+          onClose={() => setPackOpen(false)}
+          onCreate={async draft => {
+            const res = await composePack({ draft, telco: snap.telco, rule: snap.bundleRule, actor: ACTOR })
+            if (!res.ok) { toast(res.reason, 'error'); return }
+            toast(res.note ?? `${draft.name} is live`)
+            setPackOpen(false)
+            await reload()
           }}
         />
       )}
@@ -1046,4 +1123,345 @@ function Facts({ rows }: { rows: [string, string][] }) {
 function daysAgo(iso: string, today: Date): string {
   const n = Math.max(0, Math.round((today.getTime() - Date.parse(iso)) / 86400000))
   return n === 0 ? 'today' : `${n} day${n === 1 ? '' : 's'}`
+}
+
+/* ------------------------------------------------------- the rate card ---- */
+
+/* What the marketplace federates from. Grouped by family because that is how
+   the BSS holds it and how the operator thinks about it, and it keeps a
+   seventeen-row list from reading as one long undifferentiated column. */
+function RateCard({ telco, rule, used }: {
+  telco: TelcoItem[]
+  rule: { per_component: number; max_discount: number; min_components: number; max_components: number }
+  used: { telco_id: string }[]
+}) {
+  const [open, setOpen] = useState(false)
+
+  if (telco.length === 0) {
+    return (
+      <SectionCard title="Operator rate card" subtitle="Federated from the BSS product catalogue">
+        <div style={{ padding: '14px 20px' }}>
+          <Callout tone="warning" title="The rate card did not load">
+            It is readable by the operator only — it carries what each item costs to deliver. If you are signed
+            in as the operator and still see this, the federation feed is down and packs cannot be composed
+            until it returns.
+          </Callout>
+        </div>
+      </SectionCard>
+    )
+  }
+
+  const families = [...new Set(telco.map(t => t.family))]
+  const inUse = new Set(used.map(u => u.telco_id))
+
+  return (
+    <SectionCard
+      title="Operator rate card"
+      subtitle={`${telco.length} tariff items across ${families.length} families · ${inUse.size} of them in a listing`}
+      action={<Btn size="sm" variant="secondary" onClick={() => setOpen(o => !o)}>{open ? 'Hide' : 'Show'} the rate card</Btn>}>
+      <div style={{ padding: '14px 20px' }}>
+        <Callout tone="info">
+          These are the operator's own products, pulled from the BSS rather than retyped. Nothing here is on the
+          marketplace by itself — a listing is <em>composed</em> from them, and the component rates are captured at
+          that moment so a later tariff change does not reprice a contract somebody already holds.
+          {' '}Packs discount {rule.per_component}% per extra component, capped at {rule.max_discount}%, between{' '}
+          {rule.min_components} and {rule.max_components} components.
+        </Callout>
+
+        {open && (
+          <div style={{ marginTop: '12px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+            {families.map(fam => (
+              <div key={fam}>
+                <div style={{ padding: '6px 12px', background: 'var(--bg-alt)', borderBottom: '1px solid var(--border-light)' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>{fam}</span>
+                </div>
+                {telco.filter(t => t.family === fam).map(t => (
+                  <div key={t.id} style={{ display: 'flex', gap: '10px', alignItems: 'baseline', padding: '7px 12px', borderBottom: '1px solid var(--border-light)', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, minWidth: '150px' }}>{t.name}</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono, monospace)' }}>{t.id}</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', flex: 1, minWidth: '180px' }}>{t.spec}</span>
+                    {inUse.has(t.id) && (
+                      <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--success)', padding: '1px 6px', borderRadius: 'var(--radius-full)', background: 'var(--success-bg)' }}>in a listing</span>
+                    )}
+                    <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, minWidth: '104px', textAlign: 'right' }}>
+                      {t.rc > 0 && <>${fmtMoney(t.rc)}<span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}> {t.unit}</span></>}
+                      {t.rc > 0 && t.nrc > 0 && <br />}
+                      {t.nrc > 0 && <span style={{ color: t.rc > 0 ? 'var(--text-tertiary)' : undefined }}>${fmtMoney(t.nrc)} one-off</span>}
+                    </span>
+                    {/* The operator's own margin, on the operator's own screen.
+                        It is why the composer can floor a discount at cost. */}
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', minWidth: '82px', textAlign: 'right' }}>
+                      costs ${fmtMoney(t.rc > 0 ? t.cost_rc : t.cost_nrc)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </SectionCard>
+  )
+}
+
+/* One composed pack, with what is inside it and what it saves against the rate
+   card. Kept beside the bundle row rather than merged with it, because a pack is
+   composed from tariff items and a bundle from listings — the same layout would
+   imply they are the same record. */
+function PackRow({ product, lines, catName, onOpen }: {
+  product: ProductRow
+  lines: { telco_id: string; quantity: number; name_at: string; rc_at: number; nrc_at: number; note: string | null; discount: number }[]
+  catName: (id: string) => string
+  onOpen: (id: string) => void
+}) {
+  const recurring = product.model !== 'oneoff'
+  const lineTotal = (l: typeof lines[number]) => +((recurring ? l.rc_at : l.nrc_at) * l.quantity).toFixed(2)
+  const cardTotal = +lines.reduce((n, l) => n + lineTotal(l), 0).toFixed(2)
+  const saving = +(cardTotal - product.price).toFixed(2)
+  const savingPct = cardTotal > 0 ? Math.round((saving / cardTotal) * 100) : 0
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+      <div style={{ display: 'flex', gap: '10px', alignItems: 'center', padding: '10px 13px', background: 'var(--bg-alt)', flexWrap: 'wrap' }}>
+        <Radio size={15} style={{ color: 'var(--text-tertiary)' }} />
+        <button onClick={() => onOpen(product.id)}
+                style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--brand-navy)' }}>
+          {product.name}
+        </button>
+        <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+          {catName(product.category_id)} · {lines.length} rate-card components · first party
+        </span>
+        <span style={{ marginLeft: 'auto', fontSize: 'var(--text-sm)', fontWeight: 800 }}>
+          ${fmtMoney(product.price)}{recurring ? <span style={{ fontSize: '10px', fontWeight: 400, color: 'var(--text-tertiary)' }}>/mo</span> : ''}
+        </span>
+        {saving > 0 && (
+          <span style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700 }}>saves ${fmtMoney(saving)} ({savingPct}%)</span>
+        )}
+      </div>
+      <div>
+        {lines.map(l => (
+          <div key={l.telco_id} style={{ display: 'flex', gap: '9px', padding: '8px 13px', borderTop: '1px solid var(--border-light)', fontSize: 'var(--text-xs)', flexWrap: 'wrap' }}>
+            <span style={{ color: 'var(--text-tertiary)', minWidth: '38px' }}>{l.quantity}×</span>
+            <span style={{ flex: 1, minWidth: '160px' }}>
+              {l.name_at}
+              <span style={{ color: 'var(--text-tertiary)' }}> · {l.telco_id}</span>
+              {l.discount > 0 && <span style={{ color: 'var(--warning)' }}> · {l.discount}% off</span>}
+              {l.note && <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{l.note}</div>}
+            </span>
+            <span style={{ color: 'var(--text-secondary)' }}>${fmtMoney(lineTotal(l))}</span>
+          </div>
+        ))}
+        <div style={{ display: 'flex', padding: '8px 13px', borderTop: '1px solid var(--border)', fontSize: 'var(--text-xs)', fontWeight: 700 }}>
+          <span style={{ flex: 1 }}>At the rate card, bought separately</span>
+          <span>${fmtMoney(cardTotal)}</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ----------------------------------------------------- the pack composer -- */
+
+/* The prototype's composer, with the arithmetic in lib/federation.ts so it can
+   be tested. Nothing here types a price: the operator picks components and the
+   rule derives the number, with an override that has to clear the floor. */
+function PackComposer({ snap, onClose, onCreate }: {
+  snap: CatalogueSnapshot
+  onClose: () => void
+  onCreate: (draft: PackDraft) => void
+}) {
+  const [name, setName] = useState('')
+  const [categoryId, setCategoryId] = useState(snap.categories[0]?.id ?? '')
+  const [description, setDescription] = useState('')
+  const [picks, setPicks] = useState<ComponentPick[]>([])
+  const [override, setOverride] = useState<string>('')
+  const [search, setSearch] = useState('')
+
+  const rule = snap.bundleRule
+  const overrideNum = override.trim() === '' ? null : parseFloat(override)
+  const composition = compose(picks, snap.telco, rule, Number.isFinite(overrideNum as number) ? overrideNum : null)
+  const problem = compositionProblem(name, picks, snap.telco, rule, composition)
+  const warnings = compositionWarnings(composition)
+
+  const q = search.trim().toLowerCase()
+  const available = snap.telco.filter(t =>
+    !picks.some(p => p.telcoId === t.id) &&
+    (!q || `${t.name} ${t.family} ${t.spec} ${t.id}`.toLowerCase().includes(q)))
+  const families = [...new Set(available.map(t => t.family))]
+
+  const setQty = (id: string, d: number) =>
+    setPicks(list => list.map(p => p.telcoId === id ? { ...p, quantity: Math.max(1, Math.min(500, p.quantity + d)) } : p))
+  const setDisc = (id: string, v: string) =>
+    setPicks(list => list.map(p => p.telcoId === id ? { ...p, discount: Math.max(0, parseFloat(v) || 0) } : p))
+
+  return (
+    <Modal open onClose={onClose} title="Compose an operator pack"
+      footer={<>
+        <span style={{ flex: 1, fontSize: '11px', color: 'var(--text-tertiary)' }}>
+          {picks.length === 0 ? 'Nothing selected.' : `${picks.length} component${picks.length === 1 ? '' : 's'} · $${fmtMoney(composition.price)}${composition.model === 'oneoff' ? ' one-off' : ' a month'}`}
+        </span>
+        <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
+        <Btn size="sm" disabled={!!problem} onClick={() => onCreate({
+          name, categoryId, description, picks,
+          override: Number.isFinite(overrideNum as number) ? overrideNum : null,
+        })}>Publish the pack</Btn>
+      </>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <Callout tone="info">
+          Built from the operator's own rate card, so it is sold first party — no partner, no commission and
+          nothing to settle. It goes live immediately: first-party listings do not queue for review, because
+          you are the reviewer.
+        </Callout>
+
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 220px' }}>
+            <FormField label="Pack name" required>
+              <TextInput value={name} onChange={e => setName(e.target.value)} placeholder="What a buyer sees on the storefront" />
+            </FormField>
+          </div>
+          <div style={{ flex: '0 1 180px' }}>
+            <FormField label="Marketplace">
+              <Select value={categoryId} onChange={e => setCategoryId(e.target.value)}>
+                {snap.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
+            </FormField>
+          </div>
+        </div>
+
+        {/* What is in it */}
+        {picks.length > 0 && (
+          <div>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: '6px' }}>
+              Components
+              <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}>
+                {' '}· {composition.model === 'oneoff' ? 'charged once' : 'billed monthly'}, fulfilled by {composition.fulfil}
+              </span>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+              {composition.lines.map(l => (
+                <div key={l.item.id} style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                    <button onClick={() => setQty(l.item.id, -1)} aria-label={`One fewer ${l.item.name}`}
+                            style={{ border: '1px solid var(--border)', background: 'white', borderRadius: 'var(--radius-sm)', cursor: 'pointer', padding: '2px 4px', lineHeight: 0 }}><Minus size={11} /></button>
+                    <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, minWidth: '30px', textAlign: 'center' }}>{l.quantity}</span>
+                    <button onClick={() => setQty(l.item.id, 1)} aria-label={`One more ${l.item.name}`}
+                            style={{ border: '1px solid var(--border)', background: 'white', borderRadius: 'var(--radius-sm)', cursor: 'pointer', padding: '2px 4px', lineHeight: 0 }}><Plus size={11} /></button>
+                  </div>
+                  <div style={{ flex: 1, minWidth: '150px' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>{l.item.name}</div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                      {l.item.id} · {l.item.family} · costs ${fmtMoney(l.item.rc > 0 ? l.item.cost_rc : l.item.cost_nrc)}
+                    </div>
+                  </div>
+                  {/* Bounded by the component's own cost, so the control cannot
+                      express a discount the rule would refuse. */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                    <input type="number" min={0} max={l.maxDiscount} value={l.discount}
+                           onChange={e => setDisc(l.item.id, e.target.value)}
+                           aria-label={`Discount on ${l.item.name}, maximum ${l.maxDiscount} percent`}
+                           style={{ width: '56px', padding: '3px 6px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: 'var(--text-xs)' }} />
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>% <br />max {l.maxDiscount}</span>
+                  </div>
+                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, minWidth: '64px', textAlign: 'right' }}>
+                    ${fmtMoney(composition.model === 'oneoff' ? l.nrcNet : l.rcNet)}
+                  </span>
+                  <button onClick={() => setPicks(list => list.filter(x => x.telcoId !== l.item.id))}
+                          aria-label={`Remove ${l.item.name}`}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)' }}><X size={14} /></button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Pull from the rate card */}
+        <div>
+          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: '6px' }}>
+            Pull from the operator catalogue
+            <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}> · {snap.telco.length} items</span>
+          </div>
+          <input value={search} onChange={e => setSearch(e.target.value)}
+                 placeholder="Search a plan, add-on or piece of equipment"
+                 style={{ width: '100%', padding: '7px 10px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', fontSize: 'var(--text-xs)', outline: 'none', marginBottom: '6px' }} />
+          <div style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
+            {available.length === 0 ? (
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', padding: '10px' }}>
+                Nothing in the operator catalogue matches that.
+              </p>
+            ) : families.map(fam => (
+              <div key={fam}>
+                <div style={{ padding: '5px 11px', background: 'var(--bg-alt)', borderBottom: '1px solid var(--border-light)' }}>
+                  <span style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--text-secondary)' }}>{fam}</span>
+                </div>
+                {available.filter(t => t.family === fam).map(t => (
+                  <button key={t.id}
+                          onClick={() => setPicks(list => [...list, { telcoId: t.id, quantity: 1, discount: 0 }])}
+                          style={{ display: 'flex', width: '100%', gap: '8px', alignItems: 'center', padding: '7px 10px', background: 'none', border: 'none', borderBottom: '1px solid var(--border-light)', cursor: 'pointer', textAlign: 'left' }}>
+                    <Plus size={12} style={{ color: 'var(--brand-navy)', flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: 'var(--text-xs)' }}>
+                      {t.name}
+                      <span style={{ display: 'block', fontSize: '10px', color: 'var(--text-tertiary)' }}>{t.spec}</span>
+                    </span>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', textAlign: 'right' }}>
+                      {t.rc > 0 ? `$${fmtMoney(t.rc)}` : `$${fmtMoney(t.nrc)}`}
+                      <span style={{ display: 'block', fontSize: '9px', color: 'var(--text-tertiary)' }}>{t.unit}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* The derivation, shown while the price is still being set. */}
+        {picks.length > 0 && (
+          <div style={{ padding: '11px 13px', borderRadius: 'var(--radius-md)', background: 'var(--bg-alt)', border: '1px solid var(--border)' }}>
+            <Row label="Components at the rate card" value={`$${fmtMoney(composition.listTotal)}`} />
+            {composition.lineDiscountTotal > 0 && (
+              <Row label="Per-component discounts" value={`less $${fmtMoney(composition.lineDiscountTotal)}`} />
+            )}
+            {composition.packPct > 0 && (
+              <Row label={`Pack discount — ${rule.per_component}% per extra component, capped at ${rule.max_discount}%`}
+                   value={`less $${fmtMoney(composition.packDiscount)} (${composition.packPct}%)`} />
+            )}
+            <Row label="Derived price" value={`$${fmtMoney(composition.derived)}`} strong />
+            <Row label="What the components cost to deliver" value={`less $${fmtMoney(composition.cost)}`} />
+            <Row label="Margin" value={`$${fmtMoney(composition.margin)} (${composition.marginPct}%)`} strong
+                 ink={composition.margin <= 0 ? 'var(--danger)' : 'var(--success)'} />
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+          <div style={{ flex: '0 1 200px' }}>
+            <FormField label={`Price${composition.model === 'oneoff' ? '' : ' per month'}`}
+                       hint="Leave it blank to publish at the derived price.">
+              <TextInput type="number" step="0.01" value={override}
+                         onChange={e => setOverride(e.target.value)}
+                         placeholder={picks.length > 0 ? fmtMoney(composition.derived) : '0.00'} />
+            </FormField>
+          </div>
+        </div>
+
+        <FormField label="Description" hint="What the pack is for. Left blank, it lists what is inside.">
+          <TextArea value={description} onChange={e => setDescription(e.target.value)} rows={2} />
+        </FormField>
+
+        {warnings.map((w, i) => <Callout key={i} tone="warning">{w}</Callout>)}
+        {problem
+          ? <Callout tone="danger" title="Not ready to publish">{problem}</Callout>
+          : <Callout tone="success" title={`${name.trim()} will go live at $${fmtMoney(composition.price)}`}>
+              {priceBasis(composition, rule)} It is sold by Aventa Telecom, so no commission is taken and nothing settles to a seller.
+            </Callout>}
+      </div>
+    </Modal>
+  )
+}
+
+function Row({ label, value, strong, ink }: { label: string; value: string; strong?: boolean; ink?: string }) {
+  return (
+    <div style={{ display: 'flex', gap: '10px', padding: '3px 0', fontSize: 'var(--text-xs)' }}>
+      <span style={{ flex: 1, color: 'var(--text-secondary)' }}>{label}</span>
+      <span style={{ fontWeight: strong ? 800 : 600, color: ink ?? 'var(--text)' }}>{value}</span>
+    </div>
+  )
 }

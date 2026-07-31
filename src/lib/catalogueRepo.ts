@@ -9,6 +9,22 @@ import type {
 } from './catalogue'
 import type { CommissionPlan } from './partnerCommerce'
 import type { Category } from '../types'
+import { compose, compositionProblem, priceBasis } from './federation'
+import type { TelcoItem, BundleRule, ComponentPick } from './federation'
+
+/** One line of what a first-party listing was composed from. The name and the
+    rates are as they stood when it was composed — see the migration. */
+export interface PackComponent {
+  product_id: string
+  telco_id: string
+  quantity: number
+  discount: number
+  rc_at: number
+  nrc_at: number
+  name_at: string
+  note: string | null
+  sort_order: number
+}
 
 export interface ListingQuery {
   id: string
@@ -37,7 +53,21 @@ export interface CatalogueSnapshot {
   plans: CommissionPlan[]
   partners: { id: string; name: string; status: string; plan_id: string | null }[]
   queries: ListingQuery[]
+  /* The federated BSS rate card and the policy for composing from it. Empty for
+     anyone but the operator — the rate card carries delivery costs, and RLS
+     returns no rows rather than an error to a persona that may not read it. */
+  telco: TelcoItem[]
+  bundleRule: BundleRule
+  packComponents: PackComponent[]
   loadError?: string
+}
+
+/* The published composition policy, used when the rate card could not be read —
+   which is every persona but the operator. Matches the seeded row; the operator
+   screen always has the real one, so this is a floor, not a second source of
+   truth. */
+const FALLBACK_RULE: BundleRule = {
+  per_component: 4, max_discount: 18, min_components: 2, max_components: 6,
 }
 
 /* One round trip per table. The alternative — a query per product to find its
@@ -47,6 +77,7 @@ export async function loadCatalogue(): Promise<CatalogueSnapshot> {
   const [
     prodRes, subRes, ruleRes, compRes, mediaRes,
     catRes, polRes, prRes, matrixRes, planRes, partnerRes, queryRes,
+    telcoRes, bundleRuleRes, packCompRes,
   ] = await Promise.all([
     supabase.from('products').select('*').order('sort_order'),
     supabase.from('operator_listings').select('*').order('sort_order'),
@@ -60,6 +91,9 @@ export async function loadCatalogue(): Promise<CatalogueSnapshot> {
     supabase.from('commission_plans').select('*').order('sort_order'),
     supabase.from('partners').select('id,name,status,plan_id').order('id'),
     supabase.from('listing_queries').select('*').order('asked_on', { ascending: false }),
+    supabase.from('telco_catalogue').select('*').order('sort_order'),
+    supabase.from('bundle_rules').select('*').eq('id', 'standard').maybeSingle(),
+    supabase.from('product_telco_components').select('*').order('sort_order'),
   ])
 
   const errors: string[] = []
@@ -68,6 +102,11 @@ export async function loadCatalogue(): Promise<CatalogueSnapshot> {
   note('components', compRes.error); note('media', mediaRes.error); note('categories', catRes.error)
   note('category policy', polRes.error); note('policy rules', prRes.error); note('policy matrix', matrixRes.error)
   note('plans', planRes.error); note('partners', partnerRes.error); note('queries', queryRes.error)
+  /* The rate card is deliberately unreadable to anyone but the operator, and RLS
+     expresses that as an empty result rather than an error. Only a real failure
+     is worth reporting, so these are noted the same way as the rest. */
+  note('rate card', telcoRes.error); note('composition rule', bundleRuleRes.error)
+  note('pack components', packCompRes.error)
 
   return {
     products: (prodRes.data ?? []) as ProductRow[],
@@ -82,6 +121,9 @@ export async function loadCatalogue(): Promise<CatalogueSnapshot> {
     plans: (planRes.data ?? []) as CommissionPlan[],
     partners: (partnerRes.data ?? []) as { id: string; name: string; status: string; plan_id: string | null }[],
     queries: (queryRes.data ?? []) as ListingQuery[],
+    telco: (telcoRes.data ?? []) as TelcoItem[],
+    bundleRule: (bundleRuleRes.data as BundleRule | null) ?? FALLBACK_RULE,
+    packComponents: (packCompRes.data ?? []) as PackComponent[],
     ...(errors.length > 0 ? { loadError: `Could not load the full catalogue (${errors.join('; ')}).` } : {}),
   }
 }
@@ -226,6 +268,129 @@ export async function publishFirstParty(
 
   await writeAudit(actor, 'catalogue.firstparty.published', productId, product.status, 'live', 'info')
   return { ok: true }
+}
+
+/* ------------------------------------------------------ operator packs --- */
+
+export interface PackDraft {
+  name: string
+  categoryId: string
+  description: string
+  picks: ComponentPick[]
+  /* Null takes the derived price. Anything else has to beat the parts and clear
+     the cost floor, both of which `compositionProblem` checks. */
+  override: number | null
+}
+
+/**
+ * Publish a pack the operator composed from its own federated rate card.
+ *
+ * This is the first-party equivalent of a seller's submission, and the reason it
+ * does not queue for review is that the operator is the reviewer — so the record
+ * is written approved, by them, saying so. The alternative is a listing on the
+ * marketplace that nobody can account for later.
+ *
+ * The price is derived here rather than taken from the caller. A composer that
+ * trusts a price posted to it is a composer whose floor can be walked through.
+ */
+export async function composePack(
+  { draft, telco, rule, actor }: {
+    draft: PackDraft; telco: readonly TelcoItem[]; rule: BundleRule; actor: string
+  },
+): Promise<Result & { productId?: string }> {
+  const composition = compose(draft.picks, telco, rule, draft.override)
+  const problem = compositionProblem(draft.name, draft.picks, telco, rule, composition)
+  if (problem) return { ok: false, reason: problem }
+  if (!draft.categoryId) return { ok: false, reason: 'Choose the marketplace this pack sells in.' }
+
+  const id = `SKU-FP${Date.now().toString(36).slice(-5).toUpperCase()}`
+  const contents = composition.lines
+    .map(l => (l.quantity > 1 ? `${l.quantity} × ${l.item.name}` : l.item.name))
+    .join(', ')
+
+  const { error: insErr } = await supabase.from('products').insert({
+    id,
+    category_id: draft.categoryId,
+    sub_category: 'Operator packs',
+    name: draft.name.trim(),
+    /* First party is the whole point: no partner, so no commission and nothing
+       to settle. */
+    partner_id: null, seller: 'Aventa Telecom', comm: 0,
+    price: composition.price,
+    /* What the same components cost bought separately, so the saving shown on
+       the product page is arithmetic rather than marketing. */
+    was_price: composition.listTotal,
+    cost: composition.cost,
+    model: composition.model, fulfil: composition.fulfil,
+    rating: null, reviews: 0, stock: 'in', status: 'live', listed: todayLabel(),
+    description: draft.description.trim() || `${contents}, priced as one pack.`,
+    tags: ['Bundle', 'First party'], badge: 'Bundle',
+    specs: {
+      Composition: 'Federated from the operator catalogue — components listed below',
+      Billing: composition.model === 'oneoff' ? 'Charged once' : 'One line on one invoice',
+      'Sold by': 'Aventa Telecom (first party)',
+    },
+    sort_order: 920,
+  })
+  if (insErr) return { ok: false, reason: `The pack was not created: ${insErr.message}` }
+
+  /* Rates and names as they stand now. The BSS is free to reprice tomorrow; a
+     pack that silently follows it reprices a contract somebody already holds. */
+  const { error: compErr } = await supabase.from('product_telco_components').insert(
+    composition.lines.map((l, i) => ({
+      product_id: id, telco_id: l.item.id, quantity: l.quantity, discount: l.discount,
+      rc_at: l.item.rc, nrc_at: l.item.nrc, name_at: l.item.name,
+      note: draft.picks.find(p => p.telcoId === l.item.id)?.note ?? null,
+      sort_order: i + 1,
+    })),
+  )
+  if (compErr) {
+    /* A pack with no components is a product with a word on it, so do not leave
+       one behind. */
+    await supabase.from('products').delete().eq('id', id)
+    return { ok: false, reason: `The components could not be recorded, so the pack was removed: ${compErr.message}` }
+  }
+
+  /* A pack has nothing to photograph — it is an arrangement of tariff items, not
+     an object — but the catalogue requires a hero on anything for sale, and a
+     tile with a blank square reads as a broken listing rather than a new one.
+     It borrows the category's imagery and says so in the alt text, so the
+     operator can see it is a placeholder rather than a chosen photograph. */
+  const { data: sibling } = await supabase
+    .from('product_media')
+    .select('url, product:products!inner(category_id, partner_id)')
+    .eq('role', 'hero')
+    .eq('products.category_id', draft.categoryId)
+    .limit(1)
+    .maybeSingle()
+  const heroUrl = (sibling as { url?: string } | null)?.url
+  const mediaErr = heroUrl
+    ? (await supabase.from('product_media').insert({
+        id: `pm-${id}-1`, product_id: id, url: heroUrl, role: 'hero',
+        alt: `${draft.name.trim()} — placeholder imagery taken from the marketplace, not a photograph of this pack`,
+        sort_order: 1,
+      })).error
+    : null
+
+  const { error: recErr } = await supabase.from('operator_listings').insert({
+    id: `ol-${id.replace('SKU-', '')}`, product_id: id, partner_id: null,
+    status: 'approved', risk: 'low',
+    check_note: 'First party — composed from the federated operator catalogue',
+    submitted_by: actor, submitted_at: new Date().toISOString(),
+    reviewed_by: actor, reviewed_at: new Date().toISOString(),
+    decision_reason: `${priceBasis(composition, rule)} No partner, no commission, no settlement.`,
+    version: 1, sort_order: 520,
+  })
+
+  await writeAudit(actor, 'catalogue.pack.composed', id, null, 'live', 'info')
+
+  const gaps = [
+    recErr && 'its review record',
+    (mediaErr || !heroUrl) && 'its placeholder image',
+  ].filter(Boolean).join(' and ')
+  return gaps
+    ? { ok: true, productId: id, note: `${draft.name} is live, but ${gaps} could not be written — add imagery before promoting it.` }
+    : { ok: true, productId: id, note: `${draft.name} is live at $${composition.price.toFixed(2)}. It carries placeholder imagery until you replace it.` }
 }
 
 /* ----------------------------------------------------------- bundles ----- */
