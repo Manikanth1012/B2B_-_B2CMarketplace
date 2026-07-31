@@ -41,6 +41,7 @@ import { OperatorRoles } from './components/operator/OperatorRoles'
 import { OperatorAudit } from './components/operator/OperatorAudit'
 import { OperatorReviews } from './components/operator/OperatorReviews'
 import { OperatorWallets } from './components/operator/OperatorWallets'
+import { OperatorContentFeedback } from './components/operator/OperatorContentFeedback'
 import { ToastHost, toast } from './components/operator/shared'
 import { PartnerShell } from './components/partner/PartnerShell'
 import { PartnerDashboard } from './components/partner/PartnerDashboard'
@@ -289,6 +290,7 @@ export default function App() {
         {opView === 'op-roles' && <OperatorRoles />}
         {opView === 'op-reviews' && <OperatorReviews />}
         {opView === 'op-wallets' && <OperatorWallets />}
+        {opView === 'op-feedback' && <OperatorContentFeedback />}
         {opView === 'op-audit' && <OperatorAudit />}
         {opView === 'op-kb' && <KnowledgeBase persona="operator" title="Knowledge base" />}
         {/* No feedbackAs: the operator is the queue. */}
@@ -300,7 +302,7 @@ export default function App() {
   if (persona === 'partner') {
     return (
       <PartnerShell view={ptView} onNavigate={setPtView} onSignOut={handleSignOut}>
-        {ptView === 'pt-dashboard' && <PartnerDashboard />}
+        {ptView === 'pt-dashboard' && <PartnerDashboard onNavigate={setPtView} />}
         {ptView === 'pt-onboarding' && <PartnerOnboarding partnerId={session!.partnerId!} />}
         {ptView === 'pt-listings' && <PartnerListings partnerId={session!.partnerId!} onNewListing={() => setPtView('pt-newlisting')} />}
         {ptView === 'pt-newlisting' && <PartnerNewListing partnerId={session!.partnerId!} />}
@@ -310,7 +312,7 @@ export default function App() {
         {ptView === 'pt-performance' && <PartnerPerformance />}
         {ptView === 'pt-integrations' && <PartnerIntegrations />}
         {ptView === 'pt-reviews' && <PartnerReviews partnerId={session?.partnerId ?? ''} />}
-        {ptView === 'pt-support' && <PartnerSupport />}
+        {ptView === 'pt-support' && <PartnerSupport partnerId={session!.partnerId!} />}
         {ptView === 'pt-team' && <PartnerTeam />}
         {ptView === 'pt-audit' && <PartnerAudit />}
         {ptView === 'pt-profile' && <PartnerProfile />}

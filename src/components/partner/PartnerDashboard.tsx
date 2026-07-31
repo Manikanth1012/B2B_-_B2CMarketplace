@@ -1,8 +1,12 @@
-import { TrendingUp, TrendingDown, TriangleAlert as AlertTriangle, Wallet, Package, ShoppingCart, Star, Clock } from 'lucide-react'
+import { TrendingUp, TrendingDown, TriangleAlert as AlertTriangle, Wallet, Package, ShoppingCart, Star, Clock, ChevronRight } from 'lucide-react'
 import { StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, fmtInt, Btn } from '../operator/shared'
 import { PARTNER_PROFILE, PARTNER_LISTINGS, PARTNER_ORDERS, PARTNER_SETTLEMENTS, PARTNER_PLAN, ONB_TASKS, VERTICAL_NAMES } from './data'
 
-export function PartnerDashboard() {
+export function PartnerDashboard({ onNavigate }: {
+  /* The console owns navigation. Without this the dashboard can show that six
+     orders need action and offer no way to reach any of them. */
+  onNavigate?: (view: 'pt-orders' | 'pt-listings' | 'pt-support') => void
+}) {
   const liveListings = PARTNER_LISTINGS.filter(l => l.status === 'live')
   const pendingListings = PARTNER_LISTINGS.filter(l => l.status === 'pending')
   const openOrders = PARTNER_ORDERS.filter(o => o.stage < o.stages.length - 1 && !o.failed)
@@ -87,21 +91,54 @@ export function PartnerDashboard() {
 
       {/* Orders + Rating */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }} className="op-grid-2col">
-        <SectionCard title="Orders Needing You" subtitle={`${openOrders.length + failedOrders.length} require action`}>
-          <Table headers={['Order', 'Product', 'Value', 'Status']}>
-            {failedOrders.concat(openOrders).slice(0, 6).map(o => (
-              <tr key={o.id}>
-                <Td><div style={{ fontWeight: 600 }}>{o.id}</div><div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{o.name}</div></Td>
-                <Td>{o.buyer}</Td>
-                <Td right>${fmtMoney(o.gross)}</Td>
-                <Td right>
-                  {o.failed
-                    ? <StatusPill status="rejected" />
-                    : <StatusPill status="open" />}
-                </Td>
-              </tr>
-            ))}
+        <SectionCard
+          title="Orders Needing You"
+          subtitle={`${openOrders.length + failedOrders.length} require action`}
+          action={
+            <Btn size="sm" variant="secondary" onClick={() => onNavigate?.('pt-orders')}>
+              Manage all <ChevronRight size={13} />
+            </Btn>
+          }>
+          {/* Each row says what the next step actually is, and does it. A card
+              headed "needing you" whose rows are read-only tells somebody they
+              are late and gives them nowhere to go. */}
+          <Table headers={['Order', 'Buyer', 'Value', 'Next step', '']}>
+            {failedOrders.concat(openOrders).slice(0, 6).map(o => {
+              const next = o.failed ? 'Resolve the failure' : o.stages[o.stage + 1]
+              return (
+                <tr key={o.id}>
+                  <Td>
+                    <div style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{o.id}</div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{o.name}</div>
+                  </Td>
+                  <Td>{o.buyer}</Td>
+                  <Td right>${fmtMoney(o.gross)}</Td>
+                  {/* The status pill and the next step said the same thing
+                      twice and wrapped to three lines doing it. The step is the
+                      useful half — it is what somebody has to go and do. */}
+                  <Td>
+                    <span style={{
+                      fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+                      color: o.failed ? 'var(--danger)' : 'var(--text-secondary)',
+                    }}>
+                      {next}
+                    </span>
+                  </Td>
+                  <Td right>
+                    <Btn size="sm" variant={o.failed ? 'primary' : 'secondary'}
+                         onClick={() => onNavigate?.('pt-orders')}>
+                      {o.failed ? 'Resolve' : 'Open'}
+                    </Btn>
+                  </Td>
+                </tr>
+              )
+            })}
           </Table>
+          {openOrders.length + failedOrders.length === 0 && (
+            <div style={{ padding: '20px', textAlign: 'center', fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
+              Nothing waiting on you.
+            </div>
+          )}
         </SectionCard>
 
         <SectionCard title="Seller Rating" subtitle="Based on verified purchases">
