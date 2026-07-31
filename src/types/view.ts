@@ -20,6 +20,8 @@ export type OperatorView =
   | 'op-wallets'
   | 'op-refunds'
   | 'op-rewards'
+  | 'op-ledger'
+  | 'op-revshare'
   | 'op-kb'
 
 export type PartnerView =

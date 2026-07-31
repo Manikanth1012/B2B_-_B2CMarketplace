@@ -59,6 +59,8 @@ import { PartnerDetails } from './components/partner/PartnerDetails'
 import { PartnerRefunds } from './components/partner/PartnerRefunds'
 import { OperatorRefunds } from './components/operator/OperatorRefunds'
 import { OperatorRewards } from './components/operator/OperatorRewards'
+import { OperatorRevenueShare } from './components/operator/OperatorRevenueShare'
+import { OperatorLedger } from './components/operator/OperatorLedger'
 import { PartnerRewards } from './components/partner/PartnerRewards'
 import { PartnerReviews } from './components/partner/PartnerReviews'
 import { EnterpriseShell } from './components/enterprise/EnterpriseShell'
@@ -297,6 +299,8 @@ export default function App() {
         {opView === 'op-wallets' && <OperatorWallets />}
         {opView === 'op-refunds' && <OperatorRefunds />}
         {opView === 'op-rewards' && <OperatorRewards />}
+        {opView === 'op-revshare' && <OperatorRevenueShare />}
+        {opView === 'op-ledger' && <OperatorLedger />}
         {opView === 'op-feedback' && <OperatorContentFeedback />}
         {opView === 'op-audit' && <OperatorAudit />}
         {opView === 'op-kb' && <KnowledgeBase persona="operator" title="Knowledge base" />}
@@ -314,7 +318,7 @@ export default function App() {
         {ptView === 'pt-listings' && <PartnerListings partnerId={session!.partnerId!} onNewListing={() => setPtView('pt-newlisting')} />}
         {ptView === 'pt-newlisting' && <PartnerNewListing partnerId={session!.partnerId!} />}
         {ptView === 'pt-orders' && <PartnerOrders />}
-        {ptView === 'pt-settlement' && <PartnerSettlement />}
+        {ptView === 'pt-settlement' && <PartnerSettlement partnerId={session!.partnerId!} />}
         {ptView === 'pt-plan' && <PartnerSettlementPlan partnerId={session!.partnerId!} />}
         {ptView === 'pt-performance' && <PartnerPerformance />}
         {ptView === 'pt-integrations' && <PartnerIntegrations />}
