@@ -77,6 +77,13 @@ export interface ClosureContext {
   activeSubscriptions: { price: number }[]
   ordersInFlight: number
   walletBalance: number
+  /* Split, because only one of the two comes back. Defaulted to the whole
+     balance being the customer's where a caller has not looked it up, which is
+     the safe direction: it over-promises nothing the wallet cannot pay. */
+  walletCash?: number
+  walletPromo?: number
+  /* Where the refundable part goes. Null means nothing on file. */
+  refundInstrument?: string | null
   householdMembers: number
 }
 
@@ -100,10 +107,27 @@ export function closureImpact(ctx: ClosureContext, effective: string): string[] 
     : 'No orders are in flight.')
 
   /* Money owed back is the thing people actually worry about, so it is stated even
-     when the balance is zero — silence reads as "you lose it". */
-  out.push(ctx.walletBalance > 0
-    ? `Your wallet balance of $${ctx.walletBalance.toFixed(2)} is refunded to your default payment method.`
-    : 'Your wallet is empty, so there is nothing to refund.')
+     when the balance is zero — silence reads as "you lose it".
+
+     And it is stated as two figures, because only one of them comes back. A
+     wallet holding $30.60 of top-ups and $12.00 of converted points is not a
+     "$42.60 refund": the points were never the customer's money and cannot be
+     paid to a card. Saying so here is the difference between an expectation
+     the marketplace can meet and a complaint it has already earned. */
+  const cash = ctx.walletCash ?? ctx.walletBalance
+  const promo = ctx.walletPromo ?? 0
+
+  if (cash > 0) {
+    out.push(ctx.refundInstrument
+      ? `$${cash.toFixed(2)} of your own money — top-ups and refunds — goes back to ${ctx.refundInstrument}. Allow five working days.`
+      : `$${cash.toFixed(2)} of your own money is returnable, but there is no payment method on file to send it to. Add one before you close.`)
+  }
+  if (promo > 0) {
+    out.push(`$${promo.toFixed(2)} of credit we gave you — converted points and goodwill — cannot be paid out as cash and is cancelled. Spend it first if you would rather not lose it.`)
+  }
+  if (cash === 0 && promo === 0) {
+    out.push('Your wallet is empty, so there is nothing to refund.')
+  }
 
   if (ctx.householdMembers > 1) {
     out.push(`${ctx.householdMembers - 1} household members lose access on the same date.`)

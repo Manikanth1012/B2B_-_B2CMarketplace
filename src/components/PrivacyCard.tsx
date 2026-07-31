@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { ShieldCheck, Download, TriangleAlert } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { requestWalletReturn, cancelWalletReturn } from '../lib/walletRepo'
 import type { ConsumerProfile } from '../types'
 import {
   SHARING, REQUEST_KINDS, REQUEST_IMPACT, dueDate, toIsoDate,
@@ -62,10 +63,15 @@ export function PrivacyCard({ profile, showToast }: {
   /* The impact is worked out from live data when the dialog opens, not written into
      the markup — somebody about to close an account is owed the specifics. */
   const openClosure = async () => {
-    const [subs, orders, household] = await Promise.all([
+    const [subs, orders, household, wallet, cards] = await Promise.all([
       supabase.from('subscriptions').select('price, status'),
       supabase.from('orders').select('status'),
       supabase.from('consumer_household').select('id'),
+      /* The two pots, read rather than assumed. Only one of them comes back,
+         and telling somebody otherwise is a complaint already earned. */
+      supabase.from('wallets').select('cash, promo, balance').maybeSingle(),
+      supabase.from('consumer_payment_methods').select('detail, is_primary')
+        .order('is_primary', { ascending: false }).limit(1),
     ])
     const active = (subs.data ?? []).filter(s => s.status === 'active') as { price: number }[]
     const inFlight = (orders.data ?? []).filter(o => !['refunded', 'cancelled', 'delivered'].includes(o.status)).length
@@ -73,7 +79,10 @@ export function PrivacyCard({ profile, showToast }: {
     setImpact(closureImpact({
       activeSubscriptions: active,
       ordersInFlight: inFlight,
-      walletBalance: profile.wallet,
+      walletBalance: Number(wallet.data?.balance ?? profile.wallet),
+      walletCash: wallet.data ? Number(wallet.data.cash) : undefined,
+      walletPromo: wallet.data ? Number(wallet.data.promo) : undefined,
+      refundInstrument: (cards.data ?? [])[0]?.detail ?? null,
       householdMembers: (household.data ?? []).length,
     }, formatDateOnly(effective)))
     setTyped('')
@@ -86,19 +95,39 @@ export function PrivacyCard({ profile, showToast }: {
     await supabase.from('consumer_profile').update({
       closure_requested_at: toIsoDate(requested), closure_effective: effective, closure_reason: reason,
     }).eq('id', 'me')
+    /* The wallet is frozen and the return is registered now, but no money moves
+       until the closure actually completes — they can still change their mind. */
+    const { data: w } = await supabase.from('wallets').select('id').maybeSingle()
+    const { data: card } = await supabase.from('consumer_payment_methods')
+      .select('detail').order('is_primary', { ascending: false }).limit(1)
+    let walletNote = ''
+    if (w) {
+      const res = await requestWalletReturn({
+        walletId: w.id,
+        instrument: (card ?? [])[0]?.detail ?? null,
+        effective: formatDateOnly(effective),
+      })
+      if (!res.ok) { showToast(res.reason); return }
+      if (res.cashReturned && res.cashReturned > 0) {
+        walletNote = ` · $${res.cashReturned.toFixed(2)} will be returned to you`
+      }
+    }
+
     await audit('account.closure_scheduled', 'Account closure scheduled', `Effective ${effective} · ${reason}`, 'warning')
     setClosure(effective)
     setClosing(false)
-    showToast(`Closure scheduled for ${formatDateOnly(effective)} — you can stop it any time before then`)
+    showToast(`Closure scheduled for ${formatDateOnly(effective)} — you can stop it any time before then${walletNote}`)
   }
 
   const cancelClosure = async () => {
     await supabase.from('consumer_profile').update({
       closure_requested_at: null, closure_effective: null, closure_reason: null,
     }).eq('id', 'me')
+    const { data: w } = await supabase.from('wallets').select('id').maybeSingle()
+    if (w) await cancelWalletReturn(w.id)
     await audit('account.closure_cancelled', 'Account closure withdrawn', 'Account stays open')
     setClosure(null)
-    showToast('Closure cancelled — your account stays open')
+    showToast('Closure cancelled — your account and wallet stay open')
   }
 
   return (

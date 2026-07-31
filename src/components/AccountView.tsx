@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { User, Bell, History, Users, RotateCcw, Check, X, Plus, Minus, CircleAlert as AlertCircle, Info, Shield, Wallet, Star, Phone, Mail, MapPin, CreditCard, Clock, ChevronRight, Lock, Trash2, FileText, LifeBuoy, MessageSquare, Send, Download, Globe } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { changePassword, currentEmail, SignInError } from '../lib/authRepo'
+import { WalletCard } from './WalletCard'
 import { checkNewPassword, strengthOf, isDemoAccount, MIN_LENGTH } from '../lib/password'
 import { paymentSummary } from '../lib/payments'
 import { LANGUAGES, TIME_ZONES, DATA_UNITS, effectivePreferences, isAuditable } from '../lib/preferences'
@@ -15,10 +16,10 @@ import type {
   ConsumerBill, ConsumerTicket, TicketMessage,
 } from '../types'
 
-type Tab = 'profile' | 'security' | 'notifications' | 'activity' | 'household' | 'refunds' | 'bills' | 'support'
+type Tab = 'profile' | 'security' | 'notifications' | 'activity' | 'household' | 'wallet' | 'refunds' | 'bills' | 'support'
 
 function isTab(v: string): v is Tab {
-  return ['profile', 'security', 'notifications', 'activity', 'household', 'refunds', 'bills', 'support'].includes(v)
+  return ['profile', 'security', 'notifications', 'activity', 'household', 'wallet', 'refunds', 'bills', 'support'].includes(v)
 }
 
 const CHANNELS = ['Push', 'SMS', 'Email']
@@ -139,6 +140,7 @@ export function AccountView({ initialTab, onWatchesChanged }: {
     { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'activity', label: 'Account activity', icon: History },
     { id: 'household', label: 'Household', icon: Users },
+    { id: 'wallet', label: 'Wallet', icon: Wallet },
     { id: 'refunds', label: 'Refunds', icon: RotateCcw },
     { id: 'bills', label: 'Bills', icon: FileText },
     { id: 'support', label: 'Help & Support', icon: LifeBuoy },
@@ -210,6 +212,7 @@ export function AccountView({ initialTab, onWatchesChanged }: {
       )}
       {tab === 'activity' && <ActivityTab log={auditLog} />}
       {tab === 'household' && <HouseholdTab members={household} showToast={showToast} />}
+      {tab === 'wallet' && <WalletTab />}
       {tab === 'refunds' && <RefundsTab refunds={refunds} />}
       {tab === 'bills' && <BillsTab bills={bills} showToast={showToast} />}
       {tab === 'support' && <SupportTab tickets={tickets} showToast={showToast} />}
@@ -1868,4 +1871,18 @@ function StatBox({ icon, label, value }: { icon: React.ReactNode; label: string;
       <div style={{ fontSize: 'var(--text-2xl)', fontWeight: 800 }}>{value}</div>
     </div>
   )
+}
+
+/* The wallet, on the customer's own side. Payment methods come with it so the
+   closing copy can name the card the money would actually go back to rather
+   than saying "your default payment method" and hoping there is one. */
+function WalletTab() {
+  const [cards, setCards] = useState<ConsumerPaymentMethod[]>([])
+
+  useEffect(() => {
+    supabase.from('consumer_payment_methods').select('*').order('is_primary', { ascending: false })
+      .then(({ data }) => { if (data) setCards(data as ConsumerPaymentMethod[]) })
+  }, [])
+
+  return <WalletCard paymentMethods={cards.map(c => ({ detail: c.detail, is_primary: c.is_primary }))} />
 }

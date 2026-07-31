@@ -65,11 +65,46 @@ describe('closure', () => {
     const lines = closureImpact({
       activeSubscriptions: [{ price: 12.99 }, { price: 14.99 }, { price: 18 }, { price: 6.9 }],
       ordersInFlight: 2, walletBalance: 42.6, householdMembers: 5,
+      refundInstrument: 'Visa ending 4336',
     }, effective)
     expect(lines.join(' ')).toMatch(/4 active subscriptions \(\$52\.88 a month\)/)
     expect(lines.join(' ')).toMatch(/2 orders are still in flight/)
-    expect(lines.join(' ')).toMatch(/wallet balance of \$42\.60 is refunded/)
+    expect(lines.join(' ')).toMatch(/\$42\.60 of your own money/)
     expect(lines.join(' ')).toMatch(/4 household members lose access/)
+  })
+
+  /* The whole reason the wallet keeps two pots. Promising a $42.60 refund when
+     $12 of it is converted points is a complaint the marketplace has already
+     earned by the time anybody reads the statement. */
+  it('separates the money that comes back from the credit that does not', () => {
+    const lines = closureImpact({
+      activeSubscriptions: [], ordersInFlight: 0, householdMembers: 1,
+      walletBalance: 42.6, walletCash: 30.6, walletPromo: 12,
+      refundInstrument: 'Visa ending 4336',
+    }, effective).join(' ')
+    expect(lines).toMatch(/\$30\.60 of your own money/)
+    expect(lines).toContain('Visa ending 4336')
+    expect(lines).toMatch(/\$12\.00 of credit we gave you/)
+    expect(lines).toMatch(/cannot be paid out as cash and is cancelled/)
+    /* And it never calls the whole balance a refund. */
+    expect(lines).not.toMatch(/\$42\.60 (?:is refunded|goes back)/)
+  })
+
+  it('says there is nowhere to send the money when no instrument is on file', () => {
+    const lines = closureImpact({
+      activeSubscriptions: [], ordersInFlight: 0, householdMembers: 1,
+      walletBalance: 30.6, walletCash: 30.6, walletPromo: 0, refundInstrument: null,
+    }, effective).join(' ')
+    expect(lines).toMatch(/no payment method on file/)
+  })
+
+  it('mentions only the credit when that is all there is', () => {
+    const lines = closureImpact({
+      activeSubscriptions: [], ordersInFlight: 0, householdMembers: 1,
+      walletBalance: 12, walletCash: 0, walletPromo: 12, refundInstrument: 'Visa ending 4336',
+    }, effective).join(' ')
+    expect(lines).toMatch(/\$12\.00 of credit/)
+    expect(lines).not.toMatch(/of your own money/)
   })
 
   /* Silence about the wallet reads as "you lose it", so zero is stated too. */

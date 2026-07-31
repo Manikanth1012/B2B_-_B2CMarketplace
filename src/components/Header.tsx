@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, ShoppingCart, Menu, X, ChevronDown, User, Bell, Shield, LogOut, Star, BookOpen } from 'lucide-react'
+import { Search, ShoppingCart, Menu, X, ChevronDown, User, Bell, Shield, LogOut, Star, BookOpen, Wallet as WalletIcon } from 'lucide-react'
 import type { Category } from '../types'
 import { supabase } from '../lib/supabase'
 import { ContextualHelp } from './ContextualHelp'
@@ -160,6 +160,10 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut, currentV
                     <AcctItem icon={<User size={16} />} label="My details" onClick={() => { onNavigate('account', { tab: 'profile' }); setAcctOpen(false) }} />
                     <AcctItem icon={<Bell size={16} />} label="Notification preferences" onClick={() => { onNavigate('account', { tab: 'notifications' }); setAcctOpen(false) }} />
                     <AcctItem icon={<Shield size={16} />} label="Sign-in & security" onClick={() => { onNavigate('account', { tab: 'security' }); setAcctOpen(false) }} />
+                    {/* Money the marketplace is holding for them. It belongs in
+                        this menu rather than three clicks into a settings page:
+                        it is the customer's own money. */}
+                    <AcctItem icon={<WalletIcon size={16} />} label="Wallet" onClick={() => { onNavigate('account', { tab: 'wallet' }); setAcctOpen(false) }} />
                     {/* Household is where this account's roles and spend caps live —
                         what this person may and may not do. */}
                     <AcctItem icon={<Star size={16} />} label="My permissions" onClick={() => { onNavigate('account', { tab: 'household' }); setAcctOpen(false) }} />

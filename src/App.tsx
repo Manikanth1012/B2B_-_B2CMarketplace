@@ -40,6 +40,7 @@ import { OperatorChannels } from './components/operator/OperatorChannels'
 import { OperatorRoles } from './components/operator/OperatorRoles'
 import { OperatorAudit } from './components/operator/OperatorAudit'
 import { OperatorReviews } from './components/operator/OperatorReviews'
+import { OperatorWallets } from './components/operator/OperatorWallets'
 import { ToastHost, toast } from './components/operator/shared'
 import { PartnerShell } from './components/partner/PartnerShell'
 import { PartnerDashboard } from './components/partner/PartnerDashboard'
@@ -287,6 +288,7 @@ export default function App() {
         {opView === 'op-channels' && <OperatorChannels />}
         {opView === 'op-roles' && <OperatorRoles />}
         {opView === 'op-reviews' && <OperatorReviews />}
+        {opView === 'op-wallets' && <OperatorWallets />}
         {opView === 'op-audit' && <OperatorAudit />}
         {opView === 'op-kb' && <KnowledgeBase persona="operator" title="Knowledge base" />}
         {/* No feedbackAs: the operator is the queue. */}

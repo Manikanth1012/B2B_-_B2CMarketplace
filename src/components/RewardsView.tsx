@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Zap, Star, TrendingUp, Clock, Award, Gift, Wallet, FileText, Tag, RefreshCw, Send, X, Minus, Plus, Check, CircleAlert as AlertCircle, Info } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { creditWalletFromRewards, loadMyWallet } from '../lib/walletRepo'
 import type { LoyaltyProgramme, LoyaltyTier, EarnRule, RedeemOption, LoyaltyMember, LoyaltyLedgerEntry } from '../types'
 
 const MEMBER_ID = 'LM-4001'
@@ -159,8 +160,24 @@ export function RewardsView() {
       note: `Redeemed for ${opt.name.toLowerCase()} — ${fmtMoney(worth)}`,
     })
 
+    /* Wallet credit is the one redemption that has somewhere to land. It goes
+       into the promotional pot: the customer did not pay for these points, so
+       converting them must not create money they can withdraw to a card. */
+    let walletNote = ''
+    if (opt.kind === 'wallet') {
+      const mine = await loadMyWallet()
+      if (mine.wallet) {
+        const res = await creditWalletFromRewards({
+          walletId: mine.wallet.id, points: redeemPoints, credit: worth, optionId: opt.id,
+        })
+        walletNote = res.ok
+          ? ' — spendable in the marketplace, not refundable as cash'
+          : ` — but the wallet was not credited: ${res.reason}`
+      }
+    }
+
     setRedeemModalOpen(false)
-    setToast(`${fmtPts(redeemPoints)} redeemed — ${fmtMoney(worth)} of ${opt.name.toLowerCase()}`)
+    setToast(`${fmtPts(redeemPoints)} redeemed — ${fmtMoney(worth)} of ${opt.name.toLowerCase()}${walletNote}`)
     setTimeout(() => setToast(''), 4000)
     await loadData()
   }
