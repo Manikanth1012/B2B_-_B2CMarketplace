@@ -524,7 +524,12 @@ create policy "partner_request_bank_change" on partner_bank
 create or replace function guard_partner_bank() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
-  if current_persona() = 'operator' then
+  /* Clamp the seller specifically rather than "anybody who is not the
+     operator". A null persona is not an application user at all — it is a
+     migration or a service role — and silently reverting its writes makes the
+     schema lie to the people maintaining it. Who may update the row at all is
+     already settled by the policies above. */
+  if current_persona() is distinct from 'partner' then
     return new;                       -- the marketplace owns the live columns
   end if;
   /* Anybody else — which in practice means the seller — may only move the

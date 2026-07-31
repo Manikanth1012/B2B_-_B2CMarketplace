@@ -434,7 +434,12 @@ create policy "operator_write_refund_windows" on refund_windows
 create or replace function guard_refund() returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
-  if current_persona() = 'operator' then
+  /* The seller specifically. A null persona is a migration or a service role,
+     not an application user, and silently reverting its writes makes the schema
+     lie to whoever is maintaining it — which is exactly what happened when a
+     later migration tried to correct an order reference here and the row came
+     back unchanged with no error. */
+  if current_persona() is distinct from 'partner' then
     return new;
   end if;
   /* What the customer asked for, and against what. Not the seller's to edit. */

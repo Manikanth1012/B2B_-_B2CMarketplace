@@ -3,7 +3,7 @@ import {
   Star,
   LayoutDashboard, Users, Package, DollarSign, Warehouse, Ticket,
   Shield, Code, Bell, Tag, TrendingUp, Settings, ChevronDown,
-  Search, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store, Wallet as WalletIcon, MessageSquareWarning, RotateCcw
+  Search, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store, Wallet as WalletIcon, MessageSquareWarning, RotateCcw, Gift
 } from 'lucide-react'
 import type { OperatorView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
@@ -34,6 +34,7 @@ const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; i
       { id: 'op-dunning', label: 'Collections', icon: <TrendingUp size={18} /> },
       { id: 'op-wallets', label: 'Wallets', icon: <WalletIcon size={18} /> },
       { id: 'op-refunds', label: 'Refunds', icon: <RotateCcw size={18} /> },
+      { id: 'op-rewards', label: 'Rewards', icon: <Gift size={18} /> },
     ]
   },
   {
