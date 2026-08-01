@@ -56,6 +56,7 @@ export type EnterpriseView =
   | 'en-subs'
   | 'en-refunds'
   | 'en-billing'
+  | 'en-rewards'
   | 'en-notifications'
   | 'en-team'
   | 'en-audit'
