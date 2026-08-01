@@ -1,61 +1,16 @@
 import { useState } from 'react'
 import { SquareCheck as CheckSquare, X, Shield, Cpu, Package } from 'lucide-react'
 import { StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, fmtInt, Btn, toast, Modal } from '../operator/shared'
-import { ENTERPRISE_SUBS, ENTERPRISE_ORDERS, VERTICAL_NAMES } from './data'
+import { ENTERPRISE_SUBS, VERTICAL_NAMES } from './data'
 
 /* EnterpriseApprovals moved to EnterpriseApprovals.tsx when requisitions
    became rows rather than a constant. Deciding one here filtered a React array,
    so an approval survived until the next refresh and no colleague ever saw it. */
 
-export function EnterpriseOrders() {
-  const [orders, setOrders] = useState(ENTERPRISE_ORDERS)
-
-  const openOrders = orders.filter(o => o.stage < o.stages.length - 1 && !o.failed)
-  const failedOrders = orders.filter(o => o.failed)
-  const completedOrders = orders.filter(o => o.stage === o.stages.length - 1 && !o.failed)
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div>
-        <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Orders</h1>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-          {orders.length} orders · {openOrders.length} in flight{failedOrders.length ? ` · ${failedOrders.length} failed` : ''}
-        </p>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
-        <StatCard label="In flight" value={fmtInt(openOrders.length)} sublabel="Provisioning and delivery" color="var(--brand-accent-dark)" />
-        <StatCard label="Completed" value={fmtInt(completedOrders.length)} sublabel="Delivered or provisioned" color="var(--success)" />
-        <StatCard label="Failed" value={fmtInt(failedOrders.length)} sublabel={failedOrders.length ? 'Needs attention' : 'None'} color={failedOrders.length ? 'var(--danger)' : undefined} />
-        <StatCard label="Total spend" value={`$${fmtMoney(orders.reduce((a, o) => a + o.gross, 0))}`} sublabel="All orders" color="var(--brand-navy)" />
-      </div>
-
-      <SectionCard title="Your Orders" subtitle={`${orders.length} total`}>
-        <Table headers={['Order', 'Product', 'Seller', 'Qty', 'Value', 'Status', '']}>
-          {orders.map(o => (
-            <tr key={o.id}>
-              <Td>
-                <div style={{ fontWeight: 600 }}>{o.id}</div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{o.placed}</div>
-              </Td>
-              <Td><div style={{ fontWeight: 500 }}>{o.name}</div></Td>
-              <Td>{o.seller}</Td>
-              <Td right>{o.qty}</Td>
-              <Td right>${fmtMoney(o.gross)}</Td>
-              <Td right>
-                {o.failed ? <StatusPill status="rejected" />
-                  : o.stage < o.stages.length - 1 ? <StatusPill status="open" />
-                  : <StatusPill status="resolved" />}
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>{o.stages[o.stage]}</div>
-              </Td>
-              <Td right><Btn variant="secondary" size="sm" onClick={() => toast('Order detail opened')}>View</Btn></Td>
-            </tr>
-          ))}
-        </Table>
-      </SectionCard>
-    </div>
-  )
-}
+/* EnterpriseOrders moved to EnterpriseOrders.tsx when orders became rows.
+   The five constants here named order references that existed nowhere else,
+   while the refunds, the notification log and a support ticket all pointed at
+   orders this screen had never heard of. */
 
 export function EnterpriseSubs() {
   const activeSubs = ENTERPRISE_SUBS.filter(s => s.status === 'active')
@@ -126,8 +81,6 @@ export function EnterpriseSubs() {
 }
 
 export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
-  const items = ENTERPRISE_ORDERS.length > 0 ? [] : [] // not used for listing display
-  const catalogue = ENTERPRISE_SUBS // placeholder
   const listings = [
     { id: 'SKU-3001', name: '6D Connect IoT SIM 100-pack', cat: 'IoT SIM plans', v: 'iot', price: 900, model: 'monthly', seller: '6D Telecom', rating: 4.2, reviews: 45, desc: '100 IoT SIMs with shared data pool' },
     { id: 'SKU-3002', name: 'Nimbus Air Quality Sensor', cat: 'Sensors', v: 'iot', price: 189, model: 'oneoff', seller: 'Nimbus Sensors', rating: 4.5, reviews: 128, desc: 'Indoor air quality monitor' },

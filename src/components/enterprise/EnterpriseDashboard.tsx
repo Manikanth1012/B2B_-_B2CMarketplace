@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react'
 import { Wallet, PieChart as PieIcon, SquareCheck as CheckSquare, ShoppingCart, TriangleAlert as AlertTriangle, TrendingUp, Cpu, Shield, Monitor, Search } from 'lucide-react'
 import { StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, fmtInt, Btn, toast } from '../operator/shared'
-import { ENTERPRISE_ORDERS, VERTICAL_NAMES } from './data'
+import { VERTICAL_NAMES } from './data'
+import { supabase } from '../../lib/supabase'
 import { loadAccount } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
 import { waiting, committed, budgetPosition, money, money0, NEED_LABEL } from '../../lib/enterprise'
@@ -14,15 +15,24 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
      itself. They used to be constants, which meant this page and the Approvals
      and Billing screens quoted three different budgets. */
   const [book, setBook] = useState<AccountBook | null>(null)
-  useEffect(() => { void (async () => setBook(await loadAccount()))() }, [])
+  const [orders, setOrders] = useState<{ order_ref: string; seller: string; total: number; placed_date: string; failed: boolean; stage: number; stages: string[] }[]>([])
+  useEffect(() => {
+    void (async () => {
+      setBook(await loadAccount())
+      const { data } = await supabase.from('orders')
+        .select('order_ref,seller,total,placed_date,failed,stage,stages')
+        .order('created_at', { ascending: false })
+      setOrders(data ?? [])
+    })()
+  }, [])
 
   const account = book?.account ?? null
   const queue = book ? waiting(book.requisitions) : []
   const com = book ? committed(book.subscriptions) : { billed: 0, renewing: 0, suspended: 0 }
   const budget = book && account ? budgetPosition(book.invoices, account, TODAY) : null
   const suspended = book?.subscriptions.filter(s => s.status === 'suspended') ?? []
-  const ordersInFlight = ENTERPRISE_ORDERS.filter(o => o.stage < o.stages.length - 1)
-  const failedOrders = ENTERPRISE_ORDERS.filter(o => o.failed)
+  const ordersInFlight = orders.filter(o => !o.failed && o.stage < o.stages.length - 1)
+  const failedOrders = orders.filter(o => o.failed)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -136,7 +146,8 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
               )
             })}
             <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border-light)', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-              Device purchases are one-off, not in this split. Total one-off device spend: ${fmtMoney(ENTERPRISE_ORDERS.filter(o => o.v === 'device').reduce((a, o) => a + o.gross, 0))}
+              One-off purchases are not in this split — it is monthly commitment only. One-off ordered to date:
+              ${fmtMoney(orders.filter(o => !o.failed).reduce((a, o) => a + Number(o.total), 0))}
             </div>
           </div>
         </SectionCard>
@@ -166,14 +177,14 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
 
         <SectionCard title="Provisioning and delivery" subtitle="Recent orders">
           <div style={{ padding: '0 20px 20px' }}>
-            {ENTERPRISE_ORDERS.slice(0, 4).map(o => (
-              <div key={o.id} style={{ display: 'flex', gap: '11px', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border-light)' }}>
+            {orders.slice(0, 4).map(o => (
+              <div key={o.order_ref} style={{ display: 'flex', gap: '11px', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border-light)' }}>
                 <div style={{ width: '34px', height: '34px', borderRadius: 'var(--radius)', background: 'var(--bg-alt)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  {o.v === 'iot' ? <Cpu size={15} style={{ color: 'var(--text-tertiary)' }} /> : o.v === 'security' ? <Shield size={15} style={{ color: 'var(--text-tertiary)' }} /> : <Monitor size={15} style={{ color: 'var(--text-tertiary)' }} />}
+                  <ShoppingCart size={15} style={{ color: 'var(--text-tertiary)' }} />
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{o.name}</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{o.id} · {o.seller}</div>
+                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{o.stages[o.stage] ?? '—'}</div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{o.order_ref} · {o.seller} · {o.placed_date}</div>
                 </div>
                 {o.failed ? <StatusPill status="rejected" /> : o.stage < o.stages.length - 1 ? <StatusPill status="open" /> : <StatusPill status="resolved" />}
               </div>

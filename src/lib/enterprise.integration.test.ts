@@ -407,3 +407,93 @@ describe('paying an invoice', () => {
     expect(Number(after.invoices.find(i => i.id === any.id)!.total)).toBe(Number(any.total))
   })
 })
+
+/* ---------------------------------------------------------------- orders -- */
+
+describe('the orders the account placed', () => {
+  let book: AccountBook
+
+  beforeAll(async () => {
+    await signIn(ENTERPRISE.email, ENTERPRISE.password)
+    book = await loadAccount()
+  })
+
+  afterAll(async () => { await signOut() })
+
+  it('sees its own orders and nobody else\'s', async () => {
+    const { data } = await supabase.from('orders').select('order_ref,account_id')
+    expect(data!.length).toBeGreaterThan(4)
+    expect(data!.every(o => o.account_id === ACCOUNT)).toBe(true)
+  })
+
+  it('resolves every order reference the approvals screen wrote', async () => {
+    const { data } = await supabase.from('orders').select('order_ref')
+    const refs = new Set(data!.map(o => o.order_ref))
+    const approved = book.requisitions.filter(r => r.state === 'approved' && r.order_ref)
+    expect(approved.length).toBeGreaterThan(2)
+    for (const r of approved) {
+      expect(refs.has(r.order_ref!), `${r.id} points at ${r.order_ref}`).toBe(true)
+    }
+  })
+
+  it('resolves every order a refund on this account names', async () => {
+    const [o, f] = await Promise.all([
+      supabase.from('orders').select('order_ref'),
+      supabase.from('refunds').select('id,order_ref'),
+    ])
+    const refs = new Set(o.data!.map(x => x.order_ref))
+    for (const r of f.data!) {
+      expect(refs.has(r.order_ref), `${r.id} names ${r.order_ref}`).toBe(true)
+    }
+  })
+
+  it('agrees with the requisition about what it cost', async () => {
+    const { data } = await supabase.from('orders').select('order_ref,total,requisition_id')
+    for (const o of data!.filter(x => x.requisition_id)) {
+      const req = book.requisitions.find(r => r.id === o.requisition_id)!
+      expect(Number(o.total), `${o.order_ref}`).toBe(Number(req.amount))
+    }
+  })
+
+  it('equals the sum of its own items', async () => {
+    const [o, i] = await Promise.all([
+      supabase.from('orders').select('id,order_ref,total'),
+      supabase.from('order_items').select('order_id,price,quantity'),
+    ])
+    for (const order of o.data!) {
+      const sum = i.data!.filter(x => x.order_id === order.id)
+        .reduce((a, x) => a + Number(x.price) * x.quantity, 0)
+      expect(Math.round(sum * 100) / 100, `${order.order_ref}`).toBe(Number(order.total))
+    }
+  })
+
+  it('says what went wrong on anything that failed', async () => {
+    const { data } = await supabase.from('orders').select('order_ref,failed,failed_reason')
+    const failed = data!.filter(o => o.failed)
+    expect(failed.length).toBeGreaterThan(0)
+    for (const o of failed) expect(o.failed_reason, `${o.order_ref}`).toBeTruthy()
+  })
+
+  it('keeps every order somewhere on its own journey', async () => {
+    const { data } = await supabase.from('orders').select('order_ref,stage,stages')
+    for (const o of data!) {
+      expect(o.stage, `${o.order_ref}`).toBeGreaterThanOrEqual(0)
+      expect(o.stage, `${o.order_ref}`).toBeLessThan((o.stages as string[]).length)
+    }
+  })
+
+  it('gives a provisioned order different stage names from a shipped one', async () => {
+    const { data } = await supabase.from('orders').select('order_ref,carrier,stages')
+    const digital = data!.find(o => o.carrier === 'Digital')!
+    const shipped = data!.find(o => o.carrier !== 'Digital')!
+    expect((digital.stages as string[]).join()).not.toBe((shipped.stages as string[]).join())
+    expect((digital.stages as string[]).some(s => /transit/i.test(s))).toBe(false)
+  })
+
+  it('cannot be edited by the account that placed it', async () => {
+    const { data: before } = await supabase.from('orders').select('id,total').limit(1).single()
+    await supabase.from('orders').update({ total: 1 }).eq('id', before!.id)
+    const { data: after } = await supabase.from('orders').select('total').eq('id', before!.id).single()
+    expect(Number(after!.total)).toBe(Number(before!.total))
+  })
+})
