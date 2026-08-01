@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Search, ShoppingCart, Menu, X, ChevronDown, User, Bell, Shield, LogOut, Star, BookOpen, Wallet as WalletIcon } from 'lucide-react'
 import type { Category } from '../types'
 import { supabase } from '../lib/supabase'
+import { categoriesFor } from '../lib/storefront'
 import { ContextualHelp } from './ContextualHelp'
 
 import type { View } from '../types/view'
@@ -21,9 +22,11 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut, currentV
   const [scrolled, setScrolled] = useState(false)
   const [acctOpen, setAcctOpen] = useState(false)
 
+  /* The nav is a retail customer's nav, so it lists the shelves a retail
+     customer can buy from. Partner is reseller enablement and was on it. */
   useEffect(() => {
     supabase.from('categories').select('*').order('sort_order').then(({ data }) => {
-      if (data) setCategories(data as Category[])
+      if (data) setCategories(categoriesFor(data as Category[], 'consumer'))
     })
     const onScroll = () => setScrolled(window.scrollY > 10)
     window.addEventListener('scroll', onScroll)

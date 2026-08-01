@@ -11,12 +11,12 @@ const month = (o: Partial<MonthRow> & { id: string; month: string }): MonthRow =
 })
 
 const CATEGORIES: Category[] = [
-  { id: 'consumer', name: 'Consumer', audience: 'B2C', icon: '', blurb: '', sort_order: 1 },
-  { id: 'partner', name: 'Partner', audience: 'B2B2X', icon: '', blurb: '', sort_order: 2 },
-  { id: 'iot', name: 'IoT', audience: 'Enterprise', icon: '', blurb: '', sort_order: 3 },
-  { id: 'security', name: 'Security', audience: 'Enterprise', icon: '', blurb: '', sort_order: 4 },
-  { id: 'device', name: 'Devices', audience: 'Consumer & Enterprise', icon: '', blurb: '', sort_order: 5 },
-  { id: 'content', name: 'Digital Content', audience: 'B2C', icon: '', blurb: '', sort_order: 6 },
+  { shoppable_by: ['consumer'], id: 'consumer', name: 'Consumer', audience: 'B2C', icon: '', blurb: '', sort_order: 1 },
+  { shoppable_by: ['partner'], id: 'partner', name: 'Partner', audience: 'B2B2X', icon: '', blurb: '', sort_order: 2 },
+  { shoppable_by: ['consumer', 'enterprise'], id: 'iot', name: 'IoT', audience: 'Enterprise', icon: '', blurb: '', sort_order: 3 },
+  { shoppable_by: ['consumer', 'enterprise'], id: 'security', name: 'Security', audience: 'Enterprise', icon: '', blurb: '', sort_order: 4 },
+  { shoppable_by: ['consumer', 'enterprise'], id: 'device', name: 'Devices', audience: 'Consumer & Enterprise', icon: '', blurb: '', sort_order: 5 },
+  { shoppable_by: ['consumer'], id: 'content', name: 'Digital Content', audience: 'B2C', icon: '', blurb: '', sort_order: 6 },
 ]
 
 /* The live seed, so the tests fail if the migration and the screen drift apart. */

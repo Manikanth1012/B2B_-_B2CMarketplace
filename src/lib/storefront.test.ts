@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   promoStrip, bannerDestination, assignImages,
-  retailCategories, enterpriseCategories, categoriesForPage, categoryDestination,
+  retailCategories, enterpriseCategories, categoriesFor, shoppableBy, categoriesForPage, categoryDestination,
   productsForPage, isSellable, canAddToBasket, exampleProducts,
   type PublicBanner, type SellableProduct,
 } from './storefront'
@@ -14,14 +14,17 @@ const banner = (o: Partial<PublicBanner> & { id: string }): PublicBanner => ({
 
 const IMAGES = ['/a.webp', '/b.webp', '/c.webp', '/d.webp', '/e.webp', '/f.webp']
 
-/* The six the marketplace actually ships, audiences copied from the table. */
+/* The six the marketplace actually ships, copied from the table. `audience` is
+   the prose a tile prints and the rail that promotes it; `shoppable_by` is who
+   may buy. Partner is the pair that comes apart: it is a business audience and
+   no business shops it — a reseller does. */
 const CATEGORIES: Category[] = [
-  { id: 'consumer', name: 'Consumer', audience: 'B2C', icon: 'smartphone', blurb: '', sort_order: 1 },
-  { id: 'partner', name: 'Partner', audience: 'B2B2X', icon: 'group', blurb: '', sort_order: 2 },
-  { id: 'iot', name: 'IoT', audience: 'Enterprise', icon: 'cpu', blurb: '', sort_order: 3 },
-  { id: 'security', name: 'Security', audience: 'Enterprise', icon: 'shield', blurb: '', sort_order: 4 },
-  { id: 'device', name: 'Devices', audience: 'Consumer & Enterprise', icon: 'monitor', blurb: '', sort_order: 5 },
-  { id: 'content', name: 'Digital Content', audience: 'B2C', icon: 'play', blurb: '', sort_order: 6 },
+  { id: 'consumer', name: 'Consumer', audience: 'B2C', shoppable_by: ['consumer'], icon: 'smartphone', blurb: '', sort_order: 1 },
+  { id: 'partner', name: 'Partner', audience: 'B2B2X', shoppable_by: ['partner'], icon: 'group', blurb: '', sort_order: 2 },
+  { id: 'iot', name: 'IoT', audience: 'Enterprise', shoppable_by: ['consumer', 'enterprise'], icon: 'cpu', blurb: '', sort_order: 3 },
+  { id: 'security', name: 'Security', audience: 'Enterprise', shoppable_by: ['consumer', 'enterprise'], icon: 'shield', blurb: '', sort_order: 4 },
+  { id: 'device', name: 'Devices', audience: 'Consumer & Enterprise', shoppable_by: ['consumer', 'enterprise'], icon: 'monitor', blurb: '', sort_order: 5 },
+  { id: 'content', name: 'Digital Content', audience: 'B2C', shoppable_by: ['consumer'], icon: 'play', blurb: '', sort_order: 6 },
 ]
 
 const product = (o: Partial<SellableProduct> & { id: string; category_id: string }): SellableProduct => ({
@@ -141,7 +144,40 @@ describe('category rails', () => {
   })
 
   it('puts the business-facing categories on the enterprise rail', () => {
-    expect(enterpriseCategories(CATEGORIES).map(c => c.id)).toEqual(['partner', 'iot', 'security', 'device'])
+    expect(enterpriseCategories(CATEGORIES).map(c => c.id)).toEqual(['iot', 'security', 'device'])
+  })
+
+  /* Partner reads as a business audience and used to ride this rail on the
+     strength of that, which put a wholesale pack of 500 lines in front of an
+     enterprise buyer who cannot order one. No enterprise shops it — a reseller
+     does — so the column vetoes what the prose suggests. */
+  it('keeps Partner off both shopping rails, because neither can buy from it', () => {
+    expect(retailCategories(CATEGORIES).map(c => c.id)).not.toContain('partner')
+    expect(enterpriseCategories(CATEGORIES).map(c => c.id)).not.toContain('partner')
+  })
+
+  /* And it is not shown to retail even though IoT, which is also promoted as
+     an enterprise shelf, is — the difference is who may pay for it. */
+  it('separates being promoted somewhere from being buyable there', () => {
+    expect(retailCategories(CATEGORIES).map(c => c.id)).not.toContain('iot')
+    expect(categoriesFor(CATEGORIES, 'consumer').map(c => c.id)).toContain('iot')
+    expect(categoriesFor(CATEGORIES, 'consumer').map(c => c.id)).not.toContain('partner')
+    expect(categoriesFor(CATEGORIES, 'partner').map(c => c.id)).toEqual(['partner'])
+  })
+
+  it('answers who may buy from one category at a time', () => {
+    const partner = CATEGORIES.find(c => c.id === 'partner')!
+    expect(shoppableBy(partner, 'partner')).toBe(true)
+    expect(shoppableBy(partner, 'consumer')).toBe(false)
+    expect(shoppableBy(partner, 'enterprise')).toBe(false)
+  })
+
+  /* A row that arrived before the column existed, or from a client that did not
+     select it. Treated as "nobody", which hides a shelf rather than opening one. */
+  it('treats a missing column as nobody rather than everybody', () => {
+    const legacy = { ...CATEGORIES[0], shoppable_by: undefined as unknown as Category['shoppable_by'] }
+    expect(shoppableBy(legacy, 'consumer')).toBe(false)
+    expect(categoriesFor([legacy], 'consumer')).toEqual([])
   })
 
   /* Devices records 'Consumer & Enterprise' and genuinely sells to both, so it
@@ -151,12 +187,14 @@ describe('category rails', () => {
     expect(enterpriseCategories(CATEGORIES).map(c => c.id)).toContain('device')
   })
 
-  it('places all six categories somewhere between the two rails', () => {
+  /* Five, not six. Partner is reached from its own page, which is where the
+     landing tile sends it — see the routing test below. */
+  it('places every shoppable category somewhere between the two rails', () => {
     const shown = new Set([
       ...retailCategories(CATEGORIES).map(c => c.id),
       ...enterpriseCategories(CATEGORIES).map(c => c.id),
     ])
-    expect(shown.size).toBe(6)
+    expect(shown).toEqual(new Set(['consumer', 'device', 'content', 'iot', 'security']))
   })
 
   it('keeps the catalogue order within a rail', () => {

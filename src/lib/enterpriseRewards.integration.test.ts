@@ -269,9 +269,23 @@ describe('a release that goes all the way through', () => {
     me = (await loadAccount()).me!
   })
 
+  /**
+   * KNOWN: this test is not re-runnable against the same project.
+   *
+   * It puts the redemption back — the trigger refuses to re-open a decision for
+   * the account that made it, so that happens as the marketplace — but it
+   * cannot take the ledger movement back. `loyalty_ledger` has no DELETE and no
+   * UPDATE policy for the operator, on purpose: a ledger a console can edit is
+   * not a ledger, and the real remedy for a wrong movement is a compensating
+   * entry rather than a rubbing-out.
+   *
+   * So the delete below is a no-op, the demo account stays one release lighter,
+   * and a second run of this file fails on the balance. Closing it properly
+   * means giving the operator a guarded way to post a reversal — a capability
+   * the marketplace desk genuinely needs, and a separate piece of work from
+   * this test. Until then, restore the demo project between runs.
+   */
   afterAll(async () => {
-    /* Put it back as the marketplace: the trigger refuses to re-open a
-       decision for the account that made it, which is the behaviour above. */
     await signOut()
     await signIn(OPERATOR.email, OPERATOR.password)
     if (ledgerRef) await supabase.from('loyalty_ledger').delete().eq('id', ledgerRef)
@@ -280,6 +294,20 @@ describe('a release that goes all the way through', () => {
         state: 'proposed', released_by: null, released_on: null,
         decision_note: null, applied_to: null, applied_on: null, ledger_ref: null,
       }).eq('id', target)
+    }
+
+    /* The balance comes back on its own: `loyalty_ledger_rebalance` recomputes
+       it from the ledger whenever a row goes in or out. Nothing here can set it
+       directly and nothing should — a balance a client can write is not a
+       balance — so this asserts the trigger did its job rather than doing it. */
+    const member = book.member?.id
+    if (member) {
+      const [{ data: rows }, { data: m }] = await Promise.all([
+        supabase.from('loyalty_ledger').select('points').eq('member', member),
+        supabase.from('loyalty_members').select('balance').eq('id', member).maybeSingle(),
+      ])
+      const total = (rows ?? []).reduce((a, r) => a + Number(r.points), 0)
+      expect(Number(m!.balance), `${member}'s balance does not match its ledger`).toBe(total)
     }
     await signOut()
   })

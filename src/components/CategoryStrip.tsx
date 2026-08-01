@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Category, Product } from '../types'
 import { getCategoryImage } from '../lib/images'
+import { categoriesFor } from '../lib/storefront'
 
 import type { View } from '../types/view'
 
@@ -22,11 +23,17 @@ export function CategoryStrip({ onNavigate }: CategoryStripProps) {
   const [categories, setCategories] = useState<Category[]>([])
   const [counts, setCounts] = useState<Record<string, number>>({})
 
+  /* Only the shelves a retail customer can actually buy from. Partner sells
+     white-label storefronts and wholesale packs of 500 lines to resellers; it
+     was on this grid with a Browse button, which is an invitation to a page
+     nothing on it can be bought from. */
   useEffect(() => {
     supabase.from('categories').select('*').order('sort_order').then(({ data }) => {
-      if (data) setCategories(data as Category[])
+      if (data) setCategories(categoriesFor(data as Category[], 'consumer'))
     })
-    supabase.from('products').select('category_id').then(({ data }) => {
+    /* Live rows only. The count under a tile is a promise about what is behind
+       it, and drafts and delisted rows are not behind it. */
+    supabase.from('products').select('category_id').eq('status', 'live').then(({ data }) => {
       if (data) {
         const c: Record<string, number> = {}
         ;(data as Pick<Product, 'category_id'>[]).forEach((p) => {
@@ -44,7 +51,7 @@ export function CategoryStrip({ onNavigate }: CategoryStripProps) {
           Shop by category
         </h2>
         <p style={{ color: 'var(--text-secondary)', marginBottom: '32px' }}>
-          Six marketplaces, one checkout. Find exactly what you need.
+          {categories.length} marketplaces, one checkout. Find exactly what you need.
         </p>
         <div style={{
           display: 'grid',

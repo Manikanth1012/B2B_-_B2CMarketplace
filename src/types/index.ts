@@ -3,7 +3,13 @@ import type { GateStatus } from '../lib/onboarding'
 export interface Category {
   id: string
   name: string
+  /* Display prose — 'B2C', 'B2B2X', 'Consumer & Enterprise' — and which landing
+     rail promotes this. Never branch a permission on it; use shoppable_by. */
   audience: string
+  /* The personas that may put a product from this category in a basket and pay
+     for it. Not who may see it: the public partner page shows the partner
+     category to anyone, and the operator runs all six. */
+  shoppable_by: ('consumer' | 'enterprise' | 'partner')[]
   icon: string
   blurb: string
   sort_order: number

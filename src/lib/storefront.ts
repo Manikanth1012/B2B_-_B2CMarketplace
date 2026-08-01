@@ -114,37 +114,66 @@ export function bannerDestination(banner: { audience: string; destination?: stri
 
 /* --------------------------------------------------------------- categories */
 
-/* The landing rails are "Retail products" and "Enterprise products", and every
-   category carries the audience it serves — 'B2C', 'Enterprise', 'B2B2X',
-   'Consumer & Enterprise'. Reading that string is what keeps the rails honest: a
-   category added in the operator console lands in the right rail without anyone
-   editing a list here.
+/**
+ * Who may actually buy from a category.
+ *
+ * This reads `shoppable_by`, which the operator sets, and nothing else. It used
+ * to be inferred from the `audience` prose — 'B2C', 'B2B2X', 'Consumer &
+ * Enterprise' — by substring match, in four different places with four slightly
+ * different sets of needles. That is how the Partner category, which sells
+ * white-label storefronts and wholesale packs of 500 lines to resellers, ended
+ * up on the retail home page with a Browse button on it.
+ *
+ * `audience` is still what a tile prints and still decides which landing rail
+ * promotes a category. It is no longer what a permission branches on.
+ */
+export type Shopper = 'consumer' | 'enterprise' | 'partner'
 
-   Two consequences worth stating rather than discovering:
-     * 'Consumer & Enterprise' (Devices) matches both, and appears in both rails.
-       That is what the audience says, and devices genuinely sell to both.
-     * 'B2B2X' (Partner) is a business audience, so it rides the enterprise rail. */
-function serves(category: Category, ...needles: string[]): boolean {
+export function shoppableBy(category: Category, who: Shopper): boolean {
+  return (category.shoppable_by ?? []).includes(who)
+}
+
+/** The categories that persona may buy from, in the catalogue's own order. */
+export function categoriesFor(categories: readonly Category[], who: Shopper): Category[] {
+  return categories
+    .filter(c => shoppableBy(c, who))
+    .sort((a, b) => a.sort_order - b.sort_order)
+}
+
+/* The two landing rails are "Retail products" and "Enterprise products", and
+   which rail promotes a category is still the `audience` prose — that is a
+   merchandising choice and the operator writes it as a sentence. IoT reads
+   'Enterprise' and is promoted there even though a retail customer can buy a
+   sensor, and that is the operator's call rather than a contradiction.
+
+   What the rails now also do is refuse to promote a shelf to somebody who
+   cannot buy from it, which is what kept Partner on the enterprise rail. Both
+   conditions have to hold, so the prose can lead and the column can veto. */
+function promotedTo(category: Category, ...needles: string[]): boolean {
   const a = category.audience.toLowerCase()
   return needles.some(n => a.includes(n))
 }
 
 export function retailCategories(categories: readonly Category[]): Category[] {
-  return categories
-    .filter(c => serves(c, 'b2c', 'consumer'))
-    .sort((a, b) => a.sort_order - b.sort_order)
+  return categoriesFor(categories, 'consumer')
+    .filter(c => promotedTo(c, 'b2c', 'consumer'))
 }
 
 export function enterpriseCategories(categories: readonly Category[]): Category[] {
-  return categories
-    .filter(c => serves(c, 'enterprise', 'b2b'))
-    .sort((a, b) => a.sort_order - b.sort_order)
+  return categoriesFor(categories, 'enterprise')
+    .filter(c => promotedTo(c, 'enterprise', 'b2b'))
 }
 
-/** Where a category tile goes from the public landing page. */
+/**
+ * Where a category tile goes from the public landing page.
+ *
+ * A category only a reseller can buy from sends a visitor to the partner page,
+ * which is the shop window for becoming one rather than a shelf. Everything
+ * else goes where the rail that promotes it goes.
+ */
 export function categoryDestination(category: Category): PublicPage {
-  if (serves(category, 'b2b2x')) return 'partner'
-  if (serves(category, 'b2c', 'consumer')) return 'retail'
+  if (!shoppableBy(category, 'consumer') && !shoppableBy(category, 'enterprise')) return 'partner'
+  if (promotedTo(category, 'b2c', 'consumer')) return 'retail'
   return 'enterprise'
 }
 

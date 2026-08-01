@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { Star, Plus, Search, SlidersHorizontal } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Product, Category } from '../types'
+import { categoriesFor } from '../lib/storefront'
 import { ProductCard } from './ProductCard'
 
 import type { View } from '../types/view'
@@ -26,27 +27,36 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
 
   useEffect(() => {
     supabase.from('categories').select('*').order('sort_order').then(({ data }) => {
-      if (data) setCategories(data as Category[])
+      if (data) setCategories(categoriesFor(data as Category[], 'consumer'))
     })
   }, [])
 
+  /* Restricted to the shelves a retail customer can buy from, on both paths.
+     Unfiltered, this is "Featured products" on the home page, and a wholesale
+     connectivity pack for 500 lines was appearing in it. Filtered, it is a
+     category page, and the id can arrive from a bookmark or a hand-typed URL
+     — so a shelf that is not this shopper's returns nothing rather than
+     quietly serving it. */
   useEffect(() => {
+    if (!categories.length) return
+    const mine = categories.map(c => c.id)
     setLoading(true)
+
     let query = supabase
       .from('products')
       .select('*')
       .eq('status', 'live')
       .order('sort_order')
 
-    if (categoryFilter) {
-      query = query.eq('category_id', categoryFilter)
-    }
+    query = categoryFilter
+      ? query.eq('category_id', categoryFilter).in('category_id', mine)
+      : query.in('category_id', mine)
 
     query.then(({ data }) => {
       if (data) setProducts(data as Product[])
       setLoading(false)
     })
-  }, [categoryFilter])
+  }, [categoryFilter, categories])
 
   const subCategories = useMemo(() => {
     const subs = new Set(products.map((p) => p.sub_category))
@@ -92,6 +102,36 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
   }, [products, search, sortBy, subFilter, stockFilter])
 
   const activeCategory = categories.find((c) => c.id === categoryFilter)
+
+  /* A category id that is not one of ours. It reached here from a bookmark, a
+     shared link or a hand-typed URL, and an empty grid under "Featured
+     products" would read as the shop being broken rather than the shelf being
+     somebody else's. */
+  if (categoryFilter && !activeCategory && categories.length > 0) {
+    return (
+      <section style={{ padding: '48px 0' }}>
+        <div className="container" style={{ maxWidth: '600px', textAlign: 'center' }}>
+          <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 700, marginBottom: '8px' }}>
+            That marketplace is not part of the retail shop
+          </h1>
+          <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
+            Some of our marketplaces sell to businesses and resellers rather than to retail customers —
+            wholesale connectivity, white-label storefronts and the partner API are bought through a
+            partner or enterprise account, not from here.
+          </p>
+          <button
+            onClick={() => onNavigate('home')}
+            style={{
+              padding: '10px 18px', borderRadius: 'var(--radius)', background: 'var(--brand-navy)',
+              color: 'white', border: 'none', fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            Back to the shop
+          </button>
+        </div>
+      </section>
+    )
+  }
 
   return (
     <section style={{ padding: categoryFilter ? '32px 0 64px' : '48px 0' }}>

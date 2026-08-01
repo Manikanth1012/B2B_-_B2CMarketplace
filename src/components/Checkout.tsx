@@ -4,6 +4,15 @@ import { supabase } from '../lib/supabase'
 import type { CartItem } from '../types'
 import { orderedAddresses, defaultAddress, formatAddress, type Address } from '../lib/addresses'
 
+/** `guard_shoppable()` and the RLS policies refuse in their own words on
+    purpose. This strips the Postgres wrapper so the shopper reads a sentence. */
+function friendly(message: string | undefined): string | null {
+  if (!message) return null
+  const m = message.replace(/^.*?\bERROR:\s*/i, '').trim()
+  if (/row-level security/i.test(m)) return 'Something in your basket cannot be ordered from this account. Nothing has been charged.'
+  return `${m} Nothing has been charged.`
+}
+
 interface CheckoutProps {
   cartItems: CartItem[]
   onClearCart: () => void
@@ -21,6 +30,9 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
   const [paymentMethod, setPaymentMethod] = useState('card')
   const [processing, setProcessing] = useState(false)
   const [orderRef, setOrderRef] = useState('')
+  /* Why the order did not go through. Every write below used to be
+     fire-and-forget, so a refusal reached the customer as a confirmation. */
+  const [failure, setFailure] = useState<string | null>(null)
   /* The address book. Typing the same address on every order was the whole problem —
      the saved ones are offered first and free text stays as the fallback. */
   const [addresses, setAddresses] = useState<Address[]>([])
@@ -49,13 +61,20 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
   const tax = subtotal * 0.18
   const total = subtotal + tax
 
+  /* Who the order is against. Every basket here is single-seller in practice,
+     and the reconciliation between an order and the catalogue behind it is
+     checked seller by seller — an order with no seller on it is an order
+     nothing can be settled against. */
+  const sellers = Array.from(new Set(cartItems.map(i => i.product?.seller).filter(Boolean))) as string[]
+
   const handleSubmit = async () => {
     setProcessing(true)
+    setFailure(null)
     const ref = `ORD-${Date.now().toString().slice(-8)}`
-    setOrderRef(ref)
 
-    const { data: order } = await supabase.from('orders').insert({
+    const { data: order, error: orderErr } = await supabase.from('orders').insert({
       order_ref: ref,
+      seller: sellers.length === 1 ? sellers[0] : sellers.join(', '),
       status: 'placed',
       total,
       subtotal,
@@ -67,36 +86,52 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
       shipping_address: { address, city, country },
     }).select().single()
 
-    if (order) {
-      const orderItems = cartItems.map((item) => ({
-        order_id: order.id,
-        product_id: item.product_id,
-        product_name: item.product?.name || '',
-        price: item.product?.price || 0,
-        quantity: item.quantity,
-        fulfil: item.product?.fulfil || 'instant',
-        status: 'placed',
-      }))
-      await supabase.from('order_items').insert(orderItems)
-
-      // Create subscriptions for monthly products
-      const subs = cartItems
-        .filter((item) => item.product?.model === 'monthly')
-        .map((item) => ({
-          product_id: item.product_id,
-          product_name: item.product?.name || '',
-          status: 'active',
-          auto_renew: true,
-          next_renewal: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
-          price: item.product?.price || 0,
-        }))
-      if (subs.length > 0) {
-        await supabase.from('subscriptions').insert(subs)
-      }
-
-      await onClearCart()
+    if (orderErr || !order) {
+      setProcessing(false)
+      setFailure(friendly(orderErr?.message) ?? 'The order could not be placed. Nothing has been charged.')
+      return
     }
 
+    const orderItems = cartItems.map((item) => ({
+      order_id: order.id,
+      product_id: item.product_id,
+      product_name: item.product?.name || '',
+      price: item.product?.price || 0,
+      quantity: item.quantity,
+      fulfil: item.product?.fulfil || 'instant',
+      status: 'placed',
+    }))
+    const { error: itemsErr } = await supabase.from('order_items').insert(orderItems)
+
+    /* A refused line — a shelf this shopper cannot buy from, say — used to be
+       swallowed, and the customer was shown a confirmation for an order with
+       nothing in it. The order goes back rather than standing empty. */
+    if (itemsErr) {
+      await supabase.from('orders').delete().eq('id', order.id)
+      setProcessing(false)
+      setFailure(friendly(itemsErr.message) ?? 'Something in your basket could not be ordered. Nothing has been charged.')
+      return
+    }
+
+    // Create subscriptions for monthly products
+    const subs = cartItems
+      .filter((item) => item.product?.model === 'monthly')
+      .map((item) => ({
+        ref,
+        product_id: item.product_id,
+        product_name: item.product?.name || '',
+        seller: item.product?.seller ?? null,
+        status: 'active',
+        auto_renew: true,
+        next_renewal: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+        price: item.product?.price || 0,
+      }))
+    if (subs.length > 0) {
+      await supabase.from('subscriptions').insert(subs)
+    }
+
+    await onClearCart()
+    setOrderRef(ref)
     setProcessing(false)
     setStep('confirm')
   }
@@ -296,6 +331,15 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                     </button>
                   ))}
                 </div>
+                {failure && (
+                  <div role="alert" style={{
+                    marginTop: '20px', padding: '12px 14px', borderRadius: 'var(--radius)',
+                    background: 'var(--danger-bg)', color: 'var(--danger)',
+                    fontSize: 'var(--text-sm)', fontWeight: 600,
+                  }}>
+                    {failure}
+                  </div>
+                )}
                 <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
                   <button onClick={() => setStep('details')} className="btn btn-secondary btn-lg">
                     Back

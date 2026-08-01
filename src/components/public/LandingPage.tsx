@@ -59,8 +59,11 @@ export function LandingPage({ onNavigate }: { onNavigate: (p: PublicPage) => voi
           pausing a banner in their console takes it off this page. */}
       <PromoStrip slides={slides} onNavigate={onNavigate} />
 
-      {/* The rails show the marketplace's own six categories, split by the audience
-          each one records, rather than a hand-kept list of pictures. */}
+      {/* The rails show the marketplace's own categories, split by the audience
+          each one records, rather than a hand-kept list of pictures. Reselling is
+          not among them: the Partner category sells white-label storefronts and
+          wholesale packs to resellers, and neither a shopper nor an enterprise
+          buyer can order one — it is reached from "Sell with us" instead. */}
       <CategoryRail
         title="Retail products"
         subtitle="Plans, devices, entertainment and connected home"
@@ -70,7 +73,7 @@ export function LandingPage({ onNavigate }: { onNavigate: (p: PublicPage) => voi
       />
       <CategoryRail
         title="Enterprise products"
-        subtitle="IoT, security, devices and reselling"
+        subtitle="IoT, security and devices for your estate"
         categories={enterprise}
         counts={counts}
         onNavigate={onNavigate}

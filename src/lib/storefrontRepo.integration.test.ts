@@ -55,15 +55,33 @@ describe('the signed-out storefront', () => {
     }
   })
 
-  it('splits the six live categories across the two landing rails', async () => {
+  it('splits the shoppable categories across the two landing rails', async () => {
     const categories = await loadCategories()
     expect(categories).toHaveLength(6)
 
     const retail = retailCategories(categories).map(c => c.id)
     const enterprise = enterpriseCategories(categories).map(c => c.id)
     expect(retail).toEqual(['consumer', 'device', 'content'])
-    expect(enterprise).toEqual(['partner', 'iot', 'security', 'device'])
-    expect(new Set([...retail, ...enterprise]).size).toBe(6)
+    expect(enterprise).toEqual(['iot', 'security', 'device'])
+  })
+
+  /* Five of the six. Partner sells white-label storefronts and wholesale packs
+     of 500 lines to resellers — no shopper and no enterprise buyer can order
+     one, so it is reached from "Sell with us" rather than from a rail. */
+  it('keeps the reseller shelf off both rails, and still shows it to a visitor', async () => {
+    const categories = await loadCategories()
+    const rails = new Set([
+      ...retailCategories(categories).map(c => c.id),
+      ...enterpriseCategories(categories).map(c => c.id),
+    ])
+    expect(rails.has('partner')).toBe(false)
+    expect(rails.size).toBe(5)
+
+    /* Readable, though — the public partner page is the shop window for
+       becoming a reseller, and hiding the rows would empty it. */
+    expect(categories.some(c => c.id === 'partner')).toBe(true)
+    const catalogue = await loadCatalogue()
+    expect(catalogue.some(p => p.category_id === 'partner')).toBe(true)
   })
 
   it('lists real catalogue rows on the audience pages, and only live ones', async () => {

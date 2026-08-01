@@ -370,11 +370,20 @@ describe('paying an invoice', () => {
   beforeAll(async () => { await signIn(ENTERPRISE.email, ENTERPRISE.password) })
 
   /* Restoring here rather than at the end of the test body, so a failing
-     assertion cannot leave the demo account with a paid invoice. */
+     assertion cannot leave the demo account with a paid invoice.
+
+     As the operator, not as the buyer. `account_settle_enterprise_invoices`
+     only sees rows that are open, overdue or disputed, so an account trying to
+     un-pay its own invoice matches nothing and the update succeeds having done
+     nothing — which is the policy working, and was quietly leaving the demo
+     with a paid invoice after every run. */
   afterAll(async () => {
     if (target) {
-      await supabase.from('enterprise_invoices')
-        .update({ status: 'open', paid_on: null }).eq('id', target)
+      await signOut()
+      await signIn(OPERATOR.email, OPERATOR.password)
+      const { data } = await supabase.from('enterprise_invoices')
+        .update({ status: 'open', paid_on: null }).eq('id', target).select('id')
+      expect(data?.length, `${target} is still marked paid`).toBe(1)
     }
     await signOut()
   })
