@@ -50,17 +50,23 @@ describe('validateNote', () => {
 describe('severity and SLA', () => {
   /* A delivery problem on an order in flight is the time-critical one; a billing
      question can wait a day. */
-  it('treats delivery as the urgent category', () => {
-    expect(severityFor('Delivery')).toBe('P2')
-    expect(severityFor('Billing')).toBe('P3')
+  it('treats a service outage and a billing error as the urgent ones', () => {
+    /* A parcel that is late is annoying; a service that is down is costing
+       somebody money, and so is a charge that is wrong. */
+    expect(severityFor('service')).toBe('P2')
+    expect(severityFor('billing')).toBe('P2')
+    expect(severityFor('delivery')).toBe('P3')
   })
 
   it('never raises a consumer order to P1', () => {
     for (const c of TICKET_CATEGORIES) expect(severityFor(c)).not.toBe('P1')
   })
 
-  it('maps severity to the response clock the seeded tickets use', () => {
-    expect(slaFor('P2')).toBe(240)
+  /* These are `support_sla.resolve_mins`. A screen quoting one target while
+     the queue measures another is how a promise becomes a complaint. */
+  it('quotes the targets the shared SLA policy actually sets', () => {
+    expect(slaFor('P1')).toBe(240)
+    expect(slaFor('P2')).toBe(480)
     expect(slaFor('P3')).toBe(1440)
     expect(slaFor('P4')).toBe(4320)
     expect(slaFor('nonsense')).toBe(1440)
@@ -71,38 +77,42 @@ describe('buildTicket', () => {
   const at = new Date('2026-07-30T09:15:00Z')
 
   it('names the order in the subject so a queue can be triaged unopened', () => {
-    const t = buildTicket(order(), 'Delivery', 'Nothing arrived at all.', 'Priya Raman', at)
-    expect(t.subject).toBe('Delivery issue on ORD-881433')
-    expect(t.order_ref).toBe('ORD-881433')
+    const t = buildTicket(order(), 'delivery', 'Nothing arrived at all.', 'Priya Raman', at)
+    expect(t.subject).toBe('Delivery problem on ORD-881433')
+    expect(t.ref).toBe('ORD-881433')
   })
 
   /* The customer's own words are the first message, not a flattened subject line —
      the agent reads what they actually wrote. */
   it('keeps the customer wording as the opening message', () => {
-    const t = buildTicket(order(), 'Product', '  It arrived cracked.  ', 'Priya Raman', at)
+    const t = buildTicket(order(), 'delivery', '  It arrived cracked.  ', 'Priya Raman', at)
     expect(t.messages).toHaveLength(1)
     expect(t.messages[0].text).toBe('It arrived cracked.')
     expect(t.messages[0].who).toBe('Priya Raman')
   })
 
   it('carries the severity and SLA its category implies', () => {
-    expect(buildTicket(order(), 'Delivery', 'Not delivered.', 'P', at).sla_mins).toBe(240)
-    expect(buildTicket(order(), 'Billing', 'Charged twice.', 'P', at).severity).toBe('P3')
+    expect(buildTicket(order(), 'delivery', 'Not delivered.', 'P', at).sla_mins).toBe(1440)
+    expect(buildTicket(order(), 'billing', 'Charged twice.', 'P', at).priority).toBe('P2')
   })
 
   it('opens unassigned, unbreached and unescalated', () => {
-    const t = buildTicket(order(), 'Technical', 'Cannot activate the eSIM.', 'P', at)
+    const t = buildTicket(order(), 'service', 'Cannot activate the eSIM.', 'P', at)
     /* Naming an owner here would invent an assignment nobody has made. */
     expect(t.owner).toBeNull()
     expect(t.breached).toBe(false)
     expect(t.escalated).toBe(false)
-    expect(t.status).toBe('inprogress')
+    /* Everything starts as new — the database refuses anything else, because a
+       ticket raised already open is one the queue thinks somebody has picked
+       up when nobody has. */
+    expect(t.status).toBe('new')
+    expect(t.persona).toBe('consumer')
     expect(t.channel).toBe('Self-care portal')
   })
 
   it('gives two tickets raised in one session different ids', () => {
-    const a = buildTicket(order(), 'Delivery', 'One problem here.', 'P', at)
-    const b = buildTicket(order({ order_ref: 'ORD-880451' }), 'Billing', 'Another problem.', 'P', at)
+    const a = buildTicket(order(), 'delivery', 'One problem here.', 'P', at)
+    const b = buildTicket(order({ order_ref: 'ORD-880451' }), 'billing', 'Another problem.', 'P', at)
     expect(a.id).toMatch(/^TCK-\d{8}$/)
     expect(b.id).toMatch(/^TCK-\d{8}$/)
   })

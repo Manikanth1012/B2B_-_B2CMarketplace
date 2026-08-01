@@ -56,7 +56,10 @@ export async function raiseContentFeedback(
     return { ok: false, reason: 'Tell us what was wrong or missing — an empty report cannot be acted on.' }
   }
   const id = `CF-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
-  const { error } = await supabase.from('operator_tickets').insert({
+  const { error } = await supabase.from('support_tickets').insert({
+    /* The shared queue keys on who raised it rather than on which screen it
+       came from, so a ticket with no persona belongs to nobody. */
+    persona: 'operator',
     id,
     subject: `Content feedback — ${article.title}`,
     category: CONTENT_FEEDBACK_CATEGORY,

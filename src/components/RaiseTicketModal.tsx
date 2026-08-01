@@ -17,7 +17,7 @@ export function RaiseTicketModal({ order, raisedBy, onClose, onRaised }: {
   onClose: () => void
   onRaised: (ref: string) => void
 }) {
-  const [category, setCategory] = useState<TicketCategory>('Delivery')
+  const [category, setCategory] = useState<TicketCategory>('delivery')
   const [note, setNote] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -32,10 +32,15 @@ export function RaiseTicketModal({ order, raisedBy, onClose, onRaised }: {
     setSaving(true)
     setError('')
     const draft = buildTicket(order, category, note, raisedBy)
-    /* user_id is stamped server-side by the column default, and the insert policy
-       requires it to match the caller — so a ticket cannot be filed against
-       somebody else's account even if this payload said so. */
-    const { error: writeError } = await supabase.from('consumer_tickets').insert(draft)
+    /* `support_tickets` has no default on user_id — the shared queue holds
+       tickets from four personas, so who raised it has to be stated rather
+       than assumed from the connection. */
+    const { data: session } = await supabase.auth.getUser()
+    /* The insert policy requires user_id to match the caller, so a ticket
+       cannot be filed against somebody else's account even if this payload
+       said so — and `guard_ticket` overwrites the SLA fields with the ones the
+       policy sets, so a client cannot give itself a longer target either. */
+    const { error: writeError } = await supabase.from('support_tickets').insert({ ...draft, user_id: session.user?.id ?? null })
     setSaving(false)
 
     if (writeError) { setError('We could not raise that just now. Please try again.'); return }

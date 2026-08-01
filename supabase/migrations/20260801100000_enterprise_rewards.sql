@@ -302,13 +302,20 @@ create table if not exists enterprise_redemptions (
   released_by  text references enterprise_users(id),
   released_on  date,
   decision_note text,
-  applied_to   text references enterprise_invoices(id),
+  /* `on delete set null` so rebuilding the invoice history does not have to
+     tear down the redemptions that reference it. The link is restored by the
+     seed below, which runs after. */
+  applied_to   text references enterprise_invoices(id) on delete set null,
   applied_on   date,
   ledger_ref   text,
   sort_order   integer not null default 0
 );
 
 create index if not exists enterprise_redemptions_account_idx on enterprise_redemptions(account_id, state);
+
+alter table enterprise_redemptions drop constraint if exists enterprise_redemptions_applied_to_fkey;
+alter table enterprise_redemptions add constraint enterprise_redemptions_applied_to_fkey
+  foreign key (applied_to) references enterprise_invoices(id) on delete set null;
 
 alter table enterprise_redemptions drop constraint if exists enterprise_redemptions_released_check;
 alter table enterprise_redemptions add constraint enterprise_redemptions_released_check

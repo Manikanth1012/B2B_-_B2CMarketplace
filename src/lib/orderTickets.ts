@@ -20,17 +20,21 @@ export function canRaiseTicket(order: { status: string }): boolean {
 
 /* The queue's own vocabulary — consumer_tickets.category. Offering free text would
    put a fifth category into a table that has four and a console that filters on them. */
-export const TICKET_CATEGORIES = ['Delivery', 'Product', 'Billing', 'Technical'] as const
+/* The shared queue's own vocabulary — `support_categories.id`. It used to be
+   four consumer-only words that the operator's queue did not recognise, so a
+   ticket raised here arrived in a category the desk could not filter on. */
+export const TICKET_CATEGORIES = ['delivery', 'service', 'billing', 'account'] as const
 export type TicketCategory = typeof TICKET_CATEGORIES[number]
 
 export interface TicketDraft {
   id: string
-  order_ref: string
+  ref: string
   subject: string
   category: TicketCategory
-  severity: string
+  priority: string
   status: string
-  opened: string
+  persona: string
+  org: string
   opened_by: string
   channel: string
   owner: string | null
@@ -43,16 +47,28 @@ export interface TicketDraft {
 /* The response clock the marketplace commits to, by how much the customer is out of
    pocket in time. These match the seeded tickets: P2 is a four-hour promise, P3 a day,
    P4 three days. */
-const SLA_MINS: Record<string, number> = { P2: 240, P3: 1440, P4: 4320 }
+/* Mirrors `support_sla.resolve_mins`. */
+const SLA_MINS: Record<string, number> = { P1: 240, P2: 480, P3: 1440, P4: 4320 }
 
 /* Delivery problems on an order in flight are the time-critical ones; a billing
    question can wait a day. Nothing here is P1 — that is reserved for the operator's
    own incidents, not a single consumer order. */
 const SEVERITY: Record<TicketCategory, string> = {
-  Delivery: 'P2',
-  Product: 'P3',
-  Billing: 'P3',
-  Technical: 'P3',
+  delivery: 'P3',
+  service: 'P2',
+  billing: 'P2',
+  account: 'P3',
+}
+
+const LABEL: Record<TicketCategory, string> = {
+  delivery: 'Delivery problem',
+  service: 'Service not working',
+  billing: 'Billing query',
+  account: 'Account or access',
+}
+
+export function label(category: TicketCategory): string {
+  return LABEL[category] ?? 'Support request'
 }
 
 export function severityFor(category: TicketCategory): string {
@@ -91,12 +107,16 @@ export function buildTicket(
     /* Same shape as the seeded ids (TCK-59120). Time-based so two tickets raised in
        one session cannot collide on the primary key. */
     id: `TCK-${Date.now().toString().slice(-8)}`,
-    order_ref: order.order_ref,
-    subject: `${category} issue on ${order.order_ref}`,
+    ref: order.order_ref,
+    subject: `${label(category)} on ${order.order_ref}`,
     category,
-    severity,
-    status: 'inprogress',
-    opened: 'Just now',
+    priority: severity,
+    /* Everything starts as new. The database refuses anything else — a ticket
+       raised already open is one nobody has picked up but the queue thinks
+       somebody has. */
+    status: 'new',
+    persona: 'consumer',
+    org: 'Consumer',
     opened_by: raisedBy,
     channel: 'Self-care portal',
     /* Unassigned until the queue picks it up. Naming a team here would be inventing

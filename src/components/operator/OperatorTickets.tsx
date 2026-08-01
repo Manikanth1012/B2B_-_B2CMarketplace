@@ -16,7 +16,7 @@ export function OperatorTickets() {
   const [newTicket, setNewTicket] = useState({ subject: '', category: 'Provisioning', priority: 'P3', opened_by: '', org: '' })
 
   useEffect(() => {
-    supabase.from('operator_tickets').select('*').order('sort_order').then(({ data }) => {
+    supabase.from('support_tickets').select('*').order('sort_order').then(({ data }) => {
       if (data) setTickets(data as OperatorTicket[])
       setLoading(false)
     })
@@ -38,7 +38,7 @@ export function OperatorTickets() {
   const breachedCount = service.filter(t => t.breached).length
 
   const refresh = async () => {
-    const { data } = await supabase.from('operator_tickets').select('*').order('sort_order')
+    const { data } = await supabase.from('support_tickets').select('*').order('sort_order')
     if (data) setTickets(data as OperatorTicket[])
   }
 
@@ -46,7 +46,7 @@ export function OperatorTickets() {
     if (!selected) return
     if (!reply.trim()) { toast('Reply cannot be empty', 'error'); return }
     const messages = [...selected.messages, { who: 'Operator Admin', when: new Date().toISOString().slice(0, 16).replace('T', ' '), text: reply }]
-    await supabase.from('operator_tickets').update({ messages, waiting_on_customer: false }).eq('id', selected.id)
+    await supabase.from('support_tickets').update({ messages, waiting_on_customer: false }).eq('id', selected.id)
     toast('Reply sent')
     setReply('')
     await refresh()
@@ -54,7 +54,7 @@ export function OperatorTickets() {
   }
 
   const handleResolve = async (id: string) => {
-    await supabase.from('operator_tickets').update({
+    await supabase.from('support_tickets').update({
       status: 'resolved', resolution_mins: 120, owner: 'Operator Admin',
     }).eq('id', id)
     toast('Ticket resolved')
@@ -63,14 +63,14 @@ export function OperatorTickets() {
   }
 
   const handleAssign = async (id: string, owner: string) => {
-    await supabase.from('operator_tickets').update({ owner }).eq('id', id)
+    await supabase.from('support_tickets').update({ owner }).eq('id', id)
     toast(`Assigned to ${owner}`)
     await refresh()
     if (selected) setSelected({ ...selected, owner })
   }
 
   const handleEscalate = async (id: string) => {
-    await supabase.from('operator_tickets').update({
+    await supabase.from('support_tickets').update({
       escalated: true, escalated_at: new Date().toISOString(),
     }).eq('id', id)
     toast('Ticket escalated')
@@ -79,7 +79,7 @@ export function OperatorTickets() {
   }
 
   const handleDelete = async (id: string) => {
-    await supabase.from('operator_tickets').delete().eq('id', id)
+    await supabase.from('support_tickets').delete().eq('id', id)
     toast('Ticket deleted')
     await refresh()
     setSelected(null)
@@ -90,7 +90,7 @@ export function OperatorTickets() {
     if (!newTicket.opened_by.trim()) { toast('Opened by is required', 'error'); return }
     const id = `tk-${Date.now()}`
     const sortOrder = tickets.length > 0 ? Math.max(...tickets.map(t => t.sort_order)) + 1 : 0
-    await supabase.from('operator_tickets').insert({
+    await supabase.from('support_tickets').insert({
       id, subject: newTicket.subject, category: newTicket.category, priority: newTicket.priority,
       status: 'open', opened_by: newTicket.opened_by, org: newTicket.org || 'External',
       owner: null, opened_at: new Date().toISOString(), sla_mins: newTicket.priority === 'P1' ? 240 : newTicket.priority === 'P2' ? 480 : 960,

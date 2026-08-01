@@ -20,7 +20,7 @@ export function OperatorDashboard() {
   useEffect(() => {
     Promise.all([
       supabase.from('operator_profile').select('*').maybeSingle(),
-      supabase.from('operator_tickets').select('*').order('sort_order'),
+      supabase.from('support_tickets').select('*').order('sort_order'),
       supabase.from('settlement_statements').select('*').eq('status', 'pending').order('sort_order'),
       supabase.from('operator_monthly').select('*').order('sort_order'),
       supabase.from('operator_vertical_stats').select('*').order('sort_order'),

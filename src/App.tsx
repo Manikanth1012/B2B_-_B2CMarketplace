@@ -75,6 +75,7 @@ import { EnterpriseApprovals } from './components/enterprise/EnterpriseApprovals
 import { EnterpriseRefunds } from './components/enterprise/EnterpriseRefunds'
 import { EnterpriseBilling } from './components/enterprise/EnterpriseBilling'
 import { EnterpriseRewards } from './components/enterprise/EnterpriseRewards'
+import { EnterpriseSupport } from './components/enterprise/EnterpriseSupport'
 import { KnowledgeBase } from './components/KnowledgeBase'
 
 export default function App() {
@@ -358,6 +359,7 @@ export default function App() {
         {enView === 'en-refunds' && <EnterpriseRefunds />}
         {enView === 'en-billing' && <EnterpriseBilling />}
         {enView === 'en-rewards' && <EnterpriseRewards />}
+        {enView === 'en-support' && <EnterpriseSupport />}
         {enView === 'en-notifications' && <EnterpriseNotifications />}
         {enView === 'en-team' && <EnterpriseTeam />}
         {enView === 'en-audit' && <EnterpriseAudit />}

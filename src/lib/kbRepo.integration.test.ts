@@ -26,7 +26,7 @@ const testArticle: KbArticle = {
 }
 
 async function teardown() {
-  await supabase.from('operator_tickets').delete().eq('org', ORG)
+  await supabase.from('support_tickets').delete().eq('org', ORG)
   await supabase.from('kb_articles').delete().eq('id', AID)
 }
 
@@ -73,7 +73,7 @@ describe('knowledge base round trip', () => {
   it('lands feedback in the operator queue under its own category', async () => {
     const res = await raiseContentFeedback({ article: testArticle, actor: 'test', org: ORG, note: 'Unclear' })
     expect(res.ok).toBe(true)
-    const { data } = await supabase.from('operator_tickets').select('*').eq('org', ORG)
+    const { data } = await supabase.from('support_tickets').select('*').eq('org', ORG)
     expect(data).toHaveLength(1)
     expect(data![0].category).toBe(CONTENT_FEEDBACK_CATEGORY)
     expect(data![0].subject).toContain('Test article')

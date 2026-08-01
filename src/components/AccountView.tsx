@@ -79,7 +79,7 @@ export function AccountView({ initialTab, onWatchesChanged }: {
       supabase.from('consumer_audit_log').select('*').order('when_date', { ascending: false }),
       supabase.from('consumer_household').select('*').order('joined'),
       supabase.from('consumer_bills').select('*').order('id', { ascending: false }),
-      supabase.from('consumer_tickets').select('*').order('id', { ascending: false }),
+      supabase.from('support_tickets').select('*').order('opened_at', { ascending: false }),
       loadMyRefunds(),
     ])
     if (pRes.data) setProfile(pRes.data as ConsumerProfile)
@@ -1551,15 +1551,25 @@ function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerT
     const now = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short' }) + ' ' +
       new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
     const newTicket: ConsumerTicket = {
-      id, subject, category, severity, status: 'open', opened: 'Just now',
+      id, subject, category, severity, status: 'new', opened: 'Just now',
       opened_by: 'Priya Raman', channel: 'Self-care portal', owner: null,
-      sla_mins: severity === 'P1' ? 240 : severity === 'P2' ? 480 : severity === 'P3' ? 1440 : 2880,
+      sla_mins: severity === 'P1' ? 240 : severity === 'P2' ? 480 : severity === 'P3' ? 1440 : 4320,
       resolution_mins: null, breached: false, escalated: false,
       messages: [{ who: 'Priya Raman', when: now, text: message }],
     }
-    await supabase.from('consumer_tickets').insert({
-      ...newTicket,
-      messages: JSON.stringify(newTicket.messages),
+    /* The shared queue speaks one vocabulary: `priority` rather than
+       `severity`, `ref` rather than `order_ref`, and a persona on every row so
+       the support desk can see a ticket a customer raised. `guard_ticket`
+       overwrites the SLA fields from the policy, so what is sent here for them
+       is a starting point rather than a promise. */
+    const { data: session } = await supabase.auth.getUser()
+    await supabase.from('support_tickets').insert({
+      id, subject, category, priority: severity, status: 'new',
+      persona: 'consumer', org: 'Consumer', opened_by: 'Priya Raman',
+      channel: 'Self-care portal', owner: null,
+      sla_mins: newTicket.sla_mins, breached: false, escalated: false,
+      user_id: session.user?.id ?? null,
+      messages: newTicket.messages,
     })
     setTickets((prev) => [newTicket, ...prev])
     setSubject(''); setMessage(''); setCategory('General'); setSeverity('P3')
@@ -1693,8 +1703,8 @@ function TicketDetailModal({ ticket, onClose, showToast }: { ticket: ConsumerTic
       new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
     const newMsg: TicketMessage = { who: 'Priya Raman', when: now, text: reply }
     const updated = [...messages, newMsg]
-    await supabase.from('consumer_tickets').update({
-      messages: JSON.stringify(updated),
+    await supabase.from('support_tickets').update({
+      messages: updated,
     }).eq('id', ticket.id)
     setMessages(updated)
     setReply('')
