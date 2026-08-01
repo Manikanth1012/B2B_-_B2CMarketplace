@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
-import { ChevronLeft, Clock, TriangleAlert as AlertTriangle } from 'lucide-react'
+import { ChevronLeft, Clock, Paperclip, TriangleAlert as AlertTriangle } from 'lucide-react'
 import { SectionCard, EmptyState, Btn, TextInput, Select, Modal, FormField, TextArea, toast } from './operator/shared'
 import { loadKb, raiseContentFeedback } from '../lib/kbRepo'
 import type { KbSnapshot } from '../lib/kbRepo'
-import { KB_KINDS, kbKind, filterArticles, allTags, canAct } from '../lib/kb'
+import { KB_KINDS, kbKind, filterArticles, allTags, canAct, assetsFor } from '../lib/kb'
 import type { KbArticle } from '../lib/kb'
+import { KbAssets } from './KbAssets'
 import type { Persona } from '../types/view'
 
 export function KnowledgeBase({ persona, title, myRole = null, feedbackAs }: {
@@ -71,6 +72,8 @@ export function KnowledgeBase({ persona, title, myRole = null, feedbackAs }: {
                 <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.65 }}>{prose}</p>
               </div>
             ))}
+
+            <KbAssets assets={assetsFor(snap.assets, open.id)} />
 
             {feedbackAs && (
               <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '14px' }}>
@@ -148,6 +151,17 @@ export function KnowledgeBase({ persona, title, myRole = null, feedbackAs }: {
                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '4px' }}>
                   <span className="pill">{kbKind(a.kind).label}</span>
                   <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{a.mins} min</span>
+                  {/* Which articles carry a manual or a video, without opening
+                      each one to find out. */}
+                  {assetsFor(snap.assets, a.id).length > 0 && (
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: '4px',
+                      fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--brand-accent-dark)',
+                    }}>
+                      <Paperclip size={11} />
+                      {assetsFor(snap.assets, a.id).length} download{assetsFor(snap.assets, a.id).length === 1 ? '' : 's'}
+                    </span>
+                  )}
                 </div>
                 <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--text)' }}>{a.title}</div>
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: '2px' }}>{a.summary}</div>

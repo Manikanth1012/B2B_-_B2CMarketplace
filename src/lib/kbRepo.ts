@@ -1,9 +1,13 @@
 /* The only module that talks to Supabase for the knowledge base. */
 import { supabase } from './supabase'
-import type { KbArticle, KbTour } from './kb'
+import type { KbArticle, KbAsset, KbTour } from './kb'
 
 export interface KbSnapshot {
   articles: KbArticle[]
+  /* The manuals, datasheets, brochures, videos and templates hanging off those
+     articles. Read in the same round trip: an article panel that fetches its
+     own files opens with a gap where they are about to appear. */
+  assets: KbAsset[]
   tours: KbTour[]
   /* Set when a query failed. An empty list and a failed read are different
      answers and must not look the same on screen. */
@@ -11,9 +15,10 @@ export interface KbSnapshot {
 }
 
 export async function loadKb(persona: string): Promise<KbSnapshot> {
-  const [artRes, tourRes] = await Promise.all([
+  const [artRes, assetRes, tourRes] = await Promise.all([
     supabase.from('kb_articles').select('*')
       .eq('persona', persona).eq('status', 'published').order('sort_order'),
+    supabase.from('kb_assets').select('*').order('sort_order'),
     supabase.from('kb_tours').select('*')
       .eq('persona', persona).eq('status', 'published').order('sort_order'),
   ])
@@ -21,11 +26,31 @@ export async function loadKb(persona: string): Promise<KbSnapshot> {
   /* Only the articles query can fail the screen. Nothing renders tours yet — `tours` is
      returned for a later phase to consume — so a `kb_tours` failure with a healthy
      `kb_articles` read must not blank out articles the reader can already see. */
+  const articles = (artRes.data ?? []) as KbArticle[]
+  const mine = new Set(articles.map(a => a.id))
+
   return {
-    articles: (artRes.data ?? []) as KbArticle[],
+    articles,
+    /* Narrowed to this persona's articles here rather than in the query: the
+       assets table has no persona of its own, and joining through the article
+       is the only place that fact lives. */
+    assets: ((assetRes.data ?? []) as KbAsset[]).filter(a => mine.has(a.article_id)),
     tours: (tourRes.data ?? []) as KbTour[],
     ...(artRes.error ? { loadError: artRes.error.message } : {}),
   }
+}
+
+/**
+ * A link that opens an asset.
+ *
+ * `kb-assets` is a public bucket — a published manual is a published manual —
+ * so this is a plain URL rather than a signed one, and it keeps working if
+ * somebody copies it to a colleague. An asset hosted elsewhere returns its own.
+ */
+export function assetUrl(asset: KbAsset): string | null {
+  if (asset.url) return asset.url
+  if (!asset.path) return null
+  return supabase.storage.from('kb-assets').getPublicUrl(asset.path).data.publicUrl
 }
 
 export type ArticleForViewResult =

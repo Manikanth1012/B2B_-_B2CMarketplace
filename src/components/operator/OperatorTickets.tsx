@@ -4,6 +4,9 @@ import { CONTENT_FEEDBACK_CATEGORY } from '../../lib/kbRepo'
 import type { OperatorTicket } from '../../types'
 import { SectionCard, Table, Td, StatusPill, PriorityPill, EmptyState, fmtDateTime, Btn, Modal, FormField, TextInput, TextArea, Select, toast, ConfirmDialog } from './shared'
 import { TriangleAlert as AlertTriangle, Clock } from 'lucide-react'
+import { AttachmentList } from '../AttachmentList'
+import { loadAttachments } from '../../lib/attachmentRepo'
+import type { Attachment } from '../../lib/attachments'
 
 export function OperatorTickets() {
   const [tickets, setTickets] = useState<OperatorTicket[]>([])
@@ -11,6 +14,10 @@ export function OperatorTickets() {
   const [filter, setFilter] = useState<string>('open')
   const [queue, setQueue] = useState<'service' | 'feedback'>('service')
   const [selected, setSelected] = useState<OperatorTicket | null>(null)
+  /* What the customer sent with the complaint. Loaded when a ticket is opened
+     rather than with the queue: most tickets have none, and a request per row
+     to find that out is a request per row wasted. */
+  const [attachments, setAttachments] = useState<Attachment[]>([])
   const [reply, setReply] = useState('')
   const [addModal, setAddModal] = useState(false)
   const [newTicket, setNewTicket] = useState({ subject: '', category: 'Provisioning', priority: 'P3', opened_by: '', org: '' })
@@ -142,7 +149,7 @@ export function OperatorTickets() {
           {filtered.length === 0 ? <EmptyState message="No tickets in this filter" /> : (
             <Table headers={['Subject', 'Priority', 'Status', 'Owner']}>
               {filtered.map(t => (
-                <tr key={t.id} onClick={() => setSelected(t)} style={{ cursor: 'pointer', background: selected?.id === t.id ? 'var(--bg-alt)' : 'transparent' }}>
+                <tr key={t.id} onClick={() => { setSelected(t); setAttachments([]); void loadAttachments(t.id).then(setAttachments) }} style={{ cursor: 'pointer', background: selected?.id === t.id ? 'var(--bg-alt)' : 'transparent' }}>
                   <Td>
                     {t.breached && <AlertTriangle size={14} style={{ color: 'var(--danger)', display: 'inline', marginRight: '4px' }} />}
                     {t.escalated && <AlertTriangle size={14} style={{ color: 'var(--warning)', display: 'inline', marginRight: '4px' }} />}
@@ -182,6 +189,8 @@ export function OperatorTickets() {
                   ))}
                 </div>
               </div>
+
+              <AttachmentList attachments={attachments} />
 
               <div style={{ marginTop: '16px' }}>
                 <TextArea value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Reply to ticket..." />

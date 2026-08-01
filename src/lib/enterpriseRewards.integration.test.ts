@@ -270,25 +270,26 @@ describe('a release that goes all the way through', () => {
   })
 
   /**
-   * KNOWN: this test is not re-runnable against the same project.
+   * Put it back the way a ledger is put back: by posting the opposite entry.
    *
-   * It puts the redemption back — the trigger refuses to re-open a decision for
-   * the account that made it, so that happens as the marketplace — but it
-   * cannot take the ledger movement back. `loyalty_ledger` has no DELETE and no
-   * UPDATE policy for the operator, on purpose: a ledger a console can edit is
-   * not a ledger, and the real remedy for a wrong movement is a compensating
-   * entry rather than a rubbing-out.
-   *
-   * So the delete below is a no-op, the demo account stays one release lighter,
-   * and a second run of this file fails on the balance. Closing it properly
-   * means giving the operator a guarded way to post a reversal — a capability
-   * the marketplace desk genuinely needs, and a separate piece of work from
-   * this test. Until then, restore the demo project between runs.
+   * `loyalty_ledger` has no delete and no update policy for anybody, on purpose
+   * — a ledger a console can edit is not a ledger. `reverse_movement()` is the
+   * marketplace's guarded correction path, and the rebalance trigger carries
+   * the points home behind it. This file used to be un-re-runnable for want of
+   * exactly that.
    */
   afterAll(async () => {
     await signOut()
     await signIn(OPERATOR.email, OPERATOR.password)
-    if (ledgerRef) await supabase.from('loyalty_ledger').delete().eq('id', ledgerRef)
+    if (ledgerRef) {
+      const { data } = await supabase.from('loyalty_ledger').select('id').eq('id', ledgerRef)
+      if (data?.length) {
+        await supabase.rpc('reverse_movement', {
+          p_movement: ledgerRef,
+          p_why: 'Integration test — putting the demo account back',
+        })
+      }
+    }
     if (target) {
       await supabase.from('enterprise_redemptions').update({
         state: 'proposed', released_by: null, released_on: null,
@@ -297,9 +298,9 @@ describe('a release that goes all the way through', () => {
     }
 
     /* The balance comes back on its own: `loyalty_ledger_rebalance` recomputes
-       it from the ledger whenever a row goes in or out. Nothing here can set it
-       directly and nothing should — a balance a client can write is not a
-       balance — so this asserts the trigger did its job rather than doing it. */
+       it from the ledger whenever a row goes in, out or changes. Nothing here
+       sets it directly and nothing should, so this asserts the trigger did its
+       job rather than doing it — and that the account is where it started. */
     const member = book.member?.id
     if (member) {
       const [{ data: rows }, { data: m }] = await Promise.all([
@@ -308,6 +309,7 @@ describe('a release that goes all the way through', () => {
       ])
       const total = (rows ?? []).reduce((a, r) => a + Number(r.points), 0)
       expect(Number(m!.balance), `${member}'s balance does not match its ledger`).toBe(total)
+      expect(Number(m!.balance), `${member} did not come back to where it started`).toBe(86630)
     }
     await signOut()
   })
@@ -316,7 +318,6 @@ describe('a release that goes all the way through', () => {
     const mine = book.redemptions.find(r => r.state === 'proposed' && r.proposed_by !== me.id)
     expect(mine, 'nothing on the account was proposed by somebody else').toBeTruthy()
     target = mine!.id
-    ledgerRef = `LTX-RDX-${mine!.id.replace(/\D/g, '')}`
 
     const before = Number(book.member!.balance)
     const res = await decideRedemption({ book, me, redemption: mine!, release: true, note: 'Released by the test.' })
@@ -332,7 +333,16 @@ describe('a release that goes all the way through', () => {
        that says one thing and a history that says another. */
     expect(Number(after.member!.balance)).toBe(before - mine!.points)
     expect(balanceOf(after.movements)).toBe(Number(after.member!.balance))
-    expect(after.movements.some(m => m.id === ledgerRef && m.type === 'redeem')).toBe(true)
+
+    /* Read the movement rather than guessing its id. `apply_redemption()` mints
+       one per posting, so that a redemption reversed and released again gets a
+       second row instead of silently getting none — and a test that predicts
+       the id would go on passing while the reversal path quietly broke. */
+    const posted = after.movements.find(m => !book.movements.some(b => b.id === m.id))
+    expect(posted, 'the release posted no movement').toBeTruthy()
+    expect(posted!.type).toBe('redeem')
+    expect(Number(posted!.points)).toBe(-mine!.points)
+    ledgerRef = posted!.id
   })
 
   it('refuses to release it a second time', async () => {

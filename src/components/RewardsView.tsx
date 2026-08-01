@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Zap, Star, TrendingUp, Clock, Award, Gift, Wallet, FileText, Tag, RefreshCw, Send, X, Minus, Plus, Check, CircleAlert as AlertCircle, Info } from 'lucide-react'
-import { supabase } from '../lib/supabase'
 import { creditWalletFromRewards, loadMyWallet } from '../lib/walletRepo'
-import type { LoyaltyProgramme, LoyaltyTier, EarnRule, RedeemOption, LoyaltyMember, LoyaltyLedgerEntry } from '../types'
-
-const MEMBER_ID = 'LM-4001'
+import { loadMyRewards, redeemPoints as redeemThroughTheMarketplace } from '../lib/loyaltyRepo'
+import { validateRedemption, offeredTo, mostRedeemable } from '../lib/loyalty'
+import type { LoyaltyTier, EarnRule, LoyaltyLedgerEntry } from '../types'
+import type { Programme as LoyaltyProgramme, RedeemOption, Member as LoyaltyMember } from '../lib/loyalty'
 
 const KIND_ICONS: Record<string, typeof Wallet> = {
   wallet: Wallet,
@@ -58,22 +58,17 @@ export function RewardsView() {
   const [redeemError, setRedeemError] = useState<string>('')
   const [toast, setToast] = useState<string>('')
 
+  /* Whoever is signed in, rather than LM-4001 by name — that constant was
+     right for exactly one demo login and wrong for everybody else. Row-level
+     security returns the caller's own membership and nobody else's. */
   const loadData = useCallback(async () => {
-    const [progRes, tiersRes, rulesRes, optionsRes, memberRes, ledgerRes] = await Promise.all([
-      supabase.from('loyalty_programme').select('*').maybeSingle(),
-      supabase.from('loyalty_tiers').select('*').order('sort_order'),
-      supabase.from('loyalty_earn_rules').select('*').order('id'),
-      supabase.from('loyalty_redeem_options').select('*').order('id'),
-      supabase.from('loyalty_members').select('*').eq('id', MEMBER_ID).maybeSingle(),
-      supabase.from('loyalty_ledger').select('*').eq('member', MEMBER_ID).order('when_date', { ascending: false }),
-    ])
-
-    if (progRes.data) setProgramme(progRes.data as LoyaltyProgramme)
-    if (tiersRes.data) setTiers(tiersRes.data as LoyaltyTier[])
-    if (rulesRes.data) setEarnRules(rulesRes.data as EarnRule[])
-    if (optionsRes.data) setRedeemOptions(optionsRes.data as RedeemOption[])
-    if (memberRes.data) setMember(memberRes.data as LoyaltyMember)
-    if (ledgerRes.data) setLedger(ledgerRes.data as LoyaltyLedgerEntry[])
+    const book = await loadMyRewards()
+    setProgramme(book.programme)
+    setTiers(book.tiers)
+    setEarnRules(book.rules)
+    setRedeemOptions(book.options)
+    setMember(book.member)
+    setLedger(book.ledger)
     setLoading(false)
   }, [])
 
@@ -97,9 +92,7 @@ export function RewardsView() {
 
   const openRedeem = (optId?: string) => {
     if (!member || !programme) return
-    const active = redeemOptions.filter(
-      (o) => o.status === 'active' && (o.audience === 'all' || o.audience === member.kind)
-    )
+    const active = offeredTo(redeemOptions, member)
     if (!active.length) {
       setToast('You need at least ' + fmtPts(programme.min_redeem) + ' before anything can be redeemed')
       setTimeout(() => setToast(''), 3000)
@@ -113,52 +106,35 @@ export function RewardsView() {
     setRedeemModalOpen(true)
   }
 
+  /* The same rules `redeem_points()` applies in the database, asked here first
+     so a refusal is a sentence the customer can act on rather than an error
+     that arrives after they have pressed the button. */
   const validateRedeem = (): string => {
-    if (!member || !programme) return 'No account loaded'
-    const opt = redeemOptions.find((o) => o.id === selectedOption)
-    if (!opt) return 'Select a redemption option'
-    if (redeemPoints < opt.min) return `${opt.name} starts at ${fmtPts(opt.min)}`
-    if (redeemPoints > member.balance) return `That is more than your balance (${fmtPts(member.balance)} available)`
-    if (redeemPoints % opt.step !== 0) return `${opt.name} goes up in steps of ${fmtPts(opt.step)}`
-    return ''
+    const check = validateRedemption({
+      member, programme,
+      option: redeemOptions.find((o) => o.id === selectedOption),
+      points: redeemPoints,
+    })
+    return check.ok ? '' : check.reason
   }
 
   const submitRedeem = async () => {
     if (!member || !programme) return
     const err = validateRedeem()
-    if (err) {
-      setRedeemError(err)
-      return
-    }
+    if (err) { setRedeemError(err); return }
     const opt = redeemOptions.find((o) => o.id === selectedOption)
     if (!opt) return
-    const worth = +((redeemPoints / programme.per_unit) * opt.value_per).toFixed(2)
-    const newBalance = member.balance - redeemPoints
 
-    await supabase
-      .from('loyalty_members')
-      .update({
-        balance: newBalance,
-        lifetime_redeemed: member.lifetime_redeemed + redeemPoints,
-        last_activity: '25 Jul 2026',
-        expiring_soon: Math.max(0, member.expiring_soon - redeemPoints),
-      })
-      .eq('id', member.id)
-
-    const newId = 'LTX-' + (70208 + ledger.length * 3)
-    await supabase.from('loyalty_ledger').insert({
-      id: newId,
-      member: member.id,
-      when_date: '25 Jul 2026',
-      type: 'redeem',
-      points: -redeemPoints,
-      ref: opt.id,
-      rule_id: null,
-      funder: opt.cost,
-      seller_id: null,
-      value: worth,
-      note: `Redeemed for ${opt.name.toLowerCase()} — ${fmtMoney(worth)}`,
+    /* The client no longer writes the ledger or the balance — the policies that
+       let it are gone, because a balance a client can write is not a balance.
+       `redeem_points()` reads the option, the programme and the balance for
+       itself and posts the movement. */
+    const res = await redeemThroughTheMarketplace({
+      book: { programme, member, tiers, rules: earnRules, options: redeemOptions, ledger },
+      optionId: opt.id,
+      points: redeemPoints,
     })
+    if (!res.ok) { setRedeemError(res.reason); return }
 
     /* Wallet credit is the one redemption that has somewhere to land. It goes
        into the promotional pot: the customer did not pay for these points, so
@@ -167,17 +143,17 @@ export function RewardsView() {
     if (opt.kind === 'wallet') {
       const mine = await loadMyWallet()
       if (mine.wallet) {
-        const res = await creditWalletFromRewards({
-          walletId: mine.wallet.id, points: redeemPoints, credit: worth, optionId: opt.id,
+        const credited = await creditWalletFromRewards({
+          walletId: mine.wallet.id, points: redeemPoints, credit: res.worth ?? 0, optionId: opt.id,
         })
-        walletNote = res.ok
+        walletNote = credited.ok
           ? ' — spendable in the marketplace, not refundable as cash'
-          : ` — but the wallet was not credited: ${res.reason}`
+          : ` — but the wallet was not credited: ${credited.reason}`
       }
     }
 
     setRedeemModalOpen(false)
-    setToast(`${fmtPts(redeemPoints)} redeemed — ${fmtMoney(worth)} of ${opt.name.toLowerCase()}${walletNote}`)
+    setToast(`${res.note}${walletNote}`)
     setTimeout(() => setToast(''), 4000)
     await loadData()
   }
@@ -185,9 +161,8 @@ export function RewardsView() {
   const bumpPoints = (dir: number) => {
     const opt = redeemOptions.find((o) => o.id === selectedOption)
     if (!opt || !member) return
-    const step = opt.step
-    const v = redeemPoints + dir * step
-    setRedeemPoints(Math.max(opt.min, Math.min(Math.floor(member.balance / step) * step, v)))
+    const v = redeemPoints + dir * opt.step
+    setRedeemPoints(Math.max(opt.min, Math.min(mostRedeemable(opt, member), v)))
     setRedeemError('')
   }
 
@@ -201,9 +176,7 @@ export function RewardsView() {
 
   const progress = tierProgress(member)
   const earned12 = ledger.filter((t) => t.points > 0).reduce((a, t) => a + t.points, 0)
-  const activeOptions = redeemOptions.filter(
-    (o) => o.status === 'active' && (o.audience === 'all' || o.audience === member.kind)
-  )
+  const activeOptions = offeredTo(redeemOptions, member)
   const activeRules = earnRules.filter(
     (r) =>
       r.status === 'active' &&

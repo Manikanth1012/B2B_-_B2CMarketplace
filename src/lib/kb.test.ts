@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
-import { KB_KINDS, kbKind, filterArticles, allTags, canAct } from './kb'
-import type { KbArticle } from './kb'
+import {
+  KB_KINDS, kbKind, filterArticles, allTags, canAct,
+  assetsFor, assetsByKind, assetKind, assetMeta, fileSize, duration,
+} from './kb'
+import type { KbArticle, KbAsset } from './kb'
 
 const art = (over: Partial<KbArticle> = {}): KbArticle => ({
   id: 'KB-1', persona: 'operator', kind: 'howto', title: 'Onboard a seller',
@@ -104,5 +107,74 @@ describe('view bindings in the migration', () => {
     const published = sql.split('\n').filter(l => l.startsWith("('") && l.includes("'published'"))
     const nullViewPublished = published.filter(l => /, NULL, '\{/.test(l))
     expect(nullViewPublished).toEqual([])
+  })
+})
+
+/* ------------------------------------------------------------ attachments -- */
+
+function asset(over: Partial<KbAsset> = {}): KbAsset {
+  return {
+    id: 'KBA-1', article_id: 'KB-B06', kind: 'manual',
+    title: 'Cold-chain sensor — installation manual',
+    description: 'Placement, bracket, pairing.',
+    path: 'nimbus-cold-chain-install.pdf', url: null, mime: 'application/pdf',
+    bytes: 5580, duration_secs: null, pages: 3, language: 'English',
+    updated: '2026-08-01', sort_order: 1, ...over,
+  }
+}
+
+const VIDEO = asset({ id: 'KBA-2', kind: 'video', title: 'Mounting a sensor', mime: 'video/mp4', bytes: 94613, duration_secs: 128, pages: null, sort_order: 2 })
+const SHEET = asset({ id: 'KBA-3', kind: 'datasheet', title: 'NS-CC200 datasheet', bytes: 3016, pages: 2, sort_order: 3 })
+const OTHER = asset({ id: 'KBA-4', article_id: 'KB-B02', kind: 'template', title: 'Checklist', mime: 'text/csv', bytes: 646, pages: null, sort_order: 1 })
+const ASSETS = [SHEET, asset(), VIDEO, OTHER]
+
+describe('article attachments', () => {
+  it('gives an article its own files, in the order the operator set', () => {
+    expect(assetsFor(ASSETS, 'KB-B06').map(a => a.id)).toEqual(['KBA-1', 'KBA-2', 'KBA-3'])
+    expect(assetsFor(ASSETS, 'KB-B02').map(a => a.id)).toEqual(['KBA-4'])
+    expect(assetsFor(ASSETS, 'KB-NOPE')).toEqual([])
+  })
+
+  it('groups by kind in the fixed order, skipping the empty groups', () => {
+    const groups = assetsByKind(assetsFor(ASSETS, 'KB-B06'))
+    expect(groups.map(g => g.kind)).toEqual(['manual', 'datasheet', 'video'])
+    expect(groups.map(g => g.label)).toEqual(['Manuals and guides', 'Datasheets', 'Videos'])
+    expect(groups.every(g => g.assets.length > 0)).toBe(true)
+  })
+
+  it('falls back rather than losing a file with an unfamiliar kind', () => {
+    expect(assetKind('nonesuch').id).toBe('other')
+    expect(assetKind('video').label).toBe('Video')
+  })
+
+  /* What a reader wants before clicking, not after. */
+  it('prints a video’s running time and a document’s page count', () => {
+    expect(assetMeta(VIDEO)).toBe('Video · 2:08 · 95 kB · updated 01 Aug 2026')
+    expect(assetMeta(asset())).toBe('Manual · 3 pages · 5.6 kB · updated 01 Aug 2026')
+    expect(assetMeta(OTHER)).toBe('Template · 646 B · updated 01 Aug 2026')
+  })
+
+  it('says the language only when it is not the one you are reading in', () => {
+    expect(assetMeta(asset({ language: 'English' }))).not.toMatch(/English/)
+    expect(assetMeta(asset({ language: 'हिन्दी' }))).toMatch(/हिन्दी/)
+  })
+
+  it('writes a single page without an s', () => {
+    expect(assetMeta(asset({ pages: 1 }))).toMatch(/1 page ·/)
+    expect(assetMeta(asset({ updated: null }))).not.toMatch(/updated/)
+  })
+
+  it('reads sizes the way a file manager does', () => {
+    expect(fileSize(5580)).toBe('5.6 kB')
+    expect(fileSize(1_200_000)).toBe('1.2 MB')
+    expect(fileSize(646)).toBe('646 B')
+    expect(fileSize(0)).toBe('—')
+  })
+
+  it('writes a running time, and not as a timestamp under a minute', () => {
+    expect(duration(128)).toBe('2:08')
+    expect(duration(600)).toBe('10:00')
+    expect(duration(45)).toBe('45 sec')
+    expect(duration(0)).toBe('—')
   })
 })
