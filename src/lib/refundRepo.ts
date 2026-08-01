@@ -95,6 +95,23 @@ export async function loadMyRefunds(): Promise<RefundBook> {
  * module decides that, and it refuses a seller who has already lost the
  * decision to the clock.
  */
+/** Everything raised by one enterprise account. Scoped by RLS on `account_id`;
+    the filter here only keeps the query small. */
+export async function loadAccountRefunds(accountId: string): Promise<RefundBook> {
+  const [res, rules] = await Promise.all([
+    supabase.from('refunds').select('*').eq('account_id', accountId).order('requested', { ascending: false }),
+    loadRules(),
+  ])
+  const errors = [...rules.errors]
+  if (res.error) errors.push(`refunds: ${res.error.message}`)
+  return {
+    refunds: (res.data ?? []) as Refund[],
+    policy: rules.policy,
+    windows: rules.windows,
+    ...(errors.length > 0 ? { loadError: `Some of this did not load (${errors.join('; ')}).` } : {}),
+  }
+}
+
 export async function decideRefund(
   { refund, decision, refunded, note, by, as }: {
     refund: Refund
@@ -207,7 +224,7 @@ export async function markRefundPaid(refund: Refund, by: string): Promise<Result
  * records.
  */
 export async function requestRefund(
-  { order, policy, reason, detail, evidence }: {
+  { order, policy, reason, detail, evidence, accountId }: {
     order: {
       order_ref: string; product_id: string; item: string; category_id: string | null
       partner_id: string | null; seller: string; first_party: boolean
@@ -217,6 +234,11 @@ export async function requestRefund(
     reason: RefundReason
     detail: string
     evidence: string
+    /* Set when a business raises it. An enterprise refund belongs to the
+       company rather than to whichever buyer happened to be signed in — the
+       money goes back to the company's account, and the colleague who chases
+       it next week is not the same person. */
+    accountId?: string
   },
 ): Promise<Result> {
   if (detail.trim().split(/\s+/).filter(Boolean).length < 6) {
@@ -240,7 +262,9 @@ export async function requestRefund(
     order_ref: order.order_ref, product_id: order.product_id, item: order.item,
     category_id: order.category_id, partner_id: order.partner_id, seller: order.seller,
     first_party: order.first_party, customer: order.customer,
-    buyer_type: 'consumer', user_id: uid,
+    buyer_type: accountId ? 'enterprise' : 'consumer',
+    user_id: accountId ? null : uid,
+    account_id: accountId ?? null,
     amount: order.amount, refunded: null, reason,
     detail: detail.trim(), evidence: evidence.trim() || null,
     requested: iso(today), decider, sla_due: iso(due), state,

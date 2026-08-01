@@ -68,9 +68,12 @@ import { PartnerReviews } from './components/partner/PartnerReviews'
 import { EnterpriseShell } from './components/enterprise/EnterpriseShell'
 import { EnterpriseDashboard } from './components/enterprise/EnterpriseDashboard'
 import { EnterpriseBrowse } from './components/enterprise/EnterpriseBrowse'
-import { EnterpriseApprovals, EnterpriseOrders, EnterpriseSubs, EnterpriseMarketplace } from './components/enterprise/EnterpriseViews'
+import { EnterpriseOrders, EnterpriseSubs, EnterpriseMarketplace } from './components/enterprise/EnterpriseViews'
 import { EnterpriseTeam, EnterpriseAudit, EnterpriseProfile } from './components/enterprise/EnterpriseMisc'
 import { EnterpriseNotifications } from './components/enterprise/EnterpriseNotifications'
+import { EnterpriseApprovals } from './components/enterprise/EnterpriseApprovals'
+import { EnterpriseRefunds } from './components/enterprise/EnterpriseRefunds'
+import { EnterpriseBilling } from './components/enterprise/EnterpriseBilling'
 import { KnowledgeBase } from './components/KnowledgeBase'
 
 export default function App() {
@@ -351,6 +354,8 @@ export default function App() {
         {enView === 'en-approvals' && <EnterpriseApprovals />}
         {enView === 'en-orders' && <EnterpriseOrders />}
         {enView === 'en-subs' && <EnterpriseSubs />}
+        {enView === 'en-refunds' && <EnterpriseRefunds />}
+        {enView === 'en-billing' && <EnterpriseBilling />}
         {enView === 'en-notifications' && <EnterpriseNotifications />}
         {enView === 'en-team' && <EnterpriseTeam />}
         {enView === 'en-audit' && <EnterpriseAudit />}

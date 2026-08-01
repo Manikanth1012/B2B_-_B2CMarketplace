@@ -1,100 +1,11 @@
 import { useState } from 'react'
 import { SquareCheck as CheckSquare, X, Shield, Cpu, Package } from 'lucide-react'
 import { StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, fmtInt, Btn, toast, Modal } from '../operator/shared'
-import { ENTERPRISE_APPROVALS, ENTERPRISE_SUBS, ENTERPRISE_ORDERS, ENTERPRISE_PROFILE, APPROVAL_POLICY, VERTICAL_NAMES } from './data'
+import { ENTERPRISE_SUBS, ENTERPRISE_ORDERS, VERTICAL_NAMES } from './data'
 
-export function EnterpriseApprovals() {
-  const [approvals, setApprovals] = useState(ENTERPRISE_APPROVALS)
-  const [decideTarget, setDecideTarget] = useState<typeof ENTERPRISE_APPROVALS[0] | null>(null)
-  const [decision, setDecision] = useState<'approve' | 'decline' | null>(null)
-
-  const handleDecide = (id: string, approved: boolean) => {
-    setApprovals(prev => prev.filter(a => a.id !== id))
-    setDecideTarget(null)
-    toast(approved ? `Requisition ${id} approved` : `Requisition ${id} declined`, approved ? 'success' : 'error')
-  }
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div>
-        <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Approvals</h1>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-          {approvals.length} waiting · purchases at or above ${fmtMoney(APPROVAL_POLICY.threshold)} need finance approval{APPROVAL_POLICY.securitySignOff ? ', security purchases also need IT sign-off' : ''}
-        </p>
-      </div>
-
-      <div style={{
-        padding: '14px 18px', borderRadius: 'var(--radius-md)',
-        background: 'var(--info-bg)', border: '1px solid var(--info)',
-        fontSize: 'var(--text-sm)', color: 'var(--info)',
-      }}>
-        Approvers see the requester's reason, the cost and what the account already holds — so a duplicate request is obvious before it is approved.
-      </div>
-
-      {approvals.length > 0 ? (
-        approvals.map(a => (
-          <SectionCard key={a.id} title={a.item} subtitle={`${a.id} · ${a.requester} · raised ${a.raised}`}>
-            <div style={{ padding: '20px' }}>
-              <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-                <div style={{ width: '40px', height: '40px', borderRadius: 'var(--radius)', background: 'var(--bg-alt)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  {a.v === 'iot' ? <Cpu size={20} style={{ color: 'var(--text-tertiary)' }} /> : <Shield size={20} style={{ color: 'var(--text-tertiary)' }} />}
-                </div>
-                <div style={{ flex: 1, minWidth: '200px' }}>
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '6px' }}>
-                    <StatusPill status={a.need === 'None — within policy' ? 'active' : 'pending'} />
-                    <span style={{ fontSize: 'var(--text-xs)', padding: '2px 8px', borderRadius: 'var(--radius)', background: 'var(--bg-alt)', color: 'var(--text-tertiary)' }}>{VERTICAL_NAMES[a.v]}</span>
-                  </div>
-                  <div style={{ fontSize: 'var(--text-sm)', fontStyle: 'italic', color: 'var(--text-secondary)', marginTop: '8px' }}>"{a.reason}"</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '6px' }}>{a.policy}</div>
-                </div>
-                <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>${fmtMoney(a.amount)}</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{a.need}</div>
-                </div>
-              </div>
-              <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>Approver: {ENTERPRISE_PROFILE.approver}</span>
-                <div style={{ display: 'flex', gap: '8px' }}>
-                  <Btn variant="secondary" size="sm" onClick={() => toast('Listing detail opened')}>See the listing</Btn>
-                  <Btn variant="danger" size="sm" onClick={() => { setDecideTarget(a); setDecision('decline') }}>Decline</Btn>
-                  <Btn variant="success" size="sm" onClick={() => { setDecideTarget(a); setDecision('approve') }}>Approve</Btn>
-                </div>
-              </div>
-            </div>
-          </SectionCard>
-        ))
-      ) : (
-        <SectionCard title="Nothing waiting" subtitle="">
-          <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>
-            <CheckSquare size={32} style={{ margin: '0 auto 12px', color: 'var(--text-tertiary)' }} />
-            All requisitions have been decided.
-          </div>
-        </SectionCard>
-      )}
-
-      {/* Confirm decision modal */}
-      <Modal
-        open={!!decideTarget}
-        onClose={() => setDecideTarget(null)}
-        title={decision === 'approve' ? 'Approve requisition' : 'Decline requisition'}
-        footer={
-          <>
-            <Btn variant="secondary" size="sm" onClick={() => setDecideTarget(null)}>Cancel</Btn>
-            <Btn variant={decision === 'approve' ? 'success' : 'danger'} size="sm" onClick={() => decideTarget && handleDecide(decideTarget.id, decision === 'approve')}>
-              {decision === 'approve' ? 'Approve' : 'Decline'}
-            </Btn>
-          </>
-        }
-      >
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-          {decision === 'approve'
-            ? `Approving ${decideTarget?.item} for $${decideTarget ? fmtMoney(decideTarget.amount) : ''}. The order will be placed immediately.`
-            : `Declining ${decideTarget?.item}. The requester will be notified with your reason.`}
-        </p>
-      </Modal>
-    </div>
-  )
-}
+/* EnterpriseApprovals moved to EnterpriseApprovals.tsx when requisitions
+   became rows rather than a constant. Deciding one here filtered a React array,
+   so an approval survived until the next refresh and no colleague ever saw it. */
 
 export function EnterpriseOrders() {
   const [orders, setOrders] = useState(ENTERPRISE_ORDERS)

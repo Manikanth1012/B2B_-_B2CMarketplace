@@ -1,12 +1,20 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Search, Package, Star } from 'lucide-react'
 import { SectionCard, Btn, toast, fmtMoney } from '../operator/shared'
-import { ENTERPRISE_CATALOGUE, VERTICAL_NAMES, APPROVAL_POLICY } from './data'
+import { ENTERPRISE_CATALOGUE, VERTICAL_NAMES } from './data'
+import { loadAccount } from '../../lib/enterpriseRepo'
+import { money0 } from '../../lib/enterprise'
+import type { Policy } from '../../lib/enterprise'
 
 export function EnterpriseBrowse() {
   const [vertical, setVertical] = useState<string | null>(null)
   const [category, setCategory] = useState<string | null>(null)
   const [query, setQuery] = useState('')
+  /* The threshold quoted here is the account's own, not a constant — a
+     catalogue that promises a different rule from the one the Approvals screen
+     applies is worse than one that promises nothing. */
+  const [policy, setPolicy] = useState<Policy | null>(null)
+  useEffect(() => { void (async () => setPolicy((await loadAccount()).policy))() }, [])
   const [sort, setSort] = useState('popular')
 
   let results = ENTERPRISE_CATALOGUE.filter(p => p.status === 'live')
@@ -60,7 +68,9 @@ export function EnterpriseBrowse() {
         background: 'var(--info-bg)', border: '1px solid var(--info)',
         fontSize: 'var(--text-sm)', color: 'var(--info)',
       }}>
-        Everything here is pre-approved for business purchase. Anything above ${fmtMoney(APPROVAL_POLICY.threshold)} needs finance approval before the order is placed; security purchases also need IT sign-off.
+        Everything here is pre-approved for business purchase. {policy
+          ? `Anything at or above ${money0(Number(policy.threshold))} needs finance approval before the order is placed${policy.security_signoff ? '; security purchases also need IT sign-off whatever they cost' : ''}.`
+          : 'Your account’s approval thresholds are loading.'}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '230px 1fr', gap: '16px' }} className="op-grid-2col">

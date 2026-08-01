@@ -1,16 +1,11 @@
 // Enterprise buyer demo data — SmartBuild Ltd
-
-export const ENTERPRISE_PROFILE = {
-  id: 'ENT-2007',
-  company: 'SmartBuild Ltd',
-  contact: 'Vikram Shah',
-  approver: 'Meera Iyer (CFO)',
-  sites: 4,
-  staff: 320,
-  terms: 'Net 30 · contract pricing on most lines',
-  budgetYear: 480000,
-  budgetSpent: 298400,
-}
+//
+// What is left here is the catalogue, the orders and the subscriptions the
+// Orders and Subscriptions screens still draw from. The account itself — who
+// is on it, what they may approve, its budget, its cost centres, its
+// requisitions and its invoices — moved to `enterprise_accounts` and the
+// tables around it, because three screens each holding their own copy of the
+// budget is three screens quoting three different numbers.
 
 export const ENTERPRISE_SUBS = [
   { id: 'SUB-01', sku: 'SKU-6002', name: 'Sentinel MDR Service', seller: 'Sentinel Cyber', v: 'security', qty: 620, seatsUsed: 555, seatsTotal: 620, monthly: 12400, price: 20, unit: 'per endpoint/mo', renews: '31 Dec 2026', status: 'active' },
@@ -28,12 +23,6 @@ export const ENTERPRISE_ORDERS = [
   { id: 'ORD-880388', name: 'Nimbus Air Quality Sensor', seller: 'Nimbus Sensors', v: 'iot', qty: 50, gross: 9450, placed: '12 Jul 2026', stage: 3, stages: ['Placed', 'Packed', 'In transit', 'Delivered'], failed: true },
 ]
 
-export const ENTERPRISE_APPROVALS = [
-  { id: 'REQ-301', item: 'CloudZTNA seat expansion (50 seats)', sku: 'SKU-6006', v: 'security', requester: 'Vikram Shah', raised: '26 Jul 2026', amount: 750, need: 'IT sign-off', reason: 'New Pune site needs zero-trust access for 50 additional staff starting August', policy: 'Security purchase — IT sign-off required regardless of value' },
-  { id: 'REQ-302', item: 'Nimbus Cold-Chain Bundle (10 units)', sku: 'SKU-NB-CC1', v: 'iot', requester: 'Anita Rao', raised: '25 Jul 2026', amount: 5990, need: 'Finance approval', reason: 'Mumbai depot expansion — need 10 cold-chain monitoring kits for the new cold storage facility', policy: 'Above $2,000 threshold — finance approval required' },
-  { id: 'REQ-303', item: '6D Connect SIM 100-pack (annual)', sku: 'SKU-3001', v: 'iot', requester: 'Vikram Shah', raised: '24 Jul 2026', amount: 10800, need: 'Finance approval', reason: 'Annual renewal with 100 additional SIMs for fleet tracking expansion', policy: 'Above $2,000 threshold — finance approval required' },
-]
-
 export const ENTERPRISE_CATALOGUE = [
   { id: 'SKU-3001', name: '6D Connect IoT SIM 100-pack', cat: 'IoT SIM plans', v: 'iot', price: 900, model: 'monthly', seller: '6D Telecom', rating: 4.2, reviews: 45, stock: 'in', desc: '100 IoT SIMs with shared data pool, NB-IoT and LTE-M', status: 'live' },
   { id: 'SKU-3002', name: 'Nimbus Air Quality Sensor', cat: 'Sensors', v: 'iot', price: 189, model: 'oneoff', seller: 'Nimbus Sensors', rating: 4.5, reviews: 128, stock: 'in', desc: 'Indoor air quality monitor with PM2.5, CO2 and VOC', status: 'live' },
@@ -48,11 +37,6 @@ export const ENTERPRISE_CATALOGUE = [
   { id: 'SKU-7003', name: 'Aventa CPE Mini', cat: 'CPE', v: 'device', price: 89, model: 'oneoff', seller: 'Aventa', rating: 4.0, reviews: 120, stock: 'in', desc: 'Compact customer premises equipment', status: 'live' },
   { id: 'SKU-7004', name: 'Aventa Desk Phone', cat: 'Phones', v: 'device', price: 129, model: 'oneoff', seller: 'Aventa', rating: 4.3, reviews: 75, stock: 'in', desc: 'VoIP desk phone with colour display', status: 'live' },
 ]
-
-export const APPROVAL_POLICY = {
-  threshold: 2000,
-  securitySignOff: true,
-}
 
 export const VERTICAL_NAMES: Record<string, string> = {
   iot: 'IoT Marketplace',

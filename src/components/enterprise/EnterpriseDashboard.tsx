@@ -1,12 +1,26 @@
+import { useState, useEffect } from 'react'
 import { Wallet, PieChart as PieIcon, SquareCheck as CheckSquare, ShoppingCart, TriangleAlert as AlertTriangle, TrendingUp, Cpu, Shield, Monitor, Search } from 'lucide-react'
 import { StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, fmtInt, Btn, toast } from '../operator/shared'
-import { ENTERPRISE_PROFILE, ENTERPRISE_SUBS, ENTERPRISE_ORDERS, ENTERPRISE_APPROVALS, VERTICAL_NAMES } from './data'
+import { ENTERPRISE_ORDERS, VERTICAL_NAMES } from './data'
+import { loadAccount } from '../../lib/enterpriseRepo'
+import type { AccountBook } from '../../lib/enterpriseRepo'
+import { waiting, committed, budgetPosition, money, money0, NEED_LABEL } from '../../lib/enterprise'
 import type { EnterpriseView } from '../../types/view'
 
+const TODAY = new Date().toISOString().slice(0, 10)
+
 export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: EnterpriseView) => void }) {
-  const mrc = ENTERPRISE_SUBS.filter(s => s.status === 'active').reduce((a, s) => a + s.monthly, 0)
-  const budgetUsed = (ENTERPRISE_PROFILE.budgetSpent / ENTERPRISE_PROFILE.budgetYear) * 100
-  const budgetLeft = ENTERPRISE_PROFILE.budgetYear - ENTERPRISE_PROFILE.budgetSpent
+  /* Budget, approvals and what the account holds all come from the account
+     itself. They used to be constants, which meant this page and the Approvals
+     and Billing screens quoted three different budgets. */
+  const [book, setBook] = useState<AccountBook | null>(null)
+  useEffect(() => { void (async () => setBook(await loadAccount()))() }, [])
+
+  const account = book?.account ?? null
+  const queue = book ? waiting(book.requisitions) : []
+  const com = book ? committed(book.subscriptions) : { billed: 0, renewing: 0, suspended: 0 }
+  const budget = book && account ? budgetPosition(book.invoices, account, TODAY) : null
+  const suspended = book?.subscriptions.filter(s => s.status === 'suspended') ?? []
   const ordersInFlight = ENTERPRISE_ORDERS.filter(o => o.stage < o.stages.length - 1)
   const failedOrders = ENTERPRISE_ORDERS.filter(o => o.failed)
 
@@ -16,33 +30,41 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
         <div>
           <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Procurement Dashboard</h1>
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            {ENTERPRISE_PROFILE.company} · {ENTERPRISE_PROFILE.id} · {ENTERPRISE_PROFILE.sites} sites, {fmtInt(ENTERPRISE_PROFILE.staff)} staff · {ENTERPRISE_PROFILE.terms}
+            {account
+              ? `${account.company} · ${account.id} · ${account.sites} sites, ${fmtInt(account.staff)} staff · ${account.terms}`
+              : 'Loading your account…'}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <Btn variant="secondary" onClick={() => onNavigate('en-approvals')}><CheckSquare size={14} /> Approvals ({ENTERPRISE_APPROVALS.length})</Btn>
+          <Btn variant="secondary" onClick={() => onNavigate('en-approvals')}><CheckSquare size={14} /> Approvals ({queue.length})</Btn>
           <Btn variant="primary" onClick={() => onNavigate('en-browse')}><Search size={14} /> Browse catalogue</Btn>
         </div>
       </div>
 
-      {/* Suspended seller banner */}
-      <div style={{
-        display: 'flex', gap: '12px', alignItems: 'flex-start',
-        padding: '14px 18px', borderRadius: 'var(--radius-md)',
-        background: 'var(--danger-bg)', border: '1px solid var(--danger)',
-      }}>
-        <AlertTriangle size={18} style={{ color: 'var(--danger)', flexShrink: 0, marginTop: '1px' }} />
-        <div style={{ fontSize: 'var(--text-sm)', color: 'var(--danger)' }}>
-          <strong>Vertex Endpoint has been suspended by the marketplace.</strong> Your 120 endpoint licences run to contract end and will not renew. You need a replacement decision before that date.
-          <button onClick={() => onNavigate('en-subs')} style={{ background: 'none', border: 'none', color: 'var(--danger)', textDecoration: 'underline', cursor: 'pointer', font: 'inherit', marginLeft: '4px' }}>See the subscription</button>
+      {suspended.map(sub => (
+        <div key={sub.id} style={{
+          display: 'flex', gap: '12px', alignItems: 'flex-start',
+          padding: '14px 18px', borderRadius: 'var(--radius-md)',
+          background: 'var(--danger-bg)', border: '1px solid var(--danger)',
+        }}>
+          <AlertTriangle size={18} style={{ color: 'var(--danger)', flexShrink: 0, marginTop: '1px' }} />
+          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--danger)' }}>
+            <strong>{sub.name} has been suspended by the marketplace.</strong> {sub.why_suspended}
+            <button onClick={() => onNavigate('en-subs')} style={{ background: 'none', border: 'none', color: 'var(--danger)', textDecoration: 'underline', cursor: 'pointer', font: 'inherit', marginLeft: '4px' }}>See the subscription</button>
+          </div>
         </div>
-      </div>
+      ))}
 
       {/* Stat cards */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
-        <StatCard label="Committed monthly" value={`$${fmtMoney(mrc)}`} sublabel={`${ENTERPRISE_SUBS.filter(s => s.status === 'active').length} active subscriptions`} color="var(--brand-navy)" />
-        <StatCard label="Budget used" value={`${budgetUsed.toFixed(1)}%`} sublabel={`$${fmtMoney(ENTERPRISE_PROFILE.budgetSpent)} of $${fmtMoney(ENTERPRISE_PROFILE.budgetYear)} · $${fmtMoney(budgetLeft)} left`} color="var(--brand-accent-dark)" />
-        <StatCard label="Awaiting approval" value={fmtInt(ENTERPRISE_APPROVALS.length)} sublabel={`$${fmtMoney(ENTERPRISE_APPROVALS.reduce((a, x) => a + x.amount, 0))} of requests`} color="var(--warning)" />
+        <StatCard label="Committed monthly" value={money(com.billed)}
+                  sublabel={com.suspended ? `${money(com.renewing)} renewing · ${money(com.suspended)} running to contract end` : `${book?.subscriptions.filter(s => s.status === 'active').length ?? 0} active subscriptions`}
+                  color="var(--brand-navy)" />
+        <StatCard label="Budget used" value={budget ? `${budget.pct}%` : '—'}
+                  sublabel={budget ? `${money0(budget.spent)} of ${money0(budget.budget)} · ${money0(budget.left)} left · ${budget.yearPct}% of the year gone` : ''}
+                  color={budget?.ahead ? 'var(--warning)' : 'var(--brand-accent-dark)'} />
+        <StatCard label="Awaiting approval" value={fmtInt(queue.length)}
+                  sublabel={`${money(queue.reduce((a, r) => a + Number(r.amount), 0))} of requests`} color="var(--warning)" />
         <StatCard label="Orders in flight" value={fmtInt(ordersInFlight.length)} sublabel={failedOrders.length ? `${failedOrders.length} failed` : 'Provisioning and delivery'} color={failedOrders.length ? 'var(--danger)' : undefined} />
       </div>
 
@@ -69,7 +91,7 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
                 {t.icon}
               </div>
               <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{t.name}</div>
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{ENTERPRISE_SUBS.filter(s => s.v === t.v && s.status === 'active').length} active subscriptions</div>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{(book?.subscriptions ?? []).filter(s => s.vertical === t.v && s.status === 'active').length} active subscriptions</div>
             </button>
           ))}
         </div>
@@ -80,13 +102,13 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
         <SectionCard title="Spend against budget" subtitle="Financial year to date">
           <div style={{ padding: '20px' }}>
             {['Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'].map((m, i) => {
-              const monthly = Math.round(ENTERPRISE_PROFILE.budgetSpent / 12 * (0.8 + i * 0.035))
-              const budget = Math.round(ENTERPRISE_PROFILE.budgetYear / 12)
+              const monthly = Math.round((budget?.spent ?? 0) / 12 * (0.8 + i * 0.035))
+              const budgetPerMonth = Math.round((budget?.budget ?? 0) / 12)
               return (
                 <div key={m} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                   <span style={{ fontSize: 'var(--text-xs)', width: '30px', color: 'var(--text-tertiary)' }}>{m}</span>
                   <div style={{ flex: 1, height: '14px', borderRadius: '3px', background: 'var(--bg-alt)', overflow: 'hidden', position: 'relative' }}>
-                    <div style={{ position: 'absolute', inset: 0, width: `${(monthly / budget) * 100}%`, background: 'var(--brand-accent-dark)', borderRadius: '3px' }} />
+                    <div style={{ position: 'absolute', inset: 0, width: `${budgetPerMonth ? (monthly / budgetPerMonth) * 100 : 0}%`, background: 'var(--brand-accent-dark)', borderRadius: '3px' }} />
                   </div>
                   <span style={{ fontSize: 'var(--text-xs)', width: '50px', textAlign: 'right', color: 'var(--text-tertiary)' }}>${fmtInt(monthly)}</span>
                 </div>
@@ -98,8 +120,9 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
         <SectionCard title="Spend by marketplace" subtitle="Monthly recurring">
           <div style={{ padding: '20px' }}>
             {['iot', 'security', 'device'].map(v => {
-              const spend = ENTERPRISE_SUBS.filter(s => s.v === v && s.status === 'active').reduce((a, s) => a + s.monthly, 0)
-              const max = Math.max(...['iot', 'security', 'device'].map(x => ENTERPRISE_SUBS.filter(s => s.v === x && s.status === 'active').reduce((a, s) => a + s.monthly, 0)), 1)
+              const subs = book?.subscriptions ?? []
+              const spend = subs.filter(s => s.vertical === v && s.status === 'active').reduce((a, s) => a + Number(s.monthly), 0)
+              const max = Math.max(...['iot', 'security', 'device'].map(x => subs.filter(s => s.vertical === x && s.status === 'active').reduce((a, s) => a + Number(s.monthly), 0)), 1)
               return (
                 <div key={v} style={{ marginBottom: '14px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-sm)', marginBottom: '4px' }}>
@@ -121,18 +144,20 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
 
       {/* Pending approvals + Orders */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }} className="op-grid-2col">
-        <SectionCard title="Waiting on an approver" subtitle={`${ENTERPRISE_APPROVALS.length} pending`}>
+        <SectionCard title="Waiting on an approver" subtitle={`${queue.length} pending`}>
           <div style={{ padding: '0 20px 20px' }}>
-            {ENTERPRISE_APPROVALS.map(a => (
+            {queue.map(a => (
               <div key={a.id} style={{ display: 'flex', gap: '11px', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border-light)' }}>
                 <div style={{ width: '34px', height: '34px', borderRadius: 'var(--radius)', background: 'var(--bg-alt)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  {a.v === 'iot' ? <Cpu size={15} style={{ color: 'var(--text-tertiary)' }} /> : <Shield size={15} style={{ color: 'var(--text-tertiary)' }} />}
+                  {a.vertical === 'iot' ? <Cpu size={15} style={{ color: 'var(--text-tertiary)' }} /> : <Shield size={15} style={{ color: 'var(--text-tertiary)' }} />}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{a.item}</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{a.requester} · {a.raised} · {a.need}</div>
+                  <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{a.title}</div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                    {book?.members.find(m => m.id === a.raised_by)?.name ?? a.raised_by} · {a.raised_at} · {NEED_LABEL[a.need]}
+                  </div>
                 </div>
-                <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>${fmtMoney(a.amount)}</div>
+                <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{money(Number(a.amount))}</div>
               </div>
             ))}
             <Btn variant="secondary" size="sm" style={{ marginTop: '12px' }} onClick={() => onNavigate('en-approvals')}>Open approvals</Btn>

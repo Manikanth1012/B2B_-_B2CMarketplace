@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, Search, Shield, Cpu, Monitor, ShoppingCart, SquareCheck as CheckSquare, Users, History, User, ChevronDown, Bell as BellIcon, LogOut, Menu, X, Building2, BookOpen } from 'lucide-react'
+import { LayoutDashboard, Search, Shield, Cpu, Monitor, ShoppingCart, SquareCheck as CheckSquare, Users, History, User, ChevronDown, Bell as BellIcon, LogOut, Menu, X, Building2, BookOpen, RotateCcw, Repeat, Receipt } from 'lucide-react'
 import type { EnterpriseView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
 
@@ -31,7 +31,9 @@ const NAV_SECTIONS: { label: string; items: { id: EnterpriseView; label: string;
     label: 'Procurement',
     items: [
       { id: 'en-orders', label: 'Orders', icon: <ShoppingCart size={18} /> },
-      { id: 'en-subs', label: 'Subscriptions', icon: <Shield size={18} /> },
+      { id: 'en-refunds', label: 'Refunds', icon: <RotateCcw size={18} /> },
+      { id: 'en-subs', label: 'Subscriptions', icon: <Repeat size={18} /> },
+      { id: 'en-billing', label: 'Billing', icon: <Receipt size={18} /> },
     ]
   },
   {
