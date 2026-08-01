@@ -4,7 +4,7 @@ import {
   validateDecision, approvalImpact, duplicatesOf, validateRequisition, requisitionTotal,
   summariseApprovals, byRequester, centreUse, centresAtRisk, committed, idleSeats,
   renewingWithin, outstanding, spentThisYear, budgetPosition, bySeller, byCostCentre,
-  reconcileInvoice, arrears, taxPosition, money, money0, day, ROLE_LABEL, NEED_LABEL,
+  reconcileInvoice, arrears, taxPosition, money, money0, day, NEED_LABEL,
 } from './enterprise'
 import type {
   Account, Member, CostCentre, Policy, Requisition, ReqLine, Subscription, Invoice, InvoiceLine,
@@ -20,7 +20,7 @@ function member(over: Partial<Member> = {}): Member {
     id: 'EU-01', account_id: 'ENT-2007', user_id: 'u1', name: 'Vikram Shah',
     email: 'v@smartbuild.in', title: 'Procurement Lead', role: 'procurement-lead',
     can_raise: true, approves_finance: true, approves_it: true, approve_limit: null,
-    cost_centre: 'CC-1000', phone: null, mfa: true, status: 'active', last_seen: null,
+    cost_centre: 'CC-1000', phone: null, mfa: true, status: 'active',
     sort_order: 1, ...over,
   }
 }
@@ -182,7 +182,7 @@ describe('canDecide', () => {
   it('refuses somebody who is not an approver at all, and says what they are', () => {
     const c = canDecide(req(), BUYER, policy)
     expect(c.ok).toBe(false)
-    if (!c.ok) expect(c.reason).toMatch(/buyer on this account, not an approver/)
+    if (!c.ok) expect(c.reason).toMatch(/is not an approver/)
   })
 
   it('refuses self-approval before it refuses anything else', () => {
@@ -343,7 +343,7 @@ describe('validateRequisition', () => {
   it('refuses a viewer outright', () => {
     const c = validateRequisition(draft, VIEWER)
     expect(c.ok).toBe(false)
-    if (!c.ok) expect(c.reason).toMatch(/viewer cannot raise/)
+    if (!c.ok) expect(c.reason).toMatch(/cannot raise a requisition/)
   })
 
   it('insists on a reason, because an approver deciding without one is guessing', () => {
@@ -675,8 +675,10 @@ describe('formatting', () => {
 })
 
 describe('shared vocabulary', () => {
-  it('labels every role and every level of approval', () => {
-    expect(Object.keys(ROLE_LABEL)).toHaveLength(5)
+  /* Role names moved to `enterprise_roles` — see enterpriseAdmin.test.ts.
+     Approval levels are still ours, because the policy is expressed in them. */
+  it('labels every level of approval', () => {
+    expect(Object.keys(NEED_LABEL)).toHaveLength(4)
     expect(NEED_LABEL.both).toBe('Finance approval and IT sign-off')
   })
 })

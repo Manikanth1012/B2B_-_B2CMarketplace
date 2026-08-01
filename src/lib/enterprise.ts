@@ -10,7 +10,12 @@
 
 export type Need = 'none' | 'finance' | 'it' | 'both'
 export type ReqState = 'pending' | 'approved' | 'declined' | 'withdrawn'
-export type Role = 'procurement-lead' | 'buyer' | 'finance-approver' | 'it-approver' | 'viewer'
+/* A role used to be one of five fixed strings. It is a row on
+   `enterprise_roles` now, per account, because the approval policy refers to
+   roles by name — which makes them the company's configuration rather than
+   our enum. What a role may do is read from that row (see enterpriseAdmin.ts),
+   never from a union here. */
+export type Role = string
 export type InvoiceStatus = 'open' | 'overdue' | 'paid' | 'disputed' | 'credited'
 export type SubStatus = 'active' | 'suspended' | 'cancelled'
 
@@ -53,7 +58,6 @@ export interface Member {
   phone: string | null
   mfa: boolean
   status: 'active' | 'invited' | 'suspended' | 'removed'
-  last_seen: string | null
   sort_order: number
 }
 
@@ -177,14 +181,6 @@ export interface InvoiceLine {
 
 export type Check = { ok: true; note?: string } | { ok: false; reason: string }
 
-export const ROLE_LABEL: Record<Role, string> = {
-  'procurement-lead': 'Procurement lead',
-  'buyer': 'Buyer',
-  'finance-approver': 'Finance approver',
-  'it-approver': 'IT sign-off',
-  'viewer': 'Viewer',
-}
-
 export const NEED_LABEL: Record<Need, string> = {
   none: 'No approval needed',
   finance: 'Finance approval',
@@ -287,10 +283,10 @@ export function canDecide(req: Requisition, me: Member, policy: Policy): Check {
   if (req.need === 'none') {
     return me.can_raise
       ? { ok: true, note: 'Within policy — confirming it places the order.' }
-      : { ok: false, reason: `A ${ROLE_LABEL[me.role].toLowerCase()} cannot place an order on this account.` }
+      : { ok: false, reason: 'Your role on this account cannot place an order. Ask a colleague who can raise a requisition.' }
   }
   if (!me.approves_finance && !me.approves_it) {
-    return { ok: false, reason: `You are a ${ROLE_LABEL[me.role].toLowerCase()} on this account, not an approver.` }
+    return { ok: false, reason: 'Your role on this account is not an approver. Somebody holding finance approval or IT sign-off has to decide this.' }
   }
   /* Separation of duties is a control on approval. A requisition needing none
      was handled above — confirming your own within-policy purchase is placing
@@ -392,7 +388,7 @@ export function validateRequisition(
   me: Member,
 ): Check {
   if (!me.can_raise) {
-    return { ok: false, reason: `A ${ROLE_LABEL[me.role].toLowerCase()} cannot raise a requisition on this account.` }
+    return { ok: false, reason: 'Your role on this account cannot raise a requisition. Ask a colleague who can, or ask an administrator to move you to a role that raises.' }
   }
   if (!draft.title.trim()) return { ok: false, reason: 'Give it a name an approver will recognise' }
   if (!draft.reason.trim()) {

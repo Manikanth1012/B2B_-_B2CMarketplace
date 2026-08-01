@@ -13,9 +13,10 @@ import type { AccountBook } from '../../lib/enterpriseRepo'
 import {
   waiting, decided, canDecide, whoCanDecide, approvalImpact, duplicatesOf,
   summariseApprovals, byRequester, centreUse, centresAtRisk, policyImpact,
-  spentThisYear, money, money0, day, NEED_LABEL, ROLE_LABEL,
+  spentThisYear, money, money0, day, NEED_LABEL,
 } from '../../lib/enterprise'
 import type { Requisition, Policy, Member } from '../../lib/enterprise'
+import { may, roleName } from '../../lib/enterpriseAdmin'
 
 /* Approvals, from the seat of the person who signs them.
  *
@@ -63,7 +64,7 @@ export function EnterpriseApprovals() {
             {policy.security_signoff ? ', and security purchases need IT sign-off whatever they cost' : ''}
           </p>
         </div>
-        {me?.role === 'procurement-lead' && (
+        {may(me, book.roles, 'can_set_policy') && (
           <Btn variant="secondary" onClick={() => setEditPolicy(true)}><Shield size={14} /> Policy</Btn>
         )}
       </div>
@@ -71,7 +72,7 @@ export function EnterpriseApprovals() {
       {book.loadError && <Callout tone="danger" title="Some of this did not load">{book.loadError}</Callout>}
 
       {me && (
-        <Callout tone="info" title={`You are signed in as ${ROLE_LABEL[me.role].toLowerCase()}`}>
+        <Callout tone="info" title={`You are signed in as ${roleName(me.role, book.roles).toLowerCase()}`}>
           {me.approves_finance && me.approves_it
             ? 'You hold both finance approval and IT sign-off, so anything on this account can be decided by you — except your own requests.'
             : me.approves_finance
@@ -120,7 +121,7 @@ export function EnterpriseApprovals() {
             <tr key={r.member.id}>
               <Td><div style={{ fontWeight: 600 }}>{r.member.name}</div>
                   <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{r.member.title}</div></Td>
-              <Td right style={{ fontSize: 'var(--text-xs)' }}>{ROLE_LABEL[r.member.role]}</Td>
+              <Td right style={{ fontSize: 'var(--text-xs)' }}>{roleName(r.member.role, book.roles)}</Td>
               <Td right style={{ fontSize: 'var(--text-xs)' }}>
                 {book.centres.find(c => c.id === r.member.cost_centre)?.name ?? r.member.cost_centre ?? '—'}
               </Td>

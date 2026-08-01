@@ -13,6 +13,7 @@ import type {
   Account, Member, CostCentre, Policy, Requisition, ReqLine,
   Subscription, Invoice, InvoiceLine, Check,
 } from './enterprise'
+import type { EnterpriseRole } from './enterpriseAdmin'
 
 export type Result = Check
 
@@ -20,6 +21,10 @@ export interface AccountBook {
   account: Account | null
   me: Member | null
   members: Member[]
+  /* What each of those members may do. Read here rather than looked up per
+     screen, because a list of people without the roles behind them can say who
+     is on the account but not who may sign anything. */
+  roles: EnterpriseRole[]
   centres: CostCentre[]
   policy: Policy | null
   requisitions: Requisition[]
@@ -31,7 +36,7 @@ export interface AccountBook {
 }
 
 const EMPTY: AccountBook = {
-  account: null, me: null, members: [], centres: [], policy: null,
+  account: null, me: null, members: [], roles: [], centres: [], policy: null,
   requisitions: [], lines: [], subscriptions: [], invoices: [], invoiceLines: [],
 }
 
@@ -46,9 +51,10 @@ export async function loadAccount(): Promise<AccountBook> {
   const { data: session } = await supabase.auth.getUser()
   const uid = session.user?.id ?? null
 
-  const [a, u, c, p, r, l, s, i, il] = await Promise.all([
+  const [a, u, ro, c, p, r, l, s, i, il] = await Promise.all([
     supabase.from('enterprise_accounts').select('*').maybeSingle(),
     supabase.from('enterprise_users').select('*').order('sort_order'),
+    supabase.from('enterprise_roles').select('*').order('sort_order'),
     supabase.from('enterprise_cost_centres').select('*').order('sort_order'),
     supabase.from('enterprise_approval_policy').select('*').maybeSingle(),
     supabase.from('enterprise_requisitions').select('*').order('sort_order'),
@@ -70,6 +76,7 @@ export async function loadAccount(): Promise<AccountBook> {
     account: (a.data ?? null) as Account | null,
     me: members.find(m => m.user_id === uid) ?? null,
     members,
+    roles: grab<EnterpriseRole>(ro, 'roles'),
     centres: grab<CostCentre>(c, 'cost centres'),
     policy: (p.data ?? null) as Policy | null,
     requisitions: grab<Requisition>(r, 'requisitions'),
