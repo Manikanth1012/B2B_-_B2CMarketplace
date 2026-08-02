@@ -13,7 +13,7 @@
  */
 import { supabase } from './supabase'
 import { wasPriceFor } from './money'
-import type { Currency, Rate, Market } from './money'
+import type { Currency, Rate, Market, MarketCurrency } from './money'
 import type { Product } from '../types'
 import type { BookRow, PartnerMarket } from './marketPricing'
 
@@ -30,25 +30,32 @@ export interface MoneyBook {
   currencies: Currency[]
   rates: Rate[]
   markets: Market[]
+  /* Which currencies each market will take money in. A market has one default
+     and may accept others. */
+  accepted: MarketCurrency[]
   loadError: string | null
 }
 
-export const EMPTY_BOOK: MoneyBook = { currencies: [], rates: [], markets: [], loadError: null }
+export const EMPTY_BOOK: MoneyBook = {
+  currencies: [], rates: [], markets: [], accepted: [], loadError: null,
+}
 
 /** The reference data, in one round trip. Readable signed out — the storefront is public. */
 export async function loadMoneyBook(): Promise<MoneyBook> {
-  const [cur, fx, mkt] = await Promise.all([
+  const [cur, fx, mkt, acc] = await Promise.all([
     supabase.from('currencies').select('*').order('sort_order'),
     supabase.from('fx_rates').select('*').order('as_of'),
     supabase.from('markets').select('*').order('sort_order'),
+    supabase.from('market_currencies').select('*').order('sort_order'),
   ])
-  const failed = [cur.error, fx.error, mkt.error].find(Boolean)
+  const failed = [cur.error, fx.error, mkt.error, acc.error].find(Boolean)
   return {
     currencies: (cur.data ?? []) as Currency[],
     /* PostgREST hands numerics back as strings. A rate that is a string
        multiplies as NaN and silently prices everything at nothing. */
     rates: ((fx.data ?? []) as Rate[]).map(r => ({ ...r, rate: Number(r.rate) })),
     markets: ((mkt.data ?? []) as Market[]).map(m => ({ ...m, tax_rate: Number(m.tax_rate) })),
+    accepted: (acc.data ?? []) as MarketCurrency[],
     loadError: failed ? failed.message : null,
   }
 }

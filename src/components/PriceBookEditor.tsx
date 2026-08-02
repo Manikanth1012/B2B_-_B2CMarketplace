@@ -18,6 +18,7 @@ import {
   suggestPrice, missingPrices, draftFrom, emptyDraft, toRow, marketsFor,
 } from '../lib/marketPricing'
 import type { BookRow, PartnerMarket, PriceDraft, PriceField } from '../lib/marketPricing'
+import { currenciesOf, marketsTaking, symbolOf } from '../lib/money'
 import { loadProductPrices, loadPartnerMarkets, setPrice, clearPrice } from '../lib/moneyRepo'
 import { useMarket } from '../lib/MarketContext'
 import { Btn, toast } from './operator/shared'
@@ -46,18 +47,26 @@ export function PriceBookEditor({ product, who, onChanged }: {
 
   useEffect(() => { void reload() }, [reload])
 
-  /* Whose permission decides. For the operator this is every market currency;
-     for a seller, only where they are approved — and a seller editing their own
-     product is asked about *their* grants, not the product owner's, because on
-     their own console those are the same thing and on the operator's they are
-     not. */
-  const allowed = priceableCurrencies(who, book.markets, grants)
+  /* Whose permission decides. For the operator this is every currency every
+     market takes; for a seller, only the markets they are approved in — and a
+     seller editing their own product is asked about *their* grants, not the
+     product owner's, because on their own console those are the same thing and
+     on the operator's they are not.
+     `book.accepted` is what makes this more than one currency per market: a
+     seller approved in Kenya prices in shillings and in dollars. */
+  const allowed = priceableCurrencies(who, book.markets, grants, book.accepted)
   /* The operator is not limited by the seller's grants, but should still be
      told when they are pricing into a market that seller cannot trade in —
      that is a decision, not an accident. */
-  const sellerMarkets = product.partner_id
-    ? marketsFor(grants, product.partner_id, book.markets).map(m => m.currency)
-    : book.markets.map(m => m.currency)
+  const sellerCurrencies = new Set(
+    (product.partner_id
+      ? marketsFor(grants, product.partner_id, book.markets)
+      : book.markets
+    ).flatMap(m => {
+      const takes = currenciesOf(m.code, book.accepted)
+      return takes.length ? takes : [m.currency]
+    }),
+  )
 
   const gaps = missingPrices(rows, product.id, allowed)
 
@@ -120,12 +129,18 @@ export function PriceBookEditor({ product, who, onChanged }: {
       </Note>
 
       {[...rows.map(r => r.currency), ...gaps].map(currency => {
-        const market = book.markets.find(m => m.currency === currency)
+        /* A currency, not a market — dollars sell in Nairobi and Dubai at once,
+           so the row is headed by every market it reaches and by each of their
+           taxes, which differ. One price, two tax rates, and a seller who is
+           told only one of them prices against the wrong margin. */
+        const reaches = marketsTaking(currency, book.accepted, book.markets)
+          .map(c => book.markets.find(m => m.code === c)!)
+          .filter(Boolean)
         const draft = drafts[currency] ?? emptyDraft(currency)
         const existing = rows.find(r => r.currency === currency)
         const problems = priceProblems(draft, allowed, book.currencies)
         const usable = priceIsUsable(draft, allowed, book.currencies)
-        const cannotTrade = !sellerMarkets.includes(currency)
+        const cannotTrade = !sellerCurrencies.has(currency)
 
         return (
           <div key={currency} style={{
@@ -137,11 +152,17 @@ export function PriceBookEditor({ product, who, onChanged }: {
               display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap',
               padding: '9px 12px', borderBottom: '1px solid var(--border-light)',
             }}>
+              {/* A currency whose symbol *is* its code — the dirham — must not
+                  be headed "AED AED". */}
               <strong style={{ fontSize: 'var(--text-sm)' }}>
-                {market?.name ?? currency}
+                {symbolOf(currency, book.currencies) === currency
+                  ? currency
+                  : `${symbolOf(currency, book.currencies)} ${currency}`}
               </strong>
               <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                {currency}{market ? ` · ${market.tax_label} ${market.tax_rate}%` : ''}
+                {reaches.length
+                  ? reaches.map(m => `${m.name} (${m.tax_label} ${m.tax_rate}%)`).join(' · ')
+                  : 'no market takes this currency'}
               </span>
               {!existing && (
                 <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--warning)' }}>
@@ -169,7 +190,9 @@ export function PriceBookEditor({ product, who, onChanged }: {
             </div>
 
             <div style={{
-              display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+              /* 110px so all four fit one row in the modal rather than leaving
+                 "List" alone underneath, which reads as a separate section. */
+              display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))',
               gap: '10px', padding: '12px',
             }}>
               <Field label="Price" required value={draft.price} currency={currency}

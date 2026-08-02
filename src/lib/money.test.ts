@@ -3,8 +3,9 @@ import {
   money, add, sumOf, byCurrency, isMixed, currenciesIn, negate,
   roundMinor, round, minorUnitsOf, rateOn, convert, totalIn,
   format, symbolOf, charmPrice, wasPriceFor, priceBandOk,
+  currenciesOf, marketTakes, marketsTaking,
 } from './money'
-import type { Currency, Rate } from './money'
+import type { Currency, Market, MarketCurrency, Rate } from './money'
 
 const CURRENCIES: Currency[] = [
   { code: 'USD', name: 'US Dollar', symbol: '$', minor_units: 2, symbol_first: true, locale: 'en-US', is_reporting: true, sort_order: 1 },
@@ -25,6 +26,70 @@ const RATES: Rate[] = [
   { base: 'USD', quote: 'AED', rate: 3.6725, as_of: '2026-08-01', pegged: true },
   { base: 'USD', quote: 'KES', rate: 129.20, as_of: '2026-08-01', pegged: false },
 ]
+
+const MARKETS: Market[] = [
+  { code: 'IN', name: 'India', currency: 'INR', tax_label: 'GST', tax_rate: 18, tax_note: '', is_default: true, sort_order: 1 },
+  { code: 'AE', name: 'United Arab Emirates', currency: 'AED', tax_label: 'VAT', tax_rate: 5, tax_note: '', is_default: false, sort_order: 2 },
+  { code: 'KE', name: 'Kenya', currency: 'KES', tax_label: 'VAT', tax_rate: 16, tax_note: '', is_default: false, sort_order: 3 },
+]
+
+/* Deliberately out of order and with the default late in the list, so the
+   sorting is tested rather than the order it happens to be written in. */
+const ACCEPTED: MarketCurrency[] = [
+  { market_code: 'KE', currency: 'USD', is_default: false, sort_order: 2 },
+  { market_code: 'AE', currency: 'USD', is_default: false, sort_order: 2 },
+  { market_code: 'IN', currency: 'INR', is_default: true, sort_order: 1 },
+  { market_code: 'KE', currency: 'KES', is_default: true, sort_order: 1 },
+  { market_code: 'AE', currency: 'AED', is_default: true, sort_order: 1 },
+]
+
+/* --------------------------------------------- what a market will take --- */
+
+describe('the currencies a market accepts', () => {
+  it('puts the default first, whatever order the rows came back in', () => {
+    expect(currenciesOf('KE', ACCEPTED)).toEqual(['KES', 'USD'])
+    expect(currenciesOf('AE', ACCEPTED)).toEqual(['AED', 'USD'])
+  })
+
+  it('gives a single-currency market one currency', () => {
+    expect(currenciesOf('IN', ACCEPTED)).toEqual(['INR'])
+  })
+
+  it('gives a market nobody has configured nothing, rather than guessing', () => {
+    expect(currenciesOf('ZZ', ACCEPTED)).toEqual([])
+  })
+
+  it('answers whether a market takes a currency', () => {
+    expect(marketTakes('KE', 'USD', ACCEPTED)).toBe(true)
+    expect(marketTakes('IN', 'USD', ACCEPTED)).toBe(false)
+    /* Not "some market takes USD" — this one. */
+    expect(marketTakes('ZZ', 'USD', ACCEPTED)).toBe(false)
+  })
+})
+
+describe('the markets that take a currency', () => {
+  it('names every one of them, not the first found', () => {
+    expect(marketsTaking('USD', ACCEPTED, MARKETS)).toEqual(['AE', 'KE'])
+  })
+
+  it('orders them as the markets are ordered', () => {
+    /* So "United Arab Emirates · Kenya" reads the same wherever markets are
+       listed, rather than in whatever order the join returned. */
+    expect(marketsTaking('USD', ACCEPTED, MARKETS)).toEqual(['AE', 'KE'])
+  })
+
+  it('names one market for a currency only one market takes', () => {
+    expect(marketsTaking('INR', ACCEPTED, MARKETS)).toEqual(['IN'])
+  })
+
+  it('names none for a currency nobody trades in', () => {
+    expect(marketsTaking('JPY', ACCEPTED, MARKETS)).toEqual([])
+  })
+
+  it('falls back to sorted codes when no market list is given', () => {
+    expect(marketsTaking('USD', ACCEPTED)).toEqual(['AE', 'KE'])
+  })
+})
 
 /* ------------------------------------------------------------ rounding --- */
 

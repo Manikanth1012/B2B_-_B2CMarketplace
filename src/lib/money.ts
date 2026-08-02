@@ -43,13 +43,63 @@ export interface Rate {
 
 export interface Market {
   code: string
-  name: string
+  /* The currency a shopper is quoted in before choosing otherwise. A market may
+     accept more than one — see `MarketCurrency` — and this is the default, kept
+     in step with it by a database trigger rather than set alongside it. */
   currency: string
+  name: string
   tax_label: string
   tax_rate: number
   tax_note: string
   is_default: boolean
   sort_order: number
+}
+
+/**
+ * A currency a market will take money in.
+ *
+ * Kenya trades in shillings and dollars, the UAE in dirhams and dollars, India
+ * in rupees alone. The tax does not follow the currency — a Kenyan sale is VAT
+ * at 16% whether it is priced in shillings or dollars — so this says only what
+ * a customer may be charged in, never at what rate.
+ */
+export interface MarketCurrency {
+  market_code: string
+  currency: string
+  is_default: boolean
+  sort_order: number
+}
+
+/** The currencies a market accepts, default first. */
+export function currenciesOf(
+  code: string, accepted: readonly MarketCurrency[],
+): string[] {
+  return accepted
+    .filter(a => a.market_code === code)
+    .sort((a, b) => Number(b.is_default) - Number(a.is_default) || a.sort_order - b.sort_order)
+    .map(a => a.currency)
+}
+
+export const marketTakes = (
+  code: string, currency: string, accepted: readonly MarketCurrency[],
+): boolean => accepted.some(a => a.market_code === code && a.currency === currency)
+
+/**
+ * The markets that take a currency — the inverse of `currenciesOf`.
+ *
+ * A price editor row is headed by a currency, and a dollar price is not a
+ * market: it is on sale in Nairobi and in Dubai at once. Naming only the first
+ * market found with that currency would have quietly told a seller their dollar
+ * price was a UAE price.
+ */
+export function marketsTaking(
+  currency: string, accepted: readonly MarketCurrency[], markets: readonly Market[] = [],
+): string[] {
+  const codes = accepted.filter(a => a.currency === currency).map(a => a.market_code)
+  if (!markets.length) return [...new Set(codes)].sort()
+  /* Ordered as the markets themselves are, so "India · Kenya" reads the same
+     way wherever markets are listed. */
+  return markets.filter(m => codes.includes(m.code)).map(m => m.code)
 }
 
 /** An amount is never separated from the currency it is in. */

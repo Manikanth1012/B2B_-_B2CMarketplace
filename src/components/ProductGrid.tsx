@@ -19,11 +19,14 @@ interface ProductGridProps {
 }
 
 export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyMe, watching }: ProductGridProps) {
-  const { market } = useMarket()
+  const { market, currency } = useMarket()
   /* Named separately so the effect below depends on the code and not on the
      market object, which is rebuilt on every context render and would refetch
      the catalogue continuously. */
-  const currencyCode = market?.currency ?? 'USD'
+  /* The chosen currency, not the market's default. Reading the default here
+     while the formatter reads the choice is how a shilling price ends up under
+     a dollar sign — the same relabelling the bills migration had to undo. */
+  const currencyCode = currency?.code ?? market?.currency ?? 'USD'
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)

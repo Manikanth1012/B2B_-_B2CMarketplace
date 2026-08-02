@@ -1,5 +1,7 @@
 import { Sparkles, Shield, Truck, Headphones } from 'lucide-react'
 import { HERO_IMAGE, getCategoryImage } from '../lib/images'
+import { useMarket } from '../lib/MarketContext'
+import { money, rateOn, convert, charmPrice, format } from '../lib/money'
 
 import type { View } from '../types/view'
 
@@ -7,7 +9,31 @@ interface HeroProps {
   onNavigate: (view: View, opts?: { category?: string }) => void
 }
 
+/** The free-delivery threshold, as the marketplace states it. */
+const FREE_DELIVERY_OVER = money(50, 'USD')
+
 export function Hero({ onNavigate }: HeroProps) {
+  const { book, currency } = useMarket()
+
+  /* "Orders over $50" was printed to a shopper in Nairobi being quoted in
+     shillings, where fifty dollars is not a number they can act on. Unlike a
+     price this really is one rule converted — the marketplace has one delivery
+     threshold, not one per market — so it is converted at today's rate and
+     charm-rounded, which is what a threshold on a banner looks like everywhere.
+     Falls back to the dollar figure if there is no rate rather than printing a
+     number arrived at by no route at all. */
+  const threshold = (() => {
+    const to = currency?.code
+    if (!to || to === FREE_DELIVERY_OVER.currency) {
+      return format(FREE_DELIVERY_OVER, book.currencies, { decimals: false })
+    }
+    const today = new Date().toISOString().slice(0, 10)
+    const r = rateOn(book.rates, FREE_DELIVERY_OVER.currency, to, today)
+    if (!r) return format(FREE_DELIVERY_OVER, book.currencies, { decimals: false })
+    const c = convert(FREE_DELIVERY_OVER, to, r.rate, r.as_of, book.currencies)
+    return format(money(charmPrice(c.money.amount, to), to), book.currencies, { decimals: false })
+  })()
+
   return (
     <section style={{ background: 'var(--brand-navy)', color: 'white', overflow: 'hidden', position: 'relative' }}>
       {/* Background image with overlay */}
@@ -138,7 +164,7 @@ export function Hero({ onNavigate }: HeroProps) {
           padding: '20px 24px',
         }}>
           {[
-            { icon: <Truck size={18} />, label: 'Free delivery on devices', sub: 'On all orders over $50' },
+            { icon: <Truck size={18} />, label: 'Free delivery on devices', sub: `On all orders over ${threshold}` },
             { icon: <Shield size={18} />, label: 'Instant activation', sub: 'eSIM and digital services' },
             { icon: <Headphones size={18} />, label: '24/7 support', sub: 'Across all time zones' },
             { icon: <Sparkles size={18} />, label: 'Reward points', sub: 'Earn on every purchase' },

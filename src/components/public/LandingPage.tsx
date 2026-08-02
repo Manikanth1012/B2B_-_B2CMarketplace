@@ -14,8 +14,11 @@ import type { Category, Product } from '../../types'
 import type { PublicPage } from '../../types/view'
 
 export function LandingPage({ onNavigate }: { onNavigate: (p: PublicPage) => void }) {
-  const { market } = useMarket()
-  const currencyCode = market?.currency ?? 'USD'
+  const { market, currency } = useMarket()
+  /* The chosen currency, not the market's default. Reading the default here
+     while the formatter reads the choice is how a shilling price ends up under
+     a dollar sign — the same relabelling the bills migration had to undo. */
+  const currencyCode = currency?.code ?? market?.currency ?? 'USD'
   const [slides, setSlides] = useState<PromoSlide[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   /* Counted per rail, not once. A retail tile that counts the whole shelf

@@ -19,7 +19,8 @@
  * Pure. No Supabase import.
  */
 import { roundMinor, charmPrice } from './money'
-import type { Currency, Market, Rate } from './money'
+import { currenciesOf } from './money'
+import type { Currency, Market, MarketCurrency, Rate } from './money'
 
 export interface PartnerMarket {
   partner_id: string
@@ -79,9 +80,23 @@ export function priceableCurrencies(
   who: { persona: string; partnerId?: string | null },
   markets: readonly Market[],
   grants: readonly PartnerMarket[],
+  accepted: readonly MarketCurrency[] = [],
 ): string[] {
-  if (who.persona === 'operator') return [...new Set(markets.map(m => m.currency))]
-  return marketsFor(grants, who.partnerId ?? null, markets).map(m => m.currency)
+  /* Every currency of every market the party may sell in — not one per market.
+     Kenya takes shillings and dollars, so a seller approved there prices in
+     both or their dollar-paying customers see an empty shelf. */
+  const reach = who.persona === 'operator'
+    ? markets
+    : marketsFor(grants, who.partnerId ?? null, markets)
+
+  const out = reach.flatMap(m => {
+    const takes = currenciesOf(m.code, accepted)
+    /* Falling back to the market's default keeps every caller that has not been
+       given the accepted list working, rather than silently returning nothing
+       and making every price unwritable. */
+    return takes.length ? takes : [m.currency]
+  })
+  return [...new Set(out)]
 }
 
 /* ---------------------------------------------------------- what is ok --- */
@@ -222,24 +237,37 @@ export function missingPrices(
 /**
  * Whether a listing can go on sale in a market.
  *
- * Two things have to be true and they fail differently: the seller has to be
- * approved there, and the listing has to have a price there. Telling them apart
- * is the difference between "ask the marketplace" and "fill in a number".
+ * Three things, and they fail differently: the seller has to be approved there,
+ * the listing has to have a price in what that market quotes by default, and —
+ * where the market takes more than one currency — it ought to have a price in
+ * the others too. Telling the first two apart is the difference between "ask the
+ * marketplace" and "fill in a number"; the third is not a refusal at all, which
+ * is why it comes back alongside `ok: true`.
+ *
+ * The default currency is the one that must be priced. Without it a shopper who
+ * has chosen nothing is shown a card with no price on it. A missing *second*
+ * currency only costs the seller the shoppers who switched.
  */
 export function sellableIn(
   product: { id: string; partner_id: string | null },
   market: Market,
   grants: readonly PartnerMarket[],
   rows: readonly BookRow[],
-): { ok: true } | { ok: false; reason: string } {
+  accepted: readonly MarketCurrency[] = [],
+): { ok: true; gaps: string[] } | { ok: false; reason: string } {
   if (product.partner_id !== null) {
     const grant = grants.find(g => g.partner_id === product.partner_id && g.market_code === market.code)
     if (!grant) return { ok: false, reason: `Not selling in ${market.name}.` }
     if (grant.state === 'requested') return { ok: false, reason: `${market.name} approval not granted yet.` }
     if (grant.state === 'suspended') return { ok: false, reason: `Suspended in ${market.name}.` }
   }
-  if (!rows.some(r => r.product_id === product.id && r.currency === market.currency)) {
-    return { ok: false, reason: `No ${market.currency} price set.` }
-  }
-  return { ok: true }
+
+  const takes = currenciesOf(market.code, accepted)
+  const wanted = takes.length ? takes : [market.currency]
+  const priced = new Set(rows.filter(r => r.product_id === product.id).map(r => r.currency))
+
+  /* `wanted[0]` is the default — `currenciesOf` sorts it first. */
+  if (!priced.has(wanted[0])) return { ok: false, reason: `No ${wanted[0]} price set.` }
+
+  return { ok: true, gaps: wanted.slice(1).filter(c => !priced.has(c)) }
 }

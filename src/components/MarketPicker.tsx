@@ -12,9 +12,10 @@
 import { useState, useRef, useEffect } from 'react'
 import { Globe, ChevronDown, Check } from 'lucide-react'
 import { useMarket } from '../lib/MarketContext'
+import { currenciesOf } from '../lib/money'
 
 export function MarketPicker({ tone = 'dark' }: { tone?: 'dark' | 'light' }) {
-  const { book, market, currency, setMarket, ready } = useMarket()
+  const { book, market, currency, choices, setMarket, setCurrency, ready } = useMarket()
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
 
@@ -53,7 +54,7 @@ export function MarketPicker({ tone = 'dark' }: { tone?: 'dark' | 'light' }) {
       >
         <Globe size={13} />
         <span>{market.name}</span>
-        <span style={{ opacity: 0.75 }}>· {market.currency}</span>
+        <span style={{ opacity: 0.75 }}>· {currency?.code ?? market.currency}</span>
         <ChevronDown size={12} style={{ opacity: 0.6 }} />
       </button>
 
@@ -93,18 +94,52 @@ export function MarketPicker({ tone = 'dark' }: { tone?: 'dark' | 'light' }) {
                   {/* The tax is named because it is charged, and because it is
                       not the same tax in each of these three places. */}
                   <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-tertiary)' }}>
-                    {cur?.symbol} {cur?.name ?? m.currency} · {m.tax_label} {m.tax_rate}%
+                    {currenciesOf(m.code, book.accepted).join(' · ') || m.currency} · {m.tax_label} {m.tax_rate}%
                   </span>
                 </span>
               </button>
             )
           })}
+          {/* A market may take more than one currency — Kenya trades in
+              shillings and dollars — so the currency is a second choice rather
+              than a consequence of the first. The tax is not: it follows the
+              market, so this changes what you pay in and never what rate. */}
+          {choices.length > 1 && (
+            <div style={{ padding: '9px 13px', borderTop: '1px solid var(--border)' }}>
+              <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginBottom: '5px' }}>
+                {market.name} trades in
+              </div>
+              <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                {choices.map(c => {
+                  const cur = book.currencies.find(x => x.code === c)
+                  const on = (currency?.code ?? market.currency) === c
+                  return (
+                    <button
+                      key={c}
+                      onClick={() => { setCurrency(c); setOpen(false) }}
+                      style={{
+                        padding: '4px 10px', borderRadius: 'var(--radius-full)',
+                        border: `1px solid ${on ? 'var(--brand-navy)' : 'var(--border)'}`,
+                        background: on ? 'var(--brand-navy)' : 'white',
+                        color: on ? 'white' : 'var(--text)',
+                        fontSize: '11px', fontWeight: 700, cursor: 'pointer',
+                      }}
+                    >
+                      {cur?.symbol ?? c} {c}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <p style={{
             margin: 0, padding: '9px 13px', fontSize: '10px',
             color: 'var(--text-tertiary)', background: 'var(--bg-alt)', lineHeight: 1.45,
           }}>
             Prices are set for each market, not converted at checkout. Changing market changes
-            what you are charged and the tax you are charged it under.
+            what you are charged and the tax you are charged it under; changing currency changes
+            only what you pay in.
           </p>
         </div>
       )}

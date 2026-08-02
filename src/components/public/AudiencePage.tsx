@@ -54,8 +54,11 @@ export function AudiencePage({ page, onSignIn, onApply, onAddToBasket }: {
   onApply: () => void
   onAddToBasket: (p: Product) => void
 }) {
-  const { market } = useMarket()
-  const currencyCode = market?.currency ?? 'USD'
+  const { market, currency } = useMarket()
+  /* The chosen currency, not the market's default. Reading the default here
+     while the formatter reads the choice is how a shilling price ends up under
+     a dollar sign — the same relabelling the bills migration had to undo. */
+  const currencyCode = currency?.code ?? market?.currency ?? 'USD'
   const c = CONFIG[page]
   const [catalogue, setCatalogue] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])

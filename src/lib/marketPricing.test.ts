@@ -4,7 +4,7 @@ import {
   suggestPrice, missingPrices, sellableIn, emptyDraft, draftFrom, toRow,
 } from './marketPricing'
 import type { PartnerMarket, BookRow, PriceDraft } from './marketPricing'
-import type { Currency, Market, Rate } from './money'
+import type { Currency, Market, MarketCurrency, Rate } from './money'
 
 const CURRENCIES: Currency[] = [
   { code: 'USD', name: 'US Dollar', symbol: '$', minor_units: 2, symbol_first: true, locale: 'en-US', is_reporting: true, sort_order: 1 },
@@ -18,6 +18,16 @@ const MARKETS: Market[] = [
   { code: 'IN', name: 'India', currency: 'INR', tax_label: 'GST', tax_rate: 18, tax_note: '', is_default: true, sort_order: 1 },
   { code: 'AE', name: 'United Arab Emirates', currency: 'AED', tax_label: 'VAT', tax_rate: 5, tax_note: '', is_default: false, sort_order: 2 },
   { code: 'KE', name: 'Kenya', currency: 'KES', tax_label: 'VAT', tax_rate: 16, tax_note: '', is_default: false, sort_order: 3 },
+]
+
+/* What each market actually takes: India rupees alone, the UAE and Kenya each
+   their own plus dollars. The arrangement the operator configured. */
+const ACCEPTED: MarketCurrency[] = [
+  { market_code: 'IN', currency: 'INR', is_default: true, sort_order: 1 },
+  { market_code: 'AE', currency: 'AED', is_default: true, sort_order: 1 },
+  { market_code: 'AE', currency: 'USD', is_default: false, sort_order: 2 },
+  { market_code: 'KE', currency: 'KES', is_default: true, sort_order: 1 },
+  { market_code: 'KE', currency: 'USD', is_default: false, sort_order: 2 },
 ]
 
 const grant = (p: string, m: string, state: PartnerMarket['state']): PartnerMarket =>
@@ -79,6 +89,30 @@ describe('which currencies each console may price in', () => {
   it('gives a seller with no grants nothing to price in', () => {
     expect(priceableCurrencies({ persona: 'partner', partnerId: 'PTR-1012' }, MARKETS, GRANTS))
       .toEqual([])
+  })
+
+  /* The point of the accepted list: one market, more than one currency. */
+  it('gives the operator every currency of every market, not one each', () => {
+    expect(priceableCurrencies({ persona: 'operator' }, MARKETS, GRANTS, ACCEPTED).sort())
+      .toEqual(['AED', 'INR', 'KES', 'USD'])
+  })
+
+  it('lets a seller approved in Kenya price in shillings and in dollars', () => {
+    expect(priceableCurrencies({ persona: 'partner', partnerId: 'PTR-1004' }, MARKETS, GRANTS, ACCEPTED))
+      .toEqual(['INR', 'AED', 'USD', 'KES'])
+  })
+
+  it('does not let dollars in through a market that does not take them', () => {
+    /* PTR-1009 is approved in India alone, and India trades only in rupees —
+       so an Indian grant must not open a dollar price. */
+    expect(priceableCurrencies({ persona: 'partner', partnerId: 'PTR-1009' }, MARKETS, GRANTS, ACCEPTED))
+      .toEqual(['INR'])
+  })
+
+  it('names each currency once however many markets take it', () => {
+    /* Dollars reach both the UAE and Kenya; the price book has one row. */
+    const out = priceableCurrencies({ persona: 'operator' }, MARKETS, GRANTS, ACCEPTED)
+    expect(out.filter(c => c === 'USD')).toHaveLength(1)
   })
 })
 
@@ -224,7 +258,7 @@ describe('whether a listing can go on sale in a market', () => {
   const firstParty = { id: 'SKU-1', partner_id: null }
 
   it('lets an approved, priced listing sell', () => {
-    expect(sellableIn(seller, MARKETS[0], GRANTS, rows)).toEqual({ ok: true })
+    expect(sellableIn(seller, MARKETS[0], GRANTS, rows)).toEqual({ ok: true, gaps: [] })
   })
 
   it('distinguishes "not approved" from "no price" — they need different actions', () => {
@@ -248,8 +282,43 @@ describe('whether a listing can go on sale in a market', () => {
   })
 
   it('asks nothing of a first-party listing but a price', () => {
-    expect(sellableIn(firstParty, MARKETS[0], GRANTS, rows)).toEqual({ ok: true })
+    expect(sellableIn(firstParty, MARKETS[0], GRANTS, rows)).toEqual({ ok: true, gaps: [] })
     expect(sellableIn(firstParty, MARKETS[2], GRANTS, rows))
       .toEqual({ ok: false, reason: 'No KES price set.' })
+  })
+
+  /* -------------------------------------- when a market takes two currencies -- */
+
+  it('sells on the default currency and reports the other as a gap, not a refusal', () => {
+    /* Dirhams priced, dollars not. A UAE shopper sees a price; a UAE shopper who
+       switched to dollars does not — which costs the seller a sale but does not
+       take the listing off the shelf. */
+    const uae = { ...firstParty }
+    const out = sellableIn(uae, MARKETS[1], GRANTS, rows, ACCEPTED)
+    expect(out).toEqual({ ok: true, gaps: ['USD'] })
+  })
+
+  it('does not sell on a second currency alone', () => {
+    /* A dollar price in Kenya with no shilling price is not a Kenyan listing —
+       every shopper who has chosen nothing is quoted in shillings. */
+    const dollarsOnly: BookRow[] = [
+      { product_id: 'SKU-1', currency: 'USD', price: 12, was_price: null, floor_price: null, list_price: null },
+    ]
+    expect(sellableIn(firstParty, MARKETS[2], GRANTS, dollarsOnly, ACCEPTED))
+      .toEqual({ ok: false, reason: 'No KES price set.' })
+  })
+
+  it('reports no gap in a market that takes one currency', () => {
+    expect(sellableIn(firstParty, MARKETS[0], GRANTS, rows, ACCEPTED))
+      .toEqual({ ok: true, gaps: [] })
+  })
+
+  it('reports no gap when both currencies are priced', () => {
+    const both: BookRow[] = [
+      ...rows,
+      { product_id: 'SKU-1', currency: 'USD', price: 12, was_price: null, floor_price: null, list_price: null },
+    ]
+    expect(sellableIn(firstParty, MARKETS[1], GRANTS, both, ACCEPTED))
+      .toEqual({ ok: true, gaps: [] })
   })
 })

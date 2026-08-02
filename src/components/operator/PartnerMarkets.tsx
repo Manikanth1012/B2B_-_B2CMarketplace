@@ -13,6 +13,7 @@ import { Globe, Check, Ban, Clock } from 'lucide-react'
 import { loadPartnerMarkets, decideMarket } from '../../lib/moneyRepo'
 import type { PartnerMarket } from '../../lib/marketPricing'
 import { sellableIn } from '../../lib/marketPricing'
+import { currenciesOf } from '../../lib/money'
 import { loadProductPrices } from '../../lib/moneyRepo'
 import type { BookRow } from '../../lib/marketPricing'
 import { useMarket } from '../../lib/MarketContext'
@@ -66,8 +67,13 @@ export function PartnerMarkets({ partnerId, partnerName, listings, actor }: {
           {book.markets.map(m => {
             const grant = grants.find(g => g.market_code === m.code)
             const state = grant?.state ?? 'none'
+            /* Counted against the market's *default* currency, because that is
+               the price a shopper who has chosen nothing is quoted. A listing
+               priced only in the market's second currency is not on the shelf. */
+            const takes = currenciesOf(m.code, book.accepted)
+            const shown = takes.length ? takes : [m.currency]
             const priced = listings.filter(l =>
-              rows.some(r => r.product_id === l.id && r.currency === m.currency)).length
+              rows.some(r => r.product_id === l.id && r.currency === shown[0])).length
 
             return (
               <div key={m.code} style={{
@@ -78,8 +84,11 @@ export function PartnerMarkets({ partnerId, partnerName, listings, actor }: {
                 <Globe size={15} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
                 <div style={{ minWidth: '150px' }}>
                   <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>{m.name}</div>
+                  {/* Every currency the grant opens. Granting Kenya lets this
+                      seller price in shillings *and* dollars, and an operator
+                      who reads "KES" alone has been told half of it. */}
                   <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
-                    {m.currency} · {m.tax_label} {m.tax_rate}%
+                    {shown.join(' · ')} · {m.tax_label} {m.tax_rate}%
                   </div>
                 </div>
 
@@ -137,19 +146,33 @@ export function PartnerMarkets({ partnerId, partnerName, listings, actor }: {
                 </div>
 
                 {book.markets.map(m => {
-                  const row = rows.find(r => r.product_id === l.id && r.currency === m.currency)
-                  const can = sellableIn({ id: l.id, partner_id: partnerId }, m, grants, rows)
+                  const can = sellableIn({ id: l.id, partner_id: partnerId }, m, grants, rows, book.accepted)
+                  /* Every currency the market takes, not just its default — a
+                     listing priced in shillings but not in dollars is on sale in
+                     Kenya to half of Kenya. */
+                  const takes = currenciesOf(m.code, book.accepted)
+                  const shown = takes.length ? takes : [m.currency]
                   return (
                     <span key={m.code} style={{ minWidth: '110px', textAlign: 'right' }}>
                       <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{m.code}</div>
-                      <div style={{
-                        fontSize: 'var(--text-xs)', fontWeight: 600,
-                        color: can.ok ? 'var(--text)' : 'var(--text-tertiary)',
-                      }}>
-                        {row ? fmtIn(row.price, m.currency) : '—'}
-                      </div>
+                      {shown.map(c => {
+                        const row = rows.find(r => r.product_id === l.id && r.currency === c)
+                        return (
+                          <div key={c} style={{
+                            fontSize: 'var(--text-xs)', fontWeight: 600,
+                            color: row ? 'var(--text)' : 'var(--text-tertiary)',
+                          }}>
+                            {row ? fmtIn(row.price, c) : `— ${c}`}
+                          </div>
+                        )
+                      })}
                       {!can.ok && (
                         <div style={{ fontSize: '9px', color: 'var(--warning)' }}>{can.reason}</div>
+                      )}
+                      {can.ok && can.gaps.length > 0 && (
+                        <div style={{ fontSize: '9px', color: 'var(--warning)' }}>
+                          No {can.gaps.join('/')} price
+                        </div>
                       )}
                     </span>
                   )
