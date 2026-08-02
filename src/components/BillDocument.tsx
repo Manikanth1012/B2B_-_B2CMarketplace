@@ -148,7 +148,7 @@ export function BillDocument(
         <div style={blockStyle}>
           <strong style={blockHead}>How to pay</strong>
           <div style={tiny}>
-            {template.remittance || facts.howToPay}
+            {facts.howToPay}
             <br />Quote <strong style={num}>{facts.payRef}</strong>.
           </div>
         </div>

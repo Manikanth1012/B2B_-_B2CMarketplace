@@ -52,7 +52,13 @@ export async function loadBillBook(): Promise<BillBook> {
       supabase.from('consumer_addresses').select('*').eq('is_default', true).maybeSingle(),
       supabase.from('loyalty_members').select('*').eq('kind', 'consumer'),
       supabase.from('loyalty_ledger').select('*'),
-      supabase.from('operator_banners').select('*').eq('status', 'live').eq('audience', 'consumer'),
+      /* `public_banners`, not `operator_banners`. The second is operator-only,
+         so reading it from a customer's session returned nothing and the
+         advert section vanished from their own bill without a word — while
+         the operator's preview, run from an operator session, showed it. The
+         view is the same live banners with the commercial columns dropped,
+         which is all a bill needs. */
+      supabase.from('public_banners').select('*').eq('audience', 'consumer').order('sort_order'),
     ])
 
   const profile = (profRes.data as Record<string, string> | null) ?? null
@@ -107,6 +113,7 @@ function sameMonth(when: string, period: string): boolean {
  * raised at another rate does not print a lie about itself.
  */
 export function factsFor(bill: ConsumerBill, book: BillBook): BillFacts {
+  const template = templateForBill(book)
   const p = book.profile
   const a = book.address
   const m = book.member
@@ -173,7 +180,12 @@ export function factsFor(bill: ConsumerBill, book: BillBook): BillFacts {
         window: iss.dispute_window,
       }
       : null,
-    howToPay: '',
+    /* The template's remittance text, resolved here rather than in each
+       renderer. `blocksFor` decides whether the block appears by looking at
+       this field, so a renderer that fell back to the template when this was
+       empty would print a block the document said it was suppressing — which
+       is exactly what it did. */
+    howToPay: template?.remittance ?? '',
     terms: iss?.terms ?? [],
     payRef: p?.customer_id ?? bill.id,
   }

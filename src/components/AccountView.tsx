@@ -19,6 +19,7 @@ import type {
 import { BillDocument } from './BillDocument'
 import { Pager, usePaging } from './Pager'
 import { loadBillBook, templateForBill, sectionIds, factsFor, asText, fileNameFor } from '../lib/consumerBillDoc'
+import { billPdf, pdfNameFor, saveBlob } from '../lib/billPdf'
 import type { BillBook } from '../lib/consumerBillDoc'
 import { loadMyRefunds, requestRefund } from '../lib/refundRepo'
 import type { RefundBook } from '../lib/refundRepo'
@@ -1393,16 +1394,20 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
   const template = book ? templateForBill(book) : null
   const ids = book ? sectionIds(book, template) : []
 
-  const downloadBill = (bill: ConsumerBill) => {
+  /* A PDF, on the template the operator assigned. It used to be a .txt, which
+     is a document nobody can file, print or forward to their accounts
+     department. The plain-text rendition is still there behind "Plain text"
+     for anybody who wants to read it in a terminal or paste it into a ticket. */
+  const downloadBill = (bill: ConsumerBill, as: 'pdf' | 'txt' = 'pdf') => {
     if (!book || !template) { showToast('The bill format is still loading — try again in a moment'); return }
-    const blob = new Blob([asText(factsFor(bill, book), template, ids, book.sections)], { type: 'text/plain' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = fileNameFor(bill)
-    a.click()
-    URL.revokeObjectURL(url)
-    showToast(`${bill.id} downloaded`)
+    const facts = factsFor(bill, book)
+    if (as === 'pdf') {
+      saveBlob(billPdf(facts, template, ids, book.sections), pdfNameFor(facts))
+      showToast(`${bill.id} downloaded as a PDF`)
+      return
+    }
+    saveBlob(new Blob([asText(facts, template, ids, book.sections)], { type: 'text/plain' }), fileNameFor(bill))
+    showToast(`${bill.id} downloaded as plain text`)
   }
 
   return (
@@ -1455,7 +1460,7 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
                       <button onClick={() => downloadBill(b)} disabled={!book} style={{
                         ...billBtn, opacity: book ? 1 : 0.5,
                       }}>
-                        <Download size={12} /> Download
+                        <Download size={12} /> PDF
                       </button>
                     </div>
                   </td>
@@ -1475,8 +1480,9 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
           <BillDocument template={template} ids={ids} facts={factsFor(viewing, book)} />
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '20px' }}>
             <button onClick={() => setViewing(null)} style={billBtn}>Close</button>
+            <button onClick={() => downloadBill(viewing, 'txt')} style={billBtn}>Plain text</button>
             <button onClick={() => downloadBill(viewing)} style={{ ...billBtn, borderColor: 'var(--brand-navy)', background: 'var(--brand-navy)', color: 'white' }}>
-              <Download size={12} /> Download
+              <Download size={12} /> Download PDF
             </button>
           </div>
         </Modal>

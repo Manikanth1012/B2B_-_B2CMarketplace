@@ -6,6 +6,11 @@ import {
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
 import { loadAccount, payInvoice, disputeInvoice, invoiceCsv } from '../../lib/enterpriseRepo'
+import { loadDocumentSetup } from '../../lib/documentRepo'
+import type { DocumentSetup } from '../../lib/documentRepo'
+import { invoiceFacts } from '../../lib/documentFacts'
+import type { InvoiceRow, InvoiceLineRow, AccountRow } from '../../lib/documentFacts'
+import { billPdf, pdfNameFor, saveBlob } from '../../lib/billPdf'
 import type { AccountBook } from '../../lib/enterpriseRepo'
 import {
   outstanding, budgetPosition, bySeller, byCostCentre, reconcileInvoice, arrears,
@@ -40,6 +45,10 @@ export function EnterpriseBilling() {
      arrives: `usePaging` is a hook, and a hook below an early return runs on
      some renders and not others. */
   const page = usePaging(book?.invoices ?? [])
+  /* The template every business invoice is issued on, and the identity it
+     is issued under. Loaded once for the screen. */
+  const [doc, setDoc] = useState<DocumentSetup>({ issuer: null, template: null, ids: [], sections: [] })
+  useEffect(() => { void loadDocumentSetup('enterprise').then(setDoc) }, [])
 
   if (!book) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
@@ -59,13 +68,23 @@ export function EnterpriseBilling() {
     .map(i => ({ invoice: i, check: reconcileInvoice(i, book.invoiceLines) }))
     .filter(r => !r.check.ok)
 
+  /* The invoice as a document, on the template the operator assigned to
+     business accounts. It used to come out as CSV — a spreadsheet of a legal
+     document, which is a different thing from the document, and not something
+     accounts payable can file. The CSV is still offered beside it, because
+     reconciling a hundred lines in a spreadsheet is exactly what it is for. */
   const download = (invoice: Invoice) => {
-    const blob = new Blob([invoiceCsv(invoice, book.invoiceLines)], { type: 'text/csv' })
-    const a = document.createElement('a')
-    a.href = URL.createObjectURL(blob)
-    a.download = `${invoice.id}.csv`
-    a.click()
-    URL.revokeObjectURL(a.href)
+    if (!doc.template) { toast('The invoice format is still loading', 'error'); return }
+    const facts = invoiceFacts(
+      invoice as unknown as InvoiceRow,
+      book.invoiceLines as unknown as InvoiceLineRow[],
+      { issuer: doc.issuer, account: account as unknown as AccountRow, template: doc.template })
+    saveBlob(billPdf(facts, doc.template, doc.ids, doc.sections), pdfNameFor(facts))
+    toast(`${invoice.id} downloaded as a PDF`)
+  }
+
+  const downloadCsv = (invoice: Invoice) => {
+    saveBlob(new Blob([invoiceCsv(invoice, book.invoiceLines)], { type: 'text/csv' }), `${invoice.id}.csv`)
     toast(`${invoice.id} exported with every line behind it`)
   }
 
@@ -153,7 +172,8 @@ export function EnterpriseBilling() {
                     </Td>
                     <Td right>
                       <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }} onClick={e => e.stopPropagation()}>
-                        <Btn variant="secondary" size="sm" onClick={() => download(i)}><Download size={12} /> Bill</Btn>
+                        <Btn variant="secondary" size="sm" onClick={() => download(i)}><Download size={12} /> PDF</Btn>
+                        <Btn variant="secondary" size="sm" onClick={() => downloadCsv(i)}>CSV</Btn>
                         {i.status !== 'paid' && (
                           <>
                             <Btn variant="secondary" size="sm" onClick={() => setDisputing(i)}>Query</Btn>

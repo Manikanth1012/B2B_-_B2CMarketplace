@@ -8,8 +8,15 @@ import { PartnerStatementLines } from './PartnerStatementLines'
 import { loadSellerStatements } from '../../lib/ledgerRepo'
 import type { SellerStatements } from '../../lib/ledgerRepo'
 import { reconcileStatement, toCsv } from '../../lib/ledger'
+import type { Statement } from '../../lib/ledger'
 import { loadSellerRecord } from '../../lib/partnerRepo'
 import type { SellerRecord } from '../../lib/partnerRepo'
+import { loadDocumentSetup } from '../../lib/documentRepo'
+import type { DocumentSetup } from '../../lib/documentRepo'
+import { statementFacts } from '../../lib/documentFacts'
+import type { StatementRow } from '../../lib/documentFacts'
+import { billPdf, pdfNameFor, saveBlob } from '../../lib/billPdf'
+import { nextReference } from '../../lib/billTemplate'
 
 /* What the seller is owed, how it was worked out, and when it lands.
  *
@@ -22,6 +29,11 @@ import type { SellerRecord } from '../../lib/partnerRepo'
 
 export function PartnerSettlement({ partnerId }: { partnerId: string }) {
   const [snap, setSnap] = useState<SellerStatements | null>(null)
+  /* This seller's own template, which may be an exception: one seller in a
+     jurisdiction whose regulator prescribes a format does not change the
+     document every other seller gets. */
+  const [doc, setDoc] = useState<DocumentSetup>({ issuer: null, template: null, ids: [], sections: [] })
+  useEffect(() => { void loadDocumentSetup('partner', partnerId).then(setDoc) }, [partnerId])
   const [record, setRecord] = useState<SellerRecord | null>(null)
 
   const reload = useCallback(async () => {
@@ -40,6 +52,20 @@ export function PartnerSettlement({ partnerId }: { partnerId: string }) {
   const due = statements.filter(s => s.status !== 'paid').reduce((a, s) => a + Number(s.net), 0)
   const failing = statements.filter(s =>
     !reconcileStatement(s, snap.lines.filter(l => l.statement_id === s.id)).ok)
+
+  /* The self-billing invoice as a document, on the template the operator
+     assigned to sellers. The CSV export below it stays — that is for
+     reconciling a period in a spreadsheet, which is a different job from
+     filing the invoice. */
+  const statementPdf = (st: Statement) => {
+    if (!doc.template) { toast('The invoice format is still loading', 'error'); return }
+    const facts = statementFacts(st as unknown as StatementRow, {
+      issuer: doc.issuer, template: doc.template,
+      reference: nextReference(doc.template, { party: st.partner_id ?? undefined }),
+    })
+    saveBlob(billPdf(facts, doc.template, doc.ids, doc.sections), pdfNameFor(facts))
+    toast(`${st.period} downloaded as a PDF`)
+  }
 
   const download = () => {
     const rows: string[][] = [[
@@ -175,11 +201,16 @@ export function PartnerSettlement({ partnerId }: { partnerId: string }) {
                     <Td right><strong>${fmtMoney(Number(s.net))}</strong></Td>
                     <Td right><StatusPill status={s.status} /></Td>
                     <Td right>
-                      {ok
-                        ? <span style={{ fontSize: 'var(--text-xs)', color: 'var(--success)', fontWeight: 600 }}>reconciles</span>
-                        : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: 'var(--text-xs)', color: 'var(--danger)', fontWeight: 700 }}>
-                            <AlertTriangle size={11} /> check it
-                          </span>}
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end' }}>
+                        {ok
+                          ? <span style={{ fontSize: 'var(--text-xs)', color: 'var(--success)', fontWeight: 600 }}>reconciles</span>
+                          : <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: 'var(--text-xs)', color: 'var(--danger)', fontWeight: 700 }}>
+                              <AlertTriangle size={11} /> check it
+                            </span>}
+                        <Btn variant="secondary" size="sm" onClick={() => statementPdf(s)}>
+                          <Download size={11} style={{ marginRight: 4 }} />PDF
+                        </Btn>
+                      </div>
                     </Td>
                   </tr>
                 )
