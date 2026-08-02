@@ -42,7 +42,7 @@ const TEMPLATE: Template = {
 
 const bill = (over: Partial<ConsumerBill> = {}): ConsumerBill => ({
   id: 'BILL-2026-07', period: 'July 2026', issued: '01 Aug 2026', due: '15 Aug 2026',
-  plan_charge: 18, subscriptions: 49.38, oneoff: 129, tax: 17.76, total: 214.14,
+  plan_charge: 18, subscriptions: 49.38, oneoff: 129, tax_rate: 18, tax: 35.35, total: 231.73,
   status: 'open', paid_on: null, pages: 3, ...over,
 })
 
@@ -100,16 +100,23 @@ describe('what the bill says', () => {
   it('reads every figure off the bill row', () => {
     const f = factsFor(bill(), book())
     expect(f.reference).toBe('BILL-2026-07')
-    expect(f.total).toBe(214.14)
-    expect(f.tax).toBe(17.76)
+    expect(f.total).toBe(231.73)
+    expect(f.tax).toBe(35.35)
     expect([...f.lines, ...f.usage].reduce((n, l) => n + l.amount, 0)).toBeCloseTo(196.38, 2)
   })
 
-  /* The old download asserted eighteen percent on a bill charged at nine. A
-     rate that is derived cannot disagree with the tax it explains. */
-  it('derives the tax rate rather than asserting one', () => {
-    expect(factsFor(bill(), book()).taxRate).toBe(9)
-    expect(factsFor(bill({ tax: 35.35, total: 231.73 }), book()).taxRate).toBe(18)
+  /* The old download asserted eighteen percent over a bill charged at nine, and
+     neither figure could be checked against the other because only one of them
+     existed. The rate is a column now, and it is the one that prints. */
+  it('prints the rate the bill states', () => {
+    expect(factsFor(bill(), book()).taxRate).toBe(18)
+    expect(factsFor(bill({ tax_rate: 5, tax: 9.82, total: 206.20 }), book()).taxRate).toBe(5)
+  })
+
+  /* A bill from before the column existed still prints something honest. */
+  it('falls back to the arithmetic when a bill states no rate', () => {
+    const legacy = { ...bill({ tax: 17.76, total: 214.14 }), tax_rate: undefined as unknown as number }
+    expect(factsFor(legacy, book()).taxRate).toBe(9)
   })
 
   it('takes the issuing entity from the record, not from a literal', () => {
@@ -140,7 +147,7 @@ describe('what the bill says', () => {
   it('marks a settled bill as settled', () => {
     const f = factsFor(bill({ status: 'paid', paid_on: '08 Aug 2026' }), book())
     expect(f.paid_already).toBe(true)
-    expect(f.paid).toBe(214.14)
+    expect(f.paid).toBe(231.73)
   })
 })
 
@@ -165,8 +172,8 @@ describe('the downloaded file', () => {
     expect(t).toContain('42 Rustom Bagh')
     expect(t).toContain('GSTIN 29AAACA4471Q1ZV')
     expect(t).toContain('Monthly plan charge')
-    expect(t).toContain('GST at 9%')
-    expect(t).toContain('$214.14')
+    expect(t).toContain('GST at 18%')
+    expect(t).toContain('$231.73')
   })
 
   /* The section list is the contract between the three renditions. A file that
@@ -207,7 +214,7 @@ describe('the downloaded file', () => {
   /* The literals that used to be typed into this file and were wrong. */
   it('carries none of the figures the old hard-coded bill invented', () => {
     const t = text()
-    expect(t).not.toContain('18% GST')
+    expect(t).not.toContain('Tax (18% GST)')
     expect(t).not.toContain('29AABCI1234L1ZJ')
     expect(t).not.toContain('Whitefield')
     expect(t).not.toContain('Aventa Freedom 50 GB')

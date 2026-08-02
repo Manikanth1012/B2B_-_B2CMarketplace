@@ -450,3 +450,54 @@ describe('tidying up', () => {
     expect(after.assignments.length).toBe(4)
   })
 })
+
+/* One jurisdiction, one rate.
+ *
+ * Retail bills charged about nine percent and business invoices charged
+ * eighteen, under one registration in one country. The drift was possible
+ * because only one of the two tables recorded the rate it used — a figure with
+ * no stated basis cannot be checked, so it never was.
+ *
+ * Both record it now, and this is the check that keeps them together.
+ */
+describe('the tax on a document', () => {
+  /* This block runs after the tidy-up signed out. Without its own session the
+     reads return nothing and every loop below passes over an empty list —
+     which is the quietest way for a test to stop testing anything. */
+  beforeAll(async () => { await signIn(OPERATOR.email, OPERATOR.password) })
+  afterAll(async () => { await signOut() })
+
+  it('is the rate the document itself states, on both sides', async () => {
+    const { data: bills } = await supabase.from('consumer_bills').select('*')
+    expect((bills ?? []).length, 'no retail bills to check').toBeGreaterThan(0)
+    for (const b of bills ?? []) {
+      const net = Number(b.plan_charge) + Number(b.subscriptions) + Number(b.oneoff)
+      const expected = Math.round(net * Number(b.tax_rate)) / 100
+      expect(Number(b.tax), `${b.id} charges a tax its own rate does not produce`)
+        .toBeCloseTo(expected, 2)
+      expect(Number(b.total), `${b.id} does not add up`).toBeCloseTo(net + Number(b.tax), 2)
+    }
+
+    const { data: invoices } = await supabase.from('enterprise_invoices').select('*')
+    expect((invoices ?? []).length, 'no business invoices to check').toBeGreaterThan(0)
+    for (const i of invoices ?? []) {
+      const net = Number(i.recurring) + Number(i.oneoff)
+      const expected = Math.round(net * Number(i.tax_rate)) / 100
+      expect(Number(i.tax), `${i.id} charges a tax its own rate does not produce`)
+        .toBeCloseTo(expected, 2)
+      expect(Number(i.total), `${i.id} does not add up`).toBeCloseTo(net + Number(i.tax), 2)
+    }
+  })
+
+  it('is the same rate on a retail bill and a business invoice', async () => {
+    const { data: bills } = await supabase.from('consumer_bills').select('tax_rate')
+    const { data: invoices } = await supabase.from('enterprise_invoices').select('tax_rate')
+    const rates = new Set([...(bills ?? []), ...(invoices ?? [])].map(r => Number(r.tax_rate)))
+    expect([...rates], 'the marketplace charges two rates for one tax').toEqual([18])
+  })
+
+  it('prints that rate on the document rather than inferring one', () => {
+    expect(book.samples.consumer!.taxRate).toBe(18)
+    expect(book.samples.enterprise!.taxRate).toBe(18)
+  })
+})

@@ -294,6 +294,10 @@ export interface ConsumerBill {
   plan_charge: number
   subscriptions: number
   oneoff: number
+  /* The rate the tax below was charged at. Recorded rather than implied: a
+     figure with no stated basis cannot be checked, which is how retail bills
+     drifted to nine percent while every other document charged eighteen. */
+  tax_rate: number
   tax: number
   total: number
   status: string

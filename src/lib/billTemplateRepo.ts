@@ -190,7 +190,7 @@ async function loadSamples(
         : [],
       credits: 0,
       paid: bill.status === 'paid' ? total : 0,
-      taxRate: net > 0 ? Math.round((tax / net) * 1000) / 10 : 0,
+      taxRate: Number(bill.tax_rate ?? 0) || (net > 0 ? Math.round((tax / net) * 1000) / 10 : 0),
       tax, total,
       /* "Earned this period" has to mean this period. The member record holds
          lifetime figures, and printing those under a period heading is the

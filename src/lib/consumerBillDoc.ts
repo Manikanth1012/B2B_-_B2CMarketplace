@@ -156,8 +156,11 @@ export function factsFor(bill: ConsumerBill, book: BillBook): BillFacts {
       : [],
     credits: 0,
     paid,
-    /* Derived, never asserted. */
-    taxRate: net > 0 ? Math.round((bill.tax / net) * 1000) / 10 : 0,
+    /* The rate the bill states, not one inferred from the amount. Inferring
+       was what the old hard-coded download did in reverse — it asserted 18%
+       over a bill charged at 9% — and neither number could be checked against
+       the other because only one of them existed. */
+    taxRate: bill.tax_rate ?? (net > 0 ? Math.round((bill.tax / net) * 1000) / 10 : 0),
     tax: bill.tax,
     total: bill.total,
     rewards,
