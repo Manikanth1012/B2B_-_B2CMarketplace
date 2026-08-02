@@ -1,5 +1,17 @@
 node_modules/
 .env
-dist/
+
+# dist/ is tracked on purpose so main can be served directly. It is build
+# output, so it is only correct as of the commit that carries it — regenerate
+# with `npm run build` and commit it alongside any source change, or what is
+# served stops matching what is in src/.
+#
+# The bundle carries VITE_SUPABASE_URL and the anon key, inlined by Vite at
+# build time. (The CI workflow's comment claiming these are read at runtime is
+# wrong: a build made without them produces an app that throws on boot.) That
+# is what an anon key is for — it ships in client JavaScript in every
+# deployment, and RLS is what actually guards the data. The service role key
+# must never reach a build.
+
 .superpowers/
 images/

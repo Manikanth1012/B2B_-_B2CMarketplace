@@ -27,8 +27,10 @@ jobs:
       - name: Unit tests
         run: npm test
 
-      # Vite reads VITE_SUPABASE_* at runtime, not build time, so the build
-      # needs no credentials. src/lib/supabase.ts throws when the app boots
-      # without them, which is a runtime concern and not this job's.
+      # Vite inlines import.meta.env.VITE_* at build time, so this job's
+      # output is deliberately not a deployable bundle — it has no credentials
+      # and would throw on boot. It is here to prove the build compiles.
+      # The servable bundle is the tracked dist/, built with the variables set
+      # and committed alongside the source it was built from.
       - name: Build
         run: npm run build
