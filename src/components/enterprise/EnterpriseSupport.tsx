@@ -123,6 +123,8 @@ export function EnterpriseSupport() {
                     <Td right style={{ fontSize: 'var(--text-xs)' }}>{waitingOn(t)}</Td>
                     <Td right style={{
                       fontSize: 'var(--text-xs)', maxWidth: '230px', textAlign: 'right',
+                      /* A sentence in a right-aligned cell, which does not wrap by default. */
+                      whiteSpace: 'normal',
                       color: st.state === 'over' ? 'var(--danger)' : st.state === 'paused' ? 'var(--warning)' : 'var(--text-tertiary)',
                     }}>{st.text}</Td>
                     <Td right>

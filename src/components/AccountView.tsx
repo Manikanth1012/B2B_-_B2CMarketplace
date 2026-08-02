@@ -137,13 +137,18 @@ export function AccountView({ initialTab, onWatchesChanged }: {
         </p>
       </div>
 
-      {/* Tab bar */}
+      {/* Tab bar.
+          Wraps rather than scrolls. Ten tabs no longer fit a 1280px column, and
+          a strip that scrolls sideways puts the last tab — Help & Support, and
+          before it Documents — somewhere nobody will look for it. Two rows of
+          tabs cost thirty pixels of height and hide nothing. */}
       <div style={{
         display: 'flex',
+        flexWrap: 'wrap',
+        rowGap: '2px',
         gap: '4px',
         borderBottom: '2px solid var(--border)',
         marginBottom: '32px',
-        overflowX: 'auto',
       }}>
         {tabs.map((t) => {
           const Icon = t.icon

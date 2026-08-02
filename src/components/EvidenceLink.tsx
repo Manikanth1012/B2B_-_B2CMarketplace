@@ -70,7 +70,7 @@ export function EvidenceLink({ viewer, doc, compact }: {
         </button>
       </span>
       {error && (
-        <span style={{ fontSize: '10px', color: 'var(--danger)', maxWidth: '220px', textAlign: 'right' }}>{error}</span>
+        <span style={{ fontSize: '10px', color: 'var(--danger)', maxWidth: '220px', textAlign: 'right', whiteSpace: 'normal' }}>{error}</span>
       )}
     </span>
   )

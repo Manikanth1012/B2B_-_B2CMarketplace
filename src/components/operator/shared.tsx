@@ -94,14 +94,31 @@ export function StatCard({ label, value, sublabel, color }: { label: string; val
   )
 }
 
+/**
+ * The table these consoles are built from.
+ *
+ * Sized to fit its card rather than to a comfortable width with a scrollbar
+ * underneath. Half the dashboard's cards sat in a two-column grid and pushed
+ * their last column — usually the one with the button in it — out of sight
+ * behind a horizontal scrollbar, which is the one place nobody looks.
+ *
+ * Three things buy the room back: 10px of side padding instead of 16, which
+ * across five columns is sixty pixels; headers that wrap, because "SETTLEMENT
+ * PLAN" over two lines costs nothing and holding it on one costs a column; and
+ * figures that do not wrap, so the padding comes out of the prose rather than
+ * out of "$41,871.56".
+ *
+ * `overflowX` stays as a floor — a narrow phone can always defeat this — but
+ * it should now be rare rather than routine.
+ */
 export function Table({ headers, children }: { headers: string[]; children: React.ReactNode }) {
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)', tableLayout: 'auto' }}>
         <thead>
           <tr style={{ borderBottom: '2px solid var(--border)' }}>
             {headers.map((h, i) => (
-              <th key={i} style={{ textAlign: i === 0 ? 'left' : 'right', padding: '10px 16px', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', whiteSpace: 'nowrap' }}>{h}</th>
+              <th key={i} style={{ textAlign: i === 0 ? 'left' : 'right', padding: '10px 10px', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', lineHeight: 1.25 }}>{h}</th>
             ))}
           </tr>
         </thead>
@@ -112,7 +129,18 @@ export function Table({ headers, children }: { headers: string[]; children: Reac
 }
 
 export function Td({ children, right, style }: { children: React.ReactNode; right?: boolean; style?: React.CSSProperties }) {
-  return <td style={{ padding: '12px 16px', borderBottom: '1px solid var(--border-light)', textAlign: right ? 'right' : 'left', color: 'var(--text)', verticalAlign: 'middle', ...style }}>{children}</td>
+  return (
+    <td style={{
+      padding: '12px 10px', borderBottom: '1px solid var(--border-light)',
+      textAlign: right ? 'right' : 'left', color: 'var(--text)', verticalAlign: 'middle',
+      /* Right-aligned cells are figures, dates and buttons. Breaking
+         "$41,871.56" across two lines to save eight pixels makes the column
+         unreadable and saves nothing, because the wrapped half still needs the
+         width. The left column carries the prose and wraps instead. */
+      ...(right ? { whiteSpace: 'nowrap' as const } : { wordBreak: 'break-word' as const }),
+      ...style,
+    }}>{children}</td>
+  )
 }
 
 export function EmptyState({ message }: { message: string }) {

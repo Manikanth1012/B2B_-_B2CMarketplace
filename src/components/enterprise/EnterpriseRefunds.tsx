@@ -125,6 +125,10 @@ export function EnterpriseRefunds() {
                       {clock && (r.state === 'requested' || r.state === 'escalated') && (
                         <div style={{
                           fontSize: 'var(--text-xs)', marginTop: '2px', maxWidth: '220px', textAlign: 'right',
+                          /* Prose, in a right-aligned cell that does not wrap
+                             by default because most of them hold figures. This
+                             one is a sentence and has to. */
+                          whiteSpace: 'normal',
                           color: clock.level === 'overdue' || clock.level === 'gone' ? 'var(--danger)' : 'var(--text-tertiary)',
                         }}>
                           {clock.text}

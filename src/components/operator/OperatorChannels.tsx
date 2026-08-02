@@ -60,22 +60,32 @@ export function OperatorChannels() {
         <Btn onClick={() => setAddModal(true)}>New channel</Btn>
       </div>
 
+      {/* Twelve columns did not fit, and the twelfth held the buttons. Two pairs
+          collapse because each pair was always one fact: a transport and its
+          protocol are how the message is carried, and whether a channel is
+          primary is part of its status rather than a column of dashes beside it. */}
       <SectionCard title="Channel Master" subtitle="A channel is what the customer experiences; a provider is what carries it.">
         {channels.length === 0 ? <EmptyState message="No channels configured" /> : (
-          <Table headers={['Name', 'Type', 'Transport', 'Protocol', 'Sender', 'Throughput', 'Cost', 'Success', 'Receipt', 'Primary', 'Status', 'Actions']}>
+          <Table headers={['Name', 'Type', 'Transport', 'Sender', 'Throughput', 'Cost', 'Success', 'Receipt', 'Status', 'Actions']}>
             {channels.map(c => (
               <tr key={c.id}>
                 <Td>{c.name}</Td>
                 <Td right>{c.type}</Td>
-                <Td right>{c.transport}</Td>
-                <Td right style={{ fontSize: 'var(--text-xs)' }}>{c.protocol}</Td>
+                <Td right>
+                  {c.transport}
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{c.protocol}</div>
+                </Td>
                 <Td right>{c.sender}</Td>
                 <Td right>{c.throughput}/s</Td>
                 <Td right>${fmtMoney(c.unit_cost)}</Td>
                 <Td right>{c.success_rate > 0 ? `${c.success_rate}%` : '—'}</Td>
                 <Td right>{c.has_receipt ? 'Yes' : <span style={{ color: 'var(--warning)', fontWeight: 600 }}>No</span>}</Td>
-                <Td right>{c.is_primary ? <StatusPill status="active" /> : '—'}</Td>
-                <Td right><StatusPill status={c.enabled ? 'active' : 'paused'} /></Td>
+                <Td right>
+                  <StatusPill status={c.enabled ? 'active' : 'paused'} />
+                  {c.is_primary && (
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--brand-navy)', fontWeight: 700, marginTop: '2px' }}>Primary</div>
+                  )}
+                </Td>
                 <Td right>
                   <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
                     <Btn variant="secondary" size="sm" onClick={() => setEditModal(c)}>Edit</Btn>
