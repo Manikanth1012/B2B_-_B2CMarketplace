@@ -36,6 +36,7 @@ import { OperatorDunning } from './components/operator/OperatorDunning'
 import { OperatorDeveloper } from './components/operator/OperatorDeveloper'
 import { OperatorPromotions } from './components/operator/OperatorPromotions'
 import { OperatorBanners } from './components/operator/OperatorBanners'
+import { OperatorBillTemplates } from './components/operator/OperatorBillTemplates'
 import { OperatorChannels } from './components/operator/OperatorChannels'
 import { OperatorRoles } from './components/operator/OperatorRoles'
 import { OperatorAudit } from './components/operator/OperatorAudit'
@@ -304,6 +305,7 @@ export default function App() {
         {opView === 'op-developer' && <OperatorDeveloper />}
         {opView === 'op-promotions' && <OperatorPromotions />}
         {opView === 'op-banners' && <OperatorBanners />}
+        {opView === 'op-billtemplates' && <OperatorBillTemplates />}
         {opView === 'op-notifications' && <OperatorNotifications />}
         {opView === 'op-channels' && <OperatorChannels />}
         {opView === 'op-roles' && <OperatorRoles />}

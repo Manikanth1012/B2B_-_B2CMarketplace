@@ -23,6 +23,7 @@ export type OperatorView =
   | 'op-rewards'
   | 'op-ledger'
   | 'op-revshare'
+  | 'op-billtemplates'
   | 'op-kb'
 
 export type PartnerView =
