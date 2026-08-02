@@ -194,6 +194,91 @@ export async function decideMarket(
   return { ok: true }
 }
 
+/* =========================================== configuring what a market takes === */
+
+/** Open a market to a currency it did not take before. */
+export async function addMarketCurrency(
+  marketCode: string, currency: string,
+): Promise<WriteResult> {
+  /* Never as the default. Making it the default is a separate decision and a
+     separate click — an operator adding dollars to Kenya has not thereby said
+     Kenyan shoppers should be quoted in dollars. */
+  const { data, error } = await supabase
+    .from('market_currencies')
+    .insert({ market_code: marketCode, currency, is_default: false, sort_order: 9 })
+    .select('market_code')
+  if (error) return { ok: false, reason: tidy(error.message) }
+  if (!data || data.length === 0) return { ok: false, reason: 'That currency was not added.' }
+  return { ok: true }
+}
+
+/**
+ * Close a market to a currency.
+ *
+ * `guard_market_currency_removal` refuses to leave a market with nothing, or to
+ * orphan bills already raised — those come back as raised exceptions, which is
+ * why the reason is worth showing rather than swallowing.
+ */
+export async function removeMarketCurrency(
+  marketCode: string, currency: string,
+): Promise<WriteResult> {
+  const { data, error } = await supabase
+    .from('market_currencies').delete()
+    .eq('market_code', marketCode).eq('currency', currency)
+    .select('market_code')
+  if (error) return { ok: false, reason: tidy(error.message) }
+  if (!data || data.length === 0) return { ok: false, reason: 'Nothing was removed.' }
+  return { ok: true }
+}
+
+/**
+ * Make a currency the one shoppers in this market are quoted by default.
+ *
+ * Only the new default is written. `guard_market_currency` clears the old one
+ * and `sync_market_default` moves `markets.currency` to match, so doing either
+ * from here would be a second statement of a rule the database already holds.
+ */
+export async function setDefaultCurrency(
+  marketCode: string, currency: string,
+): Promise<WriteResult> {
+  const { data, error } = await supabase
+    .from('market_currencies')
+    .update({ is_default: true })
+    .eq('market_code', marketCode).eq('currency', currency)
+    .select('market_code')
+  if (error) return { ok: false, reason: tidy(error.message) }
+  if (!data || data.length === 0) return { ok: false, reason: 'The default was not changed.' }
+  return { ok: true }
+}
+
+/**
+ * How much would be disturbed by dropping a currency from a market: bills
+ * already raised in it there, and listings currently priced in it.
+ *
+ * Counted rather than fetched — the screen needs the number, not the rows.
+ */
+export async function currencyFootprint(
+  marketCode: string, currency: string,
+): Promise<{ bills: number; listings: number }> {
+  const [b, i, p] = await Promise.all([
+    supabase.from('consumer_bills').select('id', { count: 'exact', head: true })
+      .eq('market', marketCode).eq('currency', currency),
+    supabase.from('enterprise_invoices').select('id', { count: 'exact', head: true })
+      .eq('market', marketCode).eq('currency', currency),
+    supabase.from('product_prices').select('product_id', { count: 'exact', head: true })
+      .eq('currency', currency),
+  ])
+  return {
+    /* Bills and invoices together — both are money already demanded in that
+       currency, and the guard refuses on either. */
+    bills: (b.count ?? 0) + (i.count ?? 0),
+    /* Not per-market: a price row is one currency across every market that
+       takes it, so this over-counts where two markets share a currency. Said
+       as "priced in USD" on the screen rather than "priced in Kenya". */
+    listings: p.count ?? 0,
+  }
+}
+
 /* A guard trigger raises with a sentence written for a person; Postgres wraps
    it in its own noise. This keeps the sentence and drops the wrapper. */
 function tidy(message: string): string {

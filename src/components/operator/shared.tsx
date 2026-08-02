@@ -182,7 +182,13 @@ export function Modal({ open, onClose, title, children, footer }: ModalProps) {
         overflowY: 'auto',
       }}
     >
+      {/* Named as a dialog, and labelled by its own title. Without this a
+          screen reader announces the page behind it and there is nothing to say
+          which region is the one demanding an answer. */}
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
         onClick={(e) => e.stopPropagation()}
         style={{
           background: 'white', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)',

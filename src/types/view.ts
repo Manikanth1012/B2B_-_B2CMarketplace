@@ -24,6 +24,7 @@ export type OperatorView =
   | 'op-ledger'
   | 'op-revshare'
   | 'op-billtemplates'
+  | 'op-markets'
   | 'op-kb'
   | 'op-kbadmin'
 

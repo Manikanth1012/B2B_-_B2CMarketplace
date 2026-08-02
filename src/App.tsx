@@ -38,6 +38,7 @@ import { OperatorDeveloper } from './components/operator/OperatorDeveloper'
 import { OperatorPromotions } from './components/operator/OperatorPromotions'
 import { OperatorBanners } from './components/operator/OperatorBanners'
 import { OperatorBillTemplates } from './components/operator/OperatorBillTemplates'
+import { OperatorMarkets } from './components/operator/OperatorMarkets'
 import { OperatorKnowledge } from './components/operator/OperatorKnowledge'
 import { OperatorChannels } from './components/operator/OperatorChannels'
 import { OperatorRoles } from './components/operator/OperatorRoles'
@@ -330,6 +331,7 @@ function AppInner() {
         {opView === 'op-promotions' && <OperatorPromotions />}
         {opView === 'op-banners' && <OperatorBanners />}
         {opView === 'op-billtemplates' && <OperatorBillTemplates />}
+        {opView === 'op-markets' && <OperatorMarkets />}
         {opView === 'op-notifications' && <OperatorNotifications />}
         {opView === 'op-channels' && <OperatorChannels />}
         {opView === 'op-roles' && <OperatorRoles />}
