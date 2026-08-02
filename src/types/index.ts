@@ -310,6 +310,13 @@ export interface ConsumerBill {
   status: string
   paid_on: string | null
   pages: number
+  /* The market the bill was raised in, the currency it is denominated in, and
+     the rate it was struck at — all frozen when it was issued. A bill re-
+     converted at today's rate stops matching the payment that settled it. */
+  market?: string
+  currency?: string
+  fx_rate?: number
+  fx_as_of?: string
 }
 
 export interface TicketMessage {

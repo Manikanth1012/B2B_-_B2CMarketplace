@@ -34,7 +34,7 @@ const INVOICE: InvoiceRow = {
   id: 'INV-2026-0779', account_id: 'ENT-2007', period: 'Jul 2026',
   issued: '2026-07-29', due: '2026-08-20',
   recurring: 6700, oneoff: 5432, tax_rate: 18, tax: 2183.76, total: 14315.76,
-  status: 'open', po_ref: 'PO-SB-2026-0409',
+  status: 'open', po_ref: 'PO-SB-2026-0409', currency: 'INR',
 }
 
 const LINES: InvoiceLineRow[] = [

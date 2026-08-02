@@ -268,9 +268,28 @@ export function format(
   return `${sign}${marked}${opts.code ? ` ${m.currency}` : ''}`
 }
 
-/** Just the mark, for a column header or an axis label. */
-export const symbolOf = (code: string, currencies: readonly Currency[]): string =>
+/**
+ * Just the mark, for a column header, an axis label or a document.
+ *
+ * Falls back to the ISO code, which is not a compromise — "AED 757.28" is
+ * unambiguous and is how a cross-border invoice is usually written anyway. What
+ * must never happen is a bare number, or somebody else's symbol.
+ */
+export const symbolOf = (code: string, currencies: readonly Currency[] = []): string =>
   currencies.find(c => c.code === code)?.symbol ?? code
+
+/**
+ * The mark with the gap already in it, for somewhere that concatenates rather
+ * than formats — a document line, a PDF column.
+ *
+ * The same rule `format` applies, in one place, so the storefront's
+ * "AED 1,200.00" and a bill's "AED757.28" cannot disagree about whether a
+ * three-letter mark takes a space.
+ */
+export const markFor = (code: string, currencies: readonly Currency[] = []): string => {
+  const mark = symbolOf(code, currencies)
+  return mark.length > 1 ? `${mark} ` : mark
+}
 
 /* ------------------------------------------------------------- pricing --- */
 

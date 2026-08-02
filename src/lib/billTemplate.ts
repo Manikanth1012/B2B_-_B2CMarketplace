@@ -401,6 +401,19 @@ export interface BillFacts {
   /* What the counterparty quotes back at us. On the slip and in the payment
      instructions, so the two cannot disagree. */
   payRef: string
+  /* The currency the document is denominated in, and the mark to print in
+     front of each figure.
+     
+     On the bill rather than on the template, because the template is a layout
+     the operator designed and the currency is a fact about the transaction.
+     One template renders a rupee bill and a dirham bill; the row decides which.
+     A bill of bare numbers is a bill whose amounts mean nothing — the reader
+     has to know 757.28 is dirhams and not rupees to know what they owe. */
+  currency: string
+  currencyMark: string
+  /* GST in India, VAT in the UAE and Kenya. The template used to name the tax,
+     which made every bill say GST wherever it was raised. */
+  taxLabel: string
 }
 
 /**
@@ -452,8 +465,16 @@ export function suppressed(ids: readonly string[], facts: BillFacts): { id: stri
  * rather than as minus zero — "-$0.00" on a bill reads as a defect, which it
  * would be.
  */
+/**
+ * A figure on a document, without a currency mark.
+ *
+ * It used to prefix a dollar sign, which was invisible while every document was
+ * in dollars and produced "AED$757.28" the moment one was not. The mark belongs
+ * to the bill — `BillFacts.currencyMark` — and is put in front by whoever is
+ * drawing the line, because only they know whether there is room for it.
+ */
 export function money(n: number): string {
   const rounded = Math.round(n * 100) / 100
   const abs = Math.abs(rounded).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-  return `${rounded < 0 ? '-' : ''}$${abs}`
+  return `${rounded < 0 ? '-' : ''}${abs}`
 }

@@ -34,6 +34,7 @@ const TEMPLATE: Template = {
 
 const facts = (over: Partial<BillFacts> = {}): BillFacts => ({
   reference: 'BILL-2026-07', issued: '01 Aug 2026', due: '15 Aug 2026',
+  currency: 'INR', currencyMark: '₹', taxLabel: 'GST',
   billedTo: {
     name: 'Priya Raman', ref: 'CUS-449021',
     lines: ['42 Rustom Bagh, HAL Old Airport Road', 'Bengaluru 560017'],
@@ -83,7 +84,7 @@ describe('what the document contains', () => {
     expect(t).toContain('GSTIN 29AAACA4471Q1ZV')
     expect(t).toContain('Monthly plan charge')
     expect(t).toContain('GST at 18%')
-    expect(t).toContain('$231.73')
+    expect(t).toContain('\u20b9231.73')
   })
 
   /* The rule that makes this the same document as the other three. */

@@ -24,6 +24,8 @@ import type {
   Section, Template, TemplateSection, Assignment, Issuer, BillFacts,
 } from './billTemplate'
 import { sectionsOn, templateFor, blocksFor, money } from './billTemplate'
+import { markFor } from './money'
+import type { Currency, Market } from './money'
 import type { ConsumerBill } from '../types'
 
 export interface BillBook {
@@ -38,6 +40,10 @@ export interface BillBook {
   member: Record<string, string> | null
   ledger: Record<string, string>[]
   advert: { title: string; subtitle: string | null; cta: string; accent: string } | null
+  /* So a bill can print its own mark. Read with everything else rather than
+     fetched per bill — seven bills would otherwise be seven identical reads. */
+  currencies: Currency[]
+  markets: Market[]
   loadError?: string
 }
 
@@ -70,6 +76,9 @@ function sameMonth(when: string, period: string): boolean {
  * raised at another rate does not print a lie about itself.
  */
 export function factsFor(bill: ConsumerBill, book: BillBook): BillFacts {
+  /* The bill's own currency, not the template's. One template renders bills in
+     every market; the row says which one this is. */
+  const currency = bill.currency ?? 'USD'
   const template = templateForBill(book)
   const p = book.profile
   const a = book.address
@@ -145,6 +154,11 @@ export function factsFor(bill: ConsumerBill, book: BillBook): BillFacts {
     howToPay: template?.remittance ?? '',
     terms: iss?.terms ?? [],
     payRef: p?.customer_id ?? bill.id,
+    currency,
+    currencyMark: markFor(currency, book.currencies),
+    /* The market's own name for its tax. A UAE bill saying GST is a bill from
+       the wrong jurisdiction. */
+    taxLabel: book.markets?.find(m => m.code === bill.market)?.tax_label ?? template?.tax_label ?? 'Tax',
   }
 }
 
@@ -166,8 +180,11 @@ export function asText(
   const order = sections.filter(s => showing.has(s.id)).map(s => s.id)
   const out: string[] = []
   const rule = '-'.repeat(52)
+  /* The mark is inside the padded field, so the column stays aligned whether
+     the document is in dollars or shillings. Padding the number and then
+     prefixing the mark would ragged the right edge by the mark's width. */
   const row = (label: string, amount: number) =>
-    `${label.padEnd(38, '.')} ${money(amount).padStart(13)}`
+    `${label.padEnd(38, '.')} ${`${facts.currencyMark}${money(amount)}`.padStart(13)}`
 
   for (const id of order) {
     switch (id) {
@@ -180,7 +197,7 @@ export function asText(
           `Reference: ${facts.reference}`,
           `Issued: ${facts.issued}`,
           `Due: ${facts.due}`,
-          `Currency: ${template.currency}`,
+          `Currency: ${facts.currency}`,
           `Status: ${facts.paid_already ? 'paid' : 'open'}`,
           '',
           'BILLED TO',

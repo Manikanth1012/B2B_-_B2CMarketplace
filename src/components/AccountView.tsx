@@ -20,6 +20,8 @@ import type {
 } from '../types'
 import { BillDocument } from './BillDocument'
 import { Pager, usePaging } from './Pager'
+import { useMarket } from '../lib/MarketContext'
+import { byCurrency, money } from '../lib/money'
 import { templateForBill, sectionIds, factsFor, asText, fileNameFor } from '../lib/consumerBillDoc'
 import { loadBillBook } from '../lib/consumerBillDocRepo'
 import { billPdf, pdfNameFor, saveBlob } from '../lib/billPdf'
@@ -36,6 +38,18 @@ function isTab(v: string): v is Tab {
 }
 
 
+/**
+ * For the figures on this screen that are still held in the reporting currency.
+ *
+ * Wallet balances, refunds, household caps and order totals have not been given
+ * a currency yet — they are dollar amounts, and they are labelled as dollars.
+ * Marking them with a rupee sign because the shopper picked India would be the
+ * relabelling error `20260802140000` exists to undo: a number does not become
+ * rupees by being printed next to a ₹.
+ *
+ * Bills are different and do not come through here — they carry their own
+ * currency and are formatted with it.
+ */
 function fmtMoney(n: number): string {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
@@ -1394,9 +1408,23 @@ function AskForRefund({ policy, onClose, onDone, showToast }: {
 
 /* ============================== BILLS TAB ============================== */
 function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: string) => void }) {
+  const { fmtIn } = useMarket()
   const openBills = bills.filter((b) => b.status === 'open')
-  const totalPaid = bills.filter((b) => b.status === 'paid').reduce((a, b) => a + b.total, 0)
-  const currentDue = openBills.reduce((a, b) => a + b.total, 0)
+
+  /* These two used to be `reduce((a, b) => a + b.total, 0)`, which was right
+     while every bill was in one currency and became wrong the moment they were
+     not — it added rupees to dirhams and printed the result behind a dollar
+     sign. Grouped instead, so a customer who has moved market sees each
+     currency's total separately rather than a number that is not any of them. */
+  const billMoney = (b: ConsumerBill | undefined) =>
+    b ? fmtIn(b.total, b.currency ?? 'USD') : '—'
+  const totalsFor = (rows: ConsumerBill[]) =>
+    byCurrency(rows.map(b => money(b.total, b.currency ?? 'USD')))
+      .map(t => fmtIn(t.total.amount, t.currency)).join('  +  ') || '—'
+
+  const due = totalsFor(openBills)
+  const paid = totalsFor(bills.filter((b) => b.status === 'paid'))
+  const newest = bills[0]
 
   /* The template these bills are issued on, loaded once for the tab. Viewing
      and downloading are the same document, so they read the same record. */
@@ -1427,9 +1455,9 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}>
-        <StatBox icon={<FileText size={20} />} label="Current bill" value={fmtMoney(currentDue)} />
+        <StatBox icon={<FileText size={20} />} label="Outstanding" value={due} />
         <StatBox icon={<Clock size={20} />} label="Open bills" value={String(openBills.length)} />
-        <StatBox icon={<Check size={20} />} label="Paid (last 6 mo)" value={fmtMoney(totalPaid)} />
+        <StatBox icon={<Check size={20} />} label="Paid (last 6 mo)" value={paid} />
       </div>
 
       <Card icon={<FileText size={18} />} title="Bill history" subtitle={`${bills.length} bills on record`}>
@@ -1453,7 +1481,7 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
                   <td style={tdStyle}>{b.period}</td>
                   <td style={tdStyle}>{b.issued}</td>
                   <td style={tdStyle}>{b.due}</td>
-                  <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>{fmtMoney(b.total)}</td>
+                  <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>{billMoney(b)}</td>
                   <td style={tdStyle}>
                     <span style={{
                       padding: '3px 10px', borderRadius: 'var(--radius-full)',

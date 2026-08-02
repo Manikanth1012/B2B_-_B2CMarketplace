@@ -6,6 +6,7 @@
  * `.env` — and CI is exactly that environment, on purpose.
  */
 import { supabase } from './supabase'
+import type { Currency, Market } from './money'
 import type {
   Section, Template, TemplateSection, Assignment, Issuer,
 } from './billTemplate'
@@ -18,7 +19,7 @@ import type { BillBook } from './consumerBillDoc'
  * record would otherwise be seven identical reads of the same template.
  */
 export async function loadBillBook(): Promise<BillBook> {
-  const [secRes, tplRes, tsRes, asgRes, issRes, profRes, addrRes, memRes, ledRes, banRes] =
+  const [secRes, tplRes, tsRes, asgRes, issRes, profRes, addrRes, memRes, ledRes, banRes, curRes, mktRes] =
     await Promise.all([
       supabase.from('invoice_sections').select('*').order('sort_order'),
       supabase.from('invoice_templates').select('*').order('sort_order'),
@@ -36,6 +37,8 @@ export async function loadBillBook(): Promise<BillBook> {
          view is the same live banners with the commercial columns dropped,
          which is all a bill needs. */
       supabase.from('public_banners').select('*').eq('audience', 'consumer').order('sort_order'),
+      supabase.from('currencies').select('*').order('sort_order'),
+      supabase.from('markets').select('*').order('sort_order'),
     ])
 
   const profile = (profRes.data as Record<string, string> | null) ?? null
@@ -55,6 +58,8 @@ export async function loadBillBook(): Promise<BillBook> {
     address: (addrRes.data as Record<string, string> | null) ?? null,
     member,
     ledger: (ledRes.data ?? []) as Record<string, string>[],
+    currencies: (curRes.data ?? []) as Currency[],
+    markets: (mktRes.data ?? []) as Market[],
     advert: banner
       ? { title: banner.title, subtitle: banner.subtitle ?? null, cta: banner.cta, accent: banner.accent || '#0D47A1' }
       : null,

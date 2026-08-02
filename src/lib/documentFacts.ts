@@ -12,6 +12,8 @@
  */
 import type { BillFacts, Issuer, Template } from './billTemplate'
 import { money } from './billTemplate'
+import { markFor } from './money'
+import type { Currency } from './money'
 
 export interface Party {
   name: string
@@ -61,6 +63,7 @@ export interface InvoiceRow {
   total: number
   status: string
   po_ref: string | null
+  currency: string
 }
 
 export interface InvoiceLineRow {
@@ -94,8 +97,9 @@ export interface AccountRow {
 export function invoiceFacts(
   invoice: InvoiceRow,
   lines: readonly InvoiceLineRow[],
-  ctx: { issuer: Issuer | null; account: AccountRow | null; template: Template | null },
+  ctx: { issuer: Issuer | null; account: AccountRow | null; template: Template | null; currencies?: Currency[]; taxLabel?: string },
 ): BillFacts {
+  const mark = markFor(invoice.currency ?? 'USD', ctx.currencies ?? [])
   const mine = lines.filter(l => l.invoice_id === invoice.id)
   const recurring = mine.filter(l => l.kind === 'subscription')
   const oneoff = mine.filter(l => l.kind !== 'subscription')
@@ -116,7 +120,7 @@ export function invoiceFacts(
     billedFrom: issuerParty(ctx.issuer),
     lines: recurring.map(l => ({
       label: `${l.description}${l.seller ? ` · ${l.seller}` : ''}`,
-      detail: `${l.quantity} × ${money(Number(l.unit_price))}${l.cost_centre ? ` · ${l.cost_centre}` : ''}`,
+      detail: `${l.quantity} × ${mark}${money(Number(l.unit_price))}${l.cost_centre ? ` · ${l.cost_centre}` : ''}`,
       amount: Number(l.amount),
     })),
     usage: oneoff.map(l => ({
@@ -138,6 +142,11 @@ export function invoiceFacts(
     howToPay: ctx.template?.remittance ?? '',
     terms: ctx.issuer?.terms ?? [],
     payRef: invoice.po_ref || invoice.id,
+    /* The invoice's own currency. A business account billed in shillings gets a
+       shilling invoice, whatever the template it is laid out on. */
+    currency: invoice.currency ?? 'USD',
+    currencyMark: markFor(invoice.currency ?? 'USD', ctx.currencies ?? []),
+    taxLabel: ctx.taxLabel ?? ctx.template?.tax_label ?? 'Tax',
   }
 }
 
@@ -157,6 +166,7 @@ export interface StatementRow {
   net: number
   status: string
   order_count: number
+  currency?: string
 }
 
 /**
@@ -171,7 +181,7 @@ export interface StatementRow {
  */
 export function statementFacts(
   st: StatementRow,
-  ctx: { issuer: Issuer | null; template: Template | null; reference?: string },
+  ctx: { issuer: Issuer | null; template: Template | null; reference?: string; currencies?: Currency[]; taxLabel?: string },
 ): BillFacts {
   const gross = Number(st.gross)
   const commission = Number(st.commission)
@@ -211,6 +221,9 @@ export function statementFacts(
     howToPay: ctx.template?.remittance ?? '',
     terms: ctx.issuer?.terms ?? [],
     payRef: st.id,
+    currency: st.currency ?? 'USD',
+    currencyMark: markFor(st.currency ?? 'USD', ctx.currencies ?? []),
+    taxLabel: ctx.taxLabel ?? ctx.template?.tax_label ?? 'Tax',
   }
 }
 

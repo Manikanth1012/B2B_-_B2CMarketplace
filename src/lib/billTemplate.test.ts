@@ -414,6 +414,7 @@ describe('who is on a template, and whether it can go', () => {
 describe('what a particular bill actually renders', () => {
   const facts = (over: Partial<BillFacts> = {}): BillFacts => ({
     reference: 'BILL-2026-88214', issued: '01 Jul 2026', due: '15 Jul 2026',
+    currency: 'INR', currencyMark: '\u20b9', taxLabel: 'GST',
     billedTo: { name: 'Priya Raman', ref: 'CUS-449021', lines: ['12 Nandi Road', 'Bengaluru 560001'], contact: 'priya.raman@example.com', tax: null },
     billedFrom: { name: 'Aventa Communications Private Limited', mark: 'Aventa Telecom', lines: ['1 Marathahalli', 'Bengaluru 560037'], tax: '29AAACA1234F1Z5' },
     lines: [{ label: 'Aventa Fibre 500', detail: '1 × $59.00', amount: 59 }],
@@ -501,21 +502,30 @@ describe('what a particular bill actually renders', () => {
 
 describe('money', () => {
   it('always carries two decimals and a thousands separator', () => {
-    expect(money(69.6)).toBe('$69.60')
-    expect(money(11840)).toBe('$11,840.00')
-    expect(money(0)).toBe('$0.00')
+    expect(money(69.6)).toBe('69.60')
+    expect(money(11840)).toBe('11,840.00')
+    expect(money(0)).toBe('0.00')
+  })
+
+  /* It used to prefix a dollar sign. That was invisible while every document
+     was in dollars and produced "AED$757.28" the moment one was not — the mark
+     belongs to the bill, and whoever draws the line puts it in front. */
+  it('carries no currency mark of its own', () => {
+    for (const n of [69.6, -1893.44, 0, 11840]) {
+      expect(money(n)).not.toMatch(/[$₹]|AED|KSh/)
+    }
   })
 
   /* A deduction on a self-billing invoice is a negative amount, and it is
      printed the way people write money rather than the way JavaScript
-     concatenates it. */
-  it('puts the sign outside the currency symbol', () => {
-    expect(money(-1893.44)).toBe('-$1,893.44')
-    expect(money(-0.5)).toBe('-$0.50')
+     concatenates it — which is why the sign is the caller's business too. */
+  it('puts the sign in front', () => {
+    expect(money(-1893.44)).toBe('-1,893.44')
+    expect(money(-0.5)).toBe('-0.50')
   })
 
   it('does not print minus zero', () => {
-    expect(money(-0)).toBe('$0.00')
-    expect(money(-0.001)).toBe('$0.00')
+    expect(money(-0)).toBe('0.00')
+    expect(money(-0.001)).toBe('0.00')
   })
 })

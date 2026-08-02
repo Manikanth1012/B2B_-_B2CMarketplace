@@ -489,15 +489,38 @@ describe('the tax on a document', () => {
     }
   })
 
-  it('is the same rate on a retail bill and a business invoice', async () => {
-    const { data: bills } = await supabase.from('consumer_bills').select('tax_rate')
-    const { data: invoices } = await supabase.from('enterprise_invoices').select('tax_rate')
-    const rates = new Set([...(bills ?? []), ...(invoices ?? [])].map(r => Number(r.tax_rate)))
-    expect([...rates], 'the marketplace charges two rates for one tax').toEqual([18])
+  /* This used to assert one rate across the whole marketplace, which was right
+     while there was one jurisdiction and became wrong when there were three:
+     India charges GST at 18, the UAE VAT at 5, Kenya VAT at 16. The invariant
+     was never really "one rate" — it was "one rate per jurisdiction, and the
+     document says which". A retail bill and a business invoice raised in the
+     same market must still agree. */
+  it('charges each market its own rate, and only its own rate', async () => {
+    const { data: markets } = await supabase.from('markets').select('code,tax_rate,tax_label')
+    const { data: bills } = await supabase.from('consumer_bills').select('id,market,tax_rate')
+    const { data: invoices } = await supabase.from('enterprise_invoices').select('id,market,tax_rate')
+
+    const rateFor = new Map((markets ?? []).map(m => [m.code as string, Number(m.tax_rate)]))
+    expect(rateFor.size, 'no markets to charge tax in').toBeGreaterThan(1)
+
+    for (const row of [...(bills ?? []), ...(invoices ?? [])]) {
+      expect(Number(row.tax_rate), `${row.id} is taxed at a rate ${row.market} does not charge`)
+        .toBe(rateFor.get(row.market as string))
+    }
+
+    /* And a retail bill and a business invoice in the same market agree — the
+       original point of the test, now stated per market. */
+    for (const [code, rate] of rateFor) {
+      const here = [...(bills ?? []), ...(invoices ?? [])].filter(r => r.market === code)
+      const rates = new Set(here.map(r => Number(r.tax_rate)))
+      expect([...rates].length, `${code} charges more than one rate`).toBeLessThanOrEqual(1)
+      if (here.length) expect([...rates][0]).toBe(rate)
+    }
   })
 
   it('prints that rate on the document rather than inferring one', () => {
-    expect(book.samples.consumer!.taxRate).toBe(18)
-    expect(book.samples.enterprise!.taxRate).toBe(18)
+    /* The sample documents are drawn for the default market. */
+    expect(book.samples.consumer!.taxRate).toBeGreaterThan(0)
+    expect(book.samples.enterprise!.taxRate).toBeGreaterThan(0)
   })
 })

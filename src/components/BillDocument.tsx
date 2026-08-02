@@ -71,7 +71,7 @@ export function BillDocument(
             <span>Reference <strong style={num}>{reference ?? facts.reference}</strong></span>
             <span>Issued <strong>{facts.issued}</strong></span>
             <span>Due <strong>{facts.due}</strong></span>
-            <span>Currency <strong>{template.currency}</strong></span>
+            <span>Currency <strong>{facts.currency}</strong></span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '10px' }}>
             <Party heading={forSeller ? 'Self-billed for' : 'Billed to'}
@@ -94,7 +94,7 @@ export function BillDocument(
           <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', fontWeight: 600 }}>
             {forSeller ? 'Net payable to seller' : 'Amount due'}
           </span>
-          <strong style={{ ...num, fontSize: 'var(--text-xl)', color: accent }}>{money(facts.total)}</strong>
+          <strong style={{ ...num, fontSize: 'var(--text-xl)', color: accent }}>{facts.currencyMark}{money(facts.total)}</strong>
           <span style={tiny}>{forSeller ? `for ${facts.due}` : `by ${facts.due}`}</span>
         </div>
       )}
@@ -103,21 +103,21 @@ export function BillDocument(
           worth saying so on the face of the document rather than leaving a gap
           where the charges were. */}
       {!template.show_order_lines && (on('subs') || on('usage')) ? (
-        <Line label="Charges for the period — line detail suppressed on this template" amount={net} />
+        <Line label="Charges for the period — line detail suppressed on this template" amount={net} mark={facts.currencyMark} />
       ) : (
         <>
           {on('subs') && facts.lines.map((l, i) => (
-            <Line key={`s${i}`} label={l.label} detail={l.detail} amount={l.amount} />
+            <Line key={`s${i}`} label={l.label} detail={l.detail} amount={l.amount} mark={facts.currencyMark} />
           ))}
           {on('usage') && facts.usage.map((l, i) => (
-            <Line key={`u${i}`} label={l.label} detail={l.detail} amount={l.amount} />
+            <Line key={`u${i}`} label={l.label} detail={l.detail} amount={l.amount} mark={facts.currencyMark} />
           ))}
         </>
       )}
 
       {on('credits') && (
         <Line label="Credits and adjustments" detail={facts.credits === 0 ? 'None this period' : undefined}
-          amount={facts.credits} />
+          amount={facts.credits} mark={facts.currencyMark} />
       )}
 
       {on('rewards') && facts.rewards && (
@@ -132,17 +132,17 @@ export function BillDocument(
       )}
 
       {on('tax') && (
-        <Total label={`${template.tax_label}${facts.taxRate ? ` at ${facts.taxRate}%` : ''}`} amount={facts.tax} />
+        <Total label={`${facts.taxLabel}${facts.taxRate ? ` at ${facts.taxRate}%` : ''}`} amount={facts.tax} mark={facts.currencyMark} />
       )}
 
       {on('summary') && (
         <>
-          <Total label="Net" amount={net} />
-          <Total label={forSeller ? 'Net payable to seller' : 'Total due'} amount={facts.total} grand accent={accent} />
+          <Total label="Net" amount={net} mark={facts.currencyMark} />
+          <Total label={forSeller ? 'Net payable to seller' : 'Total due'} amount={facts.total} grand accent={accent} mark={facts.currencyMark} />
         </>
       )}
 
-      {on('payments') && <Line label="Paid this period" amount={-facts.paid} />}
+      {on('payments') && <Line label="Paid this period" amount={-facts.paid} mark={facts.currencyMark} />}
 
       {on('howtopay') && (
         <div style={blockStyle}>
@@ -197,7 +197,7 @@ export function BillDocument(
             gap: '8px', border: '1px solid var(--border)', borderRadius: '4px', padding: '8px 10px',
           }}>
             <span style={tiny}>Payment slip · <strong style={num}>{facts.payRef}</strong></span>
-            <strong style={num}>{money(facts.total)}</strong>
+            <strong style={num}>{facts.currencyMark}{money(facts.total)}</strong>
           </div>
         </div>
       )}
@@ -226,7 +226,7 @@ function Party({ heading, name, lines, extra }: {
   )
 }
 
-function Line({ label, detail, amount }: { label: string; detail?: string; amount: number }) {
+function Line({ label, detail, amount, mark }: { label: string; detail?: string; amount: number; mark: string }) {
   return (
     <div style={{
       display: 'flex', justifyContent: 'space-between', gap: '10px',
@@ -235,12 +235,13 @@ function Line({ label, detail, amount }: { label: string; detail?: string; amoun
       <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
         {label}{detail && <span style={{ color: 'var(--text-tertiary)' }}> · {detail}</span>}
       </span>
-      <span style={{ ...num, fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>{money(amount)}</span>
+      <span style={{ ...num, fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>{mark}{money(amount)}</span>
     </div>
   )
 }
 
-function Total({ label, amount, grand, accent }: {
+function Total({ label, amount, grand, accent, mark }: {
+  mark: string
   label: string; amount: number; grand?: boolean; accent?: string
 }) {
   return (
@@ -252,7 +253,7 @@ function Total({ label, amount, grand, accent }: {
       color: grand ? (accent ?? 'var(--text)') : 'var(--text-secondary)',
       fontSize: grand ? 'var(--text-sm)' : 'var(--text-xs)',
     }}>
-      <span>{label}</span><span style={num}>{money(amount)}</span>
+      <span>{label}</span><span style={num}>{mark}{money(amount)}</span>
     </div>
   )
 }

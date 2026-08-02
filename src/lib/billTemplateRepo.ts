@@ -12,6 +12,7 @@
  * their seller documents have no reward figures to print, not from a customer.
  */
 import { supabase } from './supabase'
+import { markFor } from './money'
 import {
   type Section, type Template, type TemplateSection, type Assignment, type Issuer,
   type Audience, type BillFacts,
@@ -204,6 +205,9 @@ async function loadSamples(
       support, terms,
       howToPay: remit('consumer'),
       payRef: p?.customer_id ?? bill.id,
+      currency: bill.currency ?? 'USD',
+      currencyMark: markFor(bill.currency ?? 'USD'),
+      taxLabel: 'GST',
     }
   }
 
@@ -241,7 +245,7 @@ async function loadSamples(
       billedFrom: { ...from, mark },
       lines: recurring.map(l => ({
         label: `${l.description}${l.seller ? ` · ${l.seller}` : ''}`,
-        detail: `${l.quantity} × ${money(Number(l.unit_price))}${l.cost_centre ? ` · ${l.cost_centre}` : ''}`,
+        detail: `${l.quantity} × ${mark}${money(Number(l.unit_price))}${l.cost_centre ? ` · ${l.cost_centre}` : ''}`,
         amount: Number(l.amount),
       })),
       usage: oneoff.map(l => ({
@@ -262,6 +266,9 @@ async function loadSamples(
       support, terms,
       howToPay: remit('enterprise'),
       payRef: inv.po_ref || inv.id,
+      currency: inv.currency ?? 'USD',
+      currencyMark: markFor(inv.currency ?? 'USD'),
+      taxLabel: 'GST',
     }
   }
 
@@ -312,6 +319,9 @@ async function loadSamples(
       support, terms,
       howToPay: remit('partner'),
       payRef: st.id,
+      currency: st.currency ?? 'USD',
+      currencyMark: markFor(st.currency ?? 'USD'),
+      taxLabel: 'GST',
     }
   }
 }

@@ -65,7 +65,9 @@ export function billPages(
           `Reference  ${facts.reference}`,
           `Issued  ${facts.issued}`,
           `Due  ${facts.due}`,
-          `Currency  ${template.currency}`,
+          /* The bill's own currency. The template's is the default a new bill is
+             raised in; this one is what this bill was actually charged in. */
+          `Currency  ${facts.currency}`,
         ]
         s.line(meta.join('     '), { size: 8, colour: MUTED })
         s.gap(6)
@@ -97,7 +99,7 @@ export function billPages(
         s.band(34, WASH)
         s.text(forSeller ? 'Net payable to seller' : 'Amount due',
           { x: s.left + 10, y: s.y + 13, size: 8, font: 'bold', colour: MUTED })
-        s.text(money(facts.total),
+        s.text(`${facts.currencyMark}${money(facts.total)}`,
           { x: s.right - 10, y: s.y + 17, align: 'right', size: 17, font: 'bold', colour: accent })
         s.text(forSeller ? `for ${facts.due}` : `by ${facts.due}`,
           { x: s.left + 10, y: s.y + 25, size: 7.5, colour: MUTED })
@@ -107,19 +109,19 @@ export function billPages(
 
       case 'subs':
         if (!template.show_order_lines) {
-          s.row('Charges for the period — line detail suppressed on this template', money(net))
+          s.row('Charges for the period — line detail suppressed on this template', mk(facts, net))
           break
         }
-        for (const l of facts.lines) charge(s, l.label, l.detail, l.amount)
+        for (const l of facts.lines) charge(s, l.label, l.detail, l.amount, facts.currencyMark)
         break
 
       case 'usage':
         if (!template.show_order_lines) break
-        for (const l of facts.usage) charge(s, l.label, l.detail, l.amount)
+        for (const l of facts.usage) charge(s, l.label, l.detail, l.amount, facts.currencyMark)
         break
 
       case 'credits':
-        charge(s, 'Credits and adjustments', facts.credits === 0 ? 'None this period' : '', facts.credits)
+        charge(s, 'Credits and adjustments', facts.credits === 0 ? 'None this period' : '', facts.credits, facts.currencyMark)
         break
 
       case 'rewards': {
@@ -138,21 +140,21 @@ export function billPages(
       }
 
       case 'tax':
-        s.row(`${template.tax_label}${facts.taxRate ? ` at ${facts.taxRate}%` : ''}`, money(facts.tax),
+        s.row(`${facts.taxLabel}${facts.taxRate ? ` at ${facts.taxRate}%` : ''}`, mk(facts, facts.tax),
           { size: 8.5, colour: MUTED })
         break
 
       case 'summary':
         s.rule({ colour: RULE, gap: 6 })
-        s.row('Net', money(net), { size: 8.5, colour: MUTED })
+        s.row('Net', mk(facts, net), { size: 8.5, colour: MUTED })
         s.rule({ colour: INK, width: 1, gap: 7 })
-        s.row(forSeller ? 'Net payable to seller' : 'Total due', money(facts.total),
+        s.row(forSeller ? 'Net payable to seller' : 'Total due', mk(facts, facts.total),
           { size: 11, font: 'bold', colour: accent })
         s.gap(4)
         break
 
       case 'payments':
-        charge(s, 'Paid this period', '', -facts.paid)
+        charge(s, 'Paid this period', '', -facts.paid, facts.currencyMark)
         break
 
       case 'howtopay':
@@ -197,7 +199,7 @@ export function billPages(
         s.line('detach below this line',
           { x: s.left + (s.right - s.left) / 2, align: 'centre', size: 6.5, colour: MUTED, gap: 5 })
         s.rule({ colour: MUTED, dashed: true, gap: 12 })
-        s.row(`Payment slip  ·  ${facts.payRef}`, money(facts.total), { size: 9, font: 'bold' })
+        s.row(`Payment slip  ·  ${facts.payRef}`, mk(facts, facts.total), { size: 9, font: 'bold' })
         break
       }
     }
@@ -223,16 +225,21 @@ export function billPages(
   return s.pages
 }
 
-function charge(s: Sheet, label: string, detail: string, amount: number): void {
+/** An amount with the document's own mark in front of it. */
+const mk = (facts: BillFacts, amount: number): string => `${facts.currencyMark}${money(amount)}`
+
+function charge(s: Sheet, label: string, detail: string, amount: number, mark: string): void {
   const text = detail ? `${label}  ·  ${detail}` : label
+  const figure = `${mark}${money(amount)}`
   /* Wrapped against the space left by the figure, so a long line name never
-     runs underneath its own amount. */
-  const room = s.right - s.left - widthOf(money(amount), 8.5) - 20
+     runs underneath its own amount. The mark is part of that width — measuring
+     without it is how "KSh 1,818,247.31" ends up overlapping its own label. */
+  const room = s.right - s.left - widthOf(figure, 8.5) - 20
   const lines = wrap(text, room, 8.5)
   s.room(lines.length * 11 + 4)
   const top = s.y
   lines.forEach((l, i) => s.text(l, { y: top + i * 11, size: 8.5, colour: i === 0 ? INK : MUTED }))
-  s.text(money(amount), { x: s.right, y: top, align: 'right', size: 8.5, colour: INK })
+  s.text(figure, { x: s.right, y: top, align: 'right', size: 8.5, colour: INK })
   s.y = top + lines.length * 11 + 3
   s.rule({ colour: RULE, gap: 4 })
 }

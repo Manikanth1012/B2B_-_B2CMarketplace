@@ -43,10 +43,17 @@ const TEMPLATE: Template = {
 const bill = (over: Partial<ConsumerBill> = {}): ConsumerBill => ({
   id: 'BILL-2026-07', period: 'July 2026', issued: '01 Aug 2026', due: '15 Aug 2026',
   plan_charge: 18, subscriptions: 49.38, oneoff: 129, tax_rate: 18, tax: 35.35, total: 231.73,
-  status: 'open', paid_on: null, pages: 3, ...over,
+  status: 'open', paid_on: null, pages: 3,
+  market: 'IN', currency: 'INR', fx_rate: 87.42, fx_as_of: '2026-08-01', ...over,
 })
 
 const book = (over: Partial<BillBook> = {}): BillBook => ({
+  markets: [
+    { code: 'IN', name: 'India', currency: 'INR', tax_label: 'GST', tax_rate: 18, tax_note: '', is_default: true, sort_order: 1 },
+  ],
+  currencies: [
+    { code: 'INR', name: 'Indian Rupee', symbol: '₹', minor_units: 2, symbol_first: true, locale: 'en-IN', is_reporting: false, sort_order: 2 },
+  ],
   sections: SECTIONS,
   templates: [TEMPLATE],
   chosen: ALL_IDS.map((section_id, i) => ({ template_id: 'BT-CON', section_id, sort_order: i + 1 })),
@@ -173,7 +180,7 @@ describe('the downloaded file', () => {
     expect(t).toContain('GSTIN 29AAACA4471Q1ZV')
     expect(t).toContain('Monthly plan charge')
     expect(t).toContain('GST at 18%')
-    expect(t).toContain('$231.73')
+    expect(t).toContain('\u20b9231.73')
   })
 
   /* The section list is the contract between the three renditions. A file that
