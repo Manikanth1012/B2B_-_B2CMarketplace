@@ -19,6 +19,7 @@ import {
 } from './shared'
 import { Callout } from '../OnboardingJourney'
 import { EvidenceLink } from '../EvidenceLink'
+import { PartnerMarkets } from './PartnerMarkets'
 import type { Viewer } from '../../lib/evidence'
 
 /* The operator may open anything in the evidence bucket — reviewing what a
@@ -56,11 +57,12 @@ const PAGE_SIZE = 12
    because widening what somebody may sell is the same kind of decision. */
 const ACTOR = 'Marketplace onboarding desk'
 
-type Tab = 'overview' | 'categories' | 'listings' | 'settlement' | 'documents' | 'bills' | 'history'
+type Tab = 'overview' | 'categories' | 'markets' | 'listings' | 'settlement' | 'documents' | 'bills' | 'history'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'overview',   label: 'Overview' },
   { id: 'categories', label: 'Categories' },
+  { id: 'markets', label: 'Markets' },
   { id: 'listings',   label: 'Listings' },
   { id: 'settlement', label: 'Settlement & contacts' },
   { id: 'documents',  label: 'Documents' },
@@ -357,6 +359,14 @@ export function OperatorPartners({ focus = null }: { focus?: string | null } = {
             {tab === 'categories' && (
               <Categories detail={detail!} categories={categories} catName={catName}
                           onChanged={async () => { await Promise.all([refresh(), reloadDetail(detail!.partner!.id)]) }} />
+            )}
+            {tab === 'markets' && (
+              <PartnerMarkets
+                partnerId={partner.id}
+                partnerName={partner.name}
+                listings={detail!.listings}
+                actor="Anika Sharma"
+              />
             )}
             {tab === 'listings' && <Listings detail={detail!} catName={catName} />}
             {tab === 'settlement' && (

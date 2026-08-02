@@ -7,7 +7,8 @@ import type { SellerRecord } from '../../lib/partnerRepo'
 import { loadSellerSubmissions } from '../../lib/catalogueRepo'
 import type { Submission } from '../../lib/catalogue'
 import type { ListingQuery } from '../../lib/catalogueRepo'
-import { fmtDate } from '../operator/shared'
+import { fmtDate, Modal } from '../operator/shared'
+import { PriceBookEditor } from '../PriceBookEditor'
 import { listingState, listingBreakdown, rateAt } from '../../lib/partnerCommerce'
 
 /* Reads the seller's real catalogue rows rather than a hard-coded list. The
@@ -26,6 +27,10 @@ export function PartnerListings({ partnerId, onNewListing }: {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('all')
   const [search, setSearch] = useState('')
+  /* Which listing's per-market prices are open. A seller sells in more than one
+     country, so a listing has more than one price and the row cannot show them
+     all — the row shows the home market and this opens the rest. */
+  const [pricing, setPricing] = useState<{ id: string; name: string; partner_id: string | null; price: number; currency?: string } | null>(null)
 
   useEffect(() => {
     Promise.all([loadSellerRecord(partnerId), loadSellerSubmissions(partnerId)])
@@ -160,7 +165,7 @@ export function PartnerListings({ partnerId, onNewListing }: {
             ? 'Nothing listed yet. Your storefront opens at the last onboarding gate.'
             : 'No listing matches that'} />
         ) : (
-          <Table headers={['Listing', 'Marketplace', 'Price', 'Commission', 'Availability', 'State', 'Review']}>
+          <Table headers={['Listing', 'Marketplace', 'Price', 'Commission', 'Availability', 'State', 'Review', 'Markets']}>
             {filtered.map(l => {
               const state = listingState(l.status)
               return (
@@ -218,12 +223,30 @@ export function PartnerListings({ partnerId, onNewListing }: {
                       )
                     })()}
                   </Td>
+                  <Td right>
+                    <Btn variant="secondary" size="sm" onClick={() => setPricing({ id: l.id, name: l.name, partner_id: partnerId, price: l.price })}>Prices</Btn>
+                  </Td>
                 </tr>
               )
             })}
           </Table>
         )}
       </SectionCard>
+
+      <Modal
+        open={pricing !== null}
+        onClose={() => setPricing(null)}
+        title={pricing ? `Prices — ${pricing.name}` : ''}
+        footer={<Btn variant="secondary" size="sm" onClick={() => setPricing(null)}>Close</Btn>}
+      >
+        {pricing && (
+          <PriceBookEditor
+            product={pricing}
+            who={{ persona: 'partner', partnerId }}
+            onChanged={() => { void loadSellerRecord(partnerId).then(setRec) }}
+          />
+        )}
+      </Modal>
     </div>
   )
 }
