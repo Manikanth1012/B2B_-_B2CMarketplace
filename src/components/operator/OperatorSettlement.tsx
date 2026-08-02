@@ -4,7 +4,11 @@ import type { SettlementStatement } from '../../types'
 import { SectionCard, Table, Td, StatusPill, EmptyState, fmtMoney, fmtDate, Btn, Modal, FormField, TextInput, TextArea, toast, ConfirmDialog } from './shared'
 import { Pager, usePaging } from '../Pager'
 
-export function OperatorSettlement() {
+/* `focus` is a statement id handed over from the dashboard. Opening it here
+   rather than making the operator find the row again is the whole point of a
+   dashboard listing work: the list says what needs doing and this is where it
+   gets done. */
+export function OperatorSettlement({ focus = null }: { focus?: string | null } = {}) {
   const [statements, setStatements] = useState<SettlementStatement[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('all')
@@ -24,6 +28,14 @@ export function OperatorSettlement() {
      return runs on some renders and not others. */
   const filtered = filter === 'all' ? statements : statements.filter(s => s.status === filter)
   const page = usePaging(filtered, { resetKey: filter })
+
+  /* Once, when the id arrives — reopening it every render would make the modal
+     impossible to close. */
+  useEffect(() => {
+    if (!focus || !statements.length) return
+    const wanted = statements.find(s => s.id === focus)
+    if (wanted) setDetailModal(wanted)
+  }, [focus, statements])
 
   if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
   const pendingCount = statements.filter(s => s.status === 'pending').length

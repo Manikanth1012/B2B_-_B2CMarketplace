@@ -5,8 +5,17 @@ import type { OperatorProfile, OperatorTicket, SettlementStatement, Category, Op
 import { StatCard, SectionCard, Table, Td, StatusPill, PriorityPill, fmtMoney, fmtInt, Btn } from './shared'
 import { ColumnChart, DonutChart, SERIES, seriesColour } from './charts'
 import { monthlyStats, verticalSplit, inversionInsight, type MonthRow, type VerticalRow } from '../../lib/operatorStats'
+import type { OperatorView } from '../../types/view'
 
-export function OperatorDashboard() {
+/* A dashboard lists work. It was listing it and then stopping: the operator
+   could read that five settlements were awaiting approval and had no way to
+   open one — every drill-down meant navigating to the other screen and
+   finding the row again by eye.
+   Every figure and every row here now goes to the place the decision is made,
+   carrying which record it was about. */
+export function OperatorDashboard(
+  { onNavigate }: { onNavigate?: (v: OperatorView, opts?: { focus?: string }) => void } = {},
+) {
   const [profile, setProfile] = useState<OperatorProfile | null>(null)
   const [tickets, setTickets] = useState<OperatorTicket[]>([])
   const [statements, setStatements] = useState<SettlementStatement[]>([])
@@ -68,15 +77,27 @@ export function OperatorDashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
         <StatCard label="Total GMV" value={`$${fmtMoney(profile.gmv)}`} sublabel={`${fmtInt(profile.total_orders)} orders · $${fmtMoney(profile.avg_order_value)} avg`} color="var(--brand-navy)" />
         <StatCard label="Commission" value={`$${fmtMoney(profile.commission)}`} sublabel={`${profile.commission_rate}% blended take`} color="var(--brand-accent-dark)" />
-        <StatCard label="Active Partners" value={fmtInt(profile.active_partners)} sublabel={`${profile.pending_applications} pending applications`} />
-        <StatCard label="Open Tickets" value={fmtInt(profile.open_tickets)} sublabel={`${profile.sla_breaches} SLA breaches`} color={profile.sla_breaches > 0 ? 'var(--danger)' : undefined} />
+        <Go to="op-partners" go={onNavigate}>
+          <StatCard label="Active Partners" value={fmtInt(profile.active_partners)} sublabel={`${profile.pending_applications} pending applications`} />
+        </Go>
+        <Go to="op-tickets" go={onNavigate}>
+          <StatCard label="Open Tickets" value={fmtInt(profile.open_tickets)} sublabel={`${profile.sla_breaches} SLA breaches`} color={profile.sla_breaches > 0 ? 'var(--danger)' : undefined} />
+        </Go>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
-        <StatCard label="Settlements Due" value={fmtInt(profile.settlement_due)} sublabel="Awaiting approval" color="var(--warning)" />
-        <StatCard label="Refund Requests" value={fmtInt(profile.refund_requests)} sublabel="Pending decision" />
-        <StatCard label="Dunning Cases" value={fmtInt(profile.dunning_cases)} sublabel="Active collections" color="var(--danger)" />
-        <StatCard label="Churn Risk" value={fmtInt(profile.churn_risk)} sublabel="Accounts flagged" color="var(--warning)" />
+        <Go to="op-settlement" go={onNavigate}>
+          <StatCard label="Settlements Due" value={fmtInt(profile.settlement_due)} sublabel="Awaiting approval" color="var(--warning)" />
+        </Go>
+        <Go to="op-refunds" go={onNavigate}>
+          <StatCard label="Refund Requests" value={fmtInt(profile.refund_requests)} sublabel="Pending decision" />
+        </Go>
+        <Go to="op-dunning" go={onNavigate}>
+          <StatCard label="Dunning Cases" value={fmtInt(profile.dunning_cases)} sublabel="Active collections" color="var(--danger)" />
+        </Go>
+        <Go to="op-dunning" go={onNavigate}>
+          <StatCard label="Churn Risk" value={fmtInt(profile.churn_risk)} sublabel="Accounts flagged" color="var(--warning)" />
+        </Go>
       </div>
 
       {/* What is actually waiting on this person, first — the prototype leads with
@@ -89,8 +110,19 @@ export function OperatorDashboard() {
         }}>
           <TriangleAlert size={17} style={{ color: '#92400E', flexShrink: 0, marginTop: '1px' }} />
           <div style={{ fontSize: 'var(--text-sm)', color: '#92400E', lineHeight: 1.5 }}>
-            <strong>{queue.length} listing{queue.length === 1 ? '' : 's'} and {applications} partner application{applications === 1 ? '' : 's'} are waiting on you.</strong>{' '}
-            Catalogue Review and Partner Onboarding both have a queue.
+            <strong>{queue.length} listing{queue.length === 1 ? '' : 's'} and {applications} partner application{applications === 1 ? '' : 's'} are waiting on you.</strong>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+              {queue.length > 0 && (
+                <Btn size="sm" variant="secondary" onClick={() => onNavigate?.('op-catalogue', { focus: queue[0].product_id })}>
+                  Review the first listing
+                </Btn>
+              )}
+              {applications > 0 && (
+                <Btn size="sm" variant="secondary" onClick={() => onNavigate?.('op-onboarding')}>
+                  Open partner onboarding
+                </Btn>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -189,26 +221,41 @@ export function OperatorDashboard() {
       </SectionCard>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }} className="op-grid-2col">
-        <SectionCard title="Pending Settlements" subtitle={`${statements.length} awaiting approval`}
-          action={statements.length > 0 ? <Btn variant="success" size="sm" onClick={() => statements.forEach(s => handleApproveSettlement(s.id))}>Approve all</Btn> : undefined}
+        <SectionCard title="Pending Settlements"
+          subtitle={`${statements.length} awaiting approval · a row opens the statement`}
+          action={statements.length > 0
+            ? <div style={{ display: 'flex', gap: '6px' }}>
+                <Btn variant="secondary" size="sm" onClick={() => onNavigate?.('op-settlement')}>See all</Btn>
+                <Btn variant="success" size="sm" onClick={() => statements.forEach(s => handleApproveSettlement(s.id))}>Approve all</Btn>
+              </div>
+            : undefined}
         >
           <Table headers={['Partner', 'Period', 'Gross', 'Net', 'Action']}>
             {statements.slice(0, 5).map(s => (
-              <tr key={s.id}>
+              <tr key={s.id} onClick={() => onNavigate?.('op-settlement', { focus: s.id })}
+                  style={rowStyle(!!onNavigate)}
+                  title={onNavigate ? `Open ${s.partner_name} in Settlement Runs` : undefined}>
                 <Td>{s.partner_name}</Td>
                 <Td right>{s.period}</Td>
                 <Td right>${fmtMoney(s.gross)}</Td>
                 <Td right>${fmtMoney(s.net)}</Td>
-                <Td right><Btn variant="success" size="sm" onClick={() => handleApproveSettlement(s.id)}>Approve</Btn></Td>
+                {/* Stops the row's own click from firing behind it — approving
+                    and opening are different intentions. */}
+                <Td right><Btn variant="success" size="sm"
+                  onClick={e => { e.stopPropagation(); void handleApproveSettlement(s.id) }}>Approve</Btn></Td>
               </tr>
             ))}
           </Table>
         </SectionCard>
 
-        <SectionCard title="Open Tickets" subtitle={`${openTickets.length} open · ${breachedTickets.length} breached`}>
+        <SectionCard title="Open Tickets"
+          subtitle={`${openTickets.length} open · ${breachedTickets.length} breached · a row opens the ticket`}
+          action={<Btn variant="secondary" size="sm" onClick={() => onNavigate?.('op-tickets')}>See all</Btn>}>
           <Table headers={['Subject', 'Priority', 'Status', 'Owner']}>
             {openTickets.slice(0, 5).map(t => (
-              <tr key={t.id}>
+              <tr key={t.id} onClick={() => onNavigate?.('op-tickets', { focus: t.id })}
+                  style={rowStyle(!!onNavigate)}
+                  title={onNavigate ? 'Open this ticket' : undefined}>
                 <Td>{t.subject}</Td>
                 <Td right><PriorityPill priority={t.priority} /></Td>
                 <Td right><StatusPill status={t.status} /></Td>
@@ -220,6 +267,31 @@ export function OperatorDashboard() {
       </div>
     </div>
   )
+}
+
+/* A stat card that goes somewhere. Wrapped rather than given an onClick of its
+   own, so `StatCard` stays a thing that shows a number and every other use of
+   it is untouched. */
+function Go(
+  { to, go, children }: {
+    to: OperatorView
+    go?: (v: OperatorView, opts?: { focus?: string }) => void
+    children: React.ReactNode
+  },
+) {
+  if (!go) return <>{children}</>
+  return (
+    <div role="link" tabIndex={0}
+      onClick={() => go(to)}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(to) } }}
+      style={{ cursor: 'pointer', borderRadius: 'var(--radius-md)' }}>
+      {children}
+    </div>
+  )
+}
+
+function rowStyle(clickable: boolean): React.CSSProperties {
+  return clickable ? { cursor: 'pointer' } : {}
 }
 
 function Figure({ label, value, sub }: { label: string; value: string; sub?: string }) {

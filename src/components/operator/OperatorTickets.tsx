@@ -9,7 +9,8 @@ import { loadAttachments } from '../../lib/attachmentRepo'
 import type { Attachment } from '../../lib/attachments'
 import { Pager, usePaging } from '../Pager'
 
-export function OperatorTickets() {
+/* `focus` is a ticket id handed over from the dashboard. */
+export function OperatorTickets({ focus = null }: { focus?: string | null } = {}) {
   const [tickets, setTickets] = useState<OperatorTicket[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('open')
@@ -40,6 +41,12 @@ export function OperatorTickets() {
   const inQueue = service
   const filtered = filter === 'all' ? inQueue : inQueue.filter(t => t.status === filter)
   const page = usePaging(filtered, { resetKey: filter })
+
+  useEffect(() => {
+    if (!focus || !tickets.length) return
+    const wanted = tickets.find(t => t.id === focus)
+    if (wanted) setSelected(wanted)
+  }, [focus, tickets])
 
   if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 

@@ -62,7 +62,8 @@ const TABS: { id: Tab; label: string }[] = [
   { id: 'history',    label: 'History' },
 ]
 
-export function OperatorPartners() {
+/* `focus` is a partner id handed over from the dashboard. */
+export function OperatorPartners({ focus = null }: { focus?: string | null } = {}) {
   const [rows, setRows] = useState<PartnerDirectoryRow[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [tiers, setTiers] = useState<Tier[]>([])

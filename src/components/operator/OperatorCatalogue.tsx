@@ -44,11 +44,12 @@ const STATUS_INK: Record<string, string> = {
 
 type Tab = 'queue' | 'catalogue' | 'firstparty' | 'rules'
 
-export function OperatorCatalogue() {
+/* `focus` is a product id handed over from the dashboard's review queue. */
+export function OperatorCatalogue({ focus = null }: { focus?: string | null } = {}) {
   const [snap, setSnap] = useState<CatalogueSnapshot | null>(null)
   const [loading, setLoading] = useState(true)
   const [tab, setTab] = useState<Tab>('queue')
-  const [openProduct, setOpenProduct] = useState<string | null>(null)
+  const [openProduct, setOpenProduct] = useState<string | null>(focus)
   const [decide, setDecide] = useState<{ sub: Submission; mode: 'approve' | 'reject' | 'query' } | null>(null)
   const [bundleOpen, setBundleOpen] = useState(false)
   const [packOpen, setPackOpen] = useState(false)

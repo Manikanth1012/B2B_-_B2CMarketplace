@@ -89,6 +89,15 @@ export default function App() {
   const persona = session?.persona ?? null
   const [view, setView] = useState<View>('home')
   const [opView, setOpView] = useState<OperatorView>('op-dashboard')
+  /* Which record the screen we are navigating to should open.
+     The dashboard lists work and had no way to hand a row on to the
+     screen that can act on it, so every drill-down meant finding the
+     row again by eye on the other side. */
+  const [opFocus, setOpFocus] = useState<string | null>(null)
+  const goOperator = (v: OperatorView, opts?: { focus?: string }) => {
+    setOpFocus(opts?.focus ?? null)
+    setOpView(v)
+  }
   const [ptView, setPtView] = useState<PartnerView>('pt-dashboard')
   const [enView, setEnView] = useState<EnterpriseView>('en-dashboard')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
@@ -294,14 +303,14 @@ export default function App() {
   // ---------- Operator persona ----------
   if (persona === 'operator') {
     return (
-      <OperatorShell view={opView} onNavigate={setOpView} onSignOut={handleSignOut}>
-        {opView === 'op-dashboard' && <OperatorDashboard />}
+      <OperatorShell view={opView} onNavigate={v => goOperator(v)} onSignOut={handleSignOut}>
+        {opView === 'op-dashboard' && <OperatorDashboard onNavigate={goOperator} />}
         {opView === 'op-onboarding' && <OperatorOnboarding />}
-        {opView === 'op-partners' && <OperatorPartners />}
-        {opView === 'op-catalogue' && <OperatorCatalogue />}
-        {opView === 'op-settlement' && <OperatorSettlement />}
+        {opView === 'op-partners' && <OperatorPartners focus={opFocus} />}
+        {opView === 'op-catalogue' && <OperatorCatalogue focus={opFocus} />}
+        {opView === 'op-settlement' && <OperatorSettlement focus={opFocus} />}
         {opView === 'op-inventory' && <OperatorInventory />}
-        {opView === 'op-tickets' && <OperatorTickets />}
+        {opView === 'op-tickets' && <OperatorTickets focus={opFocus} />}
         {opView === 'op-dunning' && <OperatorDunning />}
         {opView === 'op-developer' && <OperatorDeveloper />}
         {opView === 'op-promotions' && <OperatorPromotions />}
