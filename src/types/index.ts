@@ -52,6 +52,9 @@ export interface Product {
   unit: string | null
   specs: Record<string, string>
   sort_order: number
+  /* Who this thing is actually sold to. The category decides which shelf a
+     persona sees; this decides what on that shelf is theirs to buy. */
+  audiences: string[]
 }
 
 export interface CartItem {

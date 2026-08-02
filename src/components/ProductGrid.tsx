@@ -46,6 +46,11 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
       .from('products')
       .select('*')
       .eq('status', 'live')
+      /* The shelf being this shopper's has never meant everything on it is
+         sold to them. IoT carries a $52 occupancy sensor and a fifty-unit
+         fleet bundle for $4,800, and only one of those is a purchase a retail
+         customer makes — so the product's own audience is asked as well. */
+      .contains('audiences', ['consumer'])
       .order('sort_order')
 
     query = categoryFilter

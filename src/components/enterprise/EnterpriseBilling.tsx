@@ -12,6 +12,7 @@ import {
   taxPosition, committed, idleSeats, renewingWithin, money, money0, day,
 } from '../../lib/enterprise'
 import type { Invoice } from '../../lib/enterprise'
+import { Pager, usePaging } from '../Pager'
 
 /* Billing, for an account that buys from six companies and pays one bill.
  *
@@ -34,6 +35,11 @@ export function EnterpriseBilling() {
 
   const reload = useCallback(async () => setBook(await loadAccount()), [])
   useEffect(() => { void reload() }, [reload])
+
+  /* Above the loading guard, and reading through an empty list until the book
+     arrives: `usePaging` is a hook, and a hook below an early return runs on
+     some renders and not others. */
+  const page = usePaging(book?.invoices ?? [])
 
   if (!book) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
@@ -126,7 +132,7 @@ export function EnterpriseBilling() {
       <SectionCard title="Invoices" subtitle="Click a row to see every line behind the total">
         {book.invoices.length === 0 ? <EmptyState message="No invoices have been issued yet" /> : (
           <Table headers={['Invoice', 'Issued', 'Due', 'Subscriptions', 'One-off', 'Tax', 'Total', 'State', '']}>
-            {book.invoices.map(i => {
+            {page.rows.map(i => {
               const lines = book.invoiceLines.filter(l => l.invoice_id === i.id)
               return (
                 <>
@@ -169,6 +175,7 @@ export function EnterpriseBilling() {
             })}
           </Table>
         )}
+        <Pager page={page} noun="invoices" />
       </SectionCard>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>

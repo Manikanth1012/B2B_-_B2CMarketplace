@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   promoStrip, bannerDestination, assignImages,
   retailCategories, enterpriseCategories, categoriesFor, shoppableBy, categoriesForPage, categoryDestination,
+  soldTo, productsFor,
   productsForPage, isSellable, canAddToBasket, exampleProducts,
   type PublicBanner, type SellableProduct,
 } from './storefront'
@@ -292,5 +293,66 @@ describe('sellability', () => {
     expect(canAddToBasket({ stock: 'in' })).toBe(true)
     expect(canAddToBasket({ stock: 'low' })).toBe(true)
     expect(canAddToBasket({ stock: 'out' })).toBe(false)
+  })
+})
+
+/* A shelf is not a product.
+   `shoppable_by` decides which shelves a persona sees, and that was the right
+   unit for the seller shelf, which is wholesale all the way through. It is the
+   wrong unit for IoT, where a $52 occupancy sensor and a fifty-unit fleet
+   bundle sit next to each other — so the product carries its own audience and
+   both are asked. */
+describe('who a particular product is sold to', () => {
+  const sensor = product({ id: 'SKU-5004', category_id: 'iot', audiences: ['consumer', 'enterprise'] })
+  const fleet = product({ id: 'SKU-5008', category_id: 'iot', audiences: ['enterprise'], sort_order: 2 })
+  const mdr = product({ id: 'SKU-6002', category_id: 'security', audiences: ['enterprise'] })
+  const phone = product({ id: 'SKU-4001', category_id: 'device', audiences: ['consumer', 'enterprise'] })
+
+  it('keeps a fifty-unit fleet bundle off the retail shelf and on the business one', () => {
+    expect(soldTo(fleet, 'consumer')).toBe(false)
+    expect(soldTo(fleet, 'enterprise')).toBe(true)
+  })
+
+  it('leaves a single sensor on both', () => {
+    expect(soldTo(sensor, 'consumer')).toBe(true)
+    expect(soldTo(sensor, 'enterprise')).toBe(true)
+  })
+
+  /* A caller that did not select the column must not have every grid on the
+     site silently emptied under it. Absent means unrestricted, not forbidden. */
+  it('treats a missing audience list as unrestricted rather than as nobody', () => {
+    expect(soldTo(product({ id: 'x', category_id: 'iot' }), 'consumer')).toBe(true)
+    expect(soldTo(product({ id: 'y', category_id: 'iot', audiences: null }), 'consumer')).toBe(true)
+    expect(soldTo(product({ id: 'z', category_id: 'iot', audiences: [] }), 'consumer')).toBe(true)
+  })
+
+  it('drops what a page’s shopper cannot buy, even from a shelf they can see', () => {
+    const shown = productsForPage([sensor, fleet, mdr, phone], CATEGORIES, 'retail').map(p => p.id)
+    expect(shown).toContain('SKU-4001')
+    expect(shown).not.toContain('SKU-5008')
+    expect(shown).not.toContain('SKU-6002')
+  })
+
+  it('keeps all of it on the business page', () => {
+    const shown = productsForPage([sensor, fleet, mdr, phone], CATEGORIES, 'enterprise').map(p => p.id)
+    expect(shown).toEqual(expect.arrayContaining(['SKU-5004', 'SKU-5008', 'SKU-6002']))
+  })
+
+  /* The seller page is a shop window for deciding what to list, not a shelf to
+     buy from, so it is not narrowed to one buyer's slice. */
+  it('shows a prospective seller everything', () => {
+    const shown = productsForPage([sensor, fleet, mdr, phone], CATEGORIES, 'partner').map(p => p.id)
+    expect(shown).toEqual(expect.arrayContaining(['SKU-5004', 'SKU-5008', 'SKU-6002', 'SKU-4001']))
+  })
+
+  it('narrows one shelf to one persona', () => {
+    expect(productsFor([sensor, fleet, mdr, phone], 'consumer', 'iot').map(p => p.id)).toEqual(['SKU-5004'])
+    expect(productsFor([sensor, fleet, mdr, phone], 'enterprise', 'iot').map(p => p.id))
+      .toEqual(['SKU-5004', 'SKU-5008'])
+  })
+
+  it('still refuses a listing that is not live, whoever it is for', () => {
+    const draft = product({ id: 'd', category_id: 'device', status: 'pending', audiences: ['consumer'] })
+    expect(productsFor([draft], 'consumer').map(p => p.id)).toEqual([])
   })
 })

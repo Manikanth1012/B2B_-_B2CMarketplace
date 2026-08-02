@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { OperatorAuditEntry } from '../../types'
 import { SectionCard, Table, Td, EmptyState, fmtDateTime, Btn, Modal, FormField, TextInput, Select, TextArea, toast } from './shared'
+import { Pager, usePaging } from '../Pager'
 
 export function OperatorAudit() {
   const [entries, setEntries] = useState<OperatorAuditEntry[]>([])
@@ -15,10 +16,17 @@ export function OperatorAudit() {
     })
   }, [])
 
-  if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
-
   const categories = [...new Set(entries.map(e => e.category))]
   const filtered = filter === 'all' ? entries : entries.filter(e => e.category === filter)
+  /* An append-only log only grows. Changing the category is a different
+     question, so it starts again at page one; new rows arriving under the same
+     question are not.
+
+     Above the loading guard: `usePaging` is a hook, and a hook below an early
+     return runs on some renders and not others. */
+  const page = usePaging(filtered, { resetKey: filter })
+
+  if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
   const severityColor = (s: string) => {
     if (s === 'high') return 'var(--danger)'
@@ -43,7 +51,7 @@ export function OperatorAudit() {
       <SectionCard title="Audit Log" subtitle="Every consequential action, recorded. No edit path, no delete path.">
         {filtered.length === 0 ? <EmptyState message="No audit entries" /> : (
           <Table headers={['When', 'Actor', 'Role', 'Action', 'Object', 'Category', 'Severity', 'Outcome']}>
-            {filtered.map(e => (
+            {page.rows.map(e => (
               <tr key={e.id}>
                 <Td style={{ fontSize: 'var(--text-xs)' }}>{fmtDateTime(e.when_ts)}</Td>
                 <Td>{e.actor}</Td>
@@ -57,6 +65,7 @@ export function OperatorAudit() {
             ))}
           </Table>
         )}
+        <Pager page={page} noun="entries" />
       </SectionCard>
 
       <SectionCard title="Chain Integrity" subtitle="Hash chain anchored daily to object-locked storage">

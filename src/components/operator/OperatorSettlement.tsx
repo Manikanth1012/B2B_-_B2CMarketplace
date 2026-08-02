@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { SettlementStatement } from '../../types'
 import { SectionCard, Table, Td, StatusPill, EmptyState, fmtMoney, fmtDate, Btn, Modal, FormField, TextInput, TextArea, toast, ConfirmDialog } from './shared'
+import { Pager, usePaging } from '../Pager'
 
 export function OperatorSettlement() {
   const [statements, setStatements] = useState<SettlementStatement[]>([])
@@ -19,9 +20,12 @@ export function OperatorSettlement() {
     })
   }, [])
 
-  if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
-
+  /* Above the loading guard: `usePaging` is a hook, and a hook below an early
+     return runs on some renders and not others. */
   const filtered = filter === 'all' ? statements : statements.filter(s => s.status === filter)
+  const page = usePaging(filtered, { resetKey: filter })
+
+  if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
   const pendingCount = statements.filter(s => s.status === 'pending').length
   const approvedCount = statements.filter(s => s.status === 'approved').length
   const totalPending = statements.filter(s => s.status === 'pending').reduce((sum, s) => sum + s.net, 0)
@@ -76,7 +80,7 @@ export function OperatorSettlement() {
       <SectionCard title="Settlement Statements" subtitle="Gross-to-net deduction stack. A disputed statement cannot be approved.">
         {filtered.length === 0 ? <EmptyState message="No statements in this filter" /> : (
           <Table headers={['Partner', 'Period', 'Gross', 'Commission', 'Fees', 'Refunds', 'Net', 'Orders', 'Status', 'Actions']}>
-            {filtered.map(s => (
+            {page.rows.map(s => (
               <tr key={s.id}>
                 <Td>{s.partner_name}{s.disputed && <span style={{ fontSize: '10px', color: 'var(--danger)', marginLeft: '4px' }}>disputed</span>}</Td>
                 <Td right>{s.period}</Td>
@@ -99,6 +103,7 @@ export function OperatorSettlement() {
             ))}
           </Table>
         )}
+        <Pager page={page} noun="statements" />
       </SectionCard>
 
       {/* Detail modal */}

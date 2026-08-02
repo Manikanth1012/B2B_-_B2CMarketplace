@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import type { Order, OrderItem } from '../types'
 import { canRaiseTicket } from '../lib/orderTickets'
 import { RaiseTicketModal } from './RaiseTicketModal'
+import { Pager, usePaging } from './Pager'
 
 function fmtMoney(n: number): string {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -18,6 +19,9 @@ export function OrdersView() {
   const [detailOrder, setDetailOrder] = useState<Order | null>(null)
   const [ticketOrder, setTicketOrder] = useState<Order | null>(null)
   const [raised, setRaised] = useState<string | null>(null)
+  /* Order cards are tall. Five of them is a screenful; twenty is a scroll with
+     no sense of how far down it goes. */
+  const ordersPage = usePaging(orders, { initialSize: 5 })
 
   const loadOrders = useCallback(async () => {
     const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false })
@@ -82,7 +86,7 @@ export function OrdersView() {
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {orders.map((order) => {
+          {ordersPage.rows.map((order) => {
             const items = orderItems[order.id] || []
             const stages = order.stages || ['Ordered', 'Confirmed', 'Dispatched', 'In transit', 'Delivered']
             const currentStage = order.stage || 0
@@ -219,6 +223,7 @@ export function OrdersView() {
             )
           })}
         </div>
+        <Pager page={ordersPage} noun="orders" />
       </div>
 
       {ticketOrder && (

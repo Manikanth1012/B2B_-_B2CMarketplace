@@ -2,9 +2,11 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { OperatorDunningCase } from '../../types'
 import { SectionCard, Table, Td, StatusPill, EmptyState, fmtMoney, fmtDate, Btn, Modal, FormField, TextInput, TextArea, Select, toast, ConfirmDialog } from './shared'
+import { Pager, usePaging } from '../Pager'
 
 export function OperatorDunning() {
   const [cases, setCases] = useState<OperatorDunningCase[]>([])
+  const page = usePaging(cases)
   const [loading, setLoading] = useState(true)
   const [addModal, setAddModal] = useState(false)
   const [editModal, setEditModal] = useState<OperatorDunningCase | null>(null)
@@ -86,7 +88,7 @@ export function OperatorDunning() {
       <SectionCard title="Dunning Cases" subtitle="Which ladder a case runs on is resolved from the account, not chosen by a collector">
         {cases.length === 0 ? <EmptyState message="No dunning cases" /> : (
           <Table headers={['Account', 'Type', 'Amount', 'Age', 'Step', 'Ladder', 'Attempts', 'Reason', 'Promise', 'Status', 'Actions']}>
-            {cases.map(c => (
+            {page.rows.map(c => (
               <tr key={c.id}>
                 <Td>{c.account_name}</Td>
                 <Td right>{c.account_type}</Td>
@@ -110,6 +112,7 @@ export function OperatorDunning() {
             ))}
           </Table>
         )}
+        <Pager page={page} noun="cases" />
       </SectionCard>
 
       <SectionCard title="Ladder Rules" subtitle="A seller is never suspended — settlement is withheld instead">

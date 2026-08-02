@@ -100,6 +100,8 @@ export function AudiencePage({ page, onSignIn, onApply, onAddToBasket }: {
           subtitle={c.rail.subtitle}
           categories={categoriesForPage('partner', categories)}
           products={catalogue}
+          /* The seller shop window deliberately shows every shelf and everything
+             on it — a prospective seller is deciding what to list, not shopping. */
           counts={countByCategory(catalogue)}
         />
       ) : (

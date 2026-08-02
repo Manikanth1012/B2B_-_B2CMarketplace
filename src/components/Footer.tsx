@@ -1,3 +1,7 @@
+import { useState, useEffect } from 'react'
+import { loadCategories } from '../lib/storefrontRepo'
+import { categoriesFor } from '../lib/storefront'
+import type { Category } from '../types'
 import type { View } from '../types/view'
 
 interface FooterProps {
@@ -5,6 +9,18 @@ interface FooterProps {
 }
 
 export function Footer({ onNavigate }: FooterProps) {
+  /* The shop column is the shopper's shelves, read from the catalogue rather
+     than typed out. Typed out, it kept a link to Security — a shelf that is
+     now business-only — pointing a retail customer at an empty category page.
+     A hard-coded navigation is a copy of the rules that never gets updated.
+
+     `categoriesFor`, not `retailCategories`: the latter is the merchandising
+     rail on the landing page and reads the audience prose, which files IoT
+     under Enterprise even though a retail customer can buy a sensor. What the
+     footer wants is every shelf they may shop. */
+  const [shelves, setShelves] = useState<Category[]>([])
+  useEffect(() => { void loadCategories().then(c => setShelves(categoriesFor(c, 'consumer'))) }, [])
+
   return (
     <footer style={{ background: 'var(--brand-navy-dark)', color: 'rgba(255,255,255,0.7)', marginTop: '64px' }}>
       <div className="container" style={{ padding: '48px 24px' }}>
@@ -22,13 +38,10 @@ export function Footer({ onNavigate }: FooterProps) {
           </div>
 
           {/* Links */}
-          <FooterCol title="Shop" links={[
-            { label: 'Consumer', onClick: () => onNavigate('category', { category: 'consumer' }) },
-            { label: 'Devices', onClick: () => onNavigate('category', { category: 'device' }) },
-            { label: 'Digital Content', onClick: () => onNavigate('category', { category: 'content' }) },
-            { label: 'IoT', onClick: () => onNavigate('category', { category: 'iot' }) },
-            { label: 'Security', onClick: () => onNavigate('category', { category: 'security' }) },
-          ]} />
+          <FooterCol title="Shop" links={shelves.map(c => ({
+            label: c.name,
+            onClick: () => onNavigate('category', { category: c.id }),
+          }))} />
 
           <FooterCol title="Account" links={[
             { label: 'My Orders', onClick: () => onNavigate('orders') },

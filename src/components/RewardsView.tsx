@@ -5,6 +5,7 @@ import { loadMyRewards, redeemPoints as redeemThroughTheMarketplace } from '../l
 import { validateRedemption, offeredTo, mostRedeemable } from '../lib/loyalty'
 import type { LoyaltyTier, EarnRule, LoyaltyLedgerEntry } from '../types'
 import type { Programme as LoyaltyProgramme, RedeemOption, Member as LoyaltyMember } from '../lib/loyalty'
+import { Pager, usePaging } from './Pager'
 
 const KIND_ICONS: Record<string, typeof Wallet> = {
   wallet: Wallet,
@@ -51,6 +52,8 @@ export function RewardsView() {
   const [redeemOptions, setRedeemOptions] = useState<RedeemOption[]>([])
   const [member, setMember] = useState<LoyaltyMember | null>(null)
   const [ledger, setLedger] = useState<LoyaltyLedgerEntry[]>([])
+  /* Nineteen movements and growing. Scrolling a ledger is not reading one. */
+  const ledgerPage = usePaging(ledger, { initialSize: 10 })
   const [loading, setLoading] = useState(true)
   const [redeemModalOpen, setRedeemModalOpen] = useState(false)
   const [selectedOption, setSelectedOption] = useState<string>('')
@@ -472,7 +475,7 @@ export function RewardsView() {
               </tr>
             </thead>
             <tbody>
-              {ledger.map((t) => {
+              {ledgerPage.rows.map((t) => {
                 const tl = TYPE_LABELS[t.type] || { label: t.type, sign: 0 }
                 return (
                   <tr key={t.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
@@ -506,6 +509,7 @@ export function RewardsView() {
             </tbody>
           </table>
         </div>
+        <Pager page={ledgerPage} noun="movements" />
       </SectionCard>
 
       {/* Earn rules */}

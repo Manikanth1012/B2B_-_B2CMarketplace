@@ -1,7 +1,8 @@
 import { supabase } from './supabase'
 import type { Category, Product } from '../types'
 import type { PublicBanner } from './storefront'
-import { isSellable } from './storefront'
+import { isSellable, soldTo } from './storefront'
+import type { Shopper } from './storefront'
 
 /* Everything the signed-out storefront reads. Three tables, all of them readable
    without a session by design — `categories` and `products` carry an anon SELECT
@@ -36,12 +37,17 @@ export async function loadCatalogue(): Promise<Product[]> {
 
 /** How many live products sit in each category — the "N products" line on a category
     tile. Counts only what a visitor could actually be offered: a tile claiming eight
-    when one is suspended is advertising a listing nobody can buy. Counted here rather
-    than in SQL because the public front already has the catalogue in hand. */
-export function countByCategory(products: readonly Product[]): Record<string, number> {
+    when one is suspended is advertising a listing nobody can buy, and a retail tile
+    claiming ten when six of them are sold by the twenty-five-seat bundle is the same
+    mistake one level down. Pass the shopper on a page written for one. Counted here
+    rather than in SQL because the public front already has the catalogue in hand. */
+export function countByCategory(
+  products: readonly Product[], who?: Shopper,
+): Record<string, number> {
   const out: Record<string, number> = {}
   for (const p of products) {
     if (!isSellable(p)) continue
+    if (who && !soldTo(p, who)) continue
     out[p.category_id] = (out[p.category_id] ?? 0) + 1
   }
   return out

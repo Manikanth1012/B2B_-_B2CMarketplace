@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { User, Bell, History, Users, RotateCcw, Check, X, Plus, CircleAlert as AlertCircle, Info, Shield, Wallet, Star, Phone, Mail, MapPin, CreditCard, Clock, ChevronRight, Lock, Trash2, FileText, LifeBuoy, MessageSquare, Send, Download, Globe } from 'lucide-react'
+import { User, Bell, History, Users, RotateCcw, Check, X, Plus, CircleAlert as AlertCircle, Info, Shield, Wallet, Star, Phone, Mail, MapPin, CreditCard, Clock, ChevronRight, Lock, Trash2, FileText, LifeBuoy, MessageSquare, Send, Download, Globe, Eye } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { changePassword, currentEmail, SignInError } from '../lib/authRepo'
 import { WalletCard } from './WalletCard'
@@ -16,6 +16,10 @@ import type {
   ConsumerHouseholdMember, ConsumerPaymentMethod,
   ConsumerBill, ConsumerTicket, TicketMessage,
 } from '../types'
+import { BillDocument } from './BillDocument'
+import { Pager, usePaging } from './Pager'
+import { loadBillBook, templateForBill, sectionIds, factsFor, asText, fileNameFor } from '../lib/consumerBillDoc'
+import type { BillBook } from '../lib/consumerBillDoc'
 import { loadMyRefunds, requestRefund } from '../lib/refundRepo'
 import type { RefundBook } from '../lib/refundRepo'
 import { STATES, REASONS, REASON_LIST, sla, ownership, autoApproves } from '../lib/refunds'
@@ -419,7 +423,9 @@ function SecurityTab({ profile, showToast }: { profile: ConsumerProfile; showToa
 }
 
 /* ============================ SECURITY MODALS ============================ */
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+function Modal({ title, onClose, children, wide }: {
+  title: string; onClose: () => void; children: React.ReactNode; wide?: boolean
+}) {
   return (
     <div
       onClick={onClose}
@@ -432,7 +438,7 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
         onClick={(e) => e.stopPropagation()}
         style={{
           background: 'white', borderRadius: 'var(--radius-lg)', padding: '28px',
-          maxWidth: '480px', width: '100%', maxHeight: '90vh', overflowY: 'auto',
+          maxWidth: wide ? '680px' : '480px', width: '100%', maxHeight: '90vh', overflowY: 'auto',
           boxShadow: 'var(--shadow-lg)',
         }}
       >
@@ -1377,93 +1383,23 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
   const totalPaid = bills.filter((b) => b.status === 'paid').reduce((a, b) => a + b.total, 0)
   const currentDue = openBills.reduce((a, b) => a + b.total, 0)
 
+  /* The template these bills are issued on, loaded once for the tab. Viewing
+     and downloading are the same document, so they read the same record. */
+  const [book, setBook] = useState<BillBook | null>(null)
+  const [viewing, setViewing] = useState<ConsumerBill | null>(null)
+  const billsPage = usePaging(bills, { initialSize: 5 })
+  useEffect(() => { void loadBillBook().then(setBook) }, [])
+
+  const template = book ? templateForBill(book) : null
+  const ids = book ? sectionIds(book, template) : []
+
   const downloadBill = (bill: ConsumerBill) => {
-    const lines: string[] = []
-    lines.push('Aventa Marketplace — Consolidated Bill')
-    lines.push('=========================================')
-    lines.push('')
-    lines.push(`Bill ID: ${bill.id}`)
-    lines.push(`Period: ${bill.period}`)
-    lines.push(`Issued: ${bill.issued}`)
-    lines.push(`Due: ${bill.due}`)
-    lines.push(`Status: ${bill.status}${bill.paid_on ? ' (paid ' + bill.paid_on + ')' : ''}`)
-    lines.push('')
-    lines.push('BILLED TO')
-    lines.push('Priya Raman')
-    lines.push('CUS-449021')
-    lines.push('+91 98860 41127')
-    lines.push('Bengaluru')
-    lines.push('')
-    lines.push('BILL FROM')
-    lines.push('Aventa Telecom (6D Technology)')
-    lines.push('6D Tech Park, Whitefield')
-    lines.push('Bengaluru 560066')
-    lines.push('GSTIN: 29AABCI1234L1ZJ')
-    lines.push('')
-    lines.push('-----------------------------------------')
-    lines.push('CHARGES')
-    lines.push('-----------------------------------------')
-    lines.push(`Aventa Freedom 50 GB plan ............ ${bill.plan_charge.toFixed(2)}`)
-    if (bill.subscriptions > 0) lines.push(`Subscriptions (${bill.period}) ........... ${bill.subscriptions.toFixed(2)}`)
-    if (bill.oneoff > 0) lines.push(`One-off purchases .................... ${bill.oneoff.toFixed(2)}`)
-    lines.push(`Tax (18% GST) ....................... ${bill.tax.toFixed(2)}`)
-    lines.push('-----------------------------------------')
-    lines.push(`Amount due .......................... ${bill.total.toFixed(2)}`)
-    lines.push('')
-    lines.push('-----------------------------------------')
-    lines.push('PAYMENT INSTRUCTIONS')
-    lines.push('-----------------------------------------')
-    lines.push('This bill is charged to your mobile account.')
-    lines.push('Pay by: Bill to mobile (+91 98860 41127)')
-    lines.push('Auto-pay is enabled — the amount will be')
-    lines.push('collected on the due date.')
-    lines.push('')
-    lines.push('Questions about this bill?')
-    lines.push('Call 611 from your Aventa mobile, or')
-    lines.push('email support@aventa.in')
-    lines.push('')
-    lines.push('While you are here: the Aventa Duo bundle')
-    lines.push('combines Unlimited + Streaming for $7/mo')
-    lines.push('less than you pay separately. See the app.')
-    lines.push('')
-    lines.push('--- Page 1 of ' + bill.pages + ' ---')
-    lines.push('')
-    for (let p = 2; p <= bill.pages; p++) {
-      lines.push(`--- Page ${p} of ${bill.pages} ---`)
-      lines.push('')
-      if (p === 2) {
-        lines.push('SUBSCRIPTION DETAIL')
-        lines.push('PlayForge Cloud Gaming .... $9.99/mo')
-        lines.push('Halo Music Family ........ $6.49/mo')
-        lines.push('ClearVault Personal 2TB ... $6.49/mo')
-        lines.push('Device Protect ........... $6.90/mo')
-        lines.push('StreamNova Premium ....... $12.99/mo')
-        lines.push('Travel Cover Lite ......... $6.49/mo')
-        lines.push('')
-      } else if (p === 3) {
-        lines.push('ONE-OFF PURCHASES')
-        if (bill.oneoff > 0) {
-          lines.push(`Various items ............. ${bill.oneoff.toFixed(2)}`)
-        } else {
-          lines.push('No one-off purchases this period.')
-        }
-        lines.push('')
-      } else {
-        lines.push('TAX SUMMARY')
-        lines.push(`GST @ 18% ................. ${bill.tax.toFixed(2)}`)
-        lines.push('')
-        lines.push('TOTALS')
-        lines.push(`Subtotal ................. ${(bill.plan_charge + bill.subscriptions + bill.oneoff).toFixed(2)}`)
-        lines.push(`Tax ...................... ${bill.tax.toFixed(2)}`)
-        lines.push(`Total .................... ${bill.total.toFixed(2)}`)
-        lines.push('')
-      }
-    }
-    const blob = new Blob([lines.join('\n')], { type: 'text/plain' })
+    if (!book || !template) { showToast('The bill format is still loading — try again in a moment'); return }
+    const blob = new Blob([asText(factsFor(bill, book), template, ids, book.sections)], { type: 'text/plain' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `${bill.id}.txt`
+    a.download = fileNameFor(bill)
     a.click()
     URL.revokeObjectURL(url)
     showToast(`${bill.id} downloaded`)
@@ -1492,7 +1428,7 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
               </tr>
             </thead>
             <tbody>
-              {bills.map((b) => (
+              {billsPage.rows.map((b) => (
                 <tr key={b.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
                   <td style={tdStyle}>{b.id}</td>
                   <td style={tdStyle}>{b.period}</td>
@@ -1510,27 +1446,51 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
                     </span>
                   </td>
                   <td style={{ ...tdStyle, textAlign: 'right' }}>
-                    <button onClick={() => downloadBill(b)} style={{
-                      display: 'inline-flex', alignItems: 'center', gap: '4px',
-                      padding: '4px 10px', borderRadius: 'var(--radius)',
-                      border: '1px solid var(--border)', background: 'white',
-                      color: 'var(--text-secondary)', fontWeight: 600,
-                      fontSize: 'var(--text-xs)', cursor: 'pointer',
-                    }}>
-                      <Download size={12} /> View
-                    </button>
+                    <div style={{ display: 'inline-flex', gap: '6px' }}>
+                      <button onClick={() => setViewing(b)} disabled={!book} style={{
+                        ...billBtn, opacity: book ? 1 : 0.5,
+                      }}>
+                        <Eye size={12} /> View
+                      </button>
+                      <button onClick={() => downloadBill(b)} disabled={!book} style={{
+                        ...billBtn, opacity: book ? 1 : 0.5,
+                      }}>
+                        <Download size={12} /> Download
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        <Pager page={billsPage} noun="bills" />
         <div style={{ marginTop: '16px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
           Your bill includes your Aventa mobile plan, all subscriptions, and any one-off purchases made during the billing period. The total shown is what was charged to your mobile account.
         </div>
       </Card>
+
+      {viewing && book && template && (
+        <Modal title={`${template.doc_title} — ${viewing.period}`} onClose={() => setViewing(null)} wide>
+          <BillDocument template={template} ids={ids} facts={factsFor(viewing, book)} />
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '20px' }}>
+            <button onClick={() => setViewing(null)} style={billBtn}>Close</button>
+            <button onClick={() => downloadBill(viewing)} style={{ ...billBtn, borderColor: 'var(--brand-navy)', background: 'var(--brand-navy)', color: 'white' }}>
+              <Download size={12} /> Download
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   )
+}
+
+const billBtn: React.CSSProperties = {
+  display: 'inline-flex', alignItems: 'center', gap: '4px',
+  padding: '4px 10px', borderRadius: 'var(--radius)',
+  border: '1px solid var(--border)', background: 'white',
+  color: 'var(--text-secondary)', fontWeight: 600,
+  fontSize: 'var(--text-xs)', cursor: 'pointer',
 }
 
 /* ============================ SUPPORT TAB ============================ */
@@ -1543,6 +1503,7 @@ function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerT
   const [message, setMessage] = useState('')
   const [severity, setSeverity] = useState('P3')
   const [submitting, setSubmitting] = useState(false)
+  const ticketsPage = usePaging(tickets, { initialSize: 10 })
 
   const createTicket = async () => {
     if (!subject || !message) { showToast('Subject and message are required'); return }
@@ -1643,7 +1604,7 @@ function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerT
         )}
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-          {tickets.map((t) => (
+          {ticketsPage.rows.map((t) => (
             <div key={t.id} style={{
               display: 'flex', gap: '12px', alignItems: 'center',
               padding: '14px 0', borderBottom: '1px solid var(--border-light)',
@@ -1682,6 +1643,7 @@ function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerT
             </div>
           ))}
         </div>
+        <Pager page={ticketsPage} noun="tickets" />
       </Card>
 
       {selectedTicket && (

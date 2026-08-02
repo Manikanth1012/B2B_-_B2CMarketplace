@@ -511,6 +511,7 @@ export function previewBundle(
     floor_price: draft.price, list_price: draft.price, price_includes_tax: true, tax_rate: 18,
     model: 'oneoff', fulfil: 'instant', rating: 0, reviews: 0, stock: 'in', status: 'live',
     listed: null, description: '', tags: [], comm: 0, badge: null, specs: {}, sort_order: 0,
+    audiences: ['consumer', 'enterprise'],
   }
   return bundleView(
     stub,
@@ -650,5 +651,60 @@ export async function loadSellerSubmissions(partnerId: string): Promise<{
     products: (prodRes.data ?? []) as ProductRow[],
     queries: (qRes.data ?? []) as ListingQuery[],
     ...(errors.length > 0 ? { loadError: `Could not load your submissions (${errors.join('; ')}).` } : {}),
+  }
+}
+
+/**
+ * Who a listing is sold to.
+ *
+ * The category decides which shelves a persona sees; this decides what on the
+ * shelf is theirs. Both are needed because IoT carries a $52 occupancy sensor
+ * and a fifty-unit fleet bundle, and the shelf cannot tell them apart.
+ *
+ * Sold to nobody is refused here rather than stored: a listing with an empty
+ * audience is invisible on every storefront while still reading as live in the
+ * catalogue, which is a withdrawal that looks like a listing.
+ */
+export async function setAudiences(
+  { productId, audiences, actor }: { productId: string; audiences: string[]; actor: string },
+): Promise<Result> {
+  const wanted = [...new Set(audiences)].filter(a => ['consumer', 'enterprise', 'partner'].includes(a))
+  if (!wanted.length) {
+    return {
+      ok: false,
+      reason: 'A listing has to be sold to somebody. To take it off sale, change its status — an empty audience is a withdrawal that still reads as live.',
+    }
+  }
+
+  const { data: before } = await supabase.from('products')
+    .select('audiences').eq('id', productId).maybeSingle()
+
+  const { data, error } = await supabase.from('products')
+    .update({ audiences: wanted }).eq('id', productId).select('id')
+  if (error) return { ok: false, reason: `Could not change who it is sold to: ${error.message}` }
+  if (!data?.length) return { ok: false, reason: 'Nothing changed — only the marketplace operator can reclassify a listing.' }
+
+  await writeAudit(actor, 'catalogue.listing.audiences', productId,
+    (before?.audiences as string[] | undefined)?.join(' and ') ?? null,
+    wanted.join(' and '), 'info')
+
+  /* Narrowing a listing can empty a shelf. Saying so is the operator's cue to
+     look, rather than finding out when a storefront goes blank. */
+  const { data: siblings } = await supabase.from('products')
+    .select('id, category_id, audiences, status').neq('status', 'archived')
+  const mine = (siblings ?? []).find(p => p.id === productId)
+  const emptied = mine
+    ? ['consumer', 'enterprise', 'partner'].filter(who =>
+      !wanted.includes(who)
+      && !(siblings ?? []).some(p =>
+        p.category_id === mine.category_id && p.id !== productId
+        && (p.audiences as string[]).includes(who)))
+    : []
+
+  return {
+    ok: true,
+    note: emptied.length
+      ? `Saved. That was the last thing on this shelf sold to ${emptied.join(' and ')}, so the shelf no longer appears for them.`
+      : `Saved. It is now sold to ${wanted.join(' and ')}.`,
   }
 }

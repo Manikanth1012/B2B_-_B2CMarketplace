@@ -209,6 +209,12 @@ export interface SellableProduct {
   category_id: string
   status: string
   sort_order: number
+  /* Who this particular thing is sold to. A shelf being visible has never
+     meant everything on it is for sale to you: IoT carries a $52 occupancy
+     sensor and a fifty-unit fleet bundle, and only one of those is a purchase
+     a private individual makes. Optional so a caller that has not selected the
+     column is not silently filtered to nothing. */
+  audiences?: string[] | null
 }
 
 /** Is this catalogue row something a visitor can actually be offered? */
@@ -217,9 +223,27 @@ export function isSellable(p: { status: string }): boolean {
 }
 
 /**
- * The products an audience page lists: live rows in that page's categories, in the
- * catalogue's own order. `limit` keeps the page to a browsable length rather than
- * printing the whole catalogue.
+ * Whether this product is sold to that persona.
+ *
+ * A missing `audiences` means the caller did not ask for the column, not that
+ * the product is for nobody — so it is treated as unrestricted and the
+ * category rule alone applies. Getting that backwards empties every grid on
+ * the site the first time somebody forgets a select.
+ */
+export function soldTo(p: { audiences?: string[] | null }, who: Shopper): boolean {
+  const a = p.audiences
+  return !a || a.length === 0 || a.includes(who)
+}
+
+/** The shopper a public page is written for. The seller page is a shop window
+    rather than a shelf, so it is not filtered to a buyer's slice. */
+const PAGE_SHOPPER: Record<string, Shopper> = { retail: 'consumer', enterprise: 'enterprise' }
+
+/**
+ * The products an audience page lists: live rows in that page's categories that
+ * are actually sold to that page's shopper, in the catalogue's own order.
+ * `limit` keeps the page to a browsable length rather than printing the whole
+ * catalogue.
  */
 export function productsForPage<T extends SellableProduct>(
   products: readonly T[],
@@ -228,10 +252,20 @@ export function productsForPage<T extends SellableProduct>(
   limit = 12,
 ): T[] {
   const ids = new Set(categoriesForPage(page, categories).map(c => c.id))
+  const who = PAGE_SHOPPER[page]
   return products
-    .filter(p => ids.has(p.category_id) && isSellable(p))
+    .filter(p => ids.has(p.category_id) && isSellable(p) && (!who || soldTo(p, who)))
     .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id))
     .slice(0, limit)
+}
+
+/** Everything on one shelf that this persona may actually buy. */
+export function productsFor<T extends SellableProduct>(
+  products: readonly T[], who: Shopper, categoryId?: string,
+): T[] {
+  return products
+    .filter(p => isSellable(p) && soldTo(p, who) && (!categoryId || p.category_id === categoryId))
+    .sort((a, b) => a.sort_order - b.sort_order || a.id.localeCompare(b.id))
 }
 
 /** "In stock" / "Low stock" / "Out of stock" drive whether a product can be added,

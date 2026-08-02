@@ -5,7 +5,7 @@ import {
   Table, Td, toast, ConfirmDialog,
 } from './shared'
 import { Callout } from '../OnboardingJourney'
-import { BillPreview } from './BillPreview'
+import { BillDocument } from '../BillDocument'
 import {
   loadBillTemplates, saveTemplate, duplicateTemplate, deleteTemplate,
   assignTemplate, removeOverride, saveIssuer,
@@ -436,7 +436,7 @@ function TemplateEditor(
             <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '10px' }}>
               A real {previewAudience} document, redrawn as you tick a section.
             </p>
-            <BillPreview template={draft} ids={ids} facts={facts}
+            <BillDocument template={draft} ids={ids} facts={facts}
               reference={nextReference(draft, { party: facts?.billedTo.ref ?? undefined })} />
           </div>
 

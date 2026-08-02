@@ -19,7 +19,7 @@ import {
 import { Callout } from '../OnboardingJourney'
 import {
   loadCatalogue, approveListing, rejectListing, raiseQuery, publishFirstParty,
-  createBundle, previewBundle, composePack,
+  createBundle, previewBundle, composePack, setAudiences,
 } from '../../lib/catalogueRepo'
 import type { CatalogueSnapshot, BundleDraft, PackDraft } from '../../lib/catalogueRepo'
 import { compose, compositionProblem, compositionWarnings, maxComponentDiscount, priceBasis } from '../../lib/federation'
@@ -27,6 +27,7 @@ import { checkBundleAgainstFloors, bundleRoom, bases, headroom } from '../../lib
 import type { ComponentPick, TelcoItem } from '../../lib/federation'
 import { canApprove, summarise, bundleView, rulesFor, applyPolicy, policyFailures, splitOf } from '../../lib/catalogue'
 import type { ProductRow, Submission } from '../../lib/catalogue'
+import { Pager, usePaging } from '../Pager'
 
 const ACTOR = 'Aventa catalogue desk'
 
@@ -386,6 +387,7 @@ export function OperatorCatalogue() {
           today={today}
           onClose={() => setOpenProduct(null)}
           catName={catName}
+          onChanged={reload}
           onDecide={(sub, mode) => { setOpenProduct(null); setDecide({ sub, mode }) }}
         />
       )}
@@ -451,6 +453,9 @@ function ProductTable({ products, snap, onOpen, heroOf, catName }: {
   heroOf: (id: string) => string | null
   catName: (id: string) => string
 }) {
+  /* The catalogue is the list most likely to grow past what a screen can hold,
+     and the one an operator most often comes back to a particular row of. */
+  const page = usePaging(products, { resetKey: `${products.length}:${products[0]?.id ?? ''}` })
   if (products.length === 0) return <EmptyState message="No listing matches that" />
   return (
     <div style={{ overflowX: 'auto' }}>
@@ -465,7 +470,7 @@ function ProductTable({ products, snap, onOpen, heroOf, catName }: {
           ))}
         </tr></thead>
         <tbody>
-          {products.map(p => {
+          {page.rows.map(p => {
             const plan = snap.plans.find(pl => pl.id === snap.partners.find(x => x.id === p.partner_id)?.plan_id)
             const split = splitOf(p, plan?.base_rate ?? null)
             const r = rulesFor(p.id, snap.rules)
@@ -510,6 +515,7 @@ function ProductTable({ products, snap, onOpen, heroOf, catName }: {
           })}
         </tbody>
       </table>
+      <Pager page={page} noun="listings" />
     </div>
   )
 }
@@ -577,12 +583,13 @@ function DependencyRules({ snap, catName, onOpen }: {
 
 /* ------------------------------------------------------ the inspector ---- */
 
-function ProductInspector({ product, snap, today, onClose, catName, onDecide }: {
+function ProductInspector({ product, snap, today, onClose, catName, onChanged, onDecide }: {
   product: ProductRow
   snap: CatalogueSnapshot
   today: Date
   onClose: () => void
   catName: (id: string) => string
+  onChanged: () => Promise<void>
   onDecide: (sub: Submission, mode: 'approve' | 'reject' | 'query') => void
 }) {
   const media = snap.media.filter(m => m.product_id === product.id).sort((a, b) => a.sort_order - b.sort_order)
@@ -762,6 +769,14 @@ function ProductInspector({ product, snap, today, onClose, catName, onDecide }: 
               </div>
             </section>
           )}
+
+          {/* The shelf decides who sees the aisle; this decides whose listing
+              it is. Both are needed: IoT carries a $52 occupancy sensor and a
+              fifty-unit fleet bundle, and no shelf rule can tell them apart. */}
+          <section>
+            <SubHead>Sold to</SubHead>
+            <AudiencePicker product={product} onChanged={onChanged} />
+          </section>
 
           {/* The rules the platform can settle are settled; the rest are named
               for the person who has to settle them. */}
@@ -1553,6 +1568,65 @@ function Row({ label, value, strong, ink }: { label: string; value: string; stro
     <div style={{ display: 'flex', gap: '10px', padding: '3px 0', fontSize: 'var(--text-xs)' }}>
       <span style={{ flex: 1, color: 'var(--text-secondary)' }}>{label}</span>
       <span style={{ fontWeight: strong ? 800 : 600, color: ink ?? 'var(--text)' }}>{value}</span>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------ who it is sold to -- */
+
+const SOLD_TO: { id: string; label: string; note: string }[] = [
+  { id: 'consumer', label: 'Retail customers', note: 'One of it, bought by a person.' },
+  { id: 'enterprise', label: 'Business accounts', note: 'Bought against a purchase order.' },
+  { id: 'partner', label: 'Resellers', note: 'Wholesale, listed for other sellers.' },
+]
+
+/**
+ * The audience toggles.
+ *
+ * Optimistic on the way out and corrected on the way back: the operator is
+ * ticking a box, and a checkbox that waits for a round trip before moving
+ * reads as broken. The reload is what settles it, and a refusal restores the
+ * previous state rather than leaving the screen a shade ahead of the database.
+ */
+function AudiencePicker({ product, onChanged }: { product: ProductRow; onChanged: () => Promise<void> }) {
+  const [picked, setPicked] = useState<string[]>(product.audiences ?? ['consumer', 'enterprise'])
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => { setPicked(product.audiences ?? ['consumer', 'enterprise']) }, [product.id, product.audiences])
+
+  const toggle = async (id: string) => {
+    const next = picked.includes(id) ? picked.filter(x => x !== id) : [...picked, id]
+    const previous = picked
+    setPicked(next)
+    setSaving(true)
+    const res = await setAudiences({ productId: product.id, audiences: next, actor: 'Marketplace operations' })
+    setSaving(false)
+    if (!res.ok) { setPicked(previous); toast(res.reason, 'error'); return }
+    toast(res.note ?? 'Saved')
+    await onChanged()
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+      {SOLD_TO.map(a => (
+        <label key={a.id} style={{
+          display: 'flex', gap: '9px', alignItems: 'flex-start',
+          padding: '7px 9px', borderRadius: 'var(--radius)',
+          background: picked.includes(a.id) ? 'var(--info-bg)' : 'transparent',
+          cursor: saving ? 'wait' : 'pointer',
+        }}>
+          <input type="checkbox" checked={picked.includes(a.id)} disabled={saving}
+            onChange={() => void toggle(a.id)} style={{ marginTop: 2 }} />
+          <span>
+            <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text)' }}>{a.label}</span>
+            <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-tertiary)' }}>{a.note}</span>
+          </span>
+        </label>
+      ))}
+      <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', margin: '5px 0 0' }}>
+        A shelf appears for whoever can buy something on it. Taking the last listing off a
+        shelf takes the shelf with it.
+      </p>
     </div>
   )
 }

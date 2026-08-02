@@ -25,6 +25,9 @@ export interface ProductRow {
   description: string
   tags: string[]
   comm: number
+  /* Who this listing is sold to. The category decides which shelves a persona
+     sees; this decides what on the shelf is theirs to buy. */
+  audiences: string[]
   /* The price band and its tax basis — see the listing-price-bands migration.
      `floor_price` is what the seller agreed to accept, and it is the operator's
      only honest answer to "how much may I discount this in a bundle". */

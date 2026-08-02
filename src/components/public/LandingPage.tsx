@@ -8,24 +8,29 @@ import {
   promoStrip, retailCategories, enterpriseCategories,
   type PromoSlide,
 } from '../../lib/storefront'
-import type { Category } from '../../types'
+import type { Category, Product } from '../../types'
 import type { PublicPage } from '../../types/view'
 
 export function LandingPage({ onNavigate }: { onNavigate: (p: PublicPage) => void }) {
   const [slides, setSlides] = useState<PromoSlide[]>([])
   const [categories, setCategories] = useState<Category[]>([])
-  const [counts, setCounts] = useState<Record<string, number>>({})
+  /* Counted per rail, not once. A retail tile that counts the whole shelf
+     promises ten products and opens on four — the per-seat security bundles and
+     the fifty-unit fleet packs on it are not sold to a retail customer. */
+  const [catalogue, setCatalogue] = useState<Product[]>([])
 
   useEffect(() => {
     /* Three independent reads. Any of them coming back empty degrades one band of
        the page rather than failing the page, which is why none of them throws. */
     loadPromoBanners().then(b => setSlides(promoStrip(b, BANNERS)))
     loadCategories().then(setCategories)
-    loadCatalogue().then(p => setCounts(countByCategory(p)))
+    loadCatalogue().then(setCatalogue)
   }, [])
 
   const retail = retailCategories(categories)
   const enterprise = enterpriseCategories(categories)
+  const retailCounts = countByCategory(catalogue, 'consumer')
+  const enterpriseCounts = countByCategory(catalogue, 'enterprise')
 
   return (
     <>
@@ -68,14 +73,14 @@ export function LandingPage({ onNavigate }: { onNavigate: (p: PublicPage) => voi
         title="Retail products"
         subtitle="Plans, devices, entertainment and connected home"
         categories={retail}
-        counts={counts}
+        counts={retailCounts}
         onNavigate={onNavigate}
       />
       <CategoryRail
         title="Enterprise products"
         subtitle="IoT, security and devices for your estate"
         categories={enterprise}
-        counts={counts}
+        counts={enterpriseCounts}
         onNavigate={onNavigate}
       />
     </>

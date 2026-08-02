@@ -2,9 +2,11 @@ import { useState } from 'react'
 import { ShoppingCart, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle, Wallet, Download } from 'lucide-react'
 import { StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, fmtInt, Btn, toast } from '../operator/shared'
 import { PARTNER_ORDERS, VERTICAL_NAMES } from './data'
+import { Pager, usePaging } from '../Pager'
 
 export function PartnerOrders() {
   const [orders, setOrders] = useState(PARTNER_ORDERS)
+  const page = usePaging(orders)
 
   const openOrders = orders.filter(o => o.stage < o.stages.length - 1 && !o.failed)
   const failedOrders = orders.filter(o => o.failed)
@@ -57,7 +59,7 @@ export function PartnerOrders() {
 
       <SectionCard title="Your Orders" subtitle={`${orders.length} total`}>
         <Table headers={['Order', 'Product', 'Buyer', 'Qty', 'Gross', 'Commission', 'Status', '']}>
-          {orders.map(o => (
+          {page.rows.map(o => (
             <tr key={o.id}>
               <Td>
                 <div style={{ fontWeight: 600 }}>{o.id}</div>
@@ -90,6 +92,7 @@ export function PartnerOrders() {
             </tr>
           ))}
         </Table>
+        <Pager page={page} noun="orders" />
       </SectionCard>
     </div>
   )

@@ -1,19 +1,21 @@
-import type { Template, BillFacts } from '../../lib/billTemplate'
-import { blocksFor, money } from '../../lib/billTemplate'
+import type { Template, BillFacts } from '../lib/billTemplate'
+import { blocksFor, money } from '../lib/billTemplate'
 
-/* The document, drawn from the sections currently ticked.
+/* A bill, drawn from the sections its template carries.
  *
- * It exists because a list of sixteen checkboxes is a form nobody can check
- * their own work against. Ticking "Payment slip" has to make a payment slip
- * appear, or the operator is guessing at what they are configuring.
+ * One renderer, used twice. The operator's template editor puts it beside the
+ * checkboxes, because a list of sixteen switches is a form nobody can check
+ * their own work against — ticking "Payment slip" has to make a payment slip
+ * appear. The customer's Bills tab puts it behind View, and gets the same
+ * document.
  *
- * The figures are a real bill — the customer's most recent one — rather than
- * round numbers chosen to sit neatly. That is the difference between a preview
- * and a picture of a preview: it is how somebody finds out that the reward
- * section they just ticked has nothing to print on a seller document.
+ * That sharing is the point rather than a saving. If the editor drew its own
+ * approximation, the operator would be configuring one document and the
+ * customer would be reading another, and nothing on either screen would say
+ * so.
  */
 
-export function BillPreview(
+export function BillDocument(
   { template, ids, facts, reference }: {
     template: Pick<Template, 'doc_title' | 'accent' | 'tax_label' | 'currency' | 'logo' |
       'show_order_lines' | 'remittance' | 'footer' | 'audience' | 'language'>

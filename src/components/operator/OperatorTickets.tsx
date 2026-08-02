@@ -7,12 +7,12 @@ import { TriangleAlert as AlertTriangle, Clock } from 'lucide-react'
 import { AttachmentList } from '../AttachmentList'
 import { loadAttachments } from '../../lib/attachmentRepo'
 import type { Attachment } from '../../lib/attachments'
+import { Pager, usePaging } from '../Pager'
 
 export function OperatorTickets() {
   const [tickets, setTickets] = useState<OperatorTicket[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('open')
-  const [queue, setQueue] = useState<'service' | 'feedback'>('service')
   const [selected, setSelected] = useState<OperatorTicket | null>(null)
   /* What the customer sent with the complaint. Loaded when a ticket is opened
      rather than with the queue: most tickets have none, and a request per row
@@ -29,18 +29,20 @@ export function OperatorTickets() {
     })
   }, [])
 
-  useEffect(() => {
-    setSelected(null)
-  }, [queue])
+  /* Content feedback is a different kind of work, worked on its own screen and
+     never counted against the service SLA. This queue is service-only; the
+     filter below narrows the same set rather than a second one.
+
+     Derived above the loading guard, because `usePaging` is a hook: below an
+     early return it is called on some renders and not others, and React blanks
+     the screen the moment `loading` flips. */
+  const service = tickets.filter(t => t.category !== CONTENT_FEEDBACK_CATEGORY)
+  const inQueue = service
+  const filtered = filter === 'all' ? inQueue : inQueue.filter(t => t.status === filter)
+  const page = usePaging(filtered, { resetKey: filter })
 
   if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
-  /* Content feedback is a different kind of work and must not inflate the
-     service SLA figures, so the counts below are service-only. */
-  const service = tickets.filter(t => t.category !== CONTENT_FEEDBACK_CATEGORY)
-  const feedback = tickets.filter(t => t.category === CONTENT_FEEDBACK_CATEGORY)
-  const inQueue = queue === 'service' ? service : feedback
-  const filtered = filter === 'all' ? inQueue : inQueue.filter(t => t.status === filter)
   const openCount = service.filter(t => t.status === 'open').length
   const breachedCount = service.filter(t => t.breached).length
 
@@ -118,24 +120,9 @@ export function OperatorTickets() {
           <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Tickets & SLA</h1>
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginTop: '4px' }}>
             {openCount} open · {breachedCount} breached · {service.filter(t => t.escalated).length} escalated
-            {feedback.length > 0 && ` · ${feedback.length} content feedback (counted separately)`}
           </p>
         </div>
         <Btn onClick={() => setAddModal(true)}>New ticket</Btn>
-      </div>
-
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
-        {(['service', 'feedback'] as const).map(qk => (
-          <button key={qk} onClick={() => setQueue(qk)} style={{
-            padding: '6px 14px', borderRadius: 'var(--radius-full)',
-            fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer',
-            border: '1px solid var(--border)',
-            background: queue === qk ? 'var(--brand-navy)' : 'white',
-            color: queue === qk ? 'white' : 'var(--text-secondary)',
-          }}>
-            {qk === 'service' ? `Service tickets (${service.length})` : `Content feedback (${feedback.length})`}
-          </button>
-        ))}
       </div>
 
       <div style={{ display: 'flex', gap: '8px' }}>
@@ -148,7 +135,7 @@ export function OperatorTickets() {
         <SectionCard title="Ticket Queue" subtitle="SLA clock pauses while waiting on customer">
           {filtered.length === 0 ? <EmptyState message="No tickets in this filter" /> : (
             <Table headers={['Subject', 'Priority', 'Status', 'Owner']}>
-              {filtered.map(t => (
+              {page.rows.map(t => (
                 <tr key={t.id} onClick={() => { setSelected(t); setAttachments([]); void loadAttachments(t.id).then(setAttachments) }} style={{ cursor: 'pointer', background: selected?.id === t.id ? 'var(--bg-alt)' : 'transparent' }}>
                   <Td>
                     {t.breached && <AlertTriangle size={14} style={{ color: 'var(--danger)', display: 'inline', marginRight: '4px' }} />}
@@ -162,6 +149,7 @@ export function OperatorTickets() {
               ))}
             </Table>
           )}
+          <Pager page={page} noun="tickets" />
         </SectionCard>
 
         <SectionCard title={selected ? 'Ticket Detail' : 'Select a ticket'} subtitle={selected?.id}>
