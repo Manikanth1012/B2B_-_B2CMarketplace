@@ -3,11 +3,14 @@ import { readFileSync } from 'node:fs'
 import {
   KB_KINDS, kbKind, filterArticles, allTags, canAct,
   assetsFor, assetsByKind, assetKind, assetMeta, fileSize, duration,
+  publishedTo, personaLabel, faqsFor, faqsByTopic, searchFaqs, helpfulness,
+  validateAudience, validateArticle, validateFaq, canLink, kbWarnings,
 } from './kb'
-import type { KbArticle, KbAsset } from './kb'
+import type { KbArticle, KbAsset, KbFaq } from './kb'
 
 const art = (over: Partial<KbArticle> = {}): KbArticle => ({
-  id: 'KB-1', persona: 'operator', kind: 'howto', title: 'Onboard a seller',
+  id: 'KB-1', persona: 'operator', personas: ['operator'], audience_note: '',
+  kind: 'howto', title: 'Onboard a seller',
   mins: 5, updated: '21 Jul 2026', view: 'op-onboarding',
   roles: [], tags: ['partners', 'onboarding'],
   summary: 'How the seven gates work', body: [['Why', 'Because']],
@@ -176,5 +179,196 @@ describe('article attachments', () => {
     expect(duration(600)).toBe('10:00')
     expect(duration(45)).toBe('45 sec')
     expect(duration(0)).toBe('—')
+  })
+})
+
+/* ================================================================ FAQs === */
+
+const faq = (over: Partial<KbFaq> = {}): KbFaq => ({
+  id: 'FAQ-1', question: 'Where do I find my bill?', answer: 'Under Bills on your account.',
+  personas: ['consumer'], topic: 'Billing', status: 'published',
+  asked: 100, helpful: 80, article_id: null, updated: '01 Aug 2026',
+  updated_by: 'Anika Sharma', sort_order: 1, ...over,
+})
+
+describe('who a piece is published to', () => {
+  /* An article belonged to one persona, so the same policy had to be written
+     twice to reach two audiences — which is how the copy nobody remembers to
+     update becomes the one somebody reads. */
+  it('lets one article reach two audiences', () => {
+    const both = art({ personas: ['consumer', 'enterprise'] })
+    expect(publishedTo(both, 'consumer')).toBe(true)
+    expect(publishedTo(both, 'enterprise')).toBe(true)
+    expect(publishedTo(both, 'partner')).toBe(false)
+  })
+
+  it('shows a held draft to nobody, whoever it names', () => {
+    const held = art({ personas: ['consumer', 'enterprise'], status: 'held' })
+    expect(publishedTo(held, 'consumer')).toBe(false)
+    expect(publishedTo(held, 'enterprise')).toBe(false)
+  })
+
+  it('names the audiences the way a reader would', () => {
+    expect(personaLabel('consumer')).toBe('Retail customers')
+    expect(personaLabel('partner')).toBe('Sellers')
+    expect(personaLabel('nobody')).toBe('nobody')
+  })
+})
+
+describe('the questions a reader sees', () => {
+  const FAQS = [
+    faq({ id: 'a', personas: ['consumer', 'enterprise'], topic: 'Billing', sort_order: 1 }),
+    faq({ id: 'b', personas: ['consumer'], topic: 'Rewards', sort_order: 2 }),
+    faq({ id: 'c', personas: ['partner'], topic: 'Settlement', sort_order: 3 }),
+    faq({ id: 'd', personas: ['consumer'], topic: 'Billing', status: 'held', sort_order: 4 }),
+  ]
+
+  it('gives each audience its own, and nobody else’s', () => {
+    expect(faqsFor(FAQS, 'consumer').map(f => f.id)).toEqual(['a', 'b'])
+    expect(faqsFor(FAQS, 'enterprise').map(f => f.id)).toEqual(['a'])
+    expect(faqsFor(FAQS, 'partner').map(f => f.id)).toEqual(['c'])
+  })
+
+  it('keeps a held question off every tab', () => {
+    expect(faqsFor(FAQS, 'consumer').map(f => f.id)).not.toContain('d')
+  })
+
+  it('groups them by topic, in the order the topics appear', () => {
+    const grouped = faqsByTopic(faqsFor(FAQS, 'consumer'))
+    expect(grouped.map(g => g.topic)).toEqual(['Billing', 'Rewards'])
+    expect(grouped[0].faqs.map(f => f.id)).toEqual(['a'])
+  })
+
+  it('searches the question, the answer and the topic', () => {
+    expect(searchFaqs(FAQS, 'bill').map(f => f.id)).toEqual(['a', 'b', 'c', 'd'])
+    expect(searchFaqs(FAQS, 'settlement').map(f => f.id)).toEqual(['c'])
+    expect(searchFaqs(FAQS, '').map(f => f.id)).toHaveLength(4)
+    expect(searchFaqs(FAQS, 'zzz')).toEqual([])
+  })
+
+  /* "0% helpful" and "nobody has said" are different facts, and showing the
+     first for the second condemns a new answer for being new. */
+  it('reports helpfulness as unknown rather than as zero when nobody has voted', () => {
+    expect(helpfulness({ asked: 0, helpful: 0 })).toBeNull()
+    expect(helpfulness({ asked: 100, helpful: 80 })).toBe(80)
+    expect(helpfulness({ asked: 3, helpful: 0 })).toBe(0)
+  })
+})
+
+describe('what may be published', () => {
+  /* The refusal that matters: it reads as live on the author's list and
+     appears on no reader's screen. */
+  it('refuses to publish to nobody, and offers the alternative', () => {
+    const check = validateAudience({ personas: [], status: 'published' })
+    expect(check.ok).toBe(false)
+    if (!check.ok) expect(check.reason).toMatch(/hold it as a draft instead/)
+  })
+
+  it('allows a draft addressed to nobody yet', () => {
+    const check = validateAudience({ personas: [], status: 'held' })
+    expect(check.ok).toBe(true)
+    if (check.ok) expect(check.note).toMatch(/addressed to nobody yet/)
+  })
+
+  it('refuses an audience this marketplace does not have', () => {
+    const check = validateAudience({ personas: ['consumer', 'reseller'], status: 'published' })
+    expect(check.ok).toBe(false)
+    if (!check.ok) expect(check.reason).toMatch(/reseller/)
+  })
+
+  it('says who will be able to read it', () => {
+    const check = validateAudience({ personas: ['consumer', 'partner'], status: 'published' })
+    expect(check.ok).toBe(true)
+    if (check.ok) expect(check.note).toBe('Readable by Retail customers and Sellers.')
+  })
+
+  it('refuses an article with no title or no summary', () => {
+    expect(validateArticle({ title: ' ', summary: 'x', personas: ['consumer'], status: 'published' }).ok).toBe(false)
+    const noSummary = validateArticle({ title: 'x', summary: '', personas: ['consumer'], status: 'published' })
+    expect(noSummary.ok).toBe(false)
+    if (!noSummary.ok) expect(noSummary.reason).toMatch(/nobody can tell apart from its neighbours/)
+  })
+
+  it('insists a FAQ is written as a question', () => {
+    const check = validateFaq({ question: 'Changing a plan', answer: 'Yes', personas: ['consumer'], status: 'published' })
+    expect(check.ok).toBe(false)
+    if (!check.ok) expect(check.reason).toMatch(/ending in a question mark/)
+    expect(validateFaq({ question: 'Can I change a plan?', answer: 'Yes', personas: ['consumer'], status: 'published' }).ok).toBe(true)
+  })
+
+  it('refuses a question with no answer', () => {
+    const check = validateFaq({ question: 'What now?', answer: '  ', personas: ['consumer'], status: 'published' })
+    expect(check.ok).toBe(false)
+    if (!check.ok) expect(check.reason).toMatch(/cannot explain/)
+  })
+})
+
+describe('a question that opens an article', () => {
+  const target = art({ id: 'KB-C04', title: 'A payment failed', personas: ['consumer'], status: 'published' })
+
+  it('allows a link its own readers can follow', () => {
+    expect(canLink({ personas: ['consumer'], status: 'published' }, target).ok).toBe(true)
+  })
+
+  /* A door to a room the reader cannot enter is worse than no door: they
+     click, and either nothing happens or they are refused. */
+  it('refuses a published question pointing at a draft', () => {
+    const check = canLink({ personas: ['consumer'], status: 'published' }, { ...target, status: 'held' })
+    expect(check.ok).toBe(false)
+    if (!check.ok) expect(check.reason).toMatch(/cannot open an unpublished answer/)
+  })
+
+  it('refuses a link to an article this question’s readers cannot see', () => {
+    const check = canLink({ personas: ['partner'], status: 'published' }, target)
+    expect(check.ok).toBe(false)
+    if (!check.ok) expect(check.reason).toMatch(/a door they cannot walk through/)
+  })
+
+  /* A draft question may point at a draft article — they are being written
+     together. It may not point at one its own readers will never see, because
+     that link is already broken and only looks fine until it is published. */
+  it('lets a draft question point at a draft answer for the same readers', () => {
+    expect(canLink({ personas: ['consumer'], status: 'held' }, { ...target, status: 'held' }).ok).toBe(true)
+  })
+
+  it('still refuses a draft link the audiences will never share', () => {
+    const check = canLink({ personas: ['partner'], status: 'held' }, { ...target, status: 'held' })
+    expect(check.ok).toBe(false)
+    if (!check.ok) expect(check.reason).toMatch(/a door they cannot walk through/)
+  })
+})
+
+describe('what the operator should be worried about', () => {
+  const full = ['consumer', 'enterprise', 'partner'].flatMap(p => [
+    art({ id: `a-${p}`, personas: [p] }),
+  ])
+  const fullFaqs = ['consumer', 'enterprise', 'partner'].map(p => faq({ id: `f-${p}`, personas: [p] }))
+
+  it('says nothing when every audience has both', () => {
+    expect(kbWarnings(full, fullFaqs).filter(w => w.level === 'warn')).toEqual([])
+  })
+
+  it('flags an audience with no articles', () => {
+    const text = kbWarnings(full.filter(a => a.id !== 'a-partner'), fullFaqs).map(w => w.text).join(' | ')
+    expect(text).toMatch(/Sellers have no published articles/)
+  })
+
+  it('flags an empty FAQ tab', () => {
+    const text = kbWarnings(full, fullFaqs.filter(f => f.id !== 'f-enterprise')).map(w => w.text).join(' | ')
+    expect(text).toMatch(/Business accounts have no published questions/)
+  })
+
+  /* Asked often and rarely found helpful is the most useful signal here: a
+     question people have, and an answer that is not answering it. */
+  it('surfaces an answer that is asked a lot and helps nobody', () => {
+    const bad = faq({ id: 'bad', question: 'Why was I charged twice?', asked: 400, helpful: 40 })
+    const text = kbWarnings(full, [...fullFaqs, bad]).map(w => w.text).join(' | ')
+    expect(text).toMatch(/Why was I charged twice\?/)
+  })
+
+  it('does not condemn a new answer for being new', () => {
+    const fresh = faq({ id: 'fresh', asked: 2, helpful: 0 })
+    const text = kbWarnings(full, [...fullFaqs, fresh]).map(w => w.text).join(' | ')
+    expect(text).not.toMatch(/rarely found helpful/)
   })
 })

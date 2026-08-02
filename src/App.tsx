@@ -37,6 +37,7 @@ import { OperatorDeveloper } from './components/operator/OperatorDeveloper'
 import { OperatorPromotions } from './components/operator/OperatorPromotions'
 import { OperatorBanners } from './components/operator/OperatorBanners'
 import { OperatorBillTemplates } from './components/operator/OperatorBillTemplates'
+import { OperatorKnowledge } from './components/operator/OperatorKnowledge'
 import { OperatorChannels } from './components/operator/OperatorChannels'
 import { OperatorRoles } from './components/operator/OperatorRoles'
 import { OperatorAudit } from './components/operator/OperatorAudit'
@@ -318,6 +319,7 @@ export default function App() {
         {opView === 'op-feedback' && <OperatorContentFeedback />}
         {opView === 'op-audit' && <OperatorAudit />}
         {opView === 'op-kb' && <KnowledgeBase persona="operator" title="Knowledge base" />}
+        {opView === 'op-kbadmin' && <OperatorKnowledge />}
         {/* No feedbackAs: the operator is the queue. */}
       </OperatorShell>
     )

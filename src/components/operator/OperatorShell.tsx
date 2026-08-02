@@ -3,7 +3,7 @@ import {
   Star,
   LayoutDashboard, Users, Package, DollarSign, Warehouse, Ticket,
   Shield, Code, Bell, Tag, TrendingUp, Settings, ChevronDown,
-  Search, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store, Wallet as WalletIcon, MessageSquareWarning, RotateCcw, Gift, Scale, BookText, Radio, Receipt
+  Search, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store, Wallet as WalletIcon, MessageSquareWarning, RotateCcw, Gift, Scale, BookText, Radio, Receipt, LibraryBig
 } from 'lucide-react'
 import type { OperatorView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
@@ -58,6 +58,7 @@ const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; i
       { id: 'op-roles', label: 'Roles & Users', icon: <Shield size={18} /> },
       { id: 'op-audit', label: 'Audit Trail', icon: <Settings size={18} /> },
       { id: 'op-kb', label: 'Knowledge base', icon: <BookOpen size={18} /> },
+      { id: 'op-kbadmin', label: 'Manage content', icon: <LibraryBig size={18} /> },
     ]
   },
 ]

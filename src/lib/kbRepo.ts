@@ -1,6 +1,6 @@
 /* The only module that talks to Supabase for the knowledge base. */
 import { supabase } from './supabase'
-import type { KbArticle, KbAsset, KbTour } from './kb'
+import type { KbArticle, KbAsset, KbTour, KbFaq } from './kb'
 
 export interface KbSnapshot {
   articles: KbArticle[]
@@ -9,18 +9,26 @@ export interface KbSnapshot {
      own files opens with a gap where they are about to appear. */
   assets: KbAsset[]
   tours: KbTour[]
+  /* The questions people actually ask. Their own tab, because a one-sentence
+     question filed as a four-hundred-word article is a page nobody scans. */
+  faqs: KbFaq[]
   /* Set when a query failed. An empty list and a failed read are different
      answers and must not look the same on screen. */
   loadError?: string
 }
 
 export async function loadKb(persona: string): Promise<KbSnapshot> {
-  const [artRes, assetRes, tourRes] = await Promise.all([
+  const [artRes, assetRes, tourRes, faqRes] = await Promise.all([
+    /* Matched on `personas`, not on `persona`. One article can be the same
+       article for a retail customer and a business buyer, and it used to have
+       to be written twice to reach both. */
     supabase.from('kb_articles').select('*')
-      .eq('persona', persona).eq('status', 'published').order('sort_order'),
+      .contains('personas', [persona]).eq('status', 'published').order('sort_order'),
     supabase.from('kb_assets').select('*').order('sort_order'),
     supabase.from('kb_tours').select('*')
       .eq('persona', persona).eq('status', 'published').order('sort_order'),
+    supabase.from('kb_faqs').select('*')
+      .contains('personas', [persona]).eq('status', 'published').order('sort_order'),
   ])
 
   /* Only the articles query can fail the screen. Nothing renders tours yet — `tours` is
@@ -36,6 +44,7 @@ export async function loadKb(persona: string): Promise<KbSnapshot> {
        is the only place that fact lives. */
     assets: ((assetRes.data ?? []) as KbAsset[]).filter(a => mine.has(a.article_id)),
     tours: (tourRes.data ?? []) as KbTour[],
+    faqs: (faqRes.data ?? []) as KbFaq[],
     ...(artRes.error ? { loadError: artRes.error.message } : {}),
   }
 }
@@ -63,7 +72,7 @@ export type ArticleForViewResult =
    "we don't know". */
 export async function articleForView(persona: string, view: string): Promise<ArticleForViewResult> {
   const { data, error } = await supabase.from('kb_articles').select('*')
-    .eq('persona', persona).eq('status', 'published').eq('view', view)
+    .contains('personas', [persona]).eq('status', 'published').eq('view', view)
     .order('sort_order').limit(1)
   if (error) return { ok: false, reason: error.message }
   return { ok: true, article: (data && data[0] ? data[0] : null) as KbArticle | null }

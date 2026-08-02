@@ -3,7 +3,10 @@ import { ChevronLeft, Clock, Paperclip, TriangleAlert as AlertTriangle } from 'l
 import { SectionCard, EmptyState, Btn, TextInput, Select, Modal, FormField, TextArea, toast } from './operator/shared'
 import { loadKb, raiseContentFeedback } from '../lib/kbRepo'
 import type { KbSnapshot } from '../lib/kbRepo'
-import { KB_KINDS, kbKind, filterArticles, allTags, canAct, assetsFor } from '../lib/kb'
+import {
+  KB_KINDS, kbKind, filterArticles, allTags, canAct, assetsFor,
+  faqsByTopic, searchFaqs, helpfulness,
+} from '../lib/kb'
 import type { KbArticle } from '../lib/kb'
 import { KbAssets } from './KbAssets'
 import type { Persona } from '../types/view'
@@ -24,6 +27,7 @@ export function KnowledgeBase({ persona, title, myRole = null, feedbackAs }: {
   const [kind, setKind] = useState('')
   const [tag, setTag] = useState('')
   const [q, setQ] = useState('')
+  const [tab, setTab] = useState<'articles' | 'faqs'>('articles')
   const [open, setOpen] = useState<KbArticle | null>(null)
   const [fbFor, setFbFor] = useState<KbArticle | null>(null)
   const [note, setNote] = useState('')
@@ -112,33 +116,104 @@ export function KnowledgeBase({ persona, title, myRole = null, feedbackAs }: {
   /* ---------- List ---------- */
   const shown = filterArticles(snap.articles, { kind: kind || undefined, tag: tag || undefined, q })
   const tags = allTags(snap.articles)
+  /* The FAQ tab searches on the same box. Two search fields on one screen is
+     two places to have typed the thing you were looking for. */
+  const questions = faqsByTopic(searchFaqs(snap.faqs, q))
+  const faqCount = snap.faqs.length
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div>
         <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>{title}</h1>
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginTop: '4px' }}>
-          {snap.articles.length} articles · what this console does and why the rules are the way they are
+          {snap.articles.length} articles · {faqCount} common {faqCount === 1 ? 'question' : 'questions'} ·
+          {' '}what this console does and why the rules are the way they are
         </p>
+      </div>
+
+      <div style={{ display: 'flex', gap: '4px', borderBottom: '1px solid var(--border)' }}>
+        {([['articles', `Articles (${snap.articles.length})`], ['faqs', `FAQs (${faqCount})`]] as const).map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id)} style={{
+            padding: '8px 14px', border: 'none', background: 'none', cursor: 'pointer',
+            fontSize: 'var(--text-sm)', fontWeight: tab === id ? 700 : 500,
+            color: tab === id ? 'var(--brand-navy)' : 'var(--text-tertiary)',
+            borderBottom: `2px solid ${tab === id ? 'var(--brand-navy)' : 'transparent'}`,
+            marginBottom: '-1px',
+          }}>{label}</button>
+        ))}
       </div>
 
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: '220px' }}>
-          <TextInput value={q} onChange={e => setQ(e.target.value)} placeholder="Search articles…" />
+          <TextInput value={q} onChange={e => setQ(e.target.value)}
+            placeholder={tab === 'faqs' ? 'Search the questions…' : 'Search articles…'} />
         </div>
-        <div style={{ width: '180px' }}>
-          <Select value={kind} onChange={e => setKind(e.target.value)}>
-            <option value="">All kinds</option>
-            {KB_KINDS.map(k => <option key={k.id} value={k.id}>{k.label}</option>)}
-          </Select>
-        </div>
-        <div style={{ width: '180px' }}>
-          <Select value={tag} onChange={e => setTag(e.target.value)}>
-            <option value="">All topics</option>
-            {tags.map(t => <option key={t} value={t}>{t}</option>)}
-          </Select>
-        </div>
+        {tab === 'articles' && (
+          <>
+            <div style={{ width: '180px' }}>
+              <Select value={kind} onChange={e => setKind(e.target.value)}>
+                <option value="">All kinds</option>
+                {KB_KINDS.map(k => <option key={k.id} value={k.id}>{k.label}</option>)}
+              </Select>
+            </div>
+            <div style={{ width: '180px' }}>
+              <Select value={tag} onChange={e => setTag(e.target.value)}>
+                <option value="">All topics</option>
+                {tags.map(t => <option key={t} value={t}>{t}</option>)}
+              </Select>
+            </div>
+          </>
+        )}
       </div>
+
+      {tab === 'faqs' && (
+        questions.length === 0 ? <EmptyState message="No question matches that" /> : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {questions.map(group => (
+              <SectionCard key={group.topic} title={group.topic}
+                subtitle={`${group.faqs.length} ${group.faqs.length === 1 ? 'question' : 'questions'}`}>
+                <div style={{ padding: '4px 12px 12px' }}>
+                  {group.faqs.map(f => {
+                    const article = f.article_id ? snap.articles.find(a => a.id === f.article_id) : null
+                    return (
+                      <details key={f.id} style={{
+                        borderBottom: '1px solid var(--border-light)', padding: '10px 0',
+                      }}>
+                        <summary style={{
+                          cursor: 'pointer', fontWeight: 600, fontSize: 'var(--text-sm)',
+                          color: 'var(--text)', listStyle: 'revert',
+                        }}>{f.question}</summary>
+                        <p style={{
+                          fontSize: 'var(--text-sm)', color: 'var(--text-secondary)',
+                          margin: '8px 0 0', lineHeight: 1.6, maxWidth: '72ch',
+                        }}>{f.answer}</p>
+                        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginTop: '8px', flexWrap: 'wrap' }}>
+                          {/* The doorway case: the answer is really an article. */}
+                          {article && (
+                            <button onClick={() => setOpen(article)} style={{
+                              border: 'none', background: 'none', padding: 0, cursor: 'pointer',
+                              fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--brand-navy)',
+                            }}>Read {article.title} →</button>
+                          )}
+                          {/* Null, not zero, when nobody has voted — "0% helpful"
+                              and "nobody has said" are different facts. */}
+                          {helpfulness(f) !== null && (
+                            <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                              {helpfulness(f)}% of {f.asked.toLocaleString()} readers found this helpful
+                            </span>
+                          )}
+                        </div>
+                      </details>
+                    )
+                  })}
+                </div>
+              </SectionCard>
+            ))}
+          </div>
+        )
+      )}
+
+      {tab === 'articles' && (
 
       <SectionCard title="Articles" subtitle={shown.length === snap.articles.length ? undefined : `${shown.length} of ${snap.articles.length} shown`}>
         {shown.length === 0 ? <EmptyState message="Nothing matches that search" /> : (
@@ -170,6 +245,7 @@ export function KnowledgeBase({ persona, title, myRole = null, feedbackAs }: {
           </div>
         )}
       </SectionCard>
+      )}
     </div>
   )
 }
