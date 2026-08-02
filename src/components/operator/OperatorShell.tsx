@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import {
   Star,
   LayoutDashboard, Users, Package, DollarSign, Warehouse, Ticket,
-  Shield, Code, Bell, Tag, TrendingUp, Settings, ChevronDown,
+  Shield, Code, Megaphone, Tag, TrendingUp, Settings, ChevronDown,
   Search, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store, Wallet as WalletIcon, MessageSquareWarning, RotateCcw, Gift, Scale, BookText, Radio, Receipt, LibraryBig, Globe
 } from 'lucide-react'
 import type { OperatorView } from '../../types/view'
@@ -46,7 +46,11 @@ const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; i
     items: [
       { id: 'op-developer', label: 'Developer Portal', icon: <Code size={18} /> },
       { id: 'op-promotions', label: 'Promotions', icon: <Tag size={18} /> },
-      { id: 'op-banners', label: 'Storefront Banners', icon: <Bell size={18} /> },
+      /* A megaphone, not a bell. Banners and Notifications sat next to each
+         other wearing the same icon — `BellIcon` is `Bell` aliased — so the two
+         rows were told apart only by their labels. The bell stays with
+         Notifications, where it means what it looks like. */
+      { id: 'op-banners', label: 'Storefront Banners', icon: <Megaphone size={18} /> },
       { id: 'op-notifications', label: 'Notifications', icon: <BellIcon size={18} /> },
       { id: 'op-channels', label: 'Channels', icon: <Radio size={18} /> },
     ]
