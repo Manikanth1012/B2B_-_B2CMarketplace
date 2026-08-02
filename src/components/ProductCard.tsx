@@ -1,4 +1,5 @@
 import { Star, Plus, Bell } from 'lucide-react'
+import { useMarket } from '../lib/MarketContext'
 import type { Product } from '../types'
 import { getProductImage } from '../lib/images'
 
@@ -25,6 +26,11 @@ const catColors: Record<string, string> = {
 }
 
 export function ProductCard({ product, onClick, onAddToCart, watching, onNotifyMe }: ProductCardProps) {
+  /* The product was priced in the market's currency when it was loaded, so
+     the card formats rather than converts — it prints the number it was
+     given, with the right mark and the right grouping on it. */
+  const { fmtIn } = useMarket()
+  const price = (n: number) => fmtIn(n, product.currency ?? 'USD')
   const color = catColors[product.category_id] || '#00A6A6'
   const hasDiscount = product.was_price && product.was_price > product.price
   const outOfStock = product.stock === 'out'
@@ -140,7 +146,7 @@ export function ProductCard({ product, onClick, onAddToCart, watching, onNotifyM
           <div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: '4px' }}>
               <span style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>
-                ${product.price.toFixed(2)}
+                {price(product.price)}
               </span>
               {product.unit && (
                 <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
@@ -151,7 +157,7 @@ export function ProductCard({ product, onClick, onAddToCart, watching, onNotifyM
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               {hasDiscount && (
                 <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', textDecoration: 'line-through' }}>
-                  ${product.was_price!.toFixed(2)}
+                  {price(product.was_price!)}
                 </span>
               )}
               <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>

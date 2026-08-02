@@ -3,6 +3,8 @@ import { Star, Plus, Search, SlidersHorizontal } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Product, Category } from '../types'
 import { categoriesFor } from '../lib/storefront'
+import { loadPriceBook, repriceAll } from '../lib/moneyRepo'
+import { useMarket } from '../lib/MarketContext'
 import { ProductCard } from './ProductCard'
 
 import type { View } from '../types/view'
@@ -17,6 +19,11 @@ interface ProductGridProps {
 }
 
 export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyMe, watching }: ProductGridProps) {
+  const { market } = useMarket()
+  /* Named separately so the effect below depends on the code and not on the
+     market object, which is rebuilt on every context render and would refetch
+     the catalogue continuously. */
+  const currencyCode = market?.currency ?? 'USD'
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
@@ -57,11 +64,14 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
       ? query.eq('category_id', categoryFilter).in('category_id', mine)
       : query.in('category_id', mine)
 
-    query.then(({ data }) => {
-      if (data) setProducts(data as Product[])
+    /* Priced as they are loaded, in the market's own currency, rather than
+       converted where they are drawn. One place decides the currency; every
+       card below just prints the price it was handed. */
+    Promise.all([query, loadPriceBook(currencyCode)]).then(([{ data }, book]) => {
+      if (data) setProducts(repriceAll(data as Product[], book, currencyCode))
       setLoading(false)
     })
-  }, [categoryFilter, categories])
+  }, [categoryFilter, categories, currencyCode])
 
   const subCategories = useMemo(() => {
     const subs = new Set(products.map((p) => p.sub_category))

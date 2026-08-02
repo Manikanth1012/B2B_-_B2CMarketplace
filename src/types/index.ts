@@ -55,6 +55,13 @@ export interface Product {
   /* Who this thing is actually sold to. The category decides which shelf a
      persona sees; this decides what on that shelf is theirs to buy. */
   audiences: string[]
+  /* The currency `price` and `was_price` are in. Set by `reprice` when the
+     catalogue is loaded for a market, so every component that prints a price
+     is printing one it can format — a number without this is a number in some
+     currency, which is not the same as a number in dollars. */
+  currency?: string
+  floor_price?: number
+  list_price?: number
 }
 
 export interface CartItem {

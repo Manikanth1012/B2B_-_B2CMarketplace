@@ -4,6 +4,8 @@ import { CategoryRail } from './CategoryRail'
 import { PromoStrip } from './PromoStrip'
 import { HERO, CAROUSEL, BANNERS } from '../../lib/assets'
 import { loadPromoBanners, loadCategories, loadCatalogue, countByCategory } from '../../lib/storefrontRepo'
+import { loadPriceBook, repriceAll } from '../../lib/moneyRepo'
+import { useMarket } from '../../lib/MarketContext'
 import {
   promoStrip, retailCategories, enterpriseCategories,
   type PromoSlide,
@@ -12,6 +14,8 @@ import type { Category, Product } from '../../types'
 import type { PublicPage } from '../../types/view'
 
 export function LandingPage({ onNavigate }: { onNavigate: (p: PublicPage) => void }) {
+  const { market } = useMarket()
+  const currencyCode = market?.currency ?? 'USD'
   const [slides, setSlides] = useState<PromoSlide[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   /* Counted per rail, not once. A retail tile that counts the whole shelf
@@ -24,8 +28,13 @@ export function LandingPage({ onNavigate }: { onNavigate: (p: PublicPage) => voi
        the page rather than failing the page, which is why none of them throws. */
     loadPromoBanners().then(b => setSlides(promoStrip(b, BANNERS)))
     loadCategories().then(setCategories)
-    loadCatalogue().then(setCatalogue)
-  }, [])
+    /* Priced for the market too. A shopper who sees $18.00 before signing in
+       and ₹1,599.00 after has been shown two different shops. */
+    Promise.all([loadCatalogue(), loadPriceBook(currencyCode)])
+      .then(([rows, book]) => setCatalogue(repriceAll(rows, book, currencyCode)))
+    /* The currency is a dependency: without it this closes over the first one
+       it saw and the page keeps showing that market's prices forever. */
+  }, [currencyCode])
 
   const retail = retailCategories(categories)
   const enterprise = enterpriseCategories(categories)

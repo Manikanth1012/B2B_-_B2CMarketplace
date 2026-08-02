@@ -1,3 +1,4 @@
+import { useMarket } from '../../lib/MarketContext'
 import { useId } from 'react'
 import type { Category, Product } from '../../types'
 import { getCategoryImage } from '../../lib/images'
@@ -7,9 +8,7 @@ import { exampleProducts } from '../../lib/storefront'
    marketplaces they can list into and what already sells in each — so this is the
    six categories with real listings underneath them, not a rail of stock imagery. */
 
-function money(n: number): string {
-  return `$${n.toFixed(2)}`
-}
+
 
 export function CategoryShowcase({ title, subtitle, categories, products, counts }: {
   title: string
@@ -18,6 +17,12 @@ export function CategoryShowcase({ title, subtitle, categories, products, counts
   products: readonly Product[]
   counts: Record<string, number>
 }) {
+  /* The product carries the currency it was priced in — these pages reprice
+     for the market like every other surface. Printing a dollar sign over a
+     rupee amount is worse than either mistake alone: the number is right and
+     the label says it is something else. */
+  const { fmt } = useMarket()
+  const money = (n: number) => fmt(n)
   const headingId = useId()
   if (categories.length === 0) return <></>
 

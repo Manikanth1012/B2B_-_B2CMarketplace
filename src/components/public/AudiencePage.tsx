@@ -3,6 +3,8 @@ import { PublicProductGrid } from './PublicProductGrid'
 import { CategoryShowcase } from './CategoryShowcase'
 import { BANNERS } from '../../lib/assets'
 import { loadCatalogue, loadCategories, countByCategory } from '../../lib/storefrontRepo'
+import { loadPriceBook, repriceAll } from '../../lib/moneyRepo'
+import { useMarket } from '../../lib/MarketContext'
 import { productsForPage, categoriesForPage } from '../../lib/storefront'
 import type { Category, Product } from '../../types'
 import type { PublicPage, Persona } from '../../types/view'
@@ -52,14 +54,21 @@ export function AudiencePage({ page, onSignIn, onApply, onAddToBasket }: {
   onApply: () => void
   onAddToBasket: (p: Product) => void
 }) {
+  const { market } = useMarket()
+  const currencyCode = market?.currency ?? 'USD'
   const c = CONFIG[page]
   const [catalogue, setCatalogue] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
 
   useEffect(() => {
-    loadCatalogue().then(setCatalogue)
+    /* Priced for the market too. A shopper who sees $18.00 before signing in
+       and ₹1,599.00 after has been shown two different shops. */
+    Promise.all([loadCatalogue(), loadPriceBook(currencyCode)])
+      .then(([rows, book]) => setCatalogue(repriceAll(rows, book, currencyCode)))
     loadCategories().then(setCategories)
-  }, [])
+    /* The currency is a dependency: without it this closes over the first one
+       it saw and the page keeps showing that market's prices forever. */
+  }, [currencyCode])
 
   /* The same rows the operator's catalogue holds — name, seller, price, rating —
      narrowed to the categories this page covers and to what is actually live. */

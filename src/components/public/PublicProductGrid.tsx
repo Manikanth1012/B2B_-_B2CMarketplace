@@ -3,15 +3,12 @@ import { Star, ShoppingBag } from 'lucide-react'
 import type { Product } from '../../types'
 import { getProductImage } from '../../lib/images'
 import { canAddToBasket } from '../../lib/storefront'
+import { useMarket } from '../../lib/MarketContext'
 
 /* Real catalogue rows on the public pages — name, seller, price and rating as they
    sit in `products`, not stock photography with invented captions. */
 
-/* Matches CartDrawer and the consumer console — a price that reads `$18.00` here
-   and `US$18.00` two clicks later looks like two different shops. */
-function money(n: number): string {
-  return `$${n.toFixed(2)}`
-}
+
 
 /* Pictures come from the curated per-SKU map in lib/images, the same one
    ProductCard, ProductDetail and CartDrawer use. A product has one photograph
@@ -23,6 +20,12 @@ export function PublicProductGrid({ title, subtitle, products, onAdd }: {
   products: readonly Product[]
   onAdd: (p: Product) => void
 }) {
+  /* The product carries the currency it was priced in — these pages reprice
+     for the market like every other surface. Printing a dollar sign over a
+     rupee amount is worse than either mistake alone: the number is right and
+     the label says it is something else. */
+  const { fmt } = useMarket()
+  const money = (n: number) => fmt(n)
   const headingId = useId()
   if (products.length === 0) return <></>
 

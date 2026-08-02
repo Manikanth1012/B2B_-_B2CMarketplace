@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Search, ShoppingCart, Menu, X, ChevronDown, User, Bell, Shield, LogOut, Star, BookOpen, Wallet as WalletIcon, FolderOpen } from 'lucide-react'
 import type { Category } from '../types'
 import { supabase } from '../lib/supabase'
+import { MarketPicker } from './MarketPicker'
 import { categoriesFor } from '../lib/storefront'
 import { ContextualHelp } from './ContextualHelp'
 
@@ -65,7 +66,7 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut, currentV
         padding: '6px 0',
       }}>
         <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span>India · UAE · Kenya</span>
+          <MarketPicker />
           <div style={{ display: 'flex', gap: '20px' }}>
             <button onClick={() => onNavigate('account', { tab: 'support' })} style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', fontSize: 'var(--text-xs)', padding: 0 }} className="hide-mobile">Help & Support</button>
             <span>EN</span>

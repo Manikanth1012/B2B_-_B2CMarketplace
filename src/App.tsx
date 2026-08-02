@@ -8,6 +8,7 @@ import { isOpen as watchIsOpen, type Watch } from './lib/stockWatch'
 import type { ConsumerProfile } from './types'
 import { restoreSession, signOut } from './lib/authRepo'
 import type { CartItem, Product } from './types'
+import { MarketProvider } from './lib/MarketContext'
 import { LoginScreen } from './components/LoginScreen'
 import { PublicShell } from './components/public/PublicShell'
 import { LandingPage } from './components/public/LandingPage'
@@ -83,7 +84,20 @@ import { EnterpriseRewards } from './components/enterprise/EnterpriseRewards'
 import { EnterpriseSupport } from './components/enterprise/EnterpriseSupport'
 import { KnowledgeBase } from './components/KnowledgeBase'
 
+/* The market — and so the currency and the tax — is chosen once and read
+   everywhere, so the provider wraps the app rather than sitting inside it.
+   `App` returns early in several places (login, the public pages, each
+   console), and a provider mounted below any of those would be missing on
+   exactly the surfaces that show prices. */
 export default function App() {
+  return (
+    <MarketProvider>
+      <AppInner />
+    </MarketProvider>
+  )
+}
+
+function AppInner() {
   const [surface, setSurface] = useState<Surface>({ kind: 'public', page: 'landing' })
   const session = surface.kind === 'session' ? surface.session : null
   const persona = session?.persona ?? null
