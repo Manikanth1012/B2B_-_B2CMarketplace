@@ -14,10 +14,12 @@
 
 import {
   CircleCheck as CheckCircle, Clock, Circle, CircleAlert as AlertCircle,
-  FileText, ChevronRight, Lock, Users,
+  FileText, Users,
 } from 'lucide-react'
 import type { JourneyStep } from '../lib/onboarding'
 import { evidenceChecklist, journeyProgress } from '../lib/onboarding'
+import { EvidenceLink } from './EvidenceLink'
+import type { Viewer } from '../lib/evidence'
 import { fmtDate } from './operator/shared'
 
 type Tone = 'cleared' | 'current' | 'failed' | 'pending'
@@ -120,10 +122,12 @@ export function JourneyRail({ steps, selected, onSelect }: {
 
 /* ------------------------------------------------------------ inspector --- */
 
-export function GateDetail({ step, previous, onViewDocument, children }: {
+export function GateDetail({ step, previous, viewer, children }: {
   step: JourneyStep
   previous: JourneyStep | null
-  onViewDocument: (name: string) => void
+  /* Who is looking, so a document row can offer a button that works rather
+     than one that fails at the bucket. */
+  viewer: Viewer
   /* The console's own controls — clearing, notes, the technical checklist. The
      record is the same on both sides; only what you can do with it differs. */
   children?: React.ReactNode
@@ -221,14 +225,16 @@ export function GateDetail({ step, previous, onViewDocument, children }: {
                     {d.kind} · {d.size}{d.uploaded_by ? ` · ${d.uploaded_by}` : ''}
                   </div>
                 </div>
-                <button onClick={() => onViewDocument(d.name)} style={{
-                  fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--brand-navy)',
-                  background: 'none', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-                  padding: '4px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px',
-                }}>View <ChevronRight size={12} /></button>
+                <EvidenceLink viewer={viewer} doc={d} />
               </div>
             ))}
           </div>
+        )}
+        {step.documents.length > 0 && (
+          <p style={{ fontSize: '10px', color: 'var(--text-tertiary)', margin: '8px 0 0' }}>
+            These carry named individuals' personal data and a company's banking details. Links are
+            short-lived and opening one is recorded against your account.
+          </p>
         )}
       </section>
 
@@ -258,63 +264,6 @@ export function GateDetail({ step, previous, onViewDocument, children }: {
       </section>
 
       {children}
-    </div>
-  )
-}
-
-/* --------------------------------------------------------- doc viewer ----- */
-
-/**
- * Onboarding documents carry named individuals' passports and a company's bank
- * details. The prototype's rule, kept: the pane says what the document is and
- * records that you opened it, and does not put its contents on a screen anybody
- * can shoulder-surf.
- */
-export function DocumentViewer({ name, partnerName, onClose }: {
-  name: string; partnerName: string; onClose: () => void
-}) {
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.55)', zIndex: 400,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px',
-      }}
-    >
-      <div onClick={e => e.stopPropagation()} style={{
-        background: 'white', borderRadius: 'var(--radius-lg)', maxWidth: '520px', width: '100%',
-        padding: '22px', display: 'flex', flexDirection: 'column', gap: '14px',
-      }}>
-        <div>
-          <div style={{ fontSize: 'var(--text-base)', fontWeight: 800, color: 'var(--text)' }}>{name}</div>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-            {partnerName} · uploaded during onboarding
-          </div>
-        </div>
-
-        <div style={{
-          border: '1px dashed var(--border)', borderRadius: 'var(--radius-md)', padding: '26px',
-          textAlign: 'center', color: 'var(--text-tertiary)', background: 'var(--bg-alt)',
-        }}>
-          <Lock size={26} style={{ margin: '0 auto 8px' }} />
-          <div style={{ fontSize: 'var(--text-xs)' }}>Contents are not shown here.</div>
-          <div style={{ fontSize: 'var(--text-xs)', marginTop: '3px' }}>
-            Uploaded partner documents are personal and commercial data.
-          </div>
-        </div>
-
-        <Callout tone="info" title="This pane is access-logged">
-          Onboarding documents contain personal data on named individuals. Opening one is recorded against
-          your account, and nothing here is downloadable in bulk.
-        </Callout>
-
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={{
-            padding: '8px 16px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)',
-            background: 'white', fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer',
-          }}>Close</button>
-        </div>
-      </div>
     </div>
   )
 }

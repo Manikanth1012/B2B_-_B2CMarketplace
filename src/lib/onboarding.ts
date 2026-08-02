@@ -238,6 +238,9 @@ export interface GateDocument {
   uploaded_by: string | null
   uploaded_at: string | null
   sort_order: number
+  /* Where the file lives in the evidence bucket. Null means the row is a claim
+     with nothing behind it, which is a state the screens have to show. */
+  path: string | null
 }
 
 /** One gate as the journey rail shows it: the row, its definition, what

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { User, Bell, History, Users, RotateCcw, Check, X, Plus, CircleAlert as AlertCircle, Info, Shield, Wallet, Star, Phone, Mail, MapPin, CreditCard, Clock, ChevronRight, Lock, Trash2, FileText, LifeBuoy, MessageSquare, Send, Download, Globe, Eye } from 'lucide-react'
+import { User, Bell, History, Users, RotateCcw, Check, X, Plus, CircleAlert as AlertCircle, Info, Shield, Wallet, Star, Phone, Mail, MapPin, CreditCard, Clock, ChevronRight, Lock, Trash2, FileText, LifeBuoy, MessageSquare, Send, Download, Globe, Eye, FolderOpen } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { changePassword, currentEmail, SignInError } from '../lib/authRepo'
 import { WalletCard } from './WalletCard'
@@ -10,6 +10,8 @@ import { PrivacyCard } from './PrivacyCard'
 import { NotificationPreferencesView } from './NotificationPreferencesView'
 import { AddressBookCard } from './AddressBookCard'
 import { StockWatchCard } from './StockWatchCard'
+import { CustomerDocuments } from './consumer/CustomerDocuments'
+import type { Viewer } from '../lib/evidence'
 import { MyReviewsCard } from './MyReviewsCard'
 import type {
   ConsumerProfile, ConsumerAuditEntry,
@@ -26,10 +28,10 @@ import type { RefundBook } from '../lib/refundRepo'
 import { STATES, REASONS, REASON_LIST, sla, ownership, autoApproves } from '../lib/refunds'
 import type { RefundPolicy, RefundReason } from '../lib/refunds'
 
-type Tab = 'profile' | 'security' | 'notifications' | 'activity' | 'household' | 'wallet' | 'refunds' | 'bills' | 'support'
+type Tab = 'profile' | 'security' | 'notifications' | 'activity' | 'household' | 'wallet' | 'refunds' | 'bills' | 'documents' | 'support'
 
 function isTab(v: string): v is Tab {
-  return ['profile', 'security', 'notifications', 'activity', 'household', 'wallet', 'refunds', 'bills', 'support'].includes(v)
+  return ['profile', 'security', 'notifications', 'activity', 'household', 'wallet', 'refunds', 'bills', 'documents', 'support'].includes(v)
 }
 
 
@@ -120,6 +122,7 @@ export function AccountView({ initialTab, onWatchesChanged }: {
     { id: 'wallet', label: 'Wallet', icon: Wallet },
     { id: 'refunds', label: 'Refunds', icon: RotateCcw },
     { id: 'bills', label: 'Bills', icon: FileText },
+    { id: 'documents', label: 'Documents', icon: FolderOpen },
     { id: 'support', label: 'Help & Support', icon: LifeBuoy },
   ]
 
@@ -188,6 +191,11 @@ export function AccountView({ initialTab, onWatchesChanged }: {
       {tab === 'wallet' && <WalletTab />}
       {tab === 'refunds' && <RefundsTab book={refundBook} onChanged={loadData} showToast={showToast} />}
       {tab === 'bills' && <BillsTab bills={bills} showToast={showToast} />}
+      {tab === 'documents' && (
+        /* The customer's own id is the folder their documents are filed under,
+           and the profile already carries it. */
+        <CustomerDocuments viewer={{ persona: 'consumer', customerId: profile.customer_id } as Viewer} />
+      )}
       {tab === 'support' && <SupportTab tickets={tickets} showToast={showToast} />}
 
       {/* Toast */}

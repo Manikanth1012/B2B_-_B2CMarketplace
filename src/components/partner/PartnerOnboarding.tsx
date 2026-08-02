@@ -2,7 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { CircleAlert as AlertCircle, Clock, CircleCheck as Check, FileText, Plus } from 'lucide-react'
 import { SectionCard, EmptyState, Btn, Modal, FormField, TextInput, TextArea, Select, toast } from '../operator/shared'
 import { TechChecklist } from '../TechChecklist'
-import { JourneyRail, GateDetail, DocumentViewer, Callout } from '../OnboardingJourney'
+import { JourneyRail, GateDetail, Callout } from '../OnboardingJourney'
+import { EvidenceLink } from '../EvidenceLink'
+import type { Viewer } from '../../lib/evidence'
 import {
   loadOnboarding, registerEndpoint, setEndpointAuth, sendTestCall, runSandboxOrder,
 } from '../../lib/onboardingRepo'
@@ -21,8 +23,10 @@ export function PartnerOnboarding({ partnerId }: { partnerId: string }) {
   const [record, setRecord] = useState<SellerRecord | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedGate, setSelectedGate] = useState<string | null>(null)
-  const [viewDoc, setViewDoc] = useState<string | null>(null)
   const [epModal, setEpModal] = useState(false)
+  /* The seller console already knows whose record it is, so the viewer needs no
+     round trip — the bucket's folders are named after exactly this id. */
+  const viewer: Viewer = { persona: 'partner', partnerId }
   const [newEp, setNewEp] = useState({ name: '', url: '' })
 
   const reload = useCallback(async () => {
@@ -128,7 +132,7 @@ export function PartnerOnboarding({ partnerId }: { partnerId: string }) {
       {step && (
         <SectionCard title={step.gate.name} subtitle="What you sent, and what this gate asks for">
           <div style={{ padding: '18px 20px' }}>
-            <GateDetail step={step} previous={previous} onViewDocument={setViewDoc}>
+            <GateDetail step={step} previous={previous} viewer={viewer}>
               {step.row.status === 'current' && gateIdFor(step.row) === 'tech' && (
                 <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '16px' }}>
                   <h4 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: '4px' }}>Integration milestone</h4>
@@ -159,7 +163,7 @@ export function PartnerOnboarding({ partnerId }: { partnerId: string }) {
       {record && (
         <CategoryRequirements
           record={record}
-          onOpenDoc={setViewDoc}
+          viewer={viewer}
           onApplied={async () => { await reload() }}
         />
       )}
@@ -204,10 +208,6 @@ export function PartnerOnboarding({ partnerId }: { partnerId: string }) {
         )}
       </SectionCard>
 
-      {viewDoc && (
-        <DocumentViewer name={viewDoc} partnerName={snap.partnerName} onClose={() => setViewDoc(null)} />
-      )}
-
       <Modal open={epModal} onClose={() => setEpModal(false)} title="Register an endpoint"
         footer={<><Btn variant="secondary" size="sm" onClick={() => setEpModal(false)}>Cancel</Btn>
                   <Btn size="sm" onClick={handleAddEndpoint}>Register</Btn></>}>
@@ -231,9 +231,9 @@ export function PartnerOnboarding({ partnerId }: { partnerId: string }) {
 
 /* --------------------------------------------- category-level onboarding -- */
 
-function CategoryRequirements({ record, onOpenDoc, onApplied }: {
+function CategoryRequirements({ record, viewer, onApplied }: {
   record: SellerRecord
-  onOpenDoc: (name: string) => void
+  viewer: Viewer
   onApplied: () => Promise<void>
 }) {
   const [applying, setApplying] = useState(false)
@@ -322,21 +322,19 @@ function CategoryRequirements({ record, onOpenDoc, onApplied }: {
                             holding the right document. */}
                         {e.document && (
                           <div style={{ marginTop: '4px' }}>
-                            <button
-                              onClick={() => onOpenDoc(e.document!)}
-                              style={{
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                              <span style={{
                                 display: 'inline-flex', alignItems: 'center', gap: '5px',
-                                background: 'var(--bg-alt)', border: '1px solid var(--border)',
-                                borderRadius: 'var(--radius-sm)', padding: '4px 8px',
-                                cursor: 'pointer', fontSize: '11px', color: 'var(--brand-navy)',
-                                fontWeight: 600, textAlign: 'left',
+                                fontSize: '11px', color: 'var(--text)', fontWeight: 600,
                               }}>
-                              <FileText size={11} />
-                              {e.document}
-                              {e.kind && <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}>
-                                {' '}· {e.kind}{e.size ? ` ${e.size}` : ''}
-                              </span>}
-                            </button>
+                                <FileText size={11} />
+                                {e.document}
+                                {e.kind && <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}>
+                                  {' '}· {e.kind}{e.size ? ` ${e.size}` : ''}
+                                </span>}
+                              </span>
+                              <EvidenceLink viewer={viewer} doc={{ id: e.id, name: e.document!, path: e.path }} compact />
+                            </div>
                             <div style={{ fontSize: '10px', color: expired ? 'var(--danger)' : 'var(--text-tertiary)', marginTop: '2px' }}>
                               {e.submitted_at && `You sent it ${fmtDate(e.submitted_at)}${e.submitted_by ? ` — ${e.submitted_by}` : ''}. `}
                               {e.reviewed_at && `Accepted ${fmtDate(e.reviewed_at)}${e.reviewed_by ? ` by ${e.reviewed_by}` : ''}. `}

@@ -201,6 +201,9 @@ export interface CategoryEvidence {
   rule_id: string
   state: EvidenceState
   document: string | null
+  /* Where the submitted file lives in the evidence bucket. Null while the
+     evidence is outstanding — there is nothing to keep yet. */
+  path: string | null
   kind: string | null
   size: string | null
   expires_on: string | null

@@ -17,7 +17,13 @@ import {
 import {
   SectionCard, EmptyState, Btn, Modal, FormField, TextArea, toast, fmtDate, fmtMoney, fmtInt,
 } from './shared'
-import { Callout, DocumentViewer } from '../OnboardingJourney'
+import { Callout } from '../OnboardingJourney'
+import { EvidenceLink } from '../EvidenceLink'
+import type { Viewer } from '../../lib/evidence'
+
+/* The operator may open anything in the evidence bucket — reviewing what a
+   seller supplied is the job — so the viewer is a constant rather than state. */
+const OPERATOR: Viewer = { persona: 'operator' }
 import { PartnerSettlementTab } from './PartnerSettlementTab'
 import { ColumnChart, DonutChart } from './charts'
 import {
@@ -78,7 +84,6 @@ export function OperatorPartners({ focus = null }: { focus?: string | null } = {
   const [detail, setDetail] = useState<PartnerDetail | null>(null)
   const [tab, setTab] = useState<Tab>('overview')
   const [moveTo, setMoveTo] = useState<PartnerStatus | null>(null)
-  const [viewDoc, setViewDoc] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     const d = await loadPartnerDirectory()
@@ -357,15 +362,11 @@ export function OperatorPartners({ focus = null }: { focus?: string | null } = {
             {tab === 'settlement' && (
               <PartnerSettlementTab partnerId={partner.id} partnerName={partner.name} country={partner.country} />
             )}
-            {tab === 'documents' && <Documents detail={detail!} catName={catName} onView={setViewDoc} />}
+            {tab === 'documents' && <Documents detail={detail!} catName={catName} />}
             {tab === 'bills' && <Bills detail={detail!} />}
             {tab === 'history' && <History detail={detail!} />}
           </div>
         </SectionCard>
-      )}
-
-      {viewDoc && partner && (
-        <DocumentViewer name={viewDoc} partnerName={partner.name} onClose={() => setViewDoc(null)} />
       )}
 
       {partner && moveTo && (
@@ -881,8 +882,8 @@ function Listings({ detail, catName }: { detail: PartnerDetail; catName: (id: st
   )
 }
 
-function Documents({ detail, catName, onView }: {
-  detail: PartnerDetail; catName: (id: string) => string; onView: (name: string) => void
+function Documents({ detail, catName }: {
+  detail: PartnerDetail; catName: (id: string) => string
 }) {
   const categoryDocs = detail.evidence.filter(e => e.document)
   const today = Date.now()
@@ -906,7 +907,7 @@ function Documents({ detail, catName, onView }: {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             {detail.documents.map(d => (
               <DocRow key={d.id} name={d.name} meta={`${d.kind} · ${d.size}${d.uploaded_by ? ` · ${d.uploaded_by}` : ''}`}
-                      onView={() => onView(d.name)} />
+                      doc={{ id: d.id, name: d.name, path: d.path }} />
             ))}
           </div>
         </div>
@@ -925,7 +926,7 @@ function Documents({ detail, catName, onView }: {
                   meta={`${catName(e.category_id)} · ${e.rule_id}${e.kind ? ` · ${e.kind} ${e.size}` : ''}`}
                   warn={expired ? `Expired ${fmtDate(e.expires_on)}` :
                         e.state === 'outstanding' ? 'Not supplied' : undefined}
-                  onView={e.state === 'outstanding' ? undefined : () => onView(e.document!)}
+                  doc={{ id: e.id, name: e.document!, path: e.path }}
                 />
               )
             })}
@@ -936,8 +937,8 @@ function Documents({ detail, catName, onView }: {
   )
 }
 
-function DocRow({ name, meta, warn, onView }: {
-  name: string; meta: string; warn?: string; onView?: () => void
+function DocRow({ name, meta, warn, doc }: {
+  name: string; meta: string; warn?: string; doc: { id: string; name: string; path?: string | null }
 }) {
   return (
     <div style={{
@@ -956,13 +957,9 @@ function DocRow({ name, meta, warn, onView }: {
         </div>
       </div>
       {/* Nothing to open where nothing was supplied — a View button on a
-          missing document is a dead end dressed as an action. */}
-      {onView && (
-        <button onClick={onView} style={{
-          fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--brand-navy)', background: 'none',
-          border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: '4px 10px', cursor: 'pointer',
-        }}>View</button>
-      )}
+          missing document is a dead end dressed as an action. `EvidenceLink`
+          decides that from the path rather than being told twice. */}
+      <EvidenceLink viewer={OPERATOR} doc={doc} />
     </div>
   )
 }

@@ -191,7 +191,7 @@ describe('categoryReadiness', () => {
 
   const ev = (o: Partial<CategoryEvidence> & { rule_id: string; state: EvidenceState }): CategoryEvidence => ({
     id: `pce-${o.rule_id}`, partner_id: 'PTR-1004', category_id: 'device',
-    document: null, kind: null, size: null, expires_on: null,
+    document: null, path: null, kind: null, size: null, expires_on: null,
     submitted_by: null, submitted_at: null, reviewed_by: null, reviewed_at: null, note: null,
     ...o,
   })

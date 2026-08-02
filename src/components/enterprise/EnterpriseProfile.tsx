@@ -7,6 +7,8 @@ import {
   SectionCard, Btn, toast, Modal, FormField, TextInput, Select, StatCard, Table, Td,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
+import { EvidenceLink } from '../EvidenceLink'
+import type { Viewer } from '../../lib/evidence'
 import {
   loadAdmin, saveProfile, setAway, setDelegate, setMfa, endSession, endOtherSessions,
 } from '../../lib/enterpriseAdminRepo'
@@ -85,6 +87,9 @@ export function EnterpriseProfile() {
   const credit = billing ? creditPosition(billing, account.invoices) : null
   const review = billing ? creditReview(billing, TODAY) : null
   const progress = onboardingProgress(book.onboarding)
+  /* The account's own id is the folder its onboarding pack is filed under, and
+     it is already on the screen — no round trip needed to know who is asking. */
+  const viewer: Viewer = { persona: 'enterprise', accountId: org.id }
   const delegate = book.people.find(p => p.id === me.delegate_id) ?? null
 
   const run = async (work: Promise<{ ok: boolean; note?: string; reason?: string }>, after?: () => void) => {
@@ -440,13 +445,18 @@ export function EnterpriseProfile() {
                 <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: 0 }}>{c.detail}</p>
                 {c.documents.length > 0 && (
                   <div style={{ marginTop: '10px', borderTop: '1px solid var(--border-light)', paddingTop: '10px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    {c.documents.map(d => (
+                    {c.documents.map((d, i) => (
                       <div key={d.name} style={{ display: 'flex', gap: '9px', alignItems: 'center' }}>
                         <FileText size={14} style={{ color: 'var(--text-tertiary)' }} />
-                        <div style={{ flex: 1 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>{d.name}</div>
                           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{d.kind} · {d.size}</div>
                         </div>
+                        {/* Paths are kept in the documents' own order, so the
+                            index is the join. A pack whose two arrays disagree
+                            would hand somebody the wrong file, which is why the
+                            migration asserts they are the same length. */}
+                        <EvidenceLink viewer={viewer} doc={{ id: `${c.id}-${i + 1}`, name: d.name, path: c.document_paths[i] ?? null }} compact />
                       </div>
                     ))}
                   </div>

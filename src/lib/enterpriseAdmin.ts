@@ -89,6 +89,11 @@ export interface OnboardingCheck {
   done_by: string | null
   due_on: string | null
   documents: { name: string; kind: string; size: string }[]
+  /* Where each document above lives in the evidence bucket, in the same order.
+     Kept alongside rather than folded into `documents` because that column is
+     jsonb written by the seeding, and two shapes of one column is how a screen
+     ends up rendering half a list. */
+  document_paths: string[]
   sort_order: number
 }
 

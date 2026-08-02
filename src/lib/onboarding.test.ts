@@ -196,6 +196,7 @@ const sub = (gate_id: string, fields: [string, string][], over: Partial<Submissi
 const doc = (gate_id: string, name: string, sort_order = 1): GateDocument => ({
   id: `doc-${name}`, gate_id, partner_id: 'PTR-1004', name, kind: 'PDF', size: '1.0 MB',
   uploaded_by: 'Katrin Boehm', uploaded_at: '2024-09-10T00:00:00Z', sort_order,
+  path: `PTR-1004/gates/doc-${name}.pdf`,
 })
 
 describe('SLA_DAYS', () => {

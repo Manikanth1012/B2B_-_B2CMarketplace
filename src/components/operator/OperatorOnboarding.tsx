@@ -12,7 +12,10 @@ import type { PartnerDirectoryRow } from '../../lib/partnerRepo'
 import { canClearGate, gateIdFor, GATES, SLA_DAYS, deriveTaskState, journeyProgress } from '../../lib/onboarding'
 import type { JourneyStep } from '../../lib/onboarding'
 import { TechChecklist } from '../TechChecklist'
-import { JourneyRail, GateDetail, DocumentViewer, Callout } from '../OnboardingJourney'
+import { JourneyRail, GateDetail, Callout } from '../OnboardingJourney'
+import type { Viewer } from '../../lib/evidence'
+
+const OPERATOR: Viewer = { persona: 'operator' }
 
 const PARTNER_TYPES = ['Content provider', 'Device OEM', 'Insurance', 'IoT hardware', 'Reseller', 'Security ISV']
 
@@ -32,7 +35,6 @@ export function OperatorOnboarding() {
   const [partnerId, setPartnerId] = useState<string | null>(null)
   const [snap, setSnap] = useState<OnboardingSnapshot | null>(null)
   const [selectedGate, setSelectedGate] = useState<string | null>(null)
-  const [viewDoc, setViewDoc] = useState<string | null>(null)
   const [addPartnerModal, setAddPartnerModal] = useState(false)
   const [newPartner, setNewPartner] = useState({ name: '', type: '', contact: '', email: '', country: '' })
 
@@ -238,7 +240,7 @@ export function OperatorOnboarding() {
               {step && (
                 <SectionCard title={step.gate.name} subtitle="Everything this gate was decided on">
                   <div style={{ padding: '18px 20px' }}>
-                    <GateDetail step={step} previous={previous} onViewDocument={setViewDoc}>
+                    <GateDetail step={step} previous={previous} viewer={OPERATOR}>
                       <GateActions
                         step={step}
                         snap={snap}
@@ -255,10 +257,6 @@ export function OperatorOnboarding() {
           )}
         </div>
       </div>
-
-      {viewDoc && active && (
-        <DocumentViewer name={viewDoc} partnerName={active.name} onClose={() => setViewDoc(null)} />
-      )}
 
       <Modal open={addPartnerModal} onClose={() => setAddPartnerModal(false)} title="Open an application yourself"
         footer={<><Btn variant="secondary" size="sm" onClick={() => setAddPartnerModal(false)}>Cancel</Btn>

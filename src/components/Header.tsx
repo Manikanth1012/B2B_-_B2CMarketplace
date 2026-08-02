@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, ShoppingCart, Menu, X, ChevronDown, User, Bell, Shield, LogOut, Star, BookOpen, Wallet as WalletIcon } from 'lucide-react'
+import { Search, ShoppingCart, Menu, X, ChevronDown, User, Bell, Shield, LogOut, Star, BookOpen, Wallet as WalletIcon, FolderOpen } from 'lucide-react'
 import type { Category } from '../types'
 import { supabase } from '../lib/supabase'
 import { categoriesFor } from '../lib/storefront'
@@ -21,6 +21,12 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut, currentV
   const [mobileOpen, setMobileOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const [acctOpen, setAcctOpen] = useState(false)
+  /* The menu used to name the customer, their tier and their points in the
+     markup. The points were 3,180 and the ledger was reconciled to 2,500 in
+     `20260801820000_one_points_balance_per_customer.sql`, so the header said
+     one number and the rewards page said another — the kind of contradiction
+     nobody reports because each screen looks right on its own. */
+  const [me, setMe] = useState<{ name: string; tier: string; points: number } | null>(null)
 
   /* The nav is a retail customer's nav, so it lists the shelves a retail
      customer can buy from. Partner is reseller enablement and was on it. */
@@ -28,6 +34,8 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut, currentV
     supabase.from('categories').select('*').order('sort_order').then(({ data }) => {
       if (data) setCategories(categoriesFor(data as Category[], 'consumer'))
     })
+    supabase.from('consumer_profile').select('name,tier,points').eq('id', 'me').maybeSingle()
+      .then(({ data }) => { if (data) setMe({ ...data, points: Number(data.points) } as typeof me) })
     const onScroll = () => setScrolled(window.scrollY > 10)
     window.addEventListener('scroll', onScroll)
     return () => window.removeEventListener('scroll', onScroll)
@@ -139,7 +147,7 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut, currentV
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontWeight: 700, fontSize: 'var(--text-xs)',
                 }}>
-                  PR
+                  {(me?.name ?? 'My account').split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                 </div>
                 <ChevronDown size={14} style={{ opacity: 0.6 }} />
               </button>
@@ -151,10 +159,14 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut, currentV
                   minWidth: '240px', zIndex: 200, overflow: 'hidden',
                 }}>
                   <div style={{ padding: '16px', borderBottom: '1px solid var(--border-light)' }}>
-                    <div style={{ fontWeight: 800, fontSize: 'var(--text-sm)', color: 'var(--text)' }}>Priya Raman</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
-                      Gold member · 3,180 pts
+                    <div style={{ fontWeight: 800, fontSize: 'var(--text-sm)', color: 'var(--text)' }}>
+                      {me?.name ?? 'My account'}
                     </div>
+                    {me && (
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                        {me.tier} member · {me.points.toLocaleString('en-US')} pts
+                      </div>
+                    )}
                   </div>
                   <div style={{ padding: '4px' }}>
                     {/* Every one of these used to call onNavigate('account') with no
@@ -170,6 +182,11 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut, currentV
                     {/* Household is where this account's roles and spend caps live —
                         what this person may and may not do. */}
                     <AcctItem icon={<Star size={16} />} label="My permissions" onClick={() => { onNavigate('account', { tab: 'household' }); setAcctOpen(false) }} />
+                    {/* The agreement, the mandate, the cover certificate. A
+                        customer asked for one of these is asked at short notice
+                        and by somebody else, so it is one click rather than a
+                        tab found by accident. */}
+                    <AcctItem icon={<FolderOpen size={16} />} label="My documents" onClick={() => { onNavigate('account', { tab: 'documents' }); setAcctOpen(false) }} />
                     <AcctItem icon={<BookOpen size={16} />} label="How things work" onClick={() => { onNavigate('kb'); setAcctOpen(false) }} />
                   </div>
                   <div style={{ padding: '4px', borderTop: '1px solid var(--border-light)' }}>

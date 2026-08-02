@@ -539,8 +539,8 @@ describe('the credit position', () => {
 
 describe('what was checked when the account was opened', () => {
   const checks: OnboardingCheck[] = [
-    { id: '1', account_id: 'ENT-2007', name: 'Company verification', detail: '', state: 'done', done_on: '2025-07-28', done_by: 'Lena Fischer', due_on: null, documents: [{ name: 'Certificate', kind: 'PDF', size: '1.2 MB' }], sort_order: 1 },
-    { id: '2', account_id: 'ENT-2007', name: 'Annual credit review', detail: '', state: 'due', done_on: null, done_by: null, due_on: '2027-04-05', documents: [], sort_order: 2 },
+    { id: '1', account_id: 'ENT-2007', name: 'Company verification', detail: '', state: 'done', done_on: '2025-07-28', done_by: 'Lena Fischer', due_on: null, documents: [{ name: 'Certificate', kind: 'PDF', size: '1.2 MB' }], document_paths: ['ENT-2007/onboarding/1-1.pdf'], sort_order: 1 },
+    { id: '2', account_id: 'ENT-2007', name: 'Annual credit review', detail: '', state: 'due', done_on: null, done_by: null, due_on: '2027-04-05', documents: [], document_paths: [], sort_order: 2 },
   ]
 
   it('counts what is done and hands back what is not', () => {
