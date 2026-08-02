@@ -62,8 +62,10 @@ const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; i
       { id: 'op-feedback', label: 'Content Feedback', icon: <MessageSquareWarning size={18} /> },
       { id: 'op-roles', label: 'Roles & Users', icon: <Shield size={18} /> },
       { id: 'op-audit', label: 'Audit Trail', icon: <Settings size={18} /> },
+      /* One entry, not two. "Knowledge base" was the reading screen and "Manage
+         content" the authoring one, so checking what an article looked like
+         meant leaving the editor. They are three tabs of one screen now. */
       { id: 'op-kb', label: 'Knowledge base', icon: <BookOpen size={18} /> },
-      { id: 'op-kbadmin', label: 'Manage content', icon: <LibraryBig size={18} /> },
     ]
   },
 ]

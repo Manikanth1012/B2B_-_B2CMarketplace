@@ -127,7 +127,7 @@ export function OperatorSettlement({ focus = null }: { focus?: string | null } =
               <div><strong>{detailModal.partner_name}</strong> · {detailModal.period}</div>
               <StatusPill status={detailModal.status} />
             </div>
-            <table style={{ width: '100%', fontSize: 'var(--text-sm)' }}>
+            <table style={{ width: '100%', fontSize: 'var(--text-sm)', minWidth: 'min-content' }}>
               <tbody>
                 <tr><td style={{ padding: '6px 0', color: 'var(--text-tertiary)' }}>Gross sales</td><td style={{ textAlign: 'right', fontWeight: 600 }}>${fmtMoney(detailModal.gross)}</td></tr>
                 <tr><td style={{ padding: '6px 0', color: 'var(--text-tertiary)' }}>Commission ({detailModal.commission_rate}%)</td><td style={{ textAlign: 'right', color: 'var(--danger)' }}>-${fmtMoney(detailModal.commission)}</td></tr>

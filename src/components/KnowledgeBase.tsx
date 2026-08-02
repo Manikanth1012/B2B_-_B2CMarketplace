@@ -5,15 +5,26 @@ import { loadKb, raiseContentFeedback } from '../lib/kbRepo'
 import type { KbSnapshot } from '../lib/kbRepo'
 import {
   KB_KINDS, kbKind, filterArticles, allTags, canAct, assetsFor,
-  faqsByTopic, searchFaqs, helpfulness,
+  faqsByTopic, searchFaqs, helpfulness, visibleTo,
 } from '../lib/kb'
 import type { KbArticle } from '../lib/kb'
 import { KbAssets } from './KbAssets'
 import type { Persona } from '../types/view'
 
-export function KnowledgeBase({ persona, title, myRole = null, feedbackAs }: {
+export function KnowledgeBase({ persona, title, myRole = null, feedbackAs, previewAs }: {
   persona: Persona
   title: string
+  /**
+   * Set only by the operator, previewing somebody else's knowledge base.
+   *
+   * Every other caller can leave this alone: RLS already returns exactly what
+   * that reader may see, so filtering again would be the same rule stated
+   * twice. The operator is the exception — their policy hands them every row,
+   * including drafts and pieces addressed to named readers — so a preview has
+   * to apply the narrowing here or it shows the operator's view wearing
+   * somebody else's label.
+   */
+  previewAs?: { persona: string; holderIds: string[] }
   /* Not yet supplied by any caller — App.tsx renders all four consoles without it, and
      Session (src/types/view.ts) carries no current-role field to source it from. Until
      that plumbing exists this is always null, so canAct() always returns true and the
@@ -114,25 +125,35 @@ export function KnowledgeBase({ persona, title, myRole = null, feedbackAs }: {
   }
 
   /* ---------- List ---------- */
-  const shown = filterArticles(snap.articles, { kind: kind || undefined, tag: tag || undefined, q })
-  const tags = allTags(snap.articles)
+  /* In preview the operator holds every row, so the narrowing their reader's
+     policy would have done is applied here. Outside preview this is the
+     identity function — RLS has already done it. */
+  const visible = <T extends { personas: string[]; status: typeof snap.articles[number]['status']; audience_ids?: string[] }>(
+    rows: readonly T[],
+  ): T[] => previewAs ? rows.filter(r => visibleTo(r, previewAs.persona, previewAs.holderIds)) : [...rows]
+
+  const articles = visible(snap.articles)
+  const faqs = visible(snap.faqs)
+
+  const shown = filterArticles(articles, { kind: kind || undefined, tag: tag || undefined, q })
+  const tags = allTags(articles)
   /* The FAQ tab searches on the same box. Two search fields on one screen is
      two places to have typed the thing you were looking for. */
-  const questions = faqsByTopic(searchFaqs(snap.faqs, q))
-  const faqCount = snap.faqs.length
+  const questions = faqsByTopic(searchFaqs(faqs, q))
+  const faqCount = faqs.length
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div>
         <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>{title}</h1>
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginTop: '4px' }}>
-          {snap.articles.length} articles · {faqCount} common {faqCount === 1 ? 'question' : 'questions'} ·
+          {articles.length} articles · {faqCount} common {faqCount === 1 ? 'question' : 'questions'} ·
           {' '}what this console does and why the rules are the way they are
         </p>
       </div>
 
       <div style={{ display: 'flex', gap: '4px', borderBottom: '1px solid var(--border)' }}>
-        {([['articles', `Articles (${snap.articles.length})`], ['faqs', `FAQs (${faqCount})`]] as const).map(([id, label]) => (
+        {([['articles', `Articles (${articles.length})`], ['faqs', `FAQs (${faqCount})`]] as const).map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} style={{
             padding: '8px 14px', border: 'none', background: 'none', cursor: 'pointer',
             fontSize: 'var(--text-sm)', fontWeight: tab === id ? 700 : 500,
@@ -174,7 +195,7 @@ export function KnowledgeBase({ persona, title, myRole = null, feedbackAs }: {
                 subtitle={`${group.faqs.length} ${group.faqs.length === 1 ? 'question' : 'questions'}`}>
                 <div style={{ padding: '4px 12px 12px' }}>
                   {group.faqs.map(f => {
-                    const article = f.article_id ? snap.articles.find(a => a.id === f.article_id) : null
+                    const article = f.article_id ? articles.find(a => a.id === f.article_id) : null
                     return (
                       <details key={f.id} style={{
                         borderBottom: '1px solid var(--border-light)', padding: '10px 0',
@@ -215,7 +236,7 @@ export function KnowledgeBase({ persona, title, myRole = null, feedbackAs }: {
 
       {tab === 'articles' && (
 
-      <SectionCard title="Articles" subtitle={shown.length === snap.articles.length ? undefined : `${shown.length} of ${snap.articles.length} shown`}>
+      <SectionCard title="Articles" subtitle={shown.length === articles.length ? undefined : `${shown.length} of ${articles.length} shown`}>
         {shown.length === 0 ? <EmptyState message="Nothing matches that search" /> : (
           <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {shown.map(a => (

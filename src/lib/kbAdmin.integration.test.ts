@@ -26,12 +26,18 @@ const PARTNER = { email: 'rajesh.kumar@nimbussensors.com', password: 'partner123
 let book: KbAdminBook
 const articles: string[] = []
 const faqs: string[] = []
+/* How many questions were on file before this suite wrote anything. Captured
+   rather than written down: a literal count is a test that fails the next time
+   somebody seeds a question, which tells you nothing about whether the tidy-up
+   worked. */
+let faqsBefore = 0
 
 describe('what each audience has to read', () => {
   beforeAll(async () => {
     await signIn(OPERATOR.email, OPERATOR.password)
     book = await loadKbAdmin()
     expect(book.loadError, book.loadError).toBeUndefined()
+    faqsBefore = book.faqs.length
   })
 
   it('gives every reader-facing audience articles and questions', async () => {
@@ -115,7 +121,7 @@ describe('what the operator can now do, and what is still refused', () => {
       id: null, actor: 'Integration suite',
       draft: {
         title: 'Integration test article', summary: 'Written by the integration suite.',
-        kind: 'howto', personas: ['consumer', 'enterprise'], status: 'published',
+        kind: 'howto', personas: ['consumer', 'enterprise'], audience_ids: [], status: 'published',
         mins: 2, tags: ['test'], view: null, roles: [], body: [['Why', 'Because']],
         audience_note: '',
       },
@@ -197,7 +203,7 @@ describe('what the operator can now do, and what is still refused', () => {
   it('writes a question, and insists it is a question', async () => {
     const bad = await saveFaq({
       id: null, articles: book.articles, actor: 'Integration suite',
-      draft: { question: 'Changing a plan', answer: 'Yes.', personas: ['consumer'], topic: 'Test', status: 'published', article_id: null },
+      draft: { question: 'Changing a plan', answer: 'Yes.', personas: ['consumer'], audience_ids: [], topic: 'Test', status: 'published', article_id: null },
     })
     expect(bad.ok).toBe(false)
     if (!bad.ok) expect(bad.reason).toMatch(/question mark/)
@@ -206,7 +212,7 @@ describe('what the operator can now do, and what is still refused', () => {
       id: null, articles: book.articles, actor: 'Integration suite',
       draft: {
         question: 'Is this an integration test?', answer: 'Yes, and it cleans up after itself.',
-        personas: ['consumer'], topic: 'Test', status: 'published', article_id: articles[0],
+        personas: ['consumer'], audience_ids: [], topic: 'Test', status: 'published', article_id: articles[0],
       },
     })
     expect(good.ok, (good as { reason?: string }).reason).toBe(true)
@@ -219,7 +225,7 @@ describe('what the operator can now do, and what is still refused', () => {
       id: null, articles: book.articles, actor: 'Integration suite',
       draft: {
         question: 'Can a seller read a retail article?', answer: 'No.',
-        personas: ['partner'], topic: 'Test', status: 'published', article_id: articles[0],
+        personas: ['partner'], audience_ids: [], topic: 'Test', status: 'published', article_id: articles[0],
       },
     })
     expect(res.ok).toBe(false)
@@ -265,7 +271,7 @@ describe('a reader who is not the author', () => {
     await signIn(CONSUMER.email, CONSUMER.password)
     const { data } = await supabase.from('kb_faqs').insert({
       id: `FAQ-BAD-${Date.now()}`, question: 'Can I do this?', answer: 'No.',
-      personas: ['consumer'], topic: 'Test',
+      personas: ['consumer'], audience_ids: [], topic: 'Test',
     }).select('id')
     expect(data ?? []).toEqual([])
     await signOut()
@@ -296,7 +302,7 @@ describe('tidying up', () => {
     const after = await loadKbAdmin()
     expect(after.articles.map(a => a.id).filter(id => articles.includes(id))).toEqual([])
     expect(after.faqs.map(f => f.id).filter(id => faqs.includes(id))).toEqual([])
-    /* And the seeded set is back to what it was. */
-    expect(after.faqs.length).toBe(17)
+    /* And the set is back to the size it was before this file ran. */
+    expect(after.faqs.length, 'the tidy-up left something behind').toBe(faqsBefore)
   })
 })

@@ -207,7 +207,7 @@ export function OperatorPartners({ focus = null }: { focus?: string | null } = {
           <EmptyState message="No seller matches those filters" />
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '860px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 'max(860px, min-content)' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)' }}>
                   <SortHead label="Seller"       col="name"     sort={sort} onSort={setSort} />
@@ -859,7 +859,7 @@ function Listings({ detail, catName }: { detail: PartnerDetail; catName: (id: st
         {breakdown.map(b => `${b.count} ${b.label.toLowerCase()}`).join(' · ')}
       </p>
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '520px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 'max(520px, min-content)' }}>
           <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
             <Head label="Listing" /><Head label="Marketplace" /><Head label="Price" right /><Head label="Stock" /><Head label="State" />
           </tr></thead>
@@ -995,7 +995,7 @@ function Bills({ detail }: { detail: PartnerDetail }) {
       </div>
 
       <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '760px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 'max(760px, min-content)' }}>
           <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
             <Head label="Period" /><Head label="Orders" right /><Head label="Gross" right />
             <Head label="Commission" right /><Head label="Fees" right /><Head label="Refunds" right />

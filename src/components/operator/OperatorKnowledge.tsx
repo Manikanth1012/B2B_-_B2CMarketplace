@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Trash2, Pencil, ArrowLeft, Eye, EyeOff, Paperclip } from 'lucide-react'
+import { Plus, Trash2, Pencil, ArrowLeft, Eye, EyeOff, Paperclip, X, Check, UserCheck } from 'lucide-react'
 import {
   SectionCard, Table, Td, EmptyState, Btn, Modal, FormField, TextInput, TextArea,
   Select, toast, ConfirmDialog, StatCard,
@@ -10,12 +10,14 @@ import {
   loadKbAdmin, saveArticle, setArticleStatus, deleteArticle,
   saveFaq, deleteFaq, setAudiences, coverage,
 } from '../../lib/kbAdminRepo'
-import type { KbAdminBook, ArticleDraft, FaqDraft } from '../../lib/kbAdminRepo'
+import type { KbAdminBook, ArticleDraft, FaqDraft, KbReader } from '../../lib/kbAdminRepo'
 import {
   KB_KINDS, kbKind, PERSONAS, personaLabel, publishedTo, kbWarnings,
   validateArticle, validateFaq, canLink, helpfulness, assetsFor,
 } from '../../lib/kb'
 import type { KbArticle, KbFaq } from '../../lib/kb'
+import { KnowledgeBase } from '../KnowledgeBase'
+import type { Persona } from '../../types/view'
 
 /* The operator could read the knowledge base and change none of it: it was
    seeded and then frozen.
@@ -36,8 +38,9 @@ const READERS = ['consumer', 'enterprise', 'partner', 'operator']
 
 export function OperatorKnowledge() {
   const [book, setBook] = useState<KbAdminBook | null>(null)
-  const [tab, setTab] = useState<'articles' | 'faqs'>('articles')
+  const [tab, setTab] = useState<'articles' | 'faqs' | 'read'>('articles')
   const [editing, setEditing] = useState<KbArticle | 'new' | null>(null)
+  const [readAs, setReadAs] = useState<Persona>('operator')
 
   const reload = useCallback(async () => setBook(await loadKbAdmin()), [])
   useEffect(() => { void reload() }, [reload])
@@ -85,8 +88,12 @@ export function OperatorKnowledge() {
           title={w.level === 'warn' ? 'Somebody has nothing to read' : 'Worth a look'}>{w.text}</Callout>
       ))}
 
-      <div style={{ display: 'flex', gap: '4px', borderBottom: '1px solid var(--border)' }}>
-        {([['articles', `Articles (${book.articles.length})`], ['faqs', `FAQs (${book.faqs.length})`]] as const).map(([id, label]) => (
+      <div style={{ display: 'flex', gap: '4px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
+        {([
+          ['articles', `Articles (${book.articles.length})`],
+          ['faqs', `FAQs (${book.faqs.length})`],
+          ['read', 'Read it'],
+        ] as const).map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} style={{
             padding: '8px 14px', border: 'none', background: 'none', cursor: 'pointer',
             fontSize: 'var(--text-sm)', fontWeight: tab === id ? 700 : 500,
@@ -97,9 +104,82 @@ export function OperatorKnowledge() {
         ))}
       </div>
 
-      {tab === 'articles'
-        ? <Articles book={book} onEdit={setEditing} onChanged={reload} />
-        : <Faqs book={book} onChanged={reload} />}
+      {tab === 'articles' && <Articles book={book} onEdit={setEditing} onChanged={reload} />}
+      {tab === 'faqs' && <Faqs book={book} onChanged={reload} />}
+      {tab === 'read' && <ReadIt book={book} as={readAs} onChangeAs={setReadAs} />}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------ reading it --- */
+
+/**
+ * The operator reading the knowledge base — their own, or somebody else's.
+ *
+ * This used to be a second entry in the sidebar, "Knowledge base" beside
+ * "Manage content", and the split was wrong in both directions: the reading
+ * screen could not be edited from, and the editing screen could not be read
+ * from, so checking what an article actually looked like meant leaving the
+ * editor and coming back. They are one screen and this is its third tab.
+ *
+ * Reading *as somebody else* is the part that could not be done at all before.
+ * An operator publishes to four audiences and could see only their own.
+ */
+function ReadIt(
+  { book, as, onChangeAs }: {
+    book: KbAdminBook; as: Persona; onChangeAs: (p: Persona) => void
+  },
+) {
+  /* Somebody to stand in for, when the chosen audience has named readers. The
+     operator's own RLS returns every row, so "read as a seller" would otherwise
+     show the seller's articles *plus* the ones addressed to other sellers by
+     name — a preview that is convincing and wrong. */
+  const candidates = book.readers.filter(r => r.persona === as)
+  const [asWhom, setAsWhom] = useState<string>('')
+
+  useEffect(() => { setAsWhom('') }, [as])
+
+  /* Which pieces are addressed to somebody by name in this audience — the
+     reason to pick a stand-in rather than a detail. */
+  const addressed = [...book.articles, ...book.faqs]
+    .filter(x => x.personas.includes(as) && (x.audience_ids ?? []).length > 0).length
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+      <SectionCard title="Read it as they do"
+        subtitle="The same screen the audience gets, with their articles and their questions.">
+        <div style={{ padding: '12px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div style={{ minWidth: '220px' }}>
+            <FormField label="As">
+              <Select value={as} onChange={e => onChangeAs(e.target.value as Persona)}>
+                {PERSONAS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </Select>
+            </FormField>
+          </div>
+          {candidates.length > 0 && (
+            <div style={{ minWidth: '260px', flex: 1 }}>
+              <FormField label="Standing in for"
+                hint={addressed > 0
+                  ? `${addressed} ${addressed === 1 ? 'piece is' : 'pieces are'} addressed to particular readers here. Pick one to see what they see.`
+                  : 'Nothing here is addressed to anybody in particular, so everyone in this audience sees the same thing.'}>
+                <Select value={asWhom} onChange={e => setAsWhom(e.target.value)}>
+                  <option value="">Nobody in particular</option>
+                  {candidates.map(r => <option key={r.id} value={r.id}>{r.name} · {r.id}</option>)}
+                </Select>
+              </FormField>
+            </div>
+          )}
+        </div>
+      </SectionCard>
+
+      {/* Keyed so switching audience remounts rather than showing the previous
+          one's articles under the new one's heading while it loads. */}
+      <KnowledgeBase
+        key={`${as}:${asWhom}`}
+        persona={as}
+        title={as === 'operator' ? 'Knowledge base' : `${personaLabel(as)} — knowledge base`}
+        previewAs={{ persona: as, holderIds: asWhom ? [asWhom] : [] }}
+      />
     </div>
   )
 }
@@ -373,9 +453,123 @@ function AudiencePicker(
   )
 }
 
+/**
+ * Naming the specific readers something is for.
+ *
+ * Narrows the personas above it rather than replacing them, so the list only
+ * offers people who are in one of those personas — offering a retail customer
+ * on an article published to sellers would let somebody build the one
+ * combination that reaches nobody, which the database refuses anyway.
+ *
+ * Empty is the normal case and says so out loud. "Nobody selected" reads as a
+ * mistake unless the screen tells you it means everybody.
+ */
+function ReaderPicker(
+  { readers, personas, chosen, onChange, disabled }: {
+    readers: readonly KbReader[]
+    personas: readonly string[]
+    chosen: readonly string[]
+    onChange: (next: string[]) => void
+    disabled?: boolean
+  },
+) {
+  const [q, setQ] = useState('')
+
+  const eligible = readers.filter(r => personas.includes(r.persona))
+  const needle = q.trim().toLowerCase()
+  const shown = needle
+    ? eligible.filter(r => r.name.toLowerCase().includes(needle) || r.id.toLowerCase().includes(needle))
+    : eligible.slice(0, 8)
+
+  /* A chosen reader who is no longer eligible — because the persona was
+     unticked after they were picked — is still shown, or it would silently
+     stay on the record while disappearing from the screen. */
+  const orphans = chosen.filter(id => !eligible.some(r => r.id === id))
+
+  const toggle = (id: string) =>
+    onChange(chosen.includes(id) ? chosen.filter(x => x !== id) : [...chosen, id])
+
+  if (personas.length === 0) {
+    return (
+      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: 0 }}>
+        Tick an audience above first — a named reader has to be somebody in one of them.
+      </p>
+    )
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', margin: 0, lineHeight: 1.5 }}>
+        {chosen.length === 0
+          ? `Nobody named, so this reaches every one of ${personas.map(personaLabel).join(' and ')}. Name somebody to narrow it to them alone.`
+          : `Only these ${chosen.length} will see it. Everyone else in ${personas.map(personaLabel).join(' and ')} will not.`}
+      </p>
+
+      {chosen.length > 0 && (
+        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+          {chosen.map(id => {
+            const r = readers.find(x => x.id === id)
+            const orphaned = orphans.includes(id)
+            return (
+              <button key={id} disabled={disabled} onClick={() => toggle(id)}
+                title={orphaned ? 'Not in any audience ticked above — this would reach nobody' : 'Remove'}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '5px',
+                  padding: '3px 9px', borderRadius: 'var(--radius-full)',
+                  border: `1px solid ${orphaned ? 'var(--danger)' : 'var(--brand-navy)'}`,
+                  background: orphaned ? 'var(--danger-bg)' : 'var(--brand-navy)',
+                  color: orphaned ? 'var(--danger)' : 'white',
+                  fontSize: '11px', fontWeight: 700, cursor: 'pointer',
+                }}>
+                {r?.name ?? id} <X size={10} />
+              </button>
+            )
+          })}
+        </div>
+      )}
+
+      <TextInput value={q} onChange={e => setQ(e.target.value)}
+                 placeholder={`Search ${eligible.length} readers by name or id…`} />
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '190px', overflowY: 'auto' }}>
+        {shown.length === 0 && (
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>Nobody matches that.</span>
+        )}
+        {shown.map(r => {
+          const on = chosen.includes(r.id)
+          return (
+            <button key={r.id} disabled={disabled} onClick={() => toggle(r.id)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '9px', width: '100%',
+                padding: '6px 9px', textAlign: 'left', cursor: 'pointer',
+                border: `1px solid ${on ? 'var(--brand-navy)' : 'var(--border-light)'}`,
+                borderRadius: 'var(--radius-sm)', background: on ? 'var(--bg-alt)' : 'white',
+              }}>
+              <span style={{ width: 13, flexShrink: 0, color: 'var(--brand-navy)' }}>
+                {on && <Check size={13} />}
+              </span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <span style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 700 }}>{r.name}</span>
+                <span style={{ display: 'block', fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                  {personaLabel(r.persona)} · {r.note}
+                </span>
+              </span>
+            </button>
+          )
+        })}
+        {!needle && eligible.length > shown.length && (
+          <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', padding: '4px 9px' }}>
+            {eligible.length - shown.length} more — search to find them.
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function blankArticle(): ArticleDraft {
   return {
-    title: '', summary: '', kind: 'howto', personas: [], status: 'held',
+    title: '', summary: '', kind: 'howto', personas: [], audience_ids: [], status: 'held',
     mins: 3, tags: [], view: null, roles: [], body: [['', '']], audience_note: '',
   }
 }
@@ -387,7 +581,10 @@ function ArticleEditor(
   },
 ) {
   const [draft, setDraft] = useState<ArticleDraft>(() =>
-    article ? { ...(article as unknown as ArticleDraft) } : blankArticle())
+    /* `audience_ids` defaulted rather than spread blindly: a row written before
+       the column existed comes back without it, and an undefined array is a
+       crash in every `.length` and `.includes` below. */
+    article ? { ...(article as unknown as ArticleDraft), audience_ids: article.audience_ids ?? [] } : blankArticle())
   const [saving, setSaving] = useState(false)
 
   const set = <K extends keyof ArticleDraft>(k: K, v: ArticleDraft[K]) => setDraft(d => ({ ...d, [k]: v }))
@@ -470,6 +667,21 @@ function ArticleEditor(
             )
           })}
         </div>
+        {/* Narrowing, not a second audience. The two conditions are ANDed here
+            and in the database, so somebody named who is not in a ticked
+            audience is somebody the article reaches nobody through. */}
+        <div style={{ marginTop: '14px', paddingTop: '14px', borderTop: '1px solid var(--border-light)' }}>
+          <FormField label="Anybody in particular?"
+            hint="Leave empty for everybody in the audiences above. Name readers to address it to them alone.">
+            <ReaderPicker
+              readers={book.readers}
+              personas={draft.personas}
+              chosen={draft.audience_ids}
+              onChange={next => set('audience_ids', next)}
+            />
+          </FormField>
+        </div>
+
         <div style={{ marginTop: '14px' }}>
           <FormField label="Status">
             <Select value={draft.status} onChange={e => set('status', e.target.value as ArticleDraft['status'])}>
@@ -511,8 +723,8 @@ function FaqModal(
   },
 ) {
   const [draft, setDraft] = useState<FaqDraft>(() => faq
-    ? { question: faq.question, answer: faq.answer, personas: faq.personas, topic: faq.topic, status: faq.status, article_id: faq.article_id }
-    : { question: '', answer: '', personas: [], topic: 'General', status: 'held', article_id: null })
+    ? { question: faq.question, answer: faq.answer, personas: faq.personas, audience_ids: faq.audience_ids ?? [], topic: faq.topic, status: faq.status, article_id: faq.article_id }
+    : { question: '', answer: '', personas: [], audience_ids: [], topic: 'General', status: 'held', article_id: null })
   const [saving, setSaving] = useState(false)
 
   const set = <K extends keyof FaqDraft>(k: K, v: FaqDraft[K]) => setDraft(d => ({ ...d, [k]: v }))
@@ -574,6 +786,16 @@ function FaqModal(
             )
           })}
         </div>
+      </FormField>
+
+      <FormField label="Anybody in particular?"
+        hint="Leave empty and every one of them sees it. Name readers and only they do.">
+        <ReaderPicker
+          readers={book.readers}
+          personas={draft.personas}
+          chosen={draft.audience_ids}
+          onChange={next => set('audience_ids', next)}
+        />
       </FormField>
 
       <FormField label="Opens an article"

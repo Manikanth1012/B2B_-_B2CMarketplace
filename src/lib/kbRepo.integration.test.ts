@@ -19,7 +19,7 @@ const ORG = 'KB Test Co'
    test article seeded there would lose the "first bound article" race to real data and
    the id assertion below would silently check the wrong row. */
 const testArticle: KbArticle = {
-  id: AID, persona: 'partner', personas: ['partner'], audience_note: '',
+  id: AID, persona: 'partner', personas: ['partner'], audience_ids: [], audience_note: '',
   kind: 'howto', title: 'Test article', mins: 1,
   updated: '29 Jul 2026', view: 'pt-team', roles: [], tags: ['test'],
   summary: 'Seeded by the integration test', body: [['Heading', 'Prose']],

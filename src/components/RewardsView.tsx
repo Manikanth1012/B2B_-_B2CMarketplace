@@ -464,7 +464,7 @@ export function RewardsView() {
       {/* Ledger */}
       <SectionCard icon={<FileText size={18} />} title="Every movement on the account" subtitle={`${fmtPts(earned12)} earned on this account · ${ledger.length} movements on record`}>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-table)', minWidth: 'min-content' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid var(--border)' }}>
                 <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600, fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>When</th>
@@ -516,7 +516,7 @@ export function RewardsView() {
       <SectionCard icon={<Info size={18} />} title="How points are earned here">
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: '16px' }}>{programme.rounding_note}</p>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-table)', minWidth: 'min-content' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid var(--border)' }}>
                 <th style={{ textAlign: 'left', padding: '10px 12px', fontWeight: 600, fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>Rule</th>

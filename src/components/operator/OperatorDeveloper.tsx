@@ -91,7 +91,8 @@ export function OperatorDeveloper() {
       {tab === 'apis' && (
         <SectionCard title="Published APIs" subtitle="Each declares the TMF standard it implements and its lifecycle state">
           {apis.length === 0 ? <EmptyState message="No APIs published" /> : (
-            <Table headers={['Name', 'Standard', 'Audience', 'Version', 'Subscribers', 'Lifecycle', 'Why', 'Actions']}>
+            <Table headers={['Name', 'Standard', 'Audience', 'Version', 'Subscribers', 'Lifecycle',
+                             { label: 'Why', align: 'left' }, 'Actions']}>
               {apis.map(a => (
                 <tr key={a.id}>
                   <Td>{a.name}</Td>
@@ -100,7 +101,10 @@ export function OperatorDeveloper() {
                   <Td right>{a.version}</Td>
                   <Td right>{fmtInt(a.subscriber_count)}</Td>
                   <Td right><StatusPill status={a.lifecycle} /></Td>
-                  <Td right style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', maxWidth: '200px' }}>{a.why}</Td>
+                  {/* A sentence, so it wraps and aligns like one. It was marked
+                      as a figure, which meant nowrap inside a 200px cell — the
+                      text did not clip, it ran on under the buttons. */}
+                  <Td style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', maxWidth: '260px' }}>{a.why}</Td>
                   <Td right>
                     <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
                       <Btn variant="secondary" size="sm" onClick={() => setEditApi(a)}>Edit</Btn>

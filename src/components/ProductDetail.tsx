@@ -313,7 +313,7 @@ export function ProductDetail({ product, onAddToCart, onNavigate }: ProductDetai
           )}
           {activeTab === 'specs' && (
             <div style={{ maxWidth: '600px' }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 'min-content' }}>
                 <tbody>
                   <SpecRow label="Category" value={product.sub_category || '—'} />
                   <SpecRow label="Seller" value={product.seller} />

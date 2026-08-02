@@ -182,7 +182,16 @@ describe('the desk working the ticket', () => {
 /* ------------------------------------------------------------ the manuals -- */
 
 describe('the knowledge base carries real documents', () => {
-  beforeAll(async () => { await signOut() })
+  /* Signed in as the business buyer these articles are published to.
+     This block used to run signed out, which worked only because
+     `public_read_kb_articles` handed every published article to everybody
+     regardless of audience. That hole is closed — a visitor with no persona
+     now gets the public help and nothing else — so reading the enterprise
+     knowledge base needs an enterprise reader. The one assertion that is
+     genuinely about anonymous access is the download below, which fetches the
+     files over plain HTTP with no session at all. */
+  beforeAll(async () => { await signOut(); await signIn(OTHER.email, OTHER.password) })
+  afterAll(async () => { await signOut() })
 
   it('hangs manuals, datasheets, videos and templates off the articles', async () => {
     const snap = await loadKb('enterprise')
@@ -227,6 +236,16 @@ describe('the knowledge base carries real documents', () => {
     expect(groups.map(g => g.kind)).toEqual(['manual', 'datasheet', 'video'])
     expect(groups.every(g => g.assets.length > 0)).toBe(true)
   })
+
+})
+
+/* Its own block with its own session: a business buyer cannot read the retail
+   knowledge base any more than the other way round, so asking for it from the
+   enterprise session above would prove the narrowing works rather than that the
+   retail articles carry files. */
+describe('the retail knowledge base carries documents too', () => {
+  beforeAll(async () => { await signOut(); await signIn(CONSUMER.email, CONSUMER.password) })
+  afterAll(async () => { await signOut() })
 
   it('gives the consumer knowledge base something too', async () => {
     const snap = await loadKb('consumer')

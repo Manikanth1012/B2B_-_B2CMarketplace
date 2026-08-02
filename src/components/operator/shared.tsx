@@ -110,15 +110,73 @@ export function StatCard({ label, value, sublabel, color }: { label: string; val
  *
  * `overflowX` stays as a floor — a narrow phone can always defeat this — but
  * it should now be rare rather than routine.
+ *
+ * What that squeeze cost, and what `min-content` buys back
+ * -------------------------------------------------------
+ * Sizing to the card was right; sizing to the card *at any price* was not. An
+ * eleven-column inventory table given a nine-column card printed "Kestrel
+ * Device / s" and "Catalog / ue" — words split down the middle, because
+ * `width: 100%` lets the auto layout take a column below the width of the
+ * longest word in it and break inside that word to fit.
+ *
+ * `min-width: min-content` is the floor that was missing. It says: never
+ * narrower than the widest unbreakable thing in each column. Below that the
+ * wrapper scrolls, which is the outcome the squeeze was avoiding — but a
+ * scrollbar is recoverable and "Device s" is not. In practice almost every
+ * table clears it and nothing scrolls; the two that do not were never going to
+ * fit and were lying about it.
  */
-export function Table({ headers, children }: { headers: string[]; children: React.ReactNode }) {
+/**
+ * A column heading.
+ *
+ * A bare string keeps the old rule — first column left, every other right,
+ * which is correct when every other column is a figure. Where one is not (a
+ * "Why", a note, a reason) the alignment has to be sayable, or the header sits
+ * at one edge of the column and its prose at the other.
+ */
+export type Header = string | { label: string; align: 'left' | 'right' }
+
+const headerLabel = (h: Header): string => (typeof h === 'string' ? h : h.label)
+const headerAlign = (h: Header, i: number): 'left' | 'right' =>
+  typeof h === 'string' ? (i === 0 ? 'left' : 'right') : h.align
+
+/**
+ * Side padding, chosen by how many columns have to share the width.
+ *
+ * Ten columns paying 20px each in padding spend 200px on whitespace before a
+ * single character is drawn, which on a 1000px card is a fifth of the table.
+ * Five columns can afford it and ten cannot, so the number is not a constant.
+ * Passed down through a CSS variable so the cells do not each need telling.
+ */
+const padFor = (columns: number): string =>
+  columns >= 10 ? '6px' : columns >= 8 ? '7px' : '10px'
+
+export function Table({ headers, children }: { headers: Header[]; children: React.ReactNode }) {
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)', tableLayout: 'auto' }}>
+      <table style={{
+        ['--cell-pad' as string]: padFor(headers.length),
+        width: '100%', borderCollapse: 'collapse', tableLayout: 'auto',
+        /* 13px rather than 14. Across a nine-column table that is most of a
+           column, and at this size it is still a comfortable read — these are
+           dense records, not prose. */
+        fontSize: 'var(--text-table)',
+        /* The floor. See above: without it a column can be narrower than the
+           longest word it holds, and the browser breaks the word. */
+        minWidth: 'min-content',
+      }}>
         <thead>
           <tr style={{ borderBottom: '2px solid var(--border)' }}>
             {headers.map((h, i) => (
-              <th key={i} style={{ textAlign: i === 0 ? 'left' : 'right', padding: '10px 10px', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', lineHeight: 1.25 }}>{h}</th>
+              <th key={i} style={{
+                textAlign: headerAlign(h, i), padding: '10px var(--cell-pad, 10px)',
+                fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-tertiary)',
+                textTransform: 'uppercase', letterSpacing: '0.04em', lineHeight: 1.25,
+                /* A header may wrap between its words — "SETTLEMENT / PLAN" is
+                   fine and cheap — but never inside one. "SUBSCRI / BERS" is
+                   not a word anybody is looking for. */
+                overflowWrap: 'normal', wordBreak: 'keep-all',
+              }}>{headerLabel(h)}</th>
             ))}
           </tr>
         </thead>
@@ -128,18 +186,61 @@ export function Table({ headers, children }: { headers: string[]; children: Reac
   )
 }
 
+/**
+ * A cell.
+ *
+ * `right` means "this is a figure": right-aligned and never wrapped, because
+ * breaking "$41,871.56" over two lines saves nothing — the wrapped half still
+ * needs the width — and makes the column unreadable.
+ *
+ * Except when the caller has given the cell a width. `right` was being used for
+ * prose too, and `white-space: nowrap` inside a `maxWidth` does not clip: the
+ * text simply runs on, out of the cell and underneath the next column, which is
+ * how the developer console's "Why" column ended up printed beneath its own
+ * Edit and Delete buttons. A cell that has been given a width has been told it
+ * must wrap, so it does.
+ */
 export function Td({ children, right, style }: { children: React.ReactNode; right?: boolean; style?: React.CSSProperties }) {
+  const bounded = style !== undefined && ('maxWidth' in style || 'width' in style)
   return (
     <td style={{
-      padding: '12px 10px', borderBottom: '1px solid var(--border-light)',
+      padding: '12px var(--cell-pad, 10px)', borderBottom: '1px solid var(--border-light)',
       textAlign: right ? 'right' : 'left', color: 'var(--text)', verticalAlign: 'middle',
-      /* Right-aligned cells are figures, dates and buttons. Breaking
-         "$41,871.56" across two lines to save eight pixels makes the column
-         unreadable and saves nothing, because the wrapped half still needs the
-         width. The left column carries the prose and wraps instead. */
-      ...(right ? { whiteSpace: 'nowrap' as const } : { wordBreak: 'break-word' as const }),
+      ...(right && !bounded
+        ? { whiteSpace: 'nowrap' as const }
+        /* `overflowWrap`, not `wordBreak`: break inside a word only when the
+           word alone cannot fit, rather than wherever the line happens to run
+           out. That is the difference between "Kestrel / Devices" and "Kestrel
+           Device / s". */
+        : { whiteSpace: 'normal' as const, overflowWrap: 'break-word' as const }),
       ...style,
     }}>{children}</td>
+  )
+}
+
+/**
+ * An identifier, wrapped at its separators and nowhere else.
+ *
+ * `onboarding.gate.cleared` has no space in it, so CSS gives it no break
+ * opportunity: the column either takes the whole string's width — 361px of a
+ * 1000px audit table, a third of it for one field — or, told to break anywhere,
+ * produces "onboarding.gate.cle / ared", which is a string nobody can read or
+ * search for.
+ *
+ * `<wbr>` is the third answer: a break opportunity the browser may take, at the
+ * dots and dashes where a reader would expect one. Deliberately an element
+ * rather than a zero-width space — U+200B would be copied along with the text
+ * and paste an invisible character into whatever the operator pastes it into,
+ * which is the same trap as the non-breaking space in the money formatter.
+ */
+export function Id({ children }: { children: string }) {
+  const parts = children.split(/(?<=[.\-_/:])/)
+  return (
+    <>
+      {parts.map((p, i) => (
+        <React.Fragment key={i}>{p}{i < parts.length - 1 && <wbr />}</React.Fragment>
+      ))}
+    </>
   )
 }
 
@@ -278,6 +379,12 @@ export function Btn({ variant = 'primary', size = 'md', children, ...props }: {
       fontSize: size === 'sm' ? 'var(--text-xs)' : 'var(--text-sm)',
       fontWeight: 600, cursor: props.disabled ? 'not-allowed' : 'pointer',
       opacity: props.disabled ? 0.5 : 1,
+      /* A label is one thing to press, so it stays on one line. In a narrow
+         table cell "Duplicate" was coming out as "Duplica / te", which reads as
+         two words and makes the button two rows tall. Icon and text are laid
+         out here too, rather than by each caller wrapping them in a flex. */
+      whiteSpace: 'nowrap',
+      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
       ...props.style,
     }}>
       {children}

@@ -212,10 +212,13 @@ export function EnterpriseRewards() {
               <tr key={r.id}>
                 <Td>
                   <div style={{ fontWeight: 600 }}>{r.rule?.name ?? r.id}</div>
-                  {r.rule?.why && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', maxWidth: '320px', lineHeight: 1.4 }}>{r.rule.why}</div>}
+                  {r.rule?.why && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', maxWidth: '220px', lineHeight: 1.4 }}>{r.rule.why}</div>}
                 </Td>
                 <Td right style={{ fontSize: 'var(--text-xs)' }}>{r.rule?.scope === 'vertical' ? r.rule.scope_id : 'everything'}</Td>
-                <Td right style={{ fontSize: 'var(--text-xs)' }}>{FUNDER_LABEL[r.funder] ?? r.funder}</Td>
+                {/* Capped for the same reason as the notification rules table:
+                    one prose column taking 181px of five was the whole
+                    overflow. */}
+                <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '130px' }}>{FUNDER_LABEL[r.funder] ?? r.funder}</Td>
                 <Td right>{r.count}</Td>
                 <Td right style={{ fontWeight: 600 }}>{fmtInt(r.points)}</Td>
               </tr>

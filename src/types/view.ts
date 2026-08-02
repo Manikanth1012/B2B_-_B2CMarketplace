@@ -26,7 +26,6 @@ export type OperatorView =
   | 'op-billtemplates'
   | 'op-markets'
   | 'op-kb'
-  | 'op-kbadmin'
 
 export type PartnerView =
   | 'pt-dashboard'

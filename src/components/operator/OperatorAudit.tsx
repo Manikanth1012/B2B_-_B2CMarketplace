@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { OperatorAuditEntry } from '../../types'
-import { SectionCard, Table, Td, EmptyState, fmtDateTime, Btn, Modal, FormField, TextInput, Select, TextArea, toast } from './shared'
+import { SectionCard, Table, Td, Id, EmptyState, fmtDateTime, Btn, Modal, FormField, TextInput, Select, TextArea, toast } from './shared'
 import { Pager, usePaging } from '../Pager'
 
 export function OperatorAudit() {
@@ -56,8 +56,14 @@ export function OperatorAudit() {
                 <Td style={{ fontSize: 'var(--text-xs)' }}>{fmtDateTime(e.when_ts)}</Td>
                 <Td>{e.actor}</Td>
                 <Td right>{e.role}</Td>
-                <Td right style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)' }}>{e.action}</Td>
-                <Td right style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)' }}>{e.object || '—'}</Td>
+                {/* Identifiers, not prose. `onboarding.gate.cleared` has no
+                    space in it, so CSS gives it no break opportunity and the
+                    column was claiming 361px of a 1000px table — a third of the
+                    width for one field, pushing Outcome off the end. `Id` adds
+                    break opportunities at the dots, so it wraps where a reader
+                    would expect rather than as "onboarding.gate.cle / ared". */}
+                <Td right style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)', maxWidth: '150px' }}><Id>{e.action}</Id></Td>
+                <Td right style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)', maxWidth: '200px' }}><Id>{e.object || '—'}</Id></Td>
                 <Td right>{e.category}</Td>
                 <Td right style={{ color: severityColor(e.severity), fontWeight: 600 }}>{e.severity}</Td>
                 <Td right>{e.outcome}</Td>

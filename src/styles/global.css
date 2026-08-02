@@ -84,6 +84,12 @@
   --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --text-xs: 0.75rem;
   --text-sm: 0.875rem;
+  /* Between xs and sm, for table rows only. A nine-column record table set at
+     14px has to steal the width from somewhere, and it was taking it out of
+     the words. 13px is still comfortably readable and buys back most of a
+     column. Deliberately not one of the general steps: this is a density
+     choice about tabular data, not a new size for the type scale. */
+  --text-table: 0.8125rem;
   --text-base: 1rem;
   --text-lg: 1.125rem;
   --text-xl: 1.25rem;
@@ -368,4 +374,27 @@ input, select, textarea {
 
 @media (max-width: 768px) {
   .op-grid-2col { grid-template-columns: 1fr !important; }
+}
+
+/* ---------- Table cells ---------- */
+
+/* A cell marked as holding a figure gets `white-space: nowrap`, because
+   breaking "$41,871.56" over two lines saves nothing. But `white-space`
+   inherits, so a child inside that cell inherits it too — and a child that has
+   been given a width of its own then cannot honour it: the text does not clip,
+   it runs on, out of the cell and underneath the next column.
+
+   That is how the seller's listing table printed "Submitted and waiting on the
+   catalogue desk" across the column beside it, and the developer console
+   printed each API's reason under its own Edit and Delete buttons.
+
+   Giving something a max-width is saying it must fit. So anything inside a cell
+   that carries one wraps, whatever the cell around it says. Written here rather
+   than fixed at each call site because it is the same mistake every time, and
+   the next person to nest a bounded div in a figure cell should not have to
+   rediscover it. */
+td [style*="max-width"],
+th [style*="max-width"] {
+  white-space: normal;
+  overflow-wrap: break-word;
 }

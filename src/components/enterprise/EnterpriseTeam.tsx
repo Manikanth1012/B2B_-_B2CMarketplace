@@ -237,7 +237,7 @@ export function EnterpriseTeam() {
       <SectionCard title="What each role may do"
                    subtitle="The whole grid in one place, because “who can sign this” is a question people ask about the account rather than about one role.">
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: `${260 + roles.length * 110}px` }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: `max(${260 + roles.length * 110}px, min-content)` }}>
             <thead>
               <tr>
                 <th style={{ textAlign: 'left', padding: '10px 20px', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em', borderBottom: '1px solid var(--border-light)', minWidth: '260px' }}>Capability</th>

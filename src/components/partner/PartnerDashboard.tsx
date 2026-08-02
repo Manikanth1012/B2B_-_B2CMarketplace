@@ -117,8 +117,12 @@ export function PartnerDashboard({ onNavigate }: {
                       twice and wrapped to three lines doing it. The step is the
                       useful half — it is what somebody has to go and do. */}
                   <Td>
+                    {/* Not nowrap: "Resolve the failure" held on one line costs
+                        the column 118px, and this card sits in a two-column
+                        grid where that is the difference between fitting and a
+                        scrollbar. A phrase wraps; a figure would not. */}
                     <span style={{
-                      fontSize: '11px', fontWeight: 600, whiteSpace: 'nowrap',
+                      fontSize: '11px', fontWeight: 600,
                       color: o.failed ? 'var(--danger)' : 'var(--text-secondary)',
                     }}>
                       {next}

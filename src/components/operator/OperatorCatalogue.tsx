@@ -460,7 +460,7 @@ function ProductTable({ products, snap, onOpen, heroOf, catName }: {
   if (products.length === 0) return <EmptyState message="No listing matches that" />
   return (
     <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '820px' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 'max(820px, min-content)' }}>
         <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
           {['Listing', 'Marketplace', 'Seller', 'Price', 'Commission', 'Rules', 'State'].map(h => (
             <th key={h} style={{
@@ -543,7 +543,7 @@ function DependencyRules({ snap, catName, onOpen }: {
         </Callout>
       </div>
       <div style={{ overflowX: 'auto', marginTop: '12px' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '780px' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 'max(780px, min-content)' }}>
           <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
             {['Product', 'Marketplace', 'Relationship', 'Against', 'Enforced'].map(h => (
               <th key={h} style={{ textAlign: 'left', padding: '9px 12px', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-tertiary)' }}>{h}</th>

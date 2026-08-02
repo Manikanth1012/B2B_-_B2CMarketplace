@@ -205,9 +205,12 @@ function RulesTab({ book, persona, onPersona, onEdit, onReload, silent }: {
                 <tr key={r.id}>
                   <Td>
                     <div style={{ fontWeight: 600 }}>{r.name}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', maxWidth: '340px', lineHeight: 1.4 }}>{r.why}</div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', maxWidth: '230px', lineHeight: 1.4 }}>{r.why}</div>
                   </Td>
-                  <Td right style={{ fontSize: 'var(--text-xs)' }}>{events.get(r.event_id)?.label ?? r.event_id}</Td>
+                  {/* Capped: the event name is a phrase and was taking 201px of a
+                      nine-column table, which is what pushed Actions past the
+                      edge. It wraps rather than widening. */}
+                  <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '130px' }}>{events.get(r.event_id)?.label ?? r.event_id}</Td>
                   <Td right style={{ fontSize: 'var(--text-xs)' }}>{r.audience}</Td>
                   <Td right>
                     <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>

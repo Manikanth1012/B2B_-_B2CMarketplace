@@ -833,7 +833,7 @@ function ActivityTab({ log }: { log: ConsumerAuditEntry[] }) {
 
       <Card icon={<History size={18} />} title="Account activity log" subtitle={`${log.length} entries on record`}>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-table)', minWidth: 'min-content' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid var(--border)' }}>
                 <th style={thStyle}>When</th>
@@ -1462,7 +1462,7 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
 
       <Card icon={<FileText size={18} />} title="Bill history" subtitle={`${bills.length} bills on record`}>
         <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-sm)' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-table)', minWidth: 'min-content' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid var(--border)' }}>
                 <th style={thStyle}>Bill ID</th>

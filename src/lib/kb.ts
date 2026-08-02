@@ -15,6 +15,9 @@ export interface KbArticle {
      a retail customer and a business buyer; writing it twice is how two copies
      of one policy drift apart. */
   personas: string[]
+  /* Named readers, narrowing `personas` rather than widening it. Empty means
+     everyone in those personas, which is what almost everything is. */
+  audience_ids: string[]
   audience_note: string
   kind: string
   title: string
@@ -200,6 +203,8 @@ export interface KbFaq {
   question: string
   answer: string
   personas: string[]
+  /* See `KbArticle.audience_ids`. Same rule, same meaning. */
+  audience_ids: string[]
   topic: string
   status: KbStatus
   /* How often it is asked, and how often the answer helped. A question nobody
@@ -230,10 +235,38 @@ export function publishedTo(item: { personas: string[]; status: KbStatus }, pers
   return item.status === 'published' && item.personas.includes(persona)
 }
 
+/**
+ * Whether a named audience lets this reader through.
+ *
+ * The twin of the `audience_ids` half of the RLS predicate, and it exists for
+ * one caller: the operator previewing somebody else's knowledge base. Their own
+ * policy hands them every row, so the narrowing a seller's policy would have
+ * done has to be done here or the preview shows the operator's view wearing a
+ * seller's label — which is worse than no preview, because it is convincing.
+ *
+ * Empty is not "nobody". An item addressed to nobody in particular is addressed
+ * to everybody in its personas, which is what almost every row is.
+ */
+export function addressedTo(
+  item: { audience_ids?: readonly string[] }, holderIds: readonly string[],
+): boolean {
+  const named = item.audience_ids ?? []
+  if (named.length === 0) return true
+  return named.some(id => holderIds.includes(id))
+}
+
+/** Both halves: the right persona, and either everybody or this reader by name. */
+export const visibleTo = (
+  item: { personas: string[]; status: KbStatus; audience_ids?: readonly string[] },
+  persona: string, holderIds: readonly string[] = [],
+): boolean => publishedTo(item, persona) && addressedTo(item, holderIds)
+
 /** The questions a reader sees, newest-first within a topic. */
-export function faqsFor(all: readonly KbFaq[], persona: string): KbFaq[] {
+export function faqsFor(
+  all: readonly KbFaq[], persona: string, holderIds: readonly string[] = [],
+): KbFaq[] {
   return all
-    .filter(f => publishedTo(f, persona))
+    .filter(f => visibleTo(f, persona, holderIds))
     .sort((a, b) => a.sort_order - b.sort_order)
 }
 
@@ -282,11 +315,13 @@ export type Check = { ok: true; note?: string } | { ok: false; reason: string }
  * where their article went.
  */
 export function validateAudience(
-  item: { personas: readonly string[]; status: KbStatus },
+  item: { personas: readonly string[]; status: KbStatus; audience_ids?: readonly string[] },
 ): Check {
   const known = new Set(PERSONAS.map(p => p.id))
   const bad = item.personas.filter(p => !known.has(p))
   if (bad.length) return { ok: false, reason: `${bad.join(', ')} is not an audience this marketplace has.` }
+
+  const named = item.audience_ids ?? []
 
   if (item.status === 'published' && item.personas.length === 0) {
     return {
@@ -294,14 +329,31 @@ export function validateAudience(
       reason: 'This would be published to nobody, so nobody could read it. Choose at least one audience, or hold it as a draft instead.',
     }
   }
+  /* The two conditions are ANDed, here and in the database. Naming a reader
+     without choosing the audience they belong to produces something addressed
+     to somebody and readable by nobody — which reads as published on this
+     screen and appears on no reader's. */
+  if (named.length > 0 && item.personas.length === 0) {
+    return {
+      ok: false,
+      reason: `This is addressed to ${named.length} named reader${named.length === 1 ? '' : 's'} but published to no audience at all, so none of them could read it. Tick the audience they belong to.`,
+    }
+  }
   if (item.personas.length === 0) {
     return { ok: true, note: 'Held as a draft, addressed to nobody yet.' }
   }
+
+  const who = item.personas.map(personaLabel).join(' and ')
+  /* Said as a narrowing, because that is what it is: "sellers, and of those,
+     these two" rather than "these two". */
+  const scope = named.length > 0
+    ? `${who} — and of those, only ${named.length} named ${named.length === 1 ? 'reader' : 'readers'}`
+    : who
   return {
     ok: true,
     note: item.status === 'published'
-      ? `Readable by ${item.personas.map(personaLabel).join(' and ')}.`
-      : `Held. When published it will reach ${item.personas.map(personaLabel).join(' and ')}.`,
+      ? `Readable by ${scope}.`
+      : `Held. When published it will reach ${scope}.`,
   }
 }
 

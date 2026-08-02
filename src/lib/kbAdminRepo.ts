@@ -11,25 +11,58 @@ import type { KbArticle, KbFaq, KbAsset, KbStatus } from './kb'
 
 export type Result = { ok: true; note?: string } | { ok: false; reason: string }
 
+/**
+ * Somebody an article can be addressed to by name.
+ *
+ * One shape across three tables, because the audience picker asks one question
+ * — "who is this for?" — and a seller, a business account and a retail customer
+ * are all answers to it.
+ */
+export interface KbReader {
+  id: string
+  name: string
+  persona: 'partner' | 'enterprise' | 'consumer'
+  note: string
+}
+
 export interface KbAdminBook {
   articles: KbArticle[]
   faqs: KbFaq[]
   assets: KbAsset[]
+  /* Everyone who could be named as an audience. Loaded here rather than by the
+     picker so opening the editor does not go and fetch three more tables. */
+  readers: KbReader[]
   loadError?: string
 }
 
 /** Everything, across every audience — this is the console that owns it. */
 export async function loadKbAdmin(): Promise<KbAdminBook> {
-  const [artRes, faqRes, assetRes] = await Promise.all([
+  const [artRes, faqRes, assetRes, ptr, acc, cus] = await Promise.all([
     supabase.from('kb_articles').select('*').order('persona').order('sort_order'),
     supabase.from('kb_faqs').select('*').order('sort_order'),
     supabase.from('kb_assets').select('*').order('sort_order'),
+    supabase.from('partners').select('id,name,type,country').order('name'),
+    supabase.from('enterprise_accounts').select('id,company').order('company'),
+    supabase.from('consumer_profile').select('customer_id,name').order('name'),
   ])
+
+  const readers: KbReader[] = [
+    ...((ptr.data ?? []) as { id: string; name: string; type: string; country: string }[])
+      .map(p => ({ id: p.id, name: p.name, persona: 'partner' as const, note: `${p.type} · ${p.country}` })),
+    ...((acc.data ?? []) as { id: string; company: string }[])
+      .map(a => ({ id: a.id, name: a.company, persona: 'enterprise' as const, note: a.id })),
+    ...((cus.data ?? []) as { customer_id: string; name: string }[])
+      .map(c => ({ id: c.customer_id, name: c.name, persona: 'consumer' as const, note: c.customer_id })),
+  ]
+
   const book: KbAdminBook = {
     articles: (artRes.data ?? []) as KbArticle[],
     faqs: (faqRes.data ?? []) as KbFaq[],
     assets: (assetRes.data ?? []) as KbAsset[],
+    readers,
   }
+  /* A failed reader list does not blank the screen — it costs the ability to
+     address something to one person, not the ability to author at all. */
   const failed = [artRes.error, faqRes.error].find(Boolean)
   return failed ? { ...book, loadError: failed.message } : book
 }
@@ -37,7 +70,7 @@ export async function loadKbAdmin(): Promise<KbAdminBook> {
 /* ------------------------------------------------------------ articles --- */
 
 export type ArticleDraft = Pick<KbArticle,
-  'title' | 'summary' | 'kind' | 'personas' | 'status' | 'mins' | 'tags' |
+  'title' | 'summary' | 'kind' | 'personas' | 'audience_ids' | 'status' | 'mins' | 'tags' |
   'view' | 'roles' | 'body' | 'audience_note'>
 
 export async function saveArticle(
@@ -135,7 +168,7 @@ export async function deleteArticle(
 /* ---------------------------------------------------------------- FAQs --- */
 
 export type FaqDraft = Pick<KbFaq,
-  'question' | 'answer' | 'personas' | 'topic' | 'status' | 'article_id'>
+  'question' | 'answer' | 'personas' | 'audience_ids' | 'topic' | 'status' | 'article_id'>
 
 export async function saveFaq(
   { id, draft, articles, actor }: {

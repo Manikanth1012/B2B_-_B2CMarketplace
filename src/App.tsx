@@ -343,8 +343,7 @@ function AppInner() {
         {opView === 'op-ledger' && <OperatorLedger />}
         {opView === 'op-feedback' && <OperatorContentFeedback />}
         {opView === 'op-audit' && <OperatorAudit />}
-        {opView === 'op-kb' && <KnowledgeBase persona="operator" title="Knowledge base" />}
-        {opView === 'op-kbadmin' && <OperatorKnowledge />}
+        {opView === 'op-kb' && <OperatorKnowledge />}
         {/* No feedbackAs: the operator is the queue. */}
       </OperatorShell>
     )

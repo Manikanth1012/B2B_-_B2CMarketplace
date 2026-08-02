@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import {
-  KB_KINDS, kbKind, filterArticles, allTags, canAct,
+  addressedTo, visibleTo, KB_KINDS, kbKind, filterArticles, allTags, canAct,
   assetsFor, assetsByKind, assetKind, assetMeta, fileSize, duration,
   publishedTo, personaLabel, faqsFor, faqsByTopic, searchFaqs, helpfulness,
   validateAudience, validateArticle, validateFaq, canLink, kbWarnings,
@@ -9,7 +9,7 @@ import {
 import type { KbArticle, KbAsset, KbFaq } from './kb'
 
 const art = (over: Partial<KbArticle> = {}): KbArticle => ({
-  id: 'KB-1', persona: 'operator', personas: ['operator'], audience_note: '',
+  id: 'KB-1', persona: 'operator', personas: ['operator'], audience_ids: [], audience_note: '',
   kind: 'howto', title: 'Onboard a seller',
   mins: 5, updated: '21 Jul 2026', view: 'op-onboarding',
   roles: [], tags: ['partners', 'onboarding'],
@@ -186,7 +186,7 @@ describe('article attachments', () => {
 
 const faq = (over: Partial<KbFaq> = {}): KbFaq => ({
   id: 'FAQ-1', question: 'Where do I find my bill?', answer: 'Under Bills on your account.',
-  personas: ['consumer'], topic: 'Billing', status: 'published',
+  personas: ['consumer'], audience_ids: [], topic: 'Billing', status: 'published',
   asked: 100, helpful: 80, article_id: null, updated: '01 Aug 2026',
   updated_by: 'Anika Sharma', sort_order: 1, ...over,
 })
@@ -215,12 +215,60 @@ describe('who a piece is published to', () => {
   })
 })
 
+describe('addressing something to particular readers', () => {
+  /* Empty is the normal case and it means everybody, not nobody. Getting this
+     backwards would hide every article in the knowledge base. */
+  it('lets everybody through when nobody is named', () => {
+    expect(addressedTo({ audience_ids: [] }, [])).toBe(true)
+    expect(addressedTo({ audience_ids: [] }, ['PTR-1004'])).toBe(true)
+    expect(addressedTo({}, [])).toBe(true)
+  })
+
+  it('lets a named reader through and nobody else', () => {
+    const one = { audience_ids: ['PTR-1004'] }
+    expect(addressedTo(one, ['PTR-1004'])).toBe(true)
+    expect(addressedTo(one, ['PTR-1009'])).toBe(false)
+    expect(addressedTo(one, [])).toBe(false)
+  })
+
+  it('lets a reader through on any one of the ids they hold', () => {
+    /* A person signed in can be a customer and, in another marketplace,
+       an account — the check is an intersection, not an equality. */
+    expect(addressedTo({ audience_ids: ['ACC-77'] }, ['CUS-1', 'ACC-77'])).toBe(true)
+  })
+
+  it('needs the persona as well as the name', () => {
+    const forOneSeller = art({ personas: ['partner'], audience_ids: ['PTR-1004'] })
+    /* Right name, wrong audience: the two conditions are ANDed. */
+    expect(visibleTo(forOneSeller, 'consumer', ['PTR-1004'])).toBe(false)
+    expect(visibleTo(forOneSeller, 'partner', ['PTR-1004'])).toBe(true)
+    expect(visibleTo(forOneSeller, 'partner', ['PTR-1009'])).toBe(false)
+  })
+
+  it('keeps a draft hidden from the reader it is addressed to', () => {
+    const held = art({ personas: ['partner'], audience_ids: ['PTR-1004'], status: 'held' })
+    expect(visibleTo(held, 'partner', ['PTR-1004'])).toBe(false)
+  })
+
+  it('narrows the questions a reader sees, without narrowing anybody else out', () => {
+    const list = [
+      faq({ id: 'all', personas: ['partner'], audience_ids: [], sort_order: 1 }),
+      faq({ id: 'mine', personas: ['partner'], audience_ids: ['PTR-1004'], sort_order: 2 }),
+      faq({ id: 'theirs', personas: ['partner'], audience_ids: ['PTR-1009'], sort_order: 3 }),
+    ]
+    expect(faqsFor(list, 'partner', ['PTR-1004']).map(f => f.id)).toEqual(['all', 'mine'])
+    expect(faqsFor(list, 'partner', ['PTR-1009']).map(f => f.id)).toEqual(['all', 'theirs'])
+    /* A seller who is nobody in particular still gets the general ones. */
+    expect(faqsFor(list, 'partner', []).map(f => f.id)).toEqual(['all'])
+  })
+})
+
 describe('the questions a reader sees', () => {
   const FAQS = [
-    faq({ id: 'a', personas: ['consumer', 'enterprise'], topic: 'Billing', sort_order: 1 }),
-    faq({ id: 'b', personas: ['consumer'], topic: 'Rewards', sort_order: 2 }),
-    faq({ id: 'c', personas: ['partner'], topic: 'Settlement', sort_order: 3 }),
-    faq({ id: 'd', personas: ['consumer'], topic: 'Billing', status: 'held', sort_order: 4 }),
+    faq({ id: 'a', personas: ['consumer', 'enterprise'], audience_ids: [], topic: 'Billing', sort_order: 1 }),
+    faq({ id: 'b', personas: ['consumer'], audience_ids: [], topic: 'Rewards', sort_order: 2 }),
+    faq({ id: 'c', personas: ['partner'], audience_ids: [], topic: 'Settlement', sort_order: 3 }),
+    faq({ id: 'd', personas: ['consumer'], audience_ids: [], topic: 'Billing', status: 'held', sort_order: 4 }),
   ]
 
   it('gives each audience its own, and nobody else’s', () => {
