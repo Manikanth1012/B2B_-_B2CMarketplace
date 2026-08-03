@@ -128,6 +128,10 @@ const PERSONAS = {
       'Revenue Share', 'General Ledger', 'Bill Templates', 'Markets & Currencies',
       'Developer Portal', 'Promotions', 'Storefront Banners', 'Notifications', 'Channels',
       'Reviews', 'Content Feedback', 'Roles & Users', 'Audit Trail', 'Knowledge base'],
+    /* The operator's own record is behind the avatar menu, not in the nav. It
+       did not exist when this list was written, and a screen the sweep never
+       visits is a screen the sweep can say nothing about. */
+    menu: { open: 'AS', items: ['My details'] },
   },
   partner: {
     card: 'Partner / Seller',
@@ -138,8 +142,9 @@ const PERSONAS = {
   enterprise: {
     card: 'Enterprise Buyer',
     screens: ['Dashboard', 'Approvals', 'Browse Catalogue', 'IoT',
-      'Security', 'Devices', 'Orders', 'Refunds', 'Subscriptions', 'Billing', 'Rewards',
-      'Support', 'Notifications', 'Team & Roles', 'Audit Log', 'My Details', 'Knowledge base'],
+      'Security', 'Devices', 'Orders', 'Refunds', 'Subscriptions', 'Billing', 'Wallet',
+      'Rewards', 'Support', 'Notifications', 'Team & Roles', 'Audit Log', 'My Details',
+      'Knowledge base'],
   },
   consumer: {
     card: 'Consumer',
