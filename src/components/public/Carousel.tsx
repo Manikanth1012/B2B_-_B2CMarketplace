@@ -1,9 +1,25 @@
+/* The hero carousel.
+ *
+ * It was a strip, not a slideshow: five 240px pictures in a row, the whole row
+ * shifted 256px on each tick. In a frame wide enough for two of them that has
+ * a fault built into it — at the last index the row has slid past its own
+ * content and you are looking at one picture and a large empty space where the
+ * rest of the hero shows through. It reads as broken, and because the movement
+ * is a small sideways nudge rather than a change of picture, it reads as not
+ * moving at all. Both complaints were about the same thing.
+ *
+ * One slide fills the frame now and the track moves a whole frame at a time, so
+ * there is no arrangement of index and width that shows a gap. It is also what
+ * lets each picture carry a caption: two or three words on a strip of thumbnails
+ * would be unreadable.
+ */
 import { useState, useEffect } from 'react'
 import { ChevronLeft, ChevronRight, Pause, Play } from 'lucide-react'
 import { nextIndex, prevIndex, shouldAdvance, SLIDE_MS } from '../../lib/carousel'
+import type { Slide } from '../../lib/carousel'
 
 export function Carousel({ slides, alt = 'Marketplace highlight' }: {
-  slides: readonly string[]
+  slides: readonly Slide[]
   alt?: string
 }) {
   const [index, setIndex] = useState(0)
@@ -52,24 +68,67 @@ export function Carousel({ slides, alt = 'Marketplace highlight' }: {
       role="region"
       aria-roledescription="carousel"
       aria-label={alt}
-      style={{ position: 'relative', overflow: 'hidden', borderRadius: 'var(--radius-lg)' }}
+      style={{ position: 'relative' }}
     >
-      <div style={{ display: 'flex', gap: '16px', padding: '4px', transition: reduced ? 'none' : 'transform 400ms ease', transform: `translateX(calc(${-index} * (240px + 16px)))` }}>
-        {slides.map((src, i) => (
-          <img
-            key={src}
-            src={src}
-            alt=""
-            loading={i === 0 ? 'eager' : 'lazy'}
-            aria-hidden={i !== index}
-            style={{ width: '240px', height: '400px', objectFit: 'cover', borderRadius: 'var(--radius-md)', flexShrink: 0 }}
-          />
-        ))}
+      {/* The frame. `overflow: hidden` is here rather than on the region so the
+          arrows, which sit just inside the edges, are not clipped by it. */}
+      <div style={{
+        position: 'relative', overflow: 'hidden',
+        borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)',
+      }}>
+        <div style={{
+          display: 'flex',
+          transition: reduced ? 'none' : 'transform 500ms cubic-bezier(0.4, 0, 0.2, 1)',
+          /* A whole frame per slide. The old strip moved by a fixed 256px,
+             which only lines up with the frame by coincidence and stops lining
+             up at all once the row is shorter than the distance travelled. */
+          transform: `translateX(${-index * 100}%)`,
+        }}>
+          {slides.map((slide, i) => (
+            <figure
+              key={slide.src}
+              /* `flex: 0 0 100%` — exactly one slide wide, never shrunk to make
+                 room for its neighbours. */
+              style={{ position: 'relative', flex: '0 0 100%', margin: 0 }}
+              aria-hidden={i !== index}
+            >
+              <img
+                src={slide.src}
+                alt=""
+                loading={i === 0 ? 'eager' : 'lazy'}
+                style={{ display: 'block', width: '100%', height: '400px', objectFit: 'cover' }}
+              />
+              {slide.caption && (
+                <>
+                  {/* A scrim, not a solid bar: the caption has to be legible over
+                      whatever the picture happens to be doing underneath it, and
+                      these five range from a dark server room to a bright shop
+                      counter. */}
+                  <div style={{
+                    position: 'absolute', inset: 'auto 0 0 0', height: '55%',
+                    background: 'linear-gradient(to top, rgba(6,20,40,0.88) 0%, rgba(6,20,40,0.55) 45%, rgba(6,20,40,0) 100%)',
+                    pointerEvents: 'none',
+                  }} />
+                  <figcaption style={{
+                    position: 'absolute', left: '20px', right: '20px', bottom: '18px',
+                    color: 'white', fontSize: 'var(--text-xl)', fontWeight: 800,
+                    letterSpacing: '-0.01em', lineHeight: 1.2,
+                    textShadow: '0 1px 12px rgba(0,0,0,0.45)',
+                  }}>
+                    {slide.caption}
+                  </figcaption>
+                </>
+              )}
+            </figure>
+          ))}
+        </div>
       </div>
 
       {/* Announced politely so a screen reader is told the slide changed
           without interrupting whatever it is currently reading. */}
-      <div aria-live="polite" className="sr-only">Slide {index + 1} of {slides.length}</div>
+      <div aria-live="polite" className="sr-only">
+        Slide {index + 1} of {slides.length}{slides[index]?.caption ? `: ${slides[index].caption}` : ''}
+      </div>
 
       <button onClick={() => setIndex(prevIndex(state))} aria-label="Previous slide" style={arrow('left')}>
         <ChevronLeft size={20} />
@@ -79,16 +138,16 @@ export function Carousel({ slides, alt = 'Marketplace highlight' }: {
       </button>
 
       <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center', padding: '12px' }}>
-        {slides.map((_, i) => (
+        {slides.map((s, i) => (
           <button
-            key={i}
+            key={s.src}
             onClick={() => setIndex(i)}
-            aria-label={`Go to slide ${i + 1}`}
+            aria-label={s.caption ? `Go to ${s.caption}` : `Go to slide ${i + 1}`}
             aria-current={i === index ? 'true' : undefined}
             style={{
               width: i === index ? '24px' : '8px', height: '8px', borderRadius: '4px', border: 'none',
-              background: i === index ? 'var(--brand-accent-dark)' : 'var(--border)',
-              cursor: 'pointer', transition: 'width 200ms ease',
+              background: i === index ? 'var(--brand-accent-dark)' : 'rgba(255,255,255,0.4)',
+              cursor: 'pointer', transition: 'width 200ms ease', padding: 0,
             }}
           />
         ))}
@@ -102,7 +161,7 @@ export function Carousel({ slides, alt = 'Marketplace highlight' }: {
             aria-label={stopped ? 'Start automatic slide rotation' : 'Stop automatic slide rotation'}
             style={{
               marginLeft: '8px', width: '24px', height: '24px', borderRadius: '50%', border: 'none',
-              background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer',
+              background: 'transparent', color: 'rgba(255,255,255,0.75)', cursor: 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 0,
             }}
           >
@@ -115,10 +174,11 @@ export function Carousel({ slides, alt = 'Marketplace highlight' }: {
 }
 
 const arrow = (side: 'left' | 'right'): React.CSSProperties => ({
-  position: 'absolute', top: '40%',
-  ...(side === 'left' ? { left: '8px' } : { right: '8px' }),
+  position: 'absolute', top: '200px', transform: 'translateY(-50%)',
+  ...(side === 'left' ? { left: '10px' } : { right: '10px' }),
   width: '36px', height: '36px', borderRadius: '50%', border: 'none',
   background: 'rgba(255,255,255,0.92)', color: 'var(--text)',
   display: 'flex', alignItems: 'center', justifyContent: 'center',
   cursor: 'pointer', boxShadow: 'var(--shadow-md)',
+  zIndex: 2,
 })

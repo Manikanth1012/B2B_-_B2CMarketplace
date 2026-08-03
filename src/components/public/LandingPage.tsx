@@ -3,6 +3,7 @@ import { Carousel } from './Carousel'
 import { CategoryRail } from './CategoryRail'
 import { PromoStrip } from './PromoStrip'
 import { HERO, CAROUSEL, BANNERS } from '../../lib/assets'
+import { withCaptions } from '../../lib/carousel'
 import { loadPromoBanners, loadCategories, loadCatalogue, countByCategory } from '../../lib/storefrontRepo'
 import { loadPriceBook, repriceAll } from '../../lib/moneyRepo'
 import { useMarket } from '../../lib/MarketContext'
@@ -68,7 +69,7 @@ export function LandingPage({ onNavigate }: { onNavigate: (p: PublicPage) => voi
               </button>
             </div>
           </div>
-          <Carousel slides={CAROUSEL} alt="What you can buy here" />
+          <Carousel slides={withCaptions(CAROUSEL)} alt="What you can buy here" />
         </div>
       </section>
 
