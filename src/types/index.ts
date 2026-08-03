@@ -127,6 +127,10 @@ export interface Subscription {
   ends_at: string | null
   resumes_at: string | null
   price: number
+  /* What the customer is charged in. `price` used to be the catalogue's dollar
+     list price with nothing to say so, which put "$18.00/mo" on an account
+     whose every bill is in rupees. */
+  currency: string
 }
 
 export interface LoyaltyProgramme {
@@ -154,6 +158,13 @@ export interface LoyaltyTier {
   colour: string
   benefits: string[]
   note: string | null
+  /* Which ladder this rung belongs to. `loyalty_tiers` holds two of them —
+     Bronze/Silver/Gold/Platinum for retail, Registered/Business/Business
+     Plus/Strategic for business accounts — and they share sort_order 1..4.
+     This field was in the database and missing from this type, so no caller
+     could filter on it even if they thought to, and the retail rewards page
+     drew all eight rungs interleaved. */
+  kind: 'consumer' | 'enterprise'
 }
 
 export interface EarnRule {

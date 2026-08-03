@@ -10,6 +10,7 @@ export interface SubscriptionRow {
   ends_at: string | null
   resumes_at: string | null
   price: number
+  currency: string
   cycle: string | null
 }
 
@@ -63,6 +64,19 @@ export function statusLine(s: SubscriptionRow): string {
     billing, so they do not count towards it. */
 export function monthlyTotal(subs: readonly SubscriptionRow[]): number {
   return subs.filter(isActive).reduce((sum, s) => sum + s.price, 0)
+}
+
+/**
+ * The currency these subscriptions are billed in.
+ *
+ * One account is billed in one currency — a subscription is a line on a bill,
+ * and a bill has a single currency — so this is a lookup, not a sum. Returns
+ * null when the rows disagree, because a total across two currencies is a
+ * number with no meaning and the caller has to be able to tell.
+ */
+export function billingCurrency(subs: readonly SubscriptionRow[]): string | null {
+  const seen = [...new Set(subs.map(s => s.currency).filter(Boolean))]
+  return seen.length === 1 ? seen[0] : null
 }
 
 /** Which controls a row should offer. A cancelled subscription offers none — it has

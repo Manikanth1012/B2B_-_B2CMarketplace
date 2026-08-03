@@ -31,10 +31,10 @@ import type { RefundBook } from '../lib/refundRepo'
 import { STATES, REASONS, REASON_LIST, sla, ownership, autoApproves } from '../lib/refunds'
 import type { RefundPolicy, RefundReason } from '../lib/refunds'
 
-type Tab = 'profile' | 'security' | 'notifications' | 'activity' | 'household' | 'wallet' | 'refunds' | 'bills' | 'documents' | 'support'
+type Tab = 'profile' | 'security' | 'notifications' | 'activity' | 'household' | 'wallet' | 'refunds' | 'bills' | 'support'
 
 function isTab(v: string): v is Tab {
-  return ['profile', 'security', 'notifications', 'activity', 'household', 'wallet', 'refunds', 'bills', 'documents', 'support'].includes(v)
+  return ['profile', 'security', 'notifications', 'activity', 'household', 'wallet', 'refunds', 'bills', 'support'].includes(v)
 }
 
 
@@ -137,7 +137,6 @@ export function AccountView({ initialTab, onWatchesChanged }: {
     { id: 'wallet', label: 'Wallet', icon: Wallet },
     { id: 'refunds', label: 'Refunds', icon: RotateCcw },
     { id: 'bills', label: 'Bills', icon: FileText },
-    { id: 'documents', label: 'Documents', icon: FolderOpen },
     { id: 'support', label: 'Help & Support', icon: LifeBuoy },
   ]
 
@@ -211,11 +210,6 @@ export function AccountView({ initialTab, onWatchesChanged }: {
       {tab === 'wallet' && <WalletTab />}
       {tab === 'refunds' && <RefundsTab book={refundBook} onChanged={loadData} showToast={showToast} />}
       {tab === 'bills' && <BillsTab bills={bills} showToast={showToast} />}
-      {tab === 'documents' && (
-        /* The customer's own id is the folder their documents are filed under,
-           and the profile already carries it. */
-        <CustomerDocuments viewer={{ persona: 'consumer', customerId: profile.customer_id } as Viewer} />
-      )}
       {tab === 'support' && <SupportTab tickets={tickets} showToast={showToast} />}
 
       {/* Toast */}
@@ -390,6 +384,20 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
         {/* Security */}
       </div>
 
+      {/* Documents.
+          Outside the grid rather than in it: the cards above are two columns of
+          fields, and this is a table with a date, a description and a link. In a
+          320px column it wraps into something nobody would read.
+          It was its own tab, which put a customer's own agreement and mandate a
+          navigation step away from the page about who they are — and the tab
+          strip had grown to ten. It belongs with the details it documents. */}
+      <div style={{ marginTop: '24px' }}>
+        <Card icon={<FolderOpen size={18} />} title="Documents">
+          {/* The customer's own id is the folder their documents are filed
+              under, so the viewer has to carry it. */}
+          <CustomerDocuments viewer={{ persona: 'consumer', customerId: profile.customer_id } as Viewer} />
+        </Card>
+      </div>
     </>
   )
 }

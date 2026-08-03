@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Search, ShoppingCart, Menu, X, ChevronDown, User, Bell, Shield, LogOut, Star, BookOpen, Wallet as WalletIcon, FolderOpen } from 'lucide-react'
+import { Search, ShoppingCart, Menu, X, ChevronDown, User, Bell, Shield, LogOut, Star, BookOpen, Wallet as WalletIcon } from 'lucide-react'
 import type { Category } from '../types'
 import { supabase } from '../lib/supabase'
 import { MarketPicker } from './MarketPicker'
@@ -187,7 +187,6 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut, currentV
                         customer asked for one of these is asked at short notice
                         and by somebody else, so it is one click rather than a
                         tab found by accident. */}
-                    <AcctItem icon={<FolderOpen size={16} />} label="My documents" onClick={() => { onNavigate('account', { tab: 'documents' }); setAcctOpen(false) }} />
                     <AcctItem icon={<BookOpen size={16} />} label="How things work" onClick={() => { onNavigate('kb'); setAcctOpen(false) }} />
                   </div>
                   <div style={{ padding: '4px', borderTop: '1px solid var(--border-light)' }}>

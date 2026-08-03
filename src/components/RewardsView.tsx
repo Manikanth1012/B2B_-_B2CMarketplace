@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Zap, Star, TrendingUp, Clock, Award, Gift, Wallet, FileText, Tag, RefreshCw, Send, X, Minus, Plus, Check, CircleAlert as AlertCircle, Info } from 'lucide-react'
 import { creditWalletFromRewards, loadMyWallet } from '../lib/walletRepo'
 import { loadMyRewards, redeemPoints as redeemThroughTheMarketplace } from '../lib/loyaltyRepo'
-import { validateRedemption, offeredTo, mostRedeemable } from '../lib/loyalty'
+import { validateRedemption, offeredTo, mostRedeemable, ladderFor, rungOf, rungState, nextRung } from '../lib/loyalty'
 import type { LoyaltyTier, EarnRule, LoyaltyLedgerEntry } from '../types'
 import type { Programme as LoyaltyProgramme, RedeemOption, Member as LoyaltyMember } from '../lib/loyalty'
 import { Pager, usePaging } from './Pager'
@@ -79,18 +79,16 @@ export function RewardsView() {
     loadData()
   }, [loadData])
 
-  const tierOf = (m: LoyaltyMember): LoyaltyTier => {
-    return tiers.find((t) => t.id === m.tier) || tiers[0]
-  }
+  /* Scoped to this member's own ladder. `loyalty_tiers` holds the retail and
+     the business progressions in one table, sharing sort_order 1..4, so an
+     unscoped list is eight interleaved rungs — and the fallback to `tiers[0]`
+     below used to land a retail customer on "Registered", a business rung.
+     The rules are in `loyalty.ts` and tested there. */
+  const ladder = ladderFor(tiers, member?.kind ?? 'consumer') as LoyaltyTier[]
 
   const tierProgress = (m: LoyaltyMember) => {
-    const cur = tierOf(m)
-    const sorted = [...tiers].sort((a, b) => a.sort_order - b.sort_order)
-    const next = sorted.find((t) => t.sort_order > cur.sort_order)
-    if (!next) return { cur, next: null, pct: 100, need: 0 }
-    const pct = Math.min(100, Math.round((m.qualify_12m / next.qualify_spend) * 100))
-    const need = Math.max(0, next.qualify_spend - m.qualify_12m)
-    return { cur, next, pct, need }
+    const cur = (rungOf(tiers, m) ?? ladder[0]) as LoyaltyTier
+    return { cur, ...nextRung(tiers, m) }
   }
 
   const openRedeem = (optId?: string) => {
@@ -275,8 +273,8 @@ export function RewardsView() {
       {/* Tier ladder */}
       <SectionCard icon={<Award size={18} />} title="Your tier">
         <div style={{ display: 'flex', gap: '0', marginBottom: '20px', overflowX: 'auto' }}>
-          {[...tiers].sort((a, b) => a.sort_order - b.sort_order).map((t, i) => {
-            const state = t.sort_order < progress.cur.sort_order ? 'past' : t.sort_order === progress.cur.sort_order ? 'here' : 'future'
+          {ladder.map((t, i) => {
+            const state = rungState(t, progress.cur)
             return (
               <div
                 key={t.id}
@@ -285,7 +283,7 @@ export function RewardsView() {
                   minWidth: '140px',
                   textAlign: 'center',
                   padding: '16px 12px',
-                  borderRight: i < tiers.length - 1 ? '1px solid var(--border-light)' : 'none',
+                  borderRight: i < ladder.length - 1 ? '1px solid var(--border-light)' : 'none',
                   position: 'relative',
                 }}
               >
@@ -305,7 +303,7 @@ export function RewardsView() {
                     border: state === 'here' ? `2px solid ${t.colour}` : '2px solid transparent',
                   }}
                 >
-                  {state === 'past' ? <Check size={16} /> : state === 'here' ? <Star size={16} /> : t.sort_order}
+                  {state === 'past' ? <Check size={16} /> : state === 'here' ? <Star size={16} /> : i + 1}
                 </div>
                 <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', marginBottom: '2px' }}>{t.name}</div>
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '4px' }}>

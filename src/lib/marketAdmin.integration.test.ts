@@ -137,31 +137,56 @@ describe('as the operator, configuring a market', () => {
     expect(currenciesOf(single!.code, accepted)).toEqual([only])
   })
 
-  it('is refused a currency that would orphan bills already raised in it', async () => {
-    /* A market/currency pair that actually has bills, so the refusal is about
-       the bills rather than about there being nothing to find. */
-    const { data } = await supabase.from('consumer_bills').select('market,currency')
-    const rows = (data ?? []) as { market: string; currency: string }[]
-    const withBills = rows.find(r =>
-      currenciesOf(r.market, accepted).length > 1 && currenciesOf(r.market, accepted)[0] !== r.currency)
+  /* Built rather than found. This used to hunt the seed for a market/currency
+     pair with money in it, which made it hostage to seeding decisions made
+     elsewhere — and when a later migration brought a customer's UAE bills home
+     to India there was no such pair left, so the test found nothing to check
+     and said so. Raising the invoice here means the refusal is always about
+     the money, and it exercises `enterprise_invoices`, which the guard did not
+     look at until this was written. */
+  it('is refused a currency that would orphan money already billed in it', async () => {
+    const market = markets.find(m => currenciesOf(m.code, accepted).length > 1)
+    expect(market, 'no market takes a second currency, so nothing can be orphaned').toBeTruthy()
+    const second = currenciesOf(market!.code, accepted)[1]
 
-    if (!withBills) {
-      /* Not skipped silently: if the seed no longer bills anything in a
-         market's second currency this test is checking nothing, and that
-         should be visible rather than green. */
-      const anyBills = rows.find(r => currenciesOf(r.market, accepted).length > 1)
-      expect(anyBills, 'no bills in any multi-currency market at all').toBeTruthy()
-      return
+    /* Nothing is billed in it yet, so it comes off cleanly. */
+    const clean = await currencyFootprint(market!.code, second)
+    expect(clean.bills, `${second} already carries bills in ${market!.code}`).toBe(0)
+    expect(canRemove(market!.code, second, accepted, clean).ok).toBe(true)
+
+    const { data: acct } = await supabase.from('enterprise_accounts').select('id').limit(1)
+    const account = ((acct ?? []) as { id: string }[])[0]?.id
+    expect(account, 'no business account to raise an invoice against').toBeTruthy()
+
+    const id = `INV-TEST-${Date.now()}`
+    try {
+      const { error } = await supabase.from('enterprise_invoices').insert({
+        id, account_id: account, period: 'Integration test', kind: 'oneoff', issued: '01 Aug 2026',
+        due: '31 Aug 2026', recurring: 100, oneoff: 0,
+        tax: Math.round(100 * Number(market!.tax_rate)) / 100,
+        total: 100 + Math.round(100 * Number(market!.tax_rate)) / 100,
+        status: 'open', market: market!.code, currency: second,
+        tax_rate: market!.tax_rate, fx_rate: 1, fx_as_of: '2026-08-01',
+      })
+      expect(error?.message ?? '', 'the fixture invoice was refused').toBe('')
+
+      /* The form's answer... */
+      const counts = await currencyFootprint(market!.code, second)
+      expect(counts.bills, 'the footprint did not see the invoice just raised').toBeGreaterThan(0)
+      expect(canRemove(market!.code, second, accepted, counts).reason).toMatch(/already been raised/i)
+
+      /* ...and the database's, which is the one that counts. Before this the
+         guard read `consumer_bills` only and would have allowed it. */
+      const res = await removeMarketCurrency(market!.code, second)
+      expect(res.ok, `${second} was removed from ${market!.code} with an invoice open in it`).toBe(false)
+      expect(res.reason).toMatch(/orphan|bills or invoices/i)
+    } finally {
+      await supabase.from('enterprise_invoices').delete().eq('id', id)
     }
 
-    const counts = await currencyFootprint(withBills.market, withBills.currency)
-    expect(counts.bills, 'the footprint did not find the bills that are there').toBeGreaterThan(0)
-    expect(canRemove(withBills.market, withBills.currency, accepted, counts).reason)
-      .toMatch(/already been raised/i)
-
-    const res = await removeMarketCurrency(withBills.market, withBills.currency)
-    expect(res.ok, 'bills were orphaned').toBe(false)
-    expect(res.reason).toMatch(/orphan|already/i)
+    /* And the market is exactly as it was. */
+    await refresh()
+    expect(currenciesOf(market!.code, accepted)).toContain(second)
   })
 })
 

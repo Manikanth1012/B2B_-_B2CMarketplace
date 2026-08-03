@@ -2,11 +2,16 @@ import { useState, useEffect } from 'react'
 import { RefreshCw, Pause, Play, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Subscription } from '../types'
-import { statusLine, monthlyTotal, actionsFor, isActive } from '../lib/subscriptions'
+import { statusLine, monthlyTotal, billingCurrency, actionsFor, isActive } from '../lib/subscriptions'
+import { useMarket } from '../lib/MarketContext'
 
 export function SubscriptionsView() {
   const [subs, setSubs] = useState<Subscription[]>([])
   const [loading, setLoading] = useState(true)
+  /* Formatted in the currency the rows carry, not in the one the visitor has
+     chosen in the market picker: this is what the account is billed, and it
+     does not change because somebody is browsing in dollars. */
+  const { fmtIn } = useMarket()
 
   useEffect(() => {
     supabase.from('subscriptions').select('*').order('started_at', { ascending: false }).then(({ data }) => {
@@ -56,6 +61,10 @@ export function SubscriptionsView() {
 
   const activeCount = subs.filter(isActive).length
   const total = monthlyTotal(subs)
+  /* Null when the rows disagree, which the guard now prevents — but a total
+     labelled with a currency picked from the first row would be a lie in
+     exactly the case that matters. */
+  const currency = billingCurrency(subs)
 
   return (
     <section style={{ padding: '32px 0 64px' }}>
@@ -72,7 +81,9 @@ export function SubscriptionsView() {
             {activeCount} active of {subs.length}
           </span>
           <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-            Billing <strong style={{ color: 'var(--text)', fontSize: 'var(--text-lg)', fontWeight: 800 }}>${total.toFixed(2)}</strong>/mo
+            Billing <strong style={{ color: 'var(--text)', fontSize: 'var(--text-lg)', fontWeight: 800 }}>
+              {currency ? fmtIn(total, currency) : total.toFixed(2)}
+            </strong>/mo
           </span>
         </div>
 
@@ -98,7 +109,7 @@ export function SubscriptionsView() {
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>
-                      ${sub.price.toFixed(2)}
+                      {fmtIn(sub.price, sub.currency)}
                       <span style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--text-tertiary)' }}>
                         /{(sub.cycle ?? 'Monthly').toLowerCase() === 'monthly' ? 'mo' : sub.cycle}
                       </span>

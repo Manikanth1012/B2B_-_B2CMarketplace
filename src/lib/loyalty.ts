@@ -158,3 +158,73 @@ export function fmtPoints(n: number | null | undefined): string {
 export function fmtMoney(n: number): string {
   return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 }
+
+/* ------------------------------------------------------------- the ladder -- */
+
+/**
+ * One rung of one ladder.
+ *
+ * Structural rather than imported from `../types` so this module stays pure and
+ * free of the app's wider type graph — the fields below are all the rules here
+ * need.
+ */
+export interface Rung {
+  id: string
+  sort_order: number
+  qualify_spend: number
+  kind: string
+}
+
+/**
+ * The rungs this member's account can actually climb.
+ *
+ * `loyalty_tiers` holds two ladders: Bronze/Silver/Gold/Platinum for retail and
+ * Registered/Business/Business Plus/Strategic for business accounts. They are
+ * separate progressions that happen to share a table, and they share
+ * `sort_order` 1..4 as well — so an unfiltered, sort-ordered read interleaves
+ * them into a single strip whose qualifying spend runs $600, $12,000, $35,000,
+ * $1,800, $100,000, $4,500. That is what the retail rewards page was drawing.
+ */
+export function ladderFor<T extends Rung>(tiers: readonly T[], memberKind: string): T[] {
+  const kind = memberKind === 'enterprise' ? 'enterprise' : 'consumer'
+  return tiers.filter(t => t.kind === kind).sort((a, b) => a.sort_order - b.sort_order)
+}
+
+/** The rung the member is on, or null when their tier names no rung we hold. */
+export function rungOf<T extends Rung>(tiers: readonly T[], member: { tier: string; kind: string }): T | null {
+  return ladderFor(tiers, member.kind).find(t => t.id === member.tier) ?? null
+}
+
+/**
+ * Climbed, standing on, or still ahead.
+ *
+ * "Here" is decided by identity, not by rank. Rank is only unique within one
+ * ladder, and comparing `sort_order` against the current tier's put "You are
+ * here" under both Gold and Business Plus — both of them rung 3, of different
+ * ladders.
+ */
+export function rungState<T extends Rung>(rung: T, current: T | null): 'past' | 'here' | 'future' {
+  if (!current) return 'future'
+  if (rung.id === current.id) return 'here'
+  return rung.sort_order < current.sort_order ? 'past' : 'future'
+}
+
+/** The next rung up, and what it would take. Scoped to the member's own ladder. */
+export function nextRung<T extends Rung>(
+  tiers: readonly T[], member: { tier: string; kind: string; qualify_12m: number },
+): { next: T | null; need: number; pct: number } {
+  const ladder = ladderFor(tiers, member.kind)
+  const current = rungOf(tiers, member)
+  const next = ladder.find(t => t.qualify_spend > member.qualify_12m) ?? null
+  if (!next) return { next: null, need: 0, pct: 100 }
+  /* Measured from the rung below rather than from zero, or a member who has
+     just arrived on a rung reads as most of the way to the next one. */
+  const floor = current?.qualify_spend ?? 0
+  const span = next.qualify_spend - floor
+  const pct = span > 0 ? Math.round(((member.qualify_12m - floor) / span) * 100) : 0
+  return {
+    next,
+    need: Math.max(0, Math.round((next.qualify_spend - member.qualify_12m) * 100) / 100),
+    pct: Math.max(0, Math.min(100, pct)),
+  }
+}

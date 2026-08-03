@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import {
-  formatDateOnly, statusLine, monthlyTotal, actionsFor,
+  formatDateOnly, statusLine, monthlyTotal, billingCurrency, actionsFor,
   isActive, isPaused, isCancelled, type SubscriptionRow,
 } from './subscriptions'
 
 const sub = (o: Partial<SubscriptionRow> = {}): SubscriptionRow => ({
   status: 'active', auto_renew: true, started_at: '2025-01-14T00:00:00+00:00',
   next_renewal: '2026-08-14', ends_at: null, resumes_at: null,
-  price: 6.9, cycle: 'Monthly', ...o,
+  price: 599, currency: 'INR', cycle: 'Monthly', ...o,
 })
 
 describe('formatDateOnly', () => {
@@ -106,5 +106,30 @@ describe('actionsFor', () => {
   it('offers nothing on a cancelled one — resubscribing is a purchase', () => {
     expect(actionsFor(sub({ status: 'cancelled' })))
       .toEqual({ canToggleRenew: false, canCancel: false, canResume: false })
+  })
+})
+
+describe('what the account is billed in', () => {
+  /* A subscription is a line on a bill and a bill has one currency, so this is
+     a lookup rather than a sum. The screen used to print "$" over rupee
+     figures because `price` carried the catalogue's dollar list price and
+     nothing said which currency it was. */
+  it('reads the currency off the rows', () => {
+    expect(billingCurrency([sub(), sub()])).toBe('INR')
+  })
+
+  it('returns null when the rows disagree, rather than picking one', () => {
+    expect(billingCurrency([sub({ currency: 'INR' }), sub({ currency: 'AED' })])).toBeNull()
+  })
+
+  it('returns null for an account with nothing on it', () => {
+    expect(billingCurrency([])).toBeNull()
+  })
+
+  /* Cancelled and paused rows still say what the account is billed in — they
+     were billed in it. Excluding them would leave a customer whose only live
+     subscription lapsed with an unlabelled total. */
+  it('counts a cancelled row towards the answer', () => {
+    expect(billingCurrency([sub({ status: 'cancelled' })])).toBe('INR')
   })
 })

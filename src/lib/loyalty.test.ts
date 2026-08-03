@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   offeredTo, worthOf, mostRedeemable, validateRedemption, canRedeemAnything,
+  ladderFor, rungOf, rungState, nextRung,
   fmtPoints, fmtMoney,
 } from './loyalty'
 import type { Member, Programme, RedeemOption } from './loyalty'
@@ -157,5 +158,101 @@ describe('the words', () => {
     expect(fmtPoints(Number.NaN)).toBe('—')
     expect(fmtMoney(124)).toBe('$124.00')
     expect(fmtMoney(1234.5)).toBe('$1,234.50')
+  })
+})
+
+/* --------------------------------------------------------------- ladders -- */
+
+/* `loyalty_tiers` holds two progressions in one table and they share
+   sort_order 1..4. Unscoped, the retail rewards page drew all eight rungs
+   interleaved — qualifying spend running $600, $12,000, $35,000, $1,800,
+   $100,000, $4,500 — with "You are here" under two of them. */
+const RUNGS = [
+  { id: 'bronze', sort_order: 1, qualify_spend: 0, kind: 'consumer' },
+  { id: 'org-bronze', sort_order: 1, qualify_spend: 0, kind: 'enterprise' },
+  { id: 'silver', sort_order: 2, qualify_spend: 600, kind: 'consumer' },
+  { id: 'org-silver', sort_order: 2, qualify_spend: 12000, kind: 'enterprise' },
+  { id: 'gold', sort_order: 3, qualify_spend: 1800, kind: 'consumer' },
+  { id: 'org-gold', sort_order: 3, qualify_spend: 35000, kind: 'enterprise' },
+  { id: 'platinum', sort_order: 4, qualify_spend: 4500, kind: 'consumer' },
+  { id: 'org-platinum', sort_order: 4, qualify_spend: 100000, kind: 'enterprise' },
+]
+
+describe('which ladder an account climbs', () => {
+  it('gives a retail member the retail rungs only', () => {
+    expect(ladderFor(RUNGS, 'consumer').map(t => t.id))
+      .toEqual(['bronze', 'silver', 'gold', 'platinum'])
+  })
+
+  it('gives a business account the business rungs only', () => {
+    expect(ladderFor(RUNGS, 'enterprise').map(t => t.id))
+      .toEqual(['org-bronze', 'org-silver', 'org-gold', 'org-platinum'])
+  })
+
+  it('leaves the qualifying spend climbing, which is the whole point', () => {
+    const spends = ladderFor(RUNGS, 'consumer').map(t => t.qualify_spend)
+    expect(spends).toEqual([...spends].sort((a, b) => a - b))
+  })
+
+  it('treats an unknown kind as retail rather than showing everything', () => {
+    expect(ladderFor(RUNGS, 'nonsense').map(t => t.id))
+      .toEqual(['bronze', 'silver', 'gold', 'platinum'])
+  })
+})
+
+describe('where the member is standing', () => {
+  const priya = { tier: 'gold', kind: 'consumer', qualify_12m: 2500 }
+
+  it('finds the rung by id', () => {
+    expect(rungOf(RUNGS, priya)?.id).toBe('gold')
+  })
+
+  it('will not find a rung from the other ladder', () => {
+    expect(rungOf(RUNGS, { tier: 'org-gold', kind: 'consumer' })).toBeNull()
+  })
+
+  /* The defect this is really about: rank is unique only within one ladder,
+     so comparing sort_order marked Gold *and* Business Plus as "here". */
+  it('marks exactly one rung as here', () => {
+    const current = rungOf(RUNGS, priya)
+    const here = RUNGS.filter(t => rungState(t, current) === 'here')
+    expect(here.map(t => t.id)).toEqual(['gold'])
+  })
+
+  it('calls the rungs below past and the rungs above future', () => {
+    const current = rungOf(RUNGS, priya)
+    const ladder = ladderFor(RUNGS, 'consumer')
+    expect(ladder.map(t => rungState(t, current))).toEqual(['past', 'past', 'here', 'future'])
+  })
+
+  it('calls everything future when the member is on no known rung', () => {
+    expect(rungState(RUNGS[0], null)).toBe('future')
+  })
+})
+
+describe('what the next rung costs', () => {
+  it('names the next rung on the member’s own ladder', () => {
+    expect(nextRung(RUNGS, { tier: 'gold', kind: 'consumer', qualify_12m: 2500 }).next?.id)
+      .toBe('platinum')
+  })
+
+  it('measures the gap from the rung below, not from zero', () => {
+    /* Gold is $1,800, Platinum $4,500, and this member has spent $2,500. That
+       is 700 of a 2,700 span — 26%. Measured from zero it would read 56%,
+       which flatters a member who has only just arrived. */
+    const p = nextRung(RUNGS, { tier: 'gold', kind: 'consumer', qualify_12m: 2500 })
+    expect(p.need).toBe(2000)
+    expect(p.pct).toBe(26)
+  })
+
+  it('is complete at the top of the ladder', () => {
+    const p = nextRung(RUNGS, { tier: 'platinum', kind: 'consumer', qualify_12m: 9000 })
+    expect(p).toEqual({ next: null, need: 0, pct: 100 })
+  })
+
+  it('never reports a negative gap or a percentage past 100', () => {
+    const p = nextRung(RUNGS, { tier: 'bronze', kind: 'consumer', qualify_12m: 100000 })
+    expect(p.need).toBeGreaterThanOrEqual(0)
+    expect(p.pct).toBeLessThanOrEqual(100)
   })
 })

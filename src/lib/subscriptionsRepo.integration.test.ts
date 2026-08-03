@@ -5,7 +5,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { supabase } from './supabase'
 import { signIn, signOut } from './authRepo'
 import type { Subscription } from '../types'
-import { monthlyTotal, statusLine, isActive } from './subscriptions'
+import { monthlyTotal, statusLine, billingCurrency, isActive } from './subscriptions'
 
 const CONSUMER = { email: 'priya.raman@example.com', password: 'demo1234' }
 
@@ -55,7 +55,43 @@ describe('the consumer subscriptions', () => {
     expect(subs.filter(isActive)).toHaveLength(5)
     expect(subs.filter(s => s.status === 'paused')).toHaveLength(1)
     expect(subs.filter(s => s.status === 'cancelled')).toHaveLength(1)
-    expect(monthlyTotal(subs)).toBeCloseTo(54.28, 2)
+    /* Derived rather than written down. This was `54.28` — the dollar total,
+       from when `subscriptions.price` carried the catalogue's USD list price
+       on an account billed in rupees. A literal here says nothing about
+       whether the figure is right, only whether it has changed. */
+    const expected = subs.filter(isActive).reduce((a, s) => a + s.price, 0)
+    expect(monthlyTotal(subs)).toBeCloseTo(expected, 2)
+  })
+
+  /* The defect that literal was hiding. */
+  it('is priced in the currency the account is billed in', async () => {
+    const subs = await load()
+    const currency = billingCurrency(subs)
+    expect(currency, 'the subscriptions disagree about what this account pays in').toBeTruthy()
+
+    const { data } = await supabase.from('consumer_bills').select('currency,issued')
+    const bills = (data ?? []) as { currency: string; issued: string }[]
+    expect(bills.length, 'no bills to check the subscriptions against').toBeGreaterThan(0)
+    expect([...new Set(bills.map(b => b.currency))],
+      'this account is billed in more than one currency').toHaveLength(1)
+    expect(currency, 'subscriptions are priced against a bill in another currency')
+      .toBe(bills[0].currency)
+  })
+
+  /* And priced from the book, not converted at render — the rule the whole
+     `product_prices` table exists for. */
+  it('takes each price from the price book for that currency', async () => {
+    const subs = await load()
+    const currency = billingCurrency(subs)!
+    const { data } = await supabase.from('product_prices').select('product_id,price').eq('currency', currency)
+    const book = new Map(((data ?? []) as { product_id: string; price: number }[])
+      .map(r => [r.product_id, Number(r.price)]))
+
+    for (const s of subs) {
+      const listed = book.get(s.product_id)
+      expect(listed, `${s.product_name} has no ${currency} price on file`).toBeDefined()
+      expect(s.price, `${s.product_name} disagrees with the price book`).toBeCloseTo(listed!, 2)
+    }
   })
 
   it('gives the dormant rows the date that explains them', async () => {
