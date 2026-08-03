@@ -5,6 +5,7 @@ import {
   FormField, TextArea, TextInput, Select, EmptyState,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
+import { Pager, usePaging } from '../Pager'
 import { loadAccount } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
 import { loadRewards, proposeRedemption, decideRedemption, withdrawRedemption } from '../../lib/enterpriseRewardsRepo'
@@ -40,6 +41,11 @@ export function EnterpriseRewards() {
     setBook(rw); setAccount(acct)
   }, [])
   useEffect(() => { void reload() }, [reload])
+
+  /* A hundred and nine movements and growing with every invoice, drawn in one
+     unbroken list. Paged like every other ledger. Above the loading guard,
+     because a hook below an early return runs on some renders and not others. */
+  const ledger = usePaging(newestFirst(book?.movements ?? []))
 
   if (!book || !account) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
@@ -242,7 +248,7 @@ export function EnterpriseRewards() {
 
       <SectionCard title="Every movement" subtitle={`${book.movements.length} — each one traces to an invoice the account was billed for`}>
         <Table headers={['When', 'What', 'Reference', 'Rule', 'Funded by', 'Points', 'Worth']}>
-          {newestFirst(book.movements).map(m => (
+          {ledger.rows.map(m => (
             <tr key={m.id}>
               <Td style={{ whiteSpace: 'nowrap', fontSize: 'var(--text-xs)' }}>{m.when_date}</Td>
               <Td style={{ fontSize: 'var(--text-xs)' }}>{m.note}</Td>
@@ -256,6 +262,7 @@ export function EnterpriseRewards() {
             </tr>
           ))}
         </Table>
+        <Pager page={ledger} noun="movements" />
       </SectionCard>
 
       {history.length > 0 && (

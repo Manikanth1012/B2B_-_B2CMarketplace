@@ -18,7 +18,7 @@
 import { chromium } from 'playwright'
 
 const AUDIT = () => {
-  const out = { broken: [], scroll: [], overflow: [] }
+  const out = { broken: [], scroll: [], overflow: [], ids: [], rows: [] }
 
   const label = (el) => {
     const t = (el.closest('table')?.previousElementSibling?.textContent ?? '').trim().slice(0, 40)
@@ -84,6 +84,36 @@ const AUDIT = () => {
       out.overflow.push({ where: label(td), text: (td.textContent ?? '').trim().slice(0, 40) })
     }
   }
+
+  /* --- an identifier broken across lines ---------------------------------- */
+  /* Kept apart from `broken` above, which skips anything containing a hyphen
+     because "built-in" over two lines is ordinary typesetting. An invoice
+     number is not: "INV-" / "2026-" / "0779" down three lines is one field
+     pretending to be three, and the hyphen exemption made it invisible. */
+  for (const td of document.querySelectorAll('td')) {
+    for (const n of [...td.childNodes, ...[...td.querySelectorAll('*')].flatMap(e => [...e.childNodes])]) {
+      if (n.nodeType !== 3) continue
+      const s = (n.nodeValue || '').trim()
+      /* PREFIX-1234 or PREFIX-1234-5678: capitals, then hyphen-joined runs. */
+      if (!/^[A-Z]{2,5}-[A-Za-z0-9]+(-[A-Za-z0-9]+)*$/.test(s)) continue
+      /* Long ids are allowed to wrap — there is nowhere else for them to go. */
+      if (s.length > 24) continue
+      const r = document.createRange()
+      r.selectNodeContents(n)
+      const tops = new Set([...r.getClientRects()].map(x => Math.round(x.top)))
+      if (tops.size > 1) out.ids.push({ id: s, where: label(td) })
+    }
+  }
+
+  /* --- how many rows each table is drawing -------------------------------- */
+  for (const t of document.querySelectorAll('table')) {
+    const rows = t.querySelectorAll('tbody tr').length
+    /* A pager renders its own controls right after the table's card. Looked
+       for rather than assumed, because "no pager" is the finding. */
+    const card = t.closest('div')?.parentElement
+    const paged = /\bof\b.*\b(showing|page)\b|Showing \d+/i.test(card?.textContent ?? '')
+    if (rows > 0) out.rows.push({ where: label(t), rows, paged })
+  }
   return out
 }
 
@@ -117,7 +147,7 @@ const PERSONAS = {
     /* The account screens are behind the avatar menu rather than in the top
        nav, so they need opening first. Left out of the sweep entirely until
        now, which is exactly the sort of gap that makes an audit look clean. */
-    menu: { open: 'AS', items: ['My details', 'Wallet', 'My documents',
+    menu: { open: 'PR', items: ['My details', 'Wallet', 'My documents',
       'Sign-in & security', 'Notification preferences', 'My permissions', 'How things work'] },
   },
 }
@@ -127,6 +157,8 @@ const b = await chromium.launch({
   args: ['--no-proxy-server'],
 })
 
+/* Above this many rows a table wants a pager. */
+const LONG = Number(process.env.LONG || 25)
 const only = process.argv[2]
 const width = Number(process.argv[3] || 1500)
 let total = 0
@@ -159,11 +191,25 @@ for (const [name, cfg] of Object.entries(PERSONAS)) {
     const nav = page.getByRole('button', { name: new RegExp(`^${screen.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }).first()
     if (await nav.count() === 0) { console.log(`  ?  ${screen} — no such nav item`); continue }
     try { await nav.click({ timeout: 5000 }) } catch { console.log(`  ?  ${screen} — not clickable`); continue }
-    await page.waitForTimeout(2600)
+    /* Wait for the screen to have drawn something rather than for a fixed
+       interval. The enterprise audit log makes two round trips and was still
+       showing its spinner when the old 2.6s timer fired, so it was audited
+       empty and passed — a screen that reports "ok" because nothing was on it
+       is the worst kind of green. */
+    await page.waitForFunction(
+      /* No spinner left, and the page has actually drawn something. Not "has a
+         table" — several screens are card grids with none. */
+      () => !document.querySelector('.spinner') && document.body.innerText.trim().length > 400,
+      null, { timeout: 15000 },
+    ).catch(() => console.log(`  ?  ${screen} — still loading after 15s`))
+    await page.waitForTimeout(700)
 
     const r = await page.evaluate(AUDIT)
-    const n = r.broken.length + r.scroll.length + r.overflow.length
+    /* Row counts are information, not a defect — reported separately. */
+    const long = r.rows.filter(x => x.rows >= LONG && !x.paged)
+    const n = r.broken.length + r.scroll.length + r.overflow.length + r.ids.length
     total += n
+    for (const x of long) console.log(`  ..  ${screen}: ${x.rows} rows unpaginated  in ${x.where}`)
     if (n === 0) { console.log(`  ok ${screen}`); continue }
     console.log(`  !! ${screen}`)
     for (const x of r.broken)   console.log(`       split word: "${x.word}"  in ${x.where}`)
@@ -172,6 +218,7 @@ for (const [name, cfg] of Object.entries(PERSONAS)) {
       console.log(`          ${x.cols}`)
     }
     for (const x of r.overflow) console.log(`       cell overflows: "${x.text}"  in ${x.where}`)
+    for (const x of r.ids)      console.log(`       id split: "${x.id}"  in ${x.where}`)
     await page.screenshot({ path: `${OUT}/audit-${name}-${screen.replace(/[^a-z0-9]+/gi, '-')}.png`, fullPage: true })
   }
   await page.close()

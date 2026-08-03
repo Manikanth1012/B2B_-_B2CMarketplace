@@ -1,5 +1,5 @@
 import { Plug, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle, Activity, Key, Plus } from 'lucide-react'
-import { StatCard, SectionCard, Table, Td, StatusPill, fmtInt, Btn, toast } from '../operator/shared'
+import { StatCard, SectionCard, Table, Td, Id, StatusPill, fmtInt, Btn, toast } from '../operator/shared'
 import { PARTNER_ENDPOINTS } from './data'
 
 export function PartnerIntegrations() {
@@ -75,7 +75,10 @@ export function PartnerIntegrations() {
               </Td>
               <Td>{ep.env}</Td>
               <Td style={{ fontSize: 'var(--text-xs)', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{ep.url.replace('https://', '')}</Td>
-              <Td>{ep.auth}</Td>
+              {/* "HMAC-SHA256" is one algorithm, not two — the hyphen is a
+                  break opportunity CSS takes by default and the column was
+                  printing it over two lines. */}
+              <Td><Id>{ep.auth}</Id></Td>
               <Td right>
                 {!ep.enabled ? <StatusPill status="draft" />
                   : ep.health === 'failing' ? <StatusPill status="rejected" />

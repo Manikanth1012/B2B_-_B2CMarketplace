@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Download, Wallet, Receipt, TriangleAlert as AlertTriangle, Building2 } from 'lucide-react'
 import {
-  StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, fmtInt, Btn, toast, Modal,
+  StatCard, SectionCard, Table, Td, Id, StatusPill, fmtMoney, fmtInt, Btn, toast, Modal,
   FormField, TextArea, EmptyState,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
@@ -157,7 +157,11 @@ export function EnterpriseBilling() {
                 <>
                   <tr key={i.id} onClick={() => setOpen(open === i.id ? null : i.id)} style={{ cursor: 'pointer' }}>
                     <Td>
-                      <div style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{i.id}</div>
+                      {/* An identifier, so it holds its line. The hyphens in
+                          `INV-2026-0779` are break opportunities CSS takes by
+                          default, and the column was printing it down three
+                          lines as three fields. */}
+                      <div style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}><Id>{i.id}</Id></div>
                       <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{i.period}</div>
                     </Td>
                     <Td right style={{ fontSize: 'var(--text-xs)' }}>{day(i.issued)}</Td>

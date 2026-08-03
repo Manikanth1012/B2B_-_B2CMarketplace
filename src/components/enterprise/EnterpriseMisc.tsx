@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { SectionCard, Table, Td, EmptyState } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
+import { Pager, usePaging } from '../Pager'
 import { loadAccount } from '../../lib/enterpriseRepo'
 import { loadAdmin } from '../../lib/enterpriseAdminRepo'
 import { auditTrail } from '../../lib/enterpriseAdmin'
@@ -32,6 +33,12 @@ export function EnterpriseAudit() {
     })()
   }, [])
 
+  /* An append-only log only grows — 26 entries today and more every week —
+     so it is paged like every other record list. Above the loading guard:
+     `usePaging` is a hook, and a hook below an early return runs on some
+     renders and not others. */
+  const page = usePaging(entries ?? [])
+
   if (!entries) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
   return (
@@ -51,7 +58,7 @@ export function EnterpriseAudit() {
           ? <EmptyState message="Nothing has happened on this account yet." />
           : (
             <Table headers={['When', 'Who', 'Action', 'Detail', 'Severity']}>
-              {entries.map((e, i) => (
+              {page.rows.map((e, i) => (
                 <tr key={i}>
                   <Td style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>{day(e.when)}</Td>
                   <Td>{e.who}</Td>
@@ -70,6 +77,7 @@ export function EnterpriseAudit() {
               ))}
             </Table>
           )}
+        <Pager page={page} noun="entries" />
       </SectionCard>
 
       <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', maxWidth: '72ch' }}>

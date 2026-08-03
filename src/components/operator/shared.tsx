@@ -234,6 +234,15 @@ export function Td({ children, right, style }: { children: React.ReactNode; righ
  * which is the same trap as the non-breaking space in the money formatter.
  */
 export function Id({ children }: { children: string }) {
+  /* Short enough to fit anywhere: one field, one line. `INV-2026-0779` down
+     three lines as "INV- / 2026- / 0779" is one identifier pretending to be
+     three, and a hyphen is a break opportunity CSS will take by default — so a
+     short id has to be told not to, rather than left alone. */
+  if (children.length <= SHORT_ID) {
+    return <span style={{ whiteSpace: 'nowrap' }}>{children}</span>
+  }
+  /* Too long to hold on one line in any realistic column, so it breaks — but
+     only where a reader would expect, at the separators. */
   const parts = children.split(/(?<=[.\-_/:])/)
   return (
     <>
@@ -243,6 +252,11 @@ export function Id({ children }: { children: string }) {
     </>
   )
 }
+
+/* `INV-2026-0779`, `REQ-5512`, `CUS-449021`, `PTR-1004` are all under this and
+   hold their line. `onboarding.gate.cleared` and
+   `LTX-RDX-1101-260802075150876` are over it and wrap at their separators. */
+const SHORT_ID = 18
 
 export function EmptyState({ message }: { message: string }) {
   return (
@@ -371,7 +385,11 @@ export function Btn({ variant = 'primary', size = 'md', children, ...props }: {
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const bg = variant === 'danger' ? 'var(--danger)' : variant === 'success' ? 'var(--success)' : variant === 'secondary' ? 'var(--bg-alt)' : 'var(--brand-navy)'
   const color = variant === 'secondary' ? 'var(--text-secondary)' : 'white'
-  const pad = size === 'sm' ? '6px 12px' : '10px 16px'
+  /* A small button is the one that appears four-at-a-time in a table cell,
+     where 12px each side is 96px of whitespace across the group — enough on
+     its own to push the last column off the edge. 10px still reads as a
+     button and gives the columns beside it room. */
+  const pad = size === 'sm' ? '6px 10px' : '10px 16px'
   return (
     <button {...props} style={{
       padding: pad, borderRadius: 'var(--radius)',
