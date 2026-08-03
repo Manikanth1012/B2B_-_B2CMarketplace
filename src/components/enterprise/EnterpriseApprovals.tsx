@@ -4,7 +4,7 @@ import {
   History, Users, Wallet,
 } from 'lucide-react'
 import {
-  StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, fmtInt, Btn, toast, Modal,
+  StatCard, SectionCard, Table, Td, StatusPill, fmtInt, Btn, toast, Modal,
   FormField, TextArea, TextInput, EmptyState,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
@@ -324,6 +324,7 @@ function DecideModal({ book, me, policy, req, approve, onClose, onDone }: {
   book: AccountBook; me: Member; policy: Policy; req: Requisition
   approve: boolean; onClose: () => void; onDone: () => Promise<void>
 }) {
+  const { money } = useAccountMoney(book.account?.currency)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const lines = book.lines.filter(l => l.requisition_id === req.id)
@@ -349,7 +350,7 @@ function DecideModal({ book, me, policy, req, approve, onClose, onDone }: {
         </Btn>
       </>}>
       <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-        {nameOf(book.members, req.raised_by)} · ${fmtMoney(req.amount)}{req.model === 'monthly' ? ' per month' : ''} · {req.id}
+        {nameOf(book.members, req.raised_by)} · {money(Number(req.amount))}{req.model === 'monthly' ? ' per month' : ''} · {req.id}
       </div>
 
       <FormField label={`Reason (shared with ${nameOf(book.members, req.raised_by)})`} required={!approve}

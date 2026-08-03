@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import { ShoppingCart, TriangleAlert as AlertTriangle, Package, Check } from 'lucide-react'
 import {
-  StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, fmtInt, Btn, EmptyState,
+  StatCard, SectionCard, Table, Td, StatusPill, fmtInt, Btn, EmptyState,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
 import { useAccountMoney } from './money'

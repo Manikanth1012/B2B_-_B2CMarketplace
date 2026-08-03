@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Wallet, PieChart as PieIcon, SquareCheck as CheckSquare, ShoppingCart, TriangleAlert as AlertTriangle, TrendingUp, Cpu, Shield, Monitor, Search } from 'lucide-react'
-import { StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, fmtInt, Btn, toast } from '../operator/shared'
+import { StatCard, SectionCard, Table, Td, StatusPill, fmtInt, Btn, toast } from '../operator/shared'
 import { VERTICAL_NAMES } from './data'
 import { supabase } from '../../lib/supabase'
 import { loadAccount } from '../../lib/enterpriseRepo'

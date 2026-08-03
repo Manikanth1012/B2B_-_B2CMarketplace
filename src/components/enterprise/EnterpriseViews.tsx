@@ -1,7 +1,12 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { SquareCheck as CheckSquare, X, Shield, Cpu, Package } from 'lucide-react'
-import { StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, fmtInt, Btn, toast, Modal } from '../operator/shared'
-import { ENTERPRISE_SUBS, VERTICAL_NAMES } from './data'
+import { StatCard, SectionCard, Table, Td, StatusPill, fmtInt, Btn, toast, Modal } from '../operator/shared'
+import { Callout } from '../OnboardingJourney'
+import { VERTICAL_NAMES } from './data'
+import { loadAccount, loadEnterpriseCatalogue } from '../../lib/enterpriseRepo'
+import type { AccountBook, EnterpriseListing } from '../../lib/enterpriseRepo'
+import { idleSeats, renewingWithin, day } from '../../lib/enterprise'
+import { useAccountMoney } from './money'
 
 /* EnterpriseApprovals moved to EnterpriseApprovals.tsx when requisitions
    became rows rather than a constant. Deciding one here filtered a React array,
@@ -12,66 +17,109 @@ import { ENTERPRISE_SUBS, VERTICAL_NAMES } from './data'
    while the refunds, the notification log and a support ticket all pointed at
    orders this screen had never heard of. */
 
+/* Subscriptions the account actually holds.
+ *
+ * This screen read `ENTERPRISE_SUBS` from `data.ts` — six objects with dollar
+ * prices — while `enterprise_subscriptions` held the same six as rows in the
+ * account's own currency. So it reported $17,875 a month committed against an
+ * account whose Billing screen, reading the invoices, said ₹5,82,229. Two
+ * screens, one fact, no shared source.
+ *
+ * Relabelling the constant's figures as rupees would have been worse than
+ * leaving them: $825.55 marked ₹825.55 is a dollar figure wearing a rupee
+ * label, and nothing on the page could tell. The table is the answer because
+ * the table is what the invoices are raised from.
+ */
 export function EnterpriseSubs() {
-  const activeSubs = ENTERPRISE_SUBS.filter(s => s.status === 'active')
-  const mrc = activeSubs.reduce((a, s) => a + s.monthly, 0)
-  const unassigned = activeSubs.reduce((a, s) => a + (s.seatsTotal - s.seatsUsed), 0)
+  const [book, setBook] = useState<AccountBook | null>(null)
+  useEffect(() => { void loadAccount().then(setBook) }, [])
+
+  const { money, money0 } = useAccountMoney(book?.account?.currency)
+
+  if (!book) {
+    return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+  }
+
+  const subs = book.subscriptions
+  const activeSubs = subs.filter(s => s.status === 'active')
+  const mrc = activeSubs.reduce((a, s) => a + Number(s.monthly), 0)
+  /* Idle seats and what they cost, from the rules module rather than counted
+     again here — the Dashboard shows the same figure and the two disagreeing
+     is how a renewal conversation goes wrong. */
+  const idle = idleSeats(subs)
+  const suspended = subs.filter(s => s.status === 'suspended')
+  const nextUp = renewingWithin(subs, 400, new Date().toISOString().slice(0, 10))[0] ?? null
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div>
         <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Subscriptions</h1>
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-          {activeSubs.length} active · ${fmtMoney(mrc)}/month committed · {unassigned} unassigned seats
+          {activeSubs.length} active · {money(mrc)}/month committed · {fmtInt(idle.seats)} unassigned seats
         </p>
       </div>
 
-      {ENTERPRISE_SUBS.some(s => s.status === 'suspended') && (
-        <div style={{
+      {book.loadError && <Callout tone="danger" title="Some of this did not load">{book.loadError}</Callout>}
+
+      {/* The suspension notice, written from the row rather than into the
+          markup. It named one product and one date in prose, so a second
+          suspension would have been invisible and this one would have outlived
+          itself. */}
+      {suspended.map(s => (
+        <div key={s.id} style={{
           display: 'flex', gap: '12px', alignItems: 'flex-start',
           padding: '14px 18px', borderRadius: 'var(--radius-md)',
           background: 'var(--danger-bg)', border: '1px solid var(--danger)',
         }}>
           <Shield size={18} style={{ color: 'var(--danger)', flexShrink: 0, marginTop: '1px' }} />
           <div style={{ fontSize: 'var(--text-sm)', color: 'var(--danger)' }}>
-            <strong>Vertex Endpoint Protect is suspended.</strong> Your 120 licences run to contract end (30 Sep 2026) but will not renew. Sentinel MDR covers the same endpoints and you already hold it for 620 of them.
+            <strong>{s.name} is suspended.</strong>{' '}
+            {s.why_suspended ?? `Your ${fmtInt(s.quantity)} licences run to contract end (${day(s.renews)}) and will not renew.`}
           </div>
         </div>
-      )}
+      ))}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
-        <StatCard label="Monthly committed" value={`$${fmtMoney(mrc)}`} sublabel={`${activeSubs.length} active subscriptions`} color="var(--brand-navy)" />
-        <StatCard label="Unassigned seats" value={fmtInt(unassigned)} sublabel={`~$${fmtMoney(unassigned * 6.5)}/mo at risk`} color="var(--warning)" />
-        <StatCard label="Suspended" value={fmtInt(ENTERPRISE_SUBS.filter(s => s.status === 'suspended').length)} sublabel="Needs replacement decision" color="var(--danger)" />
-        <StatCard label="Next renewal" value="30 Sep" sublabel="Vertex Endpoint Protect" color="var(--warning)" />
+        <StatCard label="Monthly committed" value={money(mrc)}
+                  sublabel={`${activeSubs.length} active subscriptions`} color="var(--brand-navy)" />
+        <StatCard label="Unassigned seats" value={fmtInt(idle.seats)}
+                  sublabel={`${money(idle.monthly)}/mo at risk${idle.worst ? ` · worst on ${idle.worst.name}` : ''}`}
+                  color={idle.seats > 0 ? 'var(--warning)' : undefined} />
+        <StatCard label="Suspended" value={fmtInt(suspended.length)}
+                  sublabel={suspended.length ? 'Needs replacement decision' : 'None'}
+                  color={suspended.length ? 'var(--danger)' : undefined} />
+        <StatCard label="Next renewal" value={nextUp ? day(nextUp.renews) : '—'}
+                  sublabel={nextUp ? nextUp.name : 'Nothing renewing'}
+                  color={nextUp ? 'var(--warning)' : undefined} />
       </div>
 
-      <SectionCard title="Your Security Stack" subtitle="Active and suspended subscriptions">
-        <Table headers={['Service', 'Seller', 'Licensed', 'Assigned', 'Monthly', 'Renews', 'State', '']}>
-          {ENTERPRISE_SUBS.map(s => (
+      <SectionCard title="What the account holds" subtitle={`${subs.length} subscriptions, active and suspended`}>
+        <Table headers={['Service', 'Seller', 'Licensed', 'Assigned', 'Each', 'Monthly', 'Renews', 'State', '']}>
+          {subs.map(s => (
             <tr key={s.id}>
               <Td>
                 <div style={{ fontWeight: 600 }}>{s.name}</div>
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{s.unit}</div>
               </Td>
               <Td>{s.seller}</Td>
-              <Td right>{fmtInt(s.qty)}</Td>
+              <Td right>{fmtInt(s.quantity)}</Td>
               <Td right>
                 {s.status === 'suspended'
                   ? <span style={{ color: 'var(--text-tertiary)', fontSize: 'var(--text-xs)' }}>Not assignable</span>
                   : (
                     <div>
-                      <div style={{ fontSize: 'var(--text-sm)' }}>{s.seatsUsed} / {s.seatsTotal}</div>
+                      <div style={{ fontSize: 'var(--text-sm)' }}>{s.seats_used} / {s.quantity}</div>
                       <div style={{ height: '6px', borderRadius: '3px', background: 'var(--bg-alt)', overflow: 'hidden', marginTop: '4px' }}>
-                        <div style={{ height: '100%', width: `${(s.seatsUsed / s.seatsTotal) * 100}%`, background: 'var(--brand-accent-dark)', borderRadius: '3px' }} />
+                        <div style={{ height: '100%', width: `${Math.min(100, (s.seats_used / s.quantity) * 100)}%`, background: 'var(--brand-accent-dark)', borderRadius: '3px' }} />
                       </div>
                     </div>
                   )}
               </Td>
-              <Td right>${fmtMoney(s.monthly)}</Td>
-              <Td>{s.renews}</Td>
+              <Td right>{money(Number(s.unit_price))}</Td>
+              <Td right>{money0(Number(s.monthly))}</Td>
+              <Td>{day(s.renews)}</Td>
               <Td right><StatusPill status={s.status} /></Td>
-              <Td right><Btn variant="secondary" size="sm" onClick={() => toast('Subscription detail opened')}>Manage</Btn></Td>
+              <Td right><Btn variant="secondary" size="sm" onClick={() => toast(`${s.name} · ${s.contract_ref ?? 'no contract reference'}`)}>Manage</Btn></Td>
             </tr>
           ))}
         </Table>
@@ -80,23 +128,39 @@ export function EnterpriseSubs() {
   )
 }
 
+/* One vertical of the business catalogue.
+ *
+ * The listings were eight objects written into this file, priced in dollars,
+ * with SKU ids that named different products in `products` — and "what you
+ * already hold" came from the same constant the Subscriptions screen used. Both
+ * now read the account: the catalogue from `products` filtered by `audiences`
+ * and priced from `product_prices`, the holdings from
+ * `enterprise_subscriptions`.
+ */
 export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
-  const listings = [
-    { id: 'SKU-3001', name: '6D Connect IoT SIM 100-pack', cat: 'IoT SIM plans', v: 'iot', price: 900, model: 'monthly', seller: '6D Telecom', rating: 4.2, reviews: 45, desc: '100 IoT SIMs with shared data pool' },
-    { id: 'SKU-3002', name: 'Nimbus Air Quality Sensor', cat: 'Sensors', v: 'iot', price: 189, model: 'oneoff', seller: 'Nimbus Sensors', rating: 4.5, reviews: 128, desc: 'Indoor air quality monitor' },
-    { id: 'SKU-3004', name: 'Nimbus Cold-Chain Starter Bundle', cat: 'Bundles', v: 'iot', price: 599, model: 'oneoff', seller: 'Nimbus Sensors', rating: 4.8, reviews: 56, desc: '5 sensors + gateway + dashboard' },
-    { id: 'SKU-6001', name: 'Sentinel Managed Firewall', cat: 'Managed firewall', v: 'security', price: 450, model: 'monthly', seller: 'Sentinel Cyber', rating: 4.3, reviews: 32, desc: 'Next-gen firewall with 24/7 SOC' },
-    { id: 'SKU-6002', name: 'Sentinel MDR Service', cat: 'MDR', v: 'security', price: 20, model: 'monthly', seller: 'Sentinel Cyber', rating: 4.6, reviews: 67, desc: 'Managed detection and response' },
-    { id: 'SKU-6004', name: 'CloudZTNA Zero Trust Access', cat: 'VPN / ZTNA', v: 'security', price: 15, model: 'monthly', seller: 'CloudPath', rating: 4.4, reviews: 28, desc: 'Zero-trust network access' },
-    { id: 'SKU-7001', name: 'Aventa Business Router Pro', cat: 'Routers', v: 'device', price: 320, model: 'oneoff', seller: 'Aventa', rating: 4.5, reviews: 90, desc: 'Dual-WAN business router with 5G' },
-    { id: 'SKU-7002', name: 'Aventa Field Tablet 10"', cat: 'Tablets', v: 'device', price: 449, model: 'oneoff', seller: 'Aventa', rating: 4.2, reviews: 55, desc: 'Rugged 10-inch tablet for field teams' },
-  ]
+  const [book, setBook] = useState<AccountBook | null>(null)
+  const [listings, setListings] = useState<EnterpriseListing[] | null>(null)
 
-  const filtered = listings.filter(l => l.v === vertical)
-  const byCat: Record<string, typeof filtered> = {}
-  filtered.forEach(l => { (byCat[l.cat] = byCat[l.cat] || []).push(l) })
+  useEffect(() => {
+    void (async () => {
+      const b = await loadAccount()
+      setBook(b)
+      setListings(await loadEnterpriseCatalogue(b.account?.currency ?? 'USD'))
+    })()
+  }, [])
 
-  const mine = ENTERPRISE_SUBS.filter(s => s.v === vertical)
+  const { money, money0 } = useAccountMoney(book?.account?.currency)
+
+  if (!book || !listings) {
+    return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+  }
+
+  const filtered = listings.filter(l => l.category_id === vertical)
+  const byCat: Record<string, EnterpriseListing[]> = {}
+  filtered.forEach(l => { (byCat[l.sub_category ?? 'Other'] = byCat[l.sub_category ?? 'Other'] || []).push(l) })
+
+  const mine = book.subscriptions.filter(s => s.vertical === vertical)
+  const policy = book.policy
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -104,10 +168,14 @@ export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
         <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>{VERTICAL_NAMES[vertical]}</h1>
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
           {filtered.length} listings from {new Set(filtered.map(l => l.seller)).size} sellers
+          {policy ? ` · anything at or above ${money0(Number(policy.threshold))} needs finance approval` : ''}
         </p>
       </div>
 
-      {vertical === 'security' && (
+      {/* Read from the policy rather than asserted about one vertical: an
+          account that turns security sign-off off would otherwise still be told
+          it was on. */}
+      {vertical === 'security' && policy?.security_signoff && (
         <div style={{
           padding: '14px 18px', borderRadius: 'var(--radius-md)',
           background: 'var(--warning-bg)', border: '1px solid var(--warning)',
@@ -118,15 +186,16 @@ export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
       )}
 
       {mine.length > 0 && (
-        <SectionCard title="What you already hold" subtitle={`${mine.length} subscriptions`}>
-          <Table headers={['Service', 'Seller', 'Licensed', 'Monthly', 'Renews', 'State']}>
+        <SectionCard title="What you already hold" subtitle={`${mine.length} subscriptions on this account`}>
+          <Table headers={['Service', 'Seller', 'Licensed', 'Each', 'Monthly', 'Renews', 'State']}>
             {mine.map(s => (
               <tr key={s.id}>
                 <Td><strong>{s.name}</strong></Td>
                 <Td>{s.seller}</Td>
-                <Td right>{fmtInt(s.qty)}</Td>
-                <Td right>${fmtMoney(s.monthly)}</Td>
-                <Td>{s.renews}</Td>
+                <Td right>{fmtInt(s.quantity)}</Td>
+                <Td right>{money(Number(s.unit_price))}</Td>
+                <Td right>{money0(Number(s.monthly))}</Td>
+                <Td>{day(s.renews)}</Td>
                 <Td right><StatusPill status={s.status} /></Td>
               </tr>
             ))}
@@ -145,10 +214,10 @@ export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
                 <div style={{ padding: '12px', flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{p.name}</div>
                   <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{p.seller}</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>{p.desc}</div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>{p.description}</div>
                 </div>
                 <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border-light)', background: 'var(--bg-alt)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 700 }}>${fmtMoney(p.price)}{p.model === 'monthly' ? '/mo' : ''}</span>
+                  <span style={{ fontWeight: 700 }}>{money(p.price)}{p.model === 'monthly' ? (p.unit ? ` ${p.unit}/mo` : '/mo') : ''}</span>
                   <Btn variant="primary" size="sm" onClick={() => toast(`${p.name} added to requisition`)}>Add</Btn>
                 </div>
               </div>

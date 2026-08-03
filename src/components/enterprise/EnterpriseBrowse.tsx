@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react'
 import { Search, Package, Star } from 'lucide-react'
-import { SectionCard, Btn, toast, fmtMoney } from '../operator/shared'
-import { ENTERPRISE_CATALOGUE, VERTICAL_NAMES } from './data'
-import { loadAccount } from '../../lib/enterpriseRepo'
+import { SectionCard, Btn, toast } from '../operator/shared'
+import { VERTICAL_NAMES } from './data'
+import { loadAccount, loadEnterpriseCatalogue } from '../../lib/enterpriseRepo'
+import type { EnterpriseListing } from '../../lib/enterpriseRepo'
 import { useAccountMoney } from './money'
 import type { Policy } from '../../lib/enterprise'
 
@@ -17,22 +18,30 @@ export function EnterpriseBrowse() {
   /* The account's own currency too, for the same reason: a threshold quoted in
      dollars to a company invoiced in rupees is a different rule again. */
   const [currency, setCurrency] = useState<string | null>(null)
-  const { money0 } = useAccountMoney(currency)
+  const { money, money0 } = useAccountMoney(currency)
+  /* The catalogue itself, from `products` rather than from a constant. The
+     constant listed twelve items with dollar prices and SKU ids that named
+     different products in the real catalogue — `SKU-3001` was an IoT SIM pack
+     here and StreamNova Premium 4K in the table — so a requisition raised from
+     this screen would have referred to a consumer streaming subscription. */
+  const [listings, setListings] = useState<EnterpriseListing[] | null>(null)
   useEffect(() => {
     void (async () => {
       const book = await loadAccount()
       setPolicy(book.policy)
-      setCurrency(book.account?.currency ?? null)
+      const cur = book.account?.currency ?? 'USD'
+      setCurrency(cur)
+      setListings(await loadEnterpriseCatalogue(cur))
     })()
   }, [])
   const [sort, setSort] = useState('popular')
 
-  let results = ENTERPRISE_CATALOGUE.filter(p => p.status === 'live')
-  if (vertical) results = results.filter(p => p.v === vertical)
-  if (category) results = results.filter(p => p.cat === category)
+  let results = listings ?? []
+  if (vertical) results = results.filter(p => p.category_id === vertical)
+  if (category) results = results.filter(p => p.sub_category === category)
   if (query) {
     const q = query.toLowerCase()
-    results = results.filter(p => (p.name + ' ' + p.desc + ' ' + p.seller + ' ' + p.cat).toLowerCase().includes(q))
+    results = results.filter(p => (p.name + ' ' + p.description + ' ' + p.seller + ' ' + (p.sub_category ?? '')).toLowerCase().includes(q))
   }
   results = results.slice().sort((a, b) =>
     sort === 'priceup' ? a.price - b.price
@@ -40,8 +49,9 @@ export function EnterpriseBrowse() {
     : sort === 'rating' ? (b.rating || 0) - (a.rating || 0)
     : (b.reviews || 0) - (a.reviews || 0))
 
-  const all = ENTERPRISE_CATALOGUE.filter(p => p.status === 'live')
-  const cats = Array.from(new Set((vertical ? all.filter(p => p.v === vertical) : all).map(p => p.cat)))
+  const all = listings ?? []
+  const cats = Array.from(new Set((vertical ? all.filter(p => p.category_id === vertical) : all)
+    .map(p => p.sub_category).filter((c): c is string => !!c)))
   const filtering = vertical || category || query
 
   const reset = () => { setVertical(null); setCategory(null); setQuery('') }
@@ -96,7 +106,7 @@ export function EnterpriseBrowse() {
               <label key={v} style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', cursor: 'pointer', fontSize: 'var(--text-sm)' }}>
                 <input type="checkbox" checked={vertical === v} onChange={() => { setVertical(vertical === v ? null : v); setCategory(null) }} />
                 <span>{VERTICAL_NAMES[v]?.replace(' Marketplace', '')}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{all.filter(p => p.v === v).length}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{all.filter(p => p.category_id === v).length}</span>
               </label>
             ))}
           </div>
@@ -106,7 +116,7 @@ export function EnterpriseBrowse() {
               <label key={c} style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', cursor: 'pointer', fontSize: 'var(--text-sm)' }}>
                 <input type="checkbox" checked={category === c} onChange={() => setCategory(category === c ? null : c)} />
                 <span>{c}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{all.filter(p => p.cat === c && (!vertical || p.v === vertical)).length}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{all.filter(p => p.sub_category === c && (!vertical || p.category_id === vertical)).length}</span>
               </label>
             ))}
           </div>
@@ -114,7 +124,12 @@ export function EnterpriseBrowse() {
 
         {/* Results */}
         <div>
-          {results.length > 0 ? (
+          {/* "Nothing matches" while the catalogue is still in flight would tell
+              a buyer their filters excluded everything, which is a different
+              and wrong statement. */}
+          {listings === null ? (
+            <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+          ) : results.length > 0 ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '14px' }}>
               {results.map(p => (
                 <div key={p.id} style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden', display: 'flex', flexDirection: 'column', cursor: 'pointer', transition: 'border-color 150ms ease' }}
@@ -127,9 +142,9 @@ export function EnterpriseBrowse() {
                   </div>
                   <div style={{ padding: '12px', flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{p.name}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{p.seller} · {p.cat}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.4 }}>{p.desc}</div>
-                    {p.rating != null && (
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{p.seller} · {p.sub_category}</div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.4 }}>{p.description}</div>
+                    {p.rating > 0 && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
                         <Star size={12} style={{ color: '#F5A623' }} fill="#F5A623" />
                         {p.rating} ({p.reviews})
@@ -138,8 +153,8 @@ export function EnterpriseBrowse() {
                   </div>
                   <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border-light)', background: 'var(--bg-alt)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div>
-                      <span style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>${fmtMoney(p.price)}</span>
-                      {p.model === 'monthly' && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>/mo</span>}
+                      <span style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>{money(p.price)}</span>
+                      {p.model === 'monthly' && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{p.unit ? ` ${p.unit}/mo` : '/mo'}</span>}
                     </div>
                     <Btn variant="primary" size="sm" onClick={(e) => { e.stopPropagation(); toast(`${p.name} added to requisition`) }}>Add</Btn>
                   </div>

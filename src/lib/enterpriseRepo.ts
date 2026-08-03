@@ -6,6 +6,7 @@
    so a refusal cannot be skipped by talking to the API directly. */
 
 import { supabase } from './supabase'
+import { loadPriceBook } from './moneyRepo'
 import {
   needFor, policyNoteFor, validateDecision, validateRequisition, requisitionTotal, money,
 } from './enterprise'
@@ -307,6 +308,67 @@ export function invoiceCsv(invoice: Invoice, lines: InvoiceLine[]): string {
   return [head, ...rows, ...foot]
     .map(r => r.map(c => (/[",\n]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(','))
     .join('\n')
+}
+
+/* ------------------------------------------------ what a business may buy -- */
+
+/**
+ * The catalogue a business sees, priced in the money it is invoiced in.
+ *
+ * Both enterprise catalogue screens read a constant in `data.ts` — twelve
+ * objects with dollar prices and SKU ids that collide with real products
+ * (`SKU-3001` was "6D Connect IoT SIM 100-pack" there and "StreamNova Premium
+ * 4K" in `products`), so a requisition raised from that screen would have named
+ * a consumer streaming subscription.
+ *
+ * `audiences` already says who may buy each product and `product_prices` already
+ * holds the figure per currency. Nothing had to be invented — the constant was
+ * a second catalogue nobody was maintaining.
+ */
+export interface EnterpriseListing {
+  id: string
+  name: string
+  category_id: string
+  sub_category: string | null
+  seller: string
+  partner_id: string | null
+  price: number
+  currency: string
+  model: string
+  unit: string | null
+  rating: number
+  reviews: number
+  stock: string
+  description: string
+}
+
+export async function loadEnterpriseCatalogue(currency: string): Promise<EnterpriseListing[]> {
+  const [p, book] = await Promise.all([
+    supabase.from('products').select('*')
+      .contains('audiences', ['enterprise']).eq('status', 'live').order('sort_order'),
+    loadPriceBook(currency),
+  ])
+  type Row = {
+    id: string; name: string; category_id: string; sub_category: string | null
+    seller: string; partner_id: string | null; price: number; model: string
+    unit: string | null; rating: number | null; reviews: number | null
+    stock: string; description: string | null
+  }
+  return ((p.data ?? []) as Row[]).map(r => {
+    const priced = book.get(r.id)
+    return {
+      id: r.id, name: r.name, category_id: r.category_id, sub_category: r.sub_category,
+      seller: r.seller, partner_id: r.partner_id,
+      /* The book's figure, or the base row if the book does not price it there.
+         Converting on the spot would put an unrounded number on a shelf beside
+         chosen ones — the same rule `reprice` follows for the storefront. */
+      price: priced ? priced.price : Number(r.price),
+      currency: priced ? currency : 'USD',
+      model: r.model, unit: r.unit,
+      rating: Number(r.rating ?? 0), reviews: Number(r.reviews ?? 0),
+      stock: r.stock, description: r.description ?? '',
+    }
+  })
 }
 
 /* --------------------------------------------------------------- helpers -- */

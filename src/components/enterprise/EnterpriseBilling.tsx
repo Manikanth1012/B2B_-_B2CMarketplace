@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Download, Wallet, Receipt, TriangleAlert as AlertTriangle, Building2 } from 'lucide-react'
 import {
-  StatCard, SectionCard, Table, Td, Id, StatusPill, fmtMoney, fmtInt, Btn, toast, Modal,
+  StatCard, SectionCard, Table, Td, Id, StatusPill, fmtInt, Btn, toast, Modal,
   FormField, TextArea, EmptyState,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
