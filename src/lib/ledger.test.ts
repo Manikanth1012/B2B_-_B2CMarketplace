@@ -48,6 +48,9 @@ const stmt = (over: Partial<Statement> & Pick<Statement, 'id'>): Statement => ({
   partner_id: 'PTR-1004', partner_name: 'Nimbus Sensors', period: 'Jul 2026',
   gross: 1000, commission: 110, commission_rate: 11, fees: 20,
   withholding: 0, refunds: 0, net: 870, status: 'approved', order_count: 40,
+  /* Nimbus Sensors banks in Germany, so the two legs are the same currency and
+     the rate is 1. Overridden in the tests that care about the other case. */
+  currency: 'USD', payout_currency: 'USD', payout_net: 870, fx_rate: 1, fx_as_of: '2026-07-31',
   ...over,
 })
 

@@ -93,6 +93,16 @@ export interface Statement {
   net: number
   status: string
   order_count: number
+  /* The two legs. `currency` is what the statement was computed in — the
+     reporting currency, because commission is a percentage of a figure the
+     marketplace books. `payout_*` is what the seller's bank actually receives,
+     converted once at the fix in force when the period closed and frozen here:
+     a reprint next year has to match what was paid. */
+  currency: string
+  payout_currency: string
+  payout_net: number
+  fx_rate: number
+  fx_as_of: string
 }
 
 const n = (v: number | string | null | undefined): number => Number(v ?? 0)

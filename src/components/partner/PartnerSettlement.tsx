@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Wallet, Download, FileText, TriangleAlert as AlertTriangle } from 'lucide-react'
 import {
-  StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, fmtInt, Btn, toast,
+  StatCard, SectionCard, Table, Td, StatusPill, fmtInt, Btn, toast,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
 import { PartnerStatementLines } from './PartnerStatementLines'
@@ -12,6 +12,8 @@ import type { Statement } from '../../lib/ledger'
 import { loadSellerRecord } from '../../lib/partnerRepo'
 import type { SellerRecord } from '../../lib/partnerRepo'
 import { loadDocumentSetup } from '../../lib/documentRepo'
+import { useMarket } from '../../lib/MarketContext'
+import { byCurrency, formatGroups, money } from '../../lib/money'
 import type { DocumentSetup } from '../../lib/documentRepo'
 import { statementFacts } from '../../lib/documentFacts'
 import type { StatementRow } from '../../lib/documentFacts'
@@ -28,6 +30,13 @@ import { nextReference } from '../../lib/billTemplate'
  */
 
 export function PartnerSettlement({ partnerId }: { partnerId: string }) {
+  /* A statement has two legs: what the marketplace computed, in its reporting
+     currency, and what this seller's bank receives. `book` is the first; the
+     payout figures come off the row, converted once when the statement was cut
+     and frozen there. */
+  const { book: moneyBook, fmtIn } = useMarket()
+  const bookCurrency = moneyBook.currencies.find(c => c.is_reporting)?.code ?? 'USD'
+  const book = (n: number | string) => fmtIn(Number(n), bookCurrency)
   const [snap, setSnap] = useState<SellerStatements | null>(null)
   /* This seller's own template, which may be an exception: one seller in a
      jurisdiction whose regulator prescribes a format does not change the
@@ -49,7 +58,9 @@ export function PartnerSettlement({ partnerId }: { partnerId: string }) {
   const plan = record.plan
   const statements = snap.statements
   const current = statements[0] ?? null
-  const due = statements.filter(s => s.status !== 'paid').reduce((a, s) => a + Number(s.net), 0)
+  const unpaid = statements.filter(s => s.status !== 'paid')
+  const due = unpaid.reduce((a, s) => a + Number(s.net), 0)
+  const dueBy = byCurrency(unpaid.map(s => money(Number(s.payout_net), s.payout_currency)))
   const failing = statements.filter(s =>
     !reconcileStatement(s, snap.lines.filter(l => l.statement_id === s.id)).ok)
 
@@ -117,10 +128,13 @@ export function PartnerSettlement({ partnerId }: { partnerId: string }) {
       ) : (
         <>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
-            <StatCard label="Due to you" value={`$${fmtMoney(due)}`}
-                      sublabel={due > 0 ? 'Across statements not yet paid' : 'Everything raised has been paid'}
+            {/* What the seller's own bank will receive, not what the marketplace
+                booked. Kestrel Devices banks with HDFC in Bengaluru and was being
+                shown a dollar figure its account cannot take. */}
+            <StatCard label="Due to you" value={formatGroups(dueBy, fmtIn, book(0))}
+                      sublabel={due > 0 ? 'Across statements not yet paid, in the money each is remitted in' : 'Everything raised has been paid'}
                       color="var(--success)" />
-            <StatCard label={`Gross — ${current!.period}`} value={`$${fmtMoney(Number(current!.gross))}`}
+            <StatCard label={`Gross — ${current!.period}`} value={book(current!.gross)}
                       sublabel={`${fmtInt(current!.order_count)} orders`} color="var(--brand-navy)" />
             <StatCard label="Commission charged"
                       value={`${(Number(current!.commission) / Number(current!.gross) * 100).toFixed(1)}%`}
@@ -135,29 +149,45 @@ export function PartnerSettlement({ partnerId }: { partnerId: string }) {
               <div>
                 <div style={{ display: 'flex', height: '28px', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: '16px' }}>
                   <Band width={Number(current!.net) / Number(current!.gross)} colour="var(--brand-navy)"
-                        label={`You $${fmtMoney(Number(current!.net))}`} />
+                        label={`You ${book(current!.net)}`} />
                   <Band width={Number(current!.commission) / Number(current!.gross)} colour="#5E4B9B" label="Commission" />
                   <Band width={(Number(current!.fees) + Number(current!.refunds) + Number(current!.withholding)) / Number(current!.gross)}
                         colour="#B8A4E8" label="" />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: 'var(--text-sm)' }}>
                   <Row label={`Gross order value (${fmtInt(current!.order_count)} orders)`}
-                       value={`$${fmtMoney(Number(current!.gross))}`} />
+                       value={book(current!.gross)} />
                   <Row label={`Marketplace commission${plan ? ` — ${plan.name}` : ''} at ${current!.commission_rate}%`}
-                       value={`less $${fmtMoney(Number(current!.commission))}`} />
+                       value={`less ${book(current!.commission)}`} />
                   <Row label="Payment processing and per-order fees"
-                       value={`less $${fmtMoney(Number(current!.fees))}`} />
+                       value={`less ${book(current!.fees)}`} />
                   {Number(current!.refunds) > 0 && (
-                    <Row label="Refunds borne by you" value={`less $${fmtMoney(Number(current!.refunds))}`} />
+                    <Row label="Refunds borne by you" value={`less ${book(current!.refunds)}`} />
                   )}
                   {Number(current!.withholding) > 0 && (
                     <Row label="Withholding tax deducted at source"
-                         value={`less $${fmtMoney(Number(current!.withholding))}`} />
+                         value={`less ${book(current!.withholding)}`} />
                   )}
                   <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '2px solid var(--border)', fontWeight: 700 }}>
                     <span>Net payout</span>
-                    <span style={{ fontSize: 'var(--text-lg)', fontWeight: 800 }}>${fmtMoney(Number(current!.net))}</span>
+                    <span style={{ fontSize: 'var(--text-lg)', fontWeight: 800 }}>{book(current!.net)}</span>
                   </div>
+                  {/* The line the seller actually cares about, where their bank
+                      takes something else. The rate is the one frozen on the
+                      statement — a reprint has to match what was paid. */}
+                  {current!.payout_currency !== current!.currency && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', fontWeight: 700 }}>
+                      <span>
+                        Reaching your account
+                        <div style={{ fontSize: '10px', fontWeight: 400, color: 'var(--text-tertiary)' }}>
+                          at the {current!.fx_as_of} fix of {current!.fx_rate}
+                        </div>
+                      </span>
+                      <span style={{ fontSize: 'var(--text-lg)', fontWeight: 800, color: 'var(--success)' }}>
+                        {fmtIn(Number(current!.payout_net), current!.payout_currency)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -194,11 +224,18 @@ export function PartnerSettlement({ partnerId }: { partnerId: string }) {
                       <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{s.id}</div>
                     </Td>
                     <Td right>{fmtInt(s.order_count)}</Td>
-                    <Td right>${fmtMoney(Number(s.gross))}</Td>
-                    <Td right>less ${fmtMoney(Number(s.commission))}</Td>
-                    <Td right>less ${fmtMoney(Number(s.fees))}</Td>
-                    <Td right>{Number(s.refunds) ? `less $${fmtMoney(Number(s.refunds))}` : '—'}</Td>
-                    <Td right><strong>${fmtMoney(Number(s.net))}</strong></Td>
+                    <Td right>{book(s.gross)}</Td>
+                    <Td right>less {book(s.commission)}</Td>
+                    <Td right>less {book(s.fees)}</Td>
+                    <Td right>{Number(s.refunds) ? `less ${book(s.refunds)}` : '—'}</Td>
+                    <Td right>
+                      <strong>{book(s.net)}</strong>
+                      {s.payout_currency !== s.currency && (
+                        <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 500 }}>
+                          {fmtIn(Number(s.payout_net), s.payout_currency)} paid
+                        </div>
+                      )}
+                    </Td>
                     <Td right><StatusPill status={s.status} /></Td>
                     <Td right>
                       <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'flex-end' }}>

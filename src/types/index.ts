@@ -456,12 +456,28 @@ export interface SettlementStatement {
   net: number
   status: string
   order_count: number
+  /* What the statement is computed in — the reporting currency. Commission is a
+     percentage of a figure the marketplace books, and it books in one currency
+     so that a take rate means something across three markets. */
   currency: string
+  /* And what the seller is actually paid in: their bank account's currency.
+     Kestrel Devices banks with HDFC in Bengaluru, so its net is remitted in
+     rupees however the statement was computed. Equal to `currency` where the
+     account takes dollars, which nine of fifteen sellers' do. */
+  payout_currency: string
+  payout_net: number
+  /* Frozen, not recomputed. A statement reprinted next year has to come out the
+     same as the one the seller was paid against, so the rate and the date of
+     the fix live on the row. Rate 1 where nothing was converted, rather than
+     null — every row then reads the same way. */
+  fx_rate: number
+  fx_as_of: string
   submitted_at: string
   approved_by: string | null
   approved_at: string | null
   disputed: boolean
   sort_order: number
+  partner_id: string | null
 }
 
 /* A stock line points at the product and the warehouse rather than naming them.

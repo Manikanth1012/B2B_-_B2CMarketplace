@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { SettlementStatement } from '../../types'
-import { SectionCard, Table, Td, StatusPill, EmptyState, fmtMoney, fmtDate, Btn, Modal, FormField, TextInput, TextArea, toast, ConfirmDialog } from './shared'
+import { SectionCard, Table, Td, StatusPill, EmptyState, fmtDate, Btn, Modal, FormField, TextInput, TextArea, Select, toast, ConfirmDialog } from './shared'
+import { useMarket } from '../../lib/MarketContext'
+import { byCurrency, formatGroups, money } from '../../lib/money'
+import { payoutFor } from '../../lib/settlement'
 import { Pager, usePaging } from '../Pager'
 
 /* `focus` is a statement id handed over from the dashboard. Opening it here
@@ -9,6 +12,10 @@ import { Pager, usePaging } from '../Pager'
    dashboard listing work: the list says what needs doing and this is where it
    gets done. */
 export function OperatorSettlement({ focus = null }: { focus?: string | null } = {}) {
+  const { book: moneyBook, fmtIn } = useMarket()
+  /* The reporting currency, which is what every statement is computed in. */
+  const bookCurrency = moneyBook.currencies.find(c => c.is_reporting)?.code ?? 'USD'
+  const book = (n: number) => fmtIn(Number(n), bookCurrency)
   const [statements, setStatements] = useState<SettlementStatement[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('all')
@@ -40,7 +47,13 @@ export function OperatorSettlement({ focus = null }: { focus?: string | null } =
   if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
   const pendingCount = statements.filter(s => s.status === 'pending').length
   const approvedCount = statements.filter(s => s.status === 'approved').length
-  const totalPending = statements.filter(s => s.status === 'pending').reduce((sum, s) => sum + s.net, 0)
+  /* Two figures, because a settlement has two legs. The book total is what the
+     marketplace owes, in the currency it computes in — safely added, since every
+     statement is computed in that one. What is remitted is not: six of fifteen
+     sellers bank in rupees, dirhams or shillings, so that side is grouped. */
+  const pending = statements.filter(s => s.status === 'pending')
+  const totalPending = pending.reduce((sum, s) => sum + Number(s.net), 0)
+  const payableBy = byCurrency(pending.map(s => money(Number(s.payout_net), s.payout_currency)))
 
   const refresh = async () => {
     const { data } = await supabase.from('settlement_statements').select('*').order('sort_order')
@@ -78,7 +91,9 @@ export function OperatorSettlement({ focus = null }: { focus?: string | null } =
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Settlement Runs</h1>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>{pendingCount} pending · ${fmtMoney(totalPending)} net payable · {approvedCount} approved</p>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+            {pendingCount} pending · {book(totalPending)} net payable, remitting {formatGroups(payableBy, fmtIn, 'nothing')} · {approvedCount} approved
+          </p>
         </div>
         <Btn onClick={() => setAddModal(true)}>New statement</Btn>
       </div>
@@ -96,11 +111,22 @@ export function OperatorSettlement({ focus = null }: { focus?: string | null } =
               <tr key={s.id}>
                 <Td>{s.partner_name}{s.disputed && <span style={{ fontSize: '10px', color: 'var(--danger)', marginLeft: '4px' }}>disputed</span>}</Td>
                 <Td right>{s.period}</Td>
-                <Td right>${fmtMoney(s.gross)}</Td>
-                <Td right>-${fmtMoney(s.commission)}</Td>
-                <Td right>-${fmtMoney(s.fees)}</Td>
-                <Td right>-${fmtMoney(s.refunds)}</Td>
-                <Td right style={{ fontWeight: 700 }}>${fmtMoney(s.net)}</Td>
+                <Td right>{fmtIn(Number(s.gross), s.currency)}</Td>
+                <Td right>-{fmtIn(Number(s.commission), s.currency)}</Td>
+                <Td right>-{fmtIn(Number(s.fees), s.currency)}</Td>
+                <Td right>-{fmtIn(Number(s.refunds), s.currency)}</Td>
+                <Td right style={{ fontWeight: 700 }}>
+                  {fmtIn(Number(s.net), s.currency)}
+                  {/* What actually leaves, where the seller's account takes
+                      something else. Nine of fifteen bank in dollars and see
+                      nothing extra; the other six were being shown a figure
+                      their bank would never receive. */}
+                  {s.payout_currency !== s.currency && (
+                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 500 }}>
+                      pays {fmtIn(Number(s.payout_net), s.payout_currency)} at {s.fx_rate}
+                    </div>
+                  )}
+                </Td>
                 <Td right>{s.order_count}</Td>
                 <Td right><StatusPill status={s.status} /></Td>
                 <Td right>
@@ -129,12 +155,26 @@ export function OperatorSettlement({ focus = null }: { focus?: string | null } =
             </div>
             <table style={{ width: '100%', fontSize: 'var(--text-sm)', minWidth: 'min-content' }}>
               <tbody>
-                <tr><td style={{ padding: '6px 0', color: 'var(--text-tertiary)' }}>Gross sales</td><td style={{ textAlign: 'right', fontWeight: 600 }}>${fmtMoney(detailModal.gross)}</td></tr>
-                <tr><td style={{ padding: '6px 0', color: 'var(--text-tertiary)' }}>Commission ({detailModal.commission_rate}%)</td><td style={{ textAlign: 'right', color: 'var(--danger)' }}>-${fmtMoney(detailModal.commission)}</td></tr>
-                <tr><td style={{ padding: '6px 0', color: 'var(--text-tertiary)' }}>Platform fees</td><td style={{ textAlign: 'right', color: 'var(--danger)' }}>-${fmtMoney(detailModal.fees)}</td></tr>
-                <tr><td style={{ padding: '6px 0', color: 'var(--text-tertiary)' }}>Withholding</td><td style={{ textAlign: 'right', color: 'var(--danger)' }}>-${fmtMoney(detailModal.withholding)}</td></tr>
-                <tr><td style={{ padding: '6px 0', color: 'var(--text-tertiary)' }}>Refunds</td><td style={{ textAlign: 'right', color: 'var(--danger)' }}>-${fmtMoney(detailModal.refunds)}</td></tr>
-                <tr style={{ borderTop: '2px solid var(--border)' }}><td style={{ padding: '10px 0', fontWeight: 800 }}>Net payable</td><td style={{ textAlign: 'right', fontWeight: 800, fontSize: 'var(--text-lg)' }}>${fmtMoney(detailModal.net)}</td></tr>
+                <tr><td style={{ padding: '6px 0', color: 'var(--text-tertiary)' }}>Gross sales</td><td style={{ textAlign: 'right', fontWeight: 600 }}>{fmtIn(Number(detailModal.gross), detailModal.currency)}</td></tr>
+                <tr><td style={{ padding: '6px 0', color: 'var(--text-tertiary)' }}>Commission ({detailModal.commission_rate}%)</td><td style={{ textAlign: 'right', color: 'var(--danger)' }}>-{fmtIn(Number(detailModal.commission), detailModal.currency)}</td></tr>
+                <tr><td style={{ padding: '6px 0', color: 'var(--text-tertiary)' }}>Platform fees</td><td style={{ textAlign: 'right', color: 'var(--danger)' }}>-{fmtIn(Number(detailModal.fees), detailModal.currency)}</td></tr>
+                <tr><td style={{ padding: '6px 0', color: 'var(--text-tertiary)' }}>Withholding</td><td style={{ textAlign: 'right', color: 'var(--danger)' }}>-{fmtIn(Number(detailModal.withholding), detailModal.currency)}</td></tr>
+                <tr><td style={{ padding: '6px 0', color: 'var(--text-tertiary)' }}>Refunds</td><td style={{ textAlign: 'right', color: 'var(--danger)' }}>-{fmtIn(Number(detailModal.refunds), detailModal.currency)}</td></tr>
+                <tr style={{ borderTop: '2px solid var(--border)' }}><td style={{ padding: '10px 0', fontWeight: 800 }}>Net payable</td><td style={{ textAlign: 'right', fontWeight: 800, fontSize: 'var(--text-lg)' }}>{fmtIn(Number(detailModal.net), detailModal.currency)}</td></tr>
+                {detailModal.payout_currency !== detailModal.currency && (
+                  <tr>
+                    <td style={{ padding: '10px 0', color: 'var(--text-tertiary)' }}>
+                      Remitted to the seller's account
+                      <div style={{ fontSize: '10px' }}>
+                        at the {detailModal.fx_as_of} fix of {detailModal.fx_rate} — frozen, so a reprint
+                        matches what was paid
+                      </div>
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 800, fontSize: 'var(--text-lg)' }}>
+                      {fmtIn(Number(detailModal.payout_net), detailModal.payout_currency)}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{detailModal.order_count} orders · {detailModal.currency}</div>
@@ -165,9 +205,41 @@ export function OperatorSettlement({ focus = null }: { focus?: string | null } =
 }
 
 function StatementModal({ open, onClose, onSave }: { open: boolean; onClose: () => void; onSave: (s: SettlementStatement) => void }) {
+  const { book: moneyBook, fmtIn } = useMarket()
+  const bookCurrency = moneyBook.currencies.find(c => c.is_reporting)?.code ?? 'USD'
+  /* Which seller, so the payout account can be looked up rather than typed. A
+     statement created by hand has to freeze exactly what a computed one does —
+     otherwise the one route into this table that a person controls is the one
+     route that produces rows nothing downstream can reconcile. */
+  const [banks, setBanks] = useState<{ partner_id: string; partner_name: string; currency: string }[]>([])
+  useEffect(() => {
+    void (async () => {
+      const { data } = await supabase
+        .from('partner_bank').select('partner_id, currency, partner:partners(name)')
+      /* PostgREST types an embedded one-to-one as an array. Read as one and
+         normalised here rather than asserted away, because the shape is real. */
+      setBanks(((data ?? []) as unknown as { partner_id: string; currency: string; partner: { name: string } | { name: string }[] | null }[])
+        .map(r => {
+          const p = Array.isArray(r.partner) ? r.partner[0] : r.partner
+          return { partner_id: r.partner_id, partner_name: p?.name ?? r.partner_id, currency: r.currency }
+        })
+        .sort((a, b) => a.partner_name.localeCompare(b.partner_name)))
+    })()
+  }, [])
+
   const [form, setForm] = useState({
-    partner_name: '', period: '', gross: 0, commission: 0, commission_rate: 9.3, fees: 0, withholding: 0, refunds: 0, net: 0, order_count: 0, currency: 'USD',
+    partner_id: '', partner_name: '', period: '', gross: 0, commission: 0, commission_rate: 9.3, fees: 0, withholding: 0, refunds: 0, net: 0, order_count: 0, currency: bookCurrency,
   })
+
+  const account = banks.find(b => b.partner_id === form.partner_id) ?? null
+  /* Worked out as the operator types, so a period with no rate on file is a
+     refusal they can see rather than a row that fails to save. */
+  const payout = account && form.period
+    ? payoutFor({
+        net: form.net, from: form.currency, to: account.currency,
+        period: form.period, rates: moneyBook.rates, currencies: moneyBook.currencies,
+      })
+    : null
 
   useEffect(() => {
     const net = form.gross - form.commission - form.fees - form.withholding - form.refunds
@@ -175,16 +247,34 @@ function StatementModal({ open, onClose, onSave }: { open: boolean; onClose: () 
   }, [form.gross, form.commission, form.fees, form.withholding, form.refunds])
 
   const handleSave = () => {
-    if (!form.partner_name.trim()) { toast('Partner name is required', 'error'); return }
+    if (!form.partner_id) { toast('Choose the seller — the payout account decides what they are paid in', 'error'); return }
     if (form.gross <= 0) { toast('Gross must be greater than zero', 'error'); return }
-    onSave({ ...form, id: '', status: 'pending', submitted_at: new Date().toISOString(), approved_by: null, approved_at: null, disputed: false, sort_order: 0 })
+    if (!payout) { toast('A period is required, so the statement can be converted at the right fix', 'error'); return }
+    if (!payout.ok) { toast(payout.reason, 'error'); return }
+    onSave({
+      ...form, id: '',
+      payout_currency: payout.payout.currency,
+      payout_net: payout.payout.net,
+      fx_rate: payout.payout.rate,
+      fx_as_of: payout.payout.asOf,
+      status: 'pending', submitted_at: new Date().toISOString(),
+      approved_by: null, approved_at: null, disputed: false, sort_order: 0,
+    })
   }
 
   return (
     <Modal open={open} onClose={onClose} title="New Settlement Statement"
       footer={<><Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn><Btn size="sm" onClick={handleSave}>Create</Btn></>}>
-      <FormField label="Partner name" required>
-        <TextInput value={form.partner_name} onChange={(e) => setForm({ ...form, partner_name: e.target.value })} />
+      <FormField label="Seller" required hint="Their payout account decides what the net is remitted in.">
+        <Select value={form.partner_id} onChange={(e) => {
+          const b = banks.find(x => x.partner_id === e.target.value)
+          setForm({ ...form, partner_id: e.target.value, partner_name: b?.partner_name ?? '' })
+        }}>
+          <option value="">Choose a seller…</option>
+          {banks.map(b => (
+            <option key={b.partner_id} value={b.partner_id}>{b.partner_name} — paid in {b.currency}</option>
+          ))}
+        </Select>
       </FormField>
       <div style={{ display: 'flex', gap: '12px' }}>
         <div style={{ flex: 1 }}><FormField label="Period" required><TextInput value={form.period} onChange={(e) => setForm({ ...form, period: e.target.value })} placeholder="e.g. Aug 2026" /></FormField></div>
@@ -202,6 +292,33 @@ function StatementModal({ open, onClose, onSave }: { open: boolean; onClose: () 
         <div style={{ flex: 1 }}><FormField label="Refunds"><TextInput type="number" step="0.01" value={form.refunds} onChange={(e) => setForm({ ...form, refunds: parseFloat(e.target.value) || 0 })} /></FormField></div>
         <div style={{ flex: 1 }}><FormField label="Net (calculated)"><TextInput value={form.net} readOnly style={{ background: 'var(--bg-alt)', fontWeight: 700 }} /></FormField></div>
       </div>
+
+      {/* What will actually leave, shown before it is committed. An operator who
+          only sees the book figure has no way to tell that a seller banking in
+          Bengaluru is about to be sent a number their bank cannot receive. */}
+      {payout && (payout.ok ? (
+        payout.payout.currency === form.currency ? (
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '6px' }}>
+            {account?.partner_name} banks in {form.currency}, so {fmtIn(form.net, form.currency)} is remitted as it stands.
+          </div>
+        ) : (
+          <div style={{
+            marginTop: '8px', padding: '10px 12px', borderRadius: 'var(--radius)',
+            background: 'var(--info-bg)', fontSize: 'var(--text-xs)', lineHeight: 1.6,
+          }}>
+            <strong>Remits {fmtIn(payout.payout.net, payout.payout.currency)}</strong> to {account?.partner_name}'s
+            account, at the {payout.payout.asOf} fix of {payout.payout.rate}. The rate is frozen on the
+            statement, so a reprint next year matches what was paid rather than what today's fix would give.
+          </div>
+        )
+      ) : (
+        <div style={{
+          marginTop: '8px', padding: '10px 12px', borderRadius: 'var(--radius)',
+          background: 'var(--danger-bg)', color: 'var(--danger)', fontSize: 'var(--text-xs)', lineHeight: 1.6,
+        }}>
+          {payout.reason}
+        </div>
+      ))}
     </Modal>
   )
 }
