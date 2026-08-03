@@ -197,7 +197,14 @@ for (const [name, cfg] of Object.entries(PERSONAS)) {
       try { await opener.click({ timeout: 5000 }) } catch { console.log(`  ?  ${screen} — menu did not open`); continue }
       await page.waitForTimeout(700)
     }
-    const nav = page.getByRole('button', { name: new RegExp(`^${screen.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') }).first()
+    /* Either role. The three consoles' account menus are `role="menu"` with
+       `role="menuitem"` rows — correct ARIA, and it overrides the implicit
+       button role, so a lookup for `button` alone walks straight past them.
+       That is how the operator's own record reported "no such nav item" on the
+       run that was supposed to prove the sweep now reaches it. */
+    const pattern = new RegExp(`^${screen.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i')
+    const nav = page.getByRole('button', { name: pattern })
+      .or(page.getByRole('menuitem', { name: pattern })).first()
     if (await nav.count() === 0) { console.log(`  ?  ${screen} — no such nav item`); continue }
     try { await nav.click({ timeout: 5000 }) } catch { console.log(`  ?  ${screen} — not clickable`); continue }
     /* Wait for the screen to have drawn something rather than for a fixed
