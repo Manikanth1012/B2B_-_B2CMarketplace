@@ -36,6 +36,10 @@ const TYPES = {
   '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.json': 'application/json',
   '.ico': 'image/x-icon', '.woff2': 'font/woff2',
+  /* Without this the manifest went out as application/octet-stream, which is
+     a thing this proxy would have been wrong about and the real host right,
+     so the one place it could have been caught would have been silent. */
+  '.webmanifest': 'application/manifest+json',
 }
 
 /* Hop-by-hop headers describe one connection and must not be relayed onto another. */
