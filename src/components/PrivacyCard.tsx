@@ -10,6 +10,7 @@ import {
   type RequestKind,
 } from '../lib/privacy'
 import { formatDateOnly } from '../lib/subscriptions'
+import { useMarket } from '../lib/MarketContext'
 
 interface DataRequest { id: string; kind: string; raised: string; due: string; status: string }
 
@@ -20,6 +21,7 @@ export function PrivacyCard({ profile, showToast }: {
   profile: ConsumerProfile
   showToast: (m: string) => void
 }) {
+  const { fmtIn } = useMarket()
   const [requests, setRequests] = useState<DataRequest[]>([])
   const [asking, setAsking] = useState(false)
   const [kind, setKind] = useState<RequestKind>(REQUEST_KINDS[0])
@@ -97,7 +99,7 @@ export function PrivacyCard({ profile, showToast }: {
     }).eq('id', 'me')
     /* The wallet is frozen and the return is registered now, but no money moves
        until the closure actually completes — they can still change their mind. */
-    const { data: w } = await supabase.from('wallets').select('id').maybeSingle()
+    const { data: w } = await supabase.from('wallets').select('id, currency').maybeSingle()
     const { data: card } = await supabase.from('consumer_payment_methods')
       .select('detail').order('is_primary', { ascending: false }).limit(1)
     let walletNote = ''
@@ -109,7 +111,9 @@ export function PrivacyCard({ profile, showToast }: {
       })
       if (!res.ok) { showToast(res.reason); return }
       if (res.cashReturned && res.cashReturned > 0) {
-        walletNote = ` · $${res.cashReturned.toFixed(2)} will be returned to you`
+        /* The wallet's own currency, not the market the storefront is set to —
+           money already in a wallet comes back in the money it went in as. */
+        walletNote = ` · ${fmtIn(res.cashReturned, w.currency)} will be returned to you`
       }
     }
 
@@ -123,7 +127,7 @@ export function PrivacyCard({ profile, showToast }: {
     await supabase.from('consumer_profile').update({
       closure_requested_at: null, closure_effective: null, closure_reason: null,
     }).eq('id', 'me')
-    const { data: w } = await supabase.from('wallets').select('id').maybeSingle()
+    const { data: w } = await supabase.from('wallets').select('id, currency').maybeSingle()
     if (w) await cancelWalletReturn(w.id)
     await audit('account.closure_cancelled', 'Account closure withdrawn', 'Account stays open')
     setClosure(null)

@@ -5,14 +5,17 @@ import type { Order, OrderItem } from '../types'
 import { canRaiseTicket } from '../lib/orderTickets'
 import { RaiseTicketModal } from './RaiseTicketModal'
 import { Pager, usePaging } from './Pager'
+import { useMarket } from '../lib/MarketContext'
 
-function fmtMoney(n: number): string {
-  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
+/* An order is read in the money it was placed in, not in whatever market the
+   shopper has the storefront set to now. Switching to Kenya does not restate
+   what somebody paid in rupees last March, so `order.currency` is the argument
+   here and the market context supplies only the formatter. */
 
 const STAGE_ICONS = [Clock, Clock, Truck, Truck, Check]
 
 export function OrdersView() {
+  const { fmtIn } = useMarket()
   const [orders, setOrders] = useState<Order[]>([])
   const [orderItems, setOrderItems] = useState<Record<string, OrderItem[]>>({})
   const [loading, setLoading] = useState(true)
@@ -117,7 +120,7 @@ export function OrdersView() {
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>{fmtMoney(order.total)}</div>
+                    <div style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>{fmtIn(order.total, order.currency)}</div>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{order.payment_method}</div>
                   </div>
                 </div>
@@ -129,7 +132,7 @@ export function OrdersView() {
                       <span style={{ color: 'var(--text-secondary)' }}>
                         {item.product_name} × {item.quantity}
                       </span>
-                      <span style={{ fontWeight: 500 }}>{fmtMoney(item.price * item.quantity)}</span>
+                      <span style={{ fontWeight: 500 }}>{fmtIn(item.price * item.quantity, order.currency)}</span>
                     </div>
                   ))}
                 </div>
@@ -267,6 +270,8 @@ export function OrdersView() {
 }
 
 function OrderDetailModal({ order, items, onClose }: { order: Order; items: OrderItem[]; onClose: () => void }) {
+  const { fmtIn } = useMarket()
+  const mny = (n: number) => fmtIn(n, order.currency)
   const stages = order.stages || ['Ordered', 'Confirmed', 'Dispatched', 'In transit', 'Delivered']
   const currentStage = order.stage || 0
   const addr = order.shipping_address || {}
@@ -351,10 +356,10 @@ function OrderDetailModal({ order, items, onClose }: { order: Order; items: Orde
               <div>
                 <div style={{ fontWeight: 500 }}>{item.product_name}</div>
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                  Qty {item.quantity} · {fmtMoney(item.price)} each
+                  Qty {item.quantity} · {mny(item.price)} each
                 </div>
               </div>
-              <div style={{ fontWeight: 600 }}>{fmtMoney(item.price * item.quantity)}</div>
+              <div style={{ fontWeight: 600 }}>{mny(item.price * item.quantity)}</div>
             </div>
           ))}
         </div>
@@ -376,13 +381,13 @@ function OrderDetailModal({ order, items, onClose }: { order: Order; items: Orde
         {/* Totals */}
         <div style={{ paddingTop: '16px', borderTop: '2px solid var(--border)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: '4px' }}>
-            <span>Subtotal</span><span>{fmtMoney(order.subtotal)}</span>
+            <span>Before tax</span><span>{mny(order.subtotal)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: '4px' }}>
-            <span>Tax</span><span>{fmtMoney(order.tax)}</span>
+            <span>Tax at {order.tax_rate}%</span><span>{mny(order.tax)}</span>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-base)', fontWeight: 700, marginTop: '8px' }}>
-            <span>Total</span><span>{fmtMoney(order.total)}</span>
+            <span>Total</span><span>{mny(order.total)}</span>
           </div>
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
             Paid by {order.payment_method}

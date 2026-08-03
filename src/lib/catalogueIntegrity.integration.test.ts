@@ -39,8 +39,18 @@ describe('everything that references the catalogue', () => {
       expect(p, `${row.order?.order_ref}: ${row.product_id} is not in the catalogue`).toBeTruthy()
       expect(row.product_name, `${row.order?.order_ref} names the product differently`).toBe(p!.name)
       /* The tell that caught the original bug: the order said Aegis Assurance while
-         the SKU it pointed at was sold by Kestrel Devices. */
-      if (row.order) expect(row.order.seller, `${row.order.order_ref} seller disagrees`).toBe(p!.seller)
+         the SKU it pointed at was sold by Kestrel Devices.
+
+         A NULL seller is not a failure — `20260802380000` gave the column that
+         meaning for an order that genuinely spans sellers, which a business
+         requisition can (ninety sensors and four gateways, one approval). What
+         is a failure is a name that is only half true, and a joined list, which
+         is what the checkout wrote the first time somebody filled a mixed
+         basket. */
+      if (row.order?.seller) {
+        expect(row.order.seller, `${row.order.order_ref} names several sellers in one field`).not.toContain(', ')
+        expect(row.order.seller, `${row.order.order_ref} seller disagrees`).toBe(p!.seller)
+      }
     }
   })
 

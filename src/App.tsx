@@ -8,7 +8,8 @@ import { isOpen as watchIsOpen, type Watch } from './lib/stockWatch'
 import type { ConsumerProfile } from './types'
 import { restoreSession, signOut } from './lib/authRepo'
 import type { CartItem, Product } from './types'
-import { MarketProvider } from './lib/MarketContext'
+import { MarketProvider, useMarket } from './lib/MarketContext'
+import { loadPriceBook, reprice } from './lib/moneyRepo'
 import { LoginScreen } from './components/LoginScreen'
 import { PublicShell } from './components/public/PublicShell'
 import { LandingPage } from './components/public/LandingPage'
@@ -101,6 +102,14 @@ export default function App() {
 }
 
 function AppInner() {
+  /* Where the shopper is buying, which decides both the price they are quoted
+     and the rate they are taxed at. One source for both, because a basket that
+     took its price from one place and its tax from another is how a Kenyan
+     order came to carry Indian GST. */
+  const { market, currency } = useMarket()
+  const shopCurrency = currency?.code ?? market?.currency ?? 'USD'
+  const shopTaxRate = Number(market?.tax_rate ?? 0)
+
   const [surface, setSurface] = useState<Surface>({ kind: 'public', page: 'landing' })
   const session = surface.kind === 'session' ? surface.session : null
   const persona = session?.persona ?? null
@@ -149,19 +158,35 @@ function AppInner() {
     setWatching(new Set(open))
   }, [])
 
+  /* The basket is priced the same way the shelf is.
+   *
+   * `products(*)` is the base row, and its `price` is the dollar list price. The
+   * shelves have gone through `repriceAll` since prices became per-market, and
+   * the basket never did — so a product the grid showed at ₹549 went into the
+   * cart at $6.49 and the checkout wrote an order for that. The number was
+   * right for a currency nobody was shopping in, which is the failure mode with
+   * no visible symptom until somebody reads two screens at once.
+   *
+   * Reloaded when the market changes, for the same reason the grid is: a basket
+   * left over from a different currency is a basket priced in it. */
   const loadCart = useCallback(async () => {
-    const { data: cart } = await supabase
-      .from('cart_items')
-      .select('*, product:products(*)')
-      .order('created_at', { ascending: false })
+    const [{ data: cart }, book] = await Promise.all([
+      supabase.from('cart_items')
+        .select('*, product:products(*)')
+        .order('created_at', { ascending: false }),
+      loadPriceBook(shopCurrency),
+    ])
     if (cart) {
-      const lines = cart as CartItem[]
+      const lines = (cart as CartItem[]).map(l => ({
+        ...l,
+        product: l.product ? reprice(l.product, book, shopCurrency) : l.product,
+      }))
       setCartItems(lines)
       /* Saved lines are in the basket but not of it — the badge counts what is
          actually being bought. */
       setCartCount(basketCount(lines))
     }
-  }, [])
+  }, [shopCurrency])
 
   useEffect(() => {
     loadCart().then(() => setLoading(false))

@@ -2,9 +2,10 @@ import { X, Minus, Plus, Trash2, ShoppingBag, Bookmark, Undo2 } from 'lucide-rea
 import type { CartItem } from '../types'
 import { getProductImage } from '../lib/images'
 import {
-  activeLines, savedLines, basketCount, basketSubtotal, canCheckout,
+  activeLines, savedLines, basketCount, basketMoney, canCheckout,
   canMoveToBasket, SAVED_CAVEAT,
 } from '../lib/basket'
+import { useMarket } from '../lib/MarketContext'
 
 interface CartDrawerProps {
   open: boolean
@@ -21,7 +22,13 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
      totalled, not bought. */
   const active = activeLines(items)
   const saved = savedLines(items)
-  const subtotal = basketSubtotal(items)
+
+  /* The shopper's own money and the rate where they are. Both used to be
+     written into this file — a `$` in four places and a hard-coded 0.18, which
+     is India's GST charged to a shopper in Nairobi where it is sixteen. */
+  const { market, fmt } = useMarket()
+  const money = basketMoney(items, Number(market?.tax_rate ?? 0))
+  const taxLabel = market?.tax_label ?? 'Tax'
 
   return (
     <>
@@ -138,7 +145,7 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
                       </button>
                     </div>
                     <span style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>
-                      ${((item.product?.price || 0) * item.quantity).toFixed(2)}
+                      {fmt((item.product?.price || 0) * item.quantity)}
                     </span>
                   </div>
                 </div>
@@ -202,7 +209,7 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
                           <Undo2 size={12} /> {returnable ? 'Move to basket' : 'Out of stock'}
                         </button>
                         <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>
-                          ${((item.product?.price || 0) * item.quantity).toFixed(2)}
+                          {fmt((item.product?.price || 0) * item.quantity)}
                         </span>
                       </div>
                     </div>
@@ -223,17 +230,23 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
         {/* Footer */}
         {canCheckout(items) && (
           <div style={{ padding: '20px', borderTop: '1px solid var(--border)', background: 'var(--bg-alt)' }}>
+            {/* The shelf price includes tax, so the tax comes out of the total
+                rather than going on top of it. The drawer used to add eighteen
+                percent and show a total higher than every price the shopper had
+                just read. */}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Subtotal</span>
-              <span style={{ fontWeight: 700 }}>${subtotal.toFixed(2)}</span>
+              <span style={{ color: 'var(--text-secondary)' }}>Before {taxLabel.toLowerCase()}</span>
+              <span style={{ fontWeight: 700 }}>{fmt(money.net)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Tax (estimated)</span>
-              <span style={{ fontWeight: 500 }}>${(subtotal * 0.18).toFixed(2)}</span>
+              <span style={{ color: 'var(--text-secondary)' }}>
+                {taxLabel}{market ? ` at ${market.tax_rate}%` : ''}
+              </span>
+              <span style={{ fontWeight: 500 }}>{fmt(money.tax)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
               <span style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>Total</span>
-              <span style={{ fontWeight: 800, fontSize: 'var(--text-lg)' }}>${(subtotal * 1.18).toFixed(2)}</span>
+              <span style={{ fontWeight: 800, fontSize: 'var(--text-lg)' }}>{fmt(money.total)}</span>
             </div>
             <button onClick={onCheckout} className="btn btn-primary btn-lg" style={{ width: '100%' }}>
               Proceed to Checkout

@@ -4,6 +4,7 @@ import type { Product } from '../types'
 import { getProductImage } from '../lib/images'
 import { supabase } from '../lib/supabase'
 import { aggregate, orderForDisplay, stars, type Review } from '../lib/reviews'
+import { useMarket } from '../lib/MarketContext'
 
 import type { View } from '../types/view'
 
@@ -23,6 +24,12 @@ const catColors: Record<string, string> = {
 }
 
 export function ProductDetail({ product, onAddToCart, onNavigate }: ProductDetailProps) {
+  /* The product arrived already priced in the market's currency — `repriceAll`
+     did that at load, and it stamped the currency on the row. So this page
+     formats what it was given rather than converting anything, the same way the
+     card the shopper clicked to get here does. */
+  const { fmtIn } = useMarket()
+  const price = (n: number) => fmtIn(n, product.currency ?? 'USD')
   const [quantity, setQuantity] = useState(1)
   const [activeTab, setActiveTab] = useState<'description' | 'specs' | 'reviews'>('description')
   const [reviews, setReviews] = useState<Review[]>([])
@@ -157,7 +164,7 @@ export function ProductDetail({ product, onAddToCart, onNavigate }: ProductDetai
               marginBottom: '20px',
             }}>
               <span style={{ fontSize: 'var(--text-4xl)', fontWeight: 800 }}>
-                ${product.price.toFixed(2)}
+                {price(product.price)}
               </span>
               {product.unit && (
                 <span style={{ fontSize: 'var(--text-lg)', color: 'var(--text-tertiary)' }}>{product.unit}</span>
@@ -165,10 +172,10 @@ export function ProductDetail({ product, onAddToCart, onNavigate }: ProductDetai
               {hasDiscount && (
                 <>
                   <span style={{ fontSize: 'var(--text-lg)', color: 'var(--text-tertiary)', textDecoration: 'line-through' }}>
-                    ${product.was_price!.toFixed(2)}
+                    {price(product.was_price!)}
                   </span>
                   <span className="badge badge-stock-out" style={{ background: 'var(--danger)', color: 'white' }}>
-                    Save ${(product.was_price! - product.price).toFixed(2)}
+                    Save {price(product.was_price! - product.price)}
                   </span>
                 </>
               )}
@@ -250,7 +257,7 @@ export function ProductDetail({ product, onAddToCart, onNavigate }: ProductDetai
                   className="btn btn-primary btn-lg"
                   style={{ flex: 1 }}
                 >
-                  Add to Cart — ${(product.price * quantity).toFixed(2)}
+                  Add to Cart — {price(product.price * quantity)}
                 </button>
               </div>
             )}
