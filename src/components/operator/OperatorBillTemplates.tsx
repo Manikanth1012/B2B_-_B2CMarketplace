@@ -290,7 +290,7 @@ function TemplateEditor(
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.15fr) minmax(0, 1fr)', gap: '20px', alignItems: 'start' }}>
         {/* ------------------------------------------------------- the choices */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minWidth: 0 }}>
-          <SectionCard title="What this document is">
+          <SectionCard pad title="What this document is">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
               <FormField label="Template name" required>
                 <TextInput value={draft.name} onChange={e => set('name', e.target.value)}
@@ -353,7 +353,7 @@ function TemplateEditor(
             </div>
           </SectionCard>
 
-          <SectionCard title="How it is formatted">
+          <SectionCard pad title="How it is formatted">
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
               <FormField label="Numbering pattern" required
                 hint={numbering.ok
@@ -593,7 +593,7 @@ function BillingIdentity({ book, onChanged }: { book: BillTemplateBook; onChange
         unaffected — a bill is a snapshot, not a live render.
       </Callout>
 
-      <SectionCard title="Who the bill is from">
+      <SectionCard pad title="Who the bill is from">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
           <FormField label="Registered legal name" required>
             <TextInput value={form.legal_name} onChange={e => set('legal_name', e.target.value)} />
@@ -625,7 +625,7 @@ function BillingIdentity({ book, onChanged }: { book: BillTemplateBook; onChange
         </FormField>
       </SectionCard>
 
-      <SectionCard title="Support and disputes"
+      <SectionCard pad title="Support and disputes"
         subtitle="A bill is where people look when something is wrong with a bill">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
           <FormField label="Phone">

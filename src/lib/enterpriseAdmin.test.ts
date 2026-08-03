@@ -84,9 +84,9 @@ describe('reading a role', () => {
   })
 
   it('says what a role adds up to in one line', () => {
-    expect(summariseRole(LEAD)).toBe('raises, approves any value, signs off on security, manages people, sets policy')
-    expect(summariseRole(FIN)).toBe('approves up to $25,000')
-    expect(summariseRole(VIEWER)).toBe('reads the account, changes nothing')
+    expect(summariseRole(LEAD, 'USD')).toBe('raises, approves any value, signs off on security, manages people, sets policy')
+    expect(summariseRole(FIN, 'USD')).toBe('approves up to USD 25,000')
+    expect(summariseRole(VIEWER, 'USD')).toBe('reads the account, changes nothing')
   })
 
   it('governs the capabilities the screen shows', () => {
@@ -452,27 +452,27 @@ describe('passwords', () => {
 
 describe('handing work over', () => {
   it('says a delegation is not a promotion', () => {
-    const c = validateDelegate(MEERA, ANITA.id, TEAM, ROLES)
+    const c = validateDelegate(MEERA, ANITA.id, TEAM, ROLES, 'USD')
     expect(c.ok).toBe(true)
     if (c.ok) expect(c.note).toMatch(/cannot approve on value/i)
   })
 
   it('names the ceiling when the delegate can approve', () => {
-    const c = validateDelegate(MEERA, person({ ...ANITA, role: 'finance-approver' }).id, TEAM.map(p => p.id === ANITA.id ? { ...p, role: 'finance-approver' } : p), ROLES)
+    const c = validateDelegate(MEERA, person({ ...ANITA, role: 'finance-approver' }).id, TEAM.map(p => p.id === ANITA.id ? { ...p, role: 'finance-approver' } : p), ROLES, 'USD')
     expect(c.ok).toBe(true)
-    if (c.ok) expect(c.note).toMatch(/\$25,000/)
+    if (c.ok) expect(c.note).toMatch(/USD 25,000/)
   })
 
   it('refuses yourself, somebody suspended and somebody also away', () => {
-    expect(validateDelegate(MEERA, MEERA.id, TEAM, ROLES).ok).toBe(false)
+    expect(validateDelegate(MEERA, MEERA.id, TEAM, ROLES, 'USD').ok).toBe(false)
     const off = TEAM.map(p => p.id === ANITA.id ? { ...p, status: 'suspended' as const } : p)
-    expect(validateDelegate(MEERA, ANITA.id, off, ROLES).ok).toBe(false)
+    expect(validateDelegate(MEERA, ANITA.id, off, ROLES, 'USD').ok).toBe(false)
     const away = TEAM.map(p => p.id === ANITA.id ? { ...p, out_of_office: true } : p)
-    expect(validateDelegate(MEERA, ANITA.id, away, ROLES).ok).toBe(false)
+    expect(validateDelegate(MEERA, ANITA.id, away, ROLES, 'USD').ok).toBe(false)
   })
 
   it('says plainly what happens with no delegate at all', () => {
-    const c = validateDelegate(MEERA, null, TEAM, ROLES)
+    const c = validateDelegate(MEERA, null, TEAM, ROLES, 'USD')
     expect(c.ok).toBe(true)
     if (c.ok) expect(c.note).toMatch(/waits until you are back/i)
   })
@@ -500,7 +500,7 @@ describe('the credit position', () => {
     const pos = creditPosition(BILLING, [
       { total: 10000, status: 'open' }, { total: 6055.76, status: 'overdue' },
       { total: 40000, status: 'paid' }, { total: 2000, status: 'credited' },
-    ])
+    ], 'USD')
     expect(pos.committed).toBe(16055.76)
     expect(pos.headroom).toBe(103944.24)
     expect(pos.pct).toBe(13.4)
@@ -508,21 +508,21 @@ describe('the credit position', () => {
   })
 
   it('counts a disputed invoice — it is still owed until it is credited', () => {
-    const pos = creditPosition(BILLING, [{ total: 100000, status: 'disputed' }])
+    const pos = creditPosition(BILLING, [{ total: 100000, status: 'disputed' }], 'USD')
     expect(pos.committed).toBe(100000)
     expect(pos.state).toBe('watch')
     expect(pos.note).toMatch(/would take this past the limit/i)
   })
 
   it('says what happens at the limit in the account’s own words', () => {
-    const pos = creditPosition(BILLING, [{ total: 130000, status: 'open' }])
+    const pos = creditPosition(BILLING, [{ total: 130000, status: 'open' }], 'USD')
     expect(pos.state).toBe('at-limit')
     expect(pos.headroom).toBe(-10000)
     expect(pos.note).toMatch(/Held, not refused/)
   })
 
   it('does not divide by a limit of nothing', () => {
-    expect(creditPosition({ ...BILLING, credit_limit: 0 }, [{ total: 10, status: 'open' }]).pct).toBe(0)
+    expect(creditPosition({ ...BILLING, credit_limit: 0 }, [{ total: 10, status: 'open' }], 'USD').pct).toBe(0)
   })
 
   it('reads the review date forwards and backwards', () => {
@@ -560,7 +560,7 @@ describe('the audit trail', () => {
     { id: 'INV-0701', total: 6055.76, status: 'disputed', paid_on: null, period: '2026-07', note: 'Seat count wrong' },
   ]
 
-  const trail = auditTrail({ requisitions: REQS, invoices: INVOICES, people: TEAM })
+  const trail = auditTrail({ requisitions: REQS, invoices: INVOICES, people: TEAM }, 'USD')
 
   it('names people from the account rather than from memory, on both sides of a decision', () => {
     expect(trail.find(e => e.action === 'Raised a requisition' && e.detail.startsWith('REQ-5462'))?.who).toBe('Anita Desai')
@@ -583,7 +583,7 @@ describe('the audit trail', () => {
   })
 
   it('carries the money and the dispute', () => {
-    expect(trail.find(e => e.action === 'Invoice paid')?.detail).toMatch(/\$8,420\.50/)
+    expect(trail.find(e => e.action === 'Invoice paid')?.detail).toMatch(/USD 8,420\.50/)
     expect(trail.find(e => e.action === 'Invoice disputed')?.detail).toMatch(/Seat count wrong/)
   })
 
@@ -593,7 +593,7 @@ describe('the audit trail', () => {
   })
 
   it('does not run away with itself', () => {
-    expect(auditTrail({ requisitions: REQS, invoices: INVOICES, people: TEAM }, 3)).toHaveLength(3)
+    expect(auditTrail({ requisitions: REQS, invoices: INVOICES, people: TEAM }, 'USD', 3)).toHaveLength(3)
   })
 })
 

@@ -13,7 +13,8 @@ import {
   STATES, REASONS, summarise, sla, ownership, fundedBy, autoApproves, byCategory,
 } from '../../lib/refunds'
 import type { Refund, RefundReason } from '../../lib/refunds'
-import { money, day } from '../../lib/enterprise'
+import { day } from '../../lib/enterprise'
+import { useAccountMoney } from './money'
 
 /* Refunds, from the account that paid rather than the person who clicked.
  *
@@ -33,17 +34,20 @@ const NOW = new Date()
 
 export function EnterpriseRefunds() {
   const [book, setBook] = useState<RefundBook | null>(null)
-  const [account, setAccount] = useState<{ id: string; company: string } | null>(null)
+  const [account, setAccount] = useState<{ id: string; company: string; currency: string } | null>(null)
+
   const [asking, setAsking] = useState(false)
   const [open, setOpen] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
     const acct = await loadAccount()
     if (!acct.account) { setBook({ refunds: [], policy: null, windows: [], loadError: acct.loadError }); return }
-    setAccount({ id: acct.account.id, company: acct.account.company })
+    setAccount({ id: acct.account.id, company: acct.account.company, currency: acct.account.currency })
     setBook(await loadAccountRefunds(acct.account.id))
   }, [])
   useEffect(() => { void reload() }, [reload])
+
+  const { money } = useAccountMoney(account?.currency)
 
   if (!book) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
@@ -85,7 +89,7 @@ export function EnterpriseRefunds() {
         <StatCard label="Waiting on a decision" value={fmtInt(s.open)}
                   sublabel={s.open ? `${money(s.atStake)} at stake${s.overdue ? ` · ${s.overdue} past the SLA` : ''}` : 'Nothing outstanding'}
                   color={s.overdue ? 'var(--danger)' : s.open ? 'var(--warning)' : 'var(--success)'} />
-        <StatCard label="Recovered" value={`$${fmtMoney(s.refundedValue)}`}
+        <StatCard label="Recovered" value={money(s.refundedValue)}
                   sublabel={`${s.decided} decided${s.heldPct !== null ? ` · ${s.heldPct}% declined` : ''}`}
                   color="var(--success)" />
         <StatCard label="Escalated" value={fmtInt(s.escalated)}
@@ -113,9 +117,9 @@ export function EnterpriseRefunds() {
                     <Td right style={{ fontSize: 'var(--text-xs)' }}>{r.seller}</Td>
                     <Td right style={{ fontSize: 'var(--text-xs)' }}>{r.order_ref}</Td>
                     <Td right style={{ fontWeight: 600 }}>
-                      ${fmtMoney(Number(r.amount))}
+                      {money(Number(r.amount))}
                       {r.refunded !== null && Number(r.refunded) !== Number(r.amount) && (
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--success)' }}>${fmtMoney(Number(r.refunded))} back</div>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--success)' }}>{money(Number(r.refunded))} back</div>
                       )}
                     </Td>
                     <Td right style={{ fontSize: 'var(--text-xs)' }}>{REASONS[r.reason].label}</Td>
@@ -166,7 +170,7 @@ export function EnterpriseRefunds() {
                   <Td right style={{ fontSize: 'var(--text-xs)', color: late ? 'var(--danger)' : undefined }}>
                     {day(r.sla_due)}{late ? ' — passed' : ''}
                   </Td>
-                  <Td right>${fmtMoney(Number(r.amount))}</Td>
+                  <Td right>{money(Number(r.amount))}</Td>
                 </tr>
               )
             })}
@@ -182,7 +186,7 @@ export function EnterpriseRefunds() {
               <Td>{c.category_id}</Td>
               <Td right>{c.total}</Td>
               <Td right>{c.open || '—'}</Td>
-              <Td right>{c.value ? `$${fmtMoney(c.value)}` : '—'}</Td>
+              <Td right>{c.value ? money(c.value) : '—'}</Td>
             </tr>
           ))}
         </Table>
@@ -190,6 +194,7 @@ export function EnterpriseRefunds() {
 
       {asking && policy && account && (
         <AskForRefund policy={policy} accountId={account.id} company={account.company}
+                      currency={account.currency}
                       onClose={() => setAsking(false)}
                       onDone={async () => { setAsking(false); await reload() }} />
       )}
@@ -235,13 +240,17 @@ interface Refundable {
   partner_id: string | null; seller: string; first_party: boolean; amount: number
 }
 
-function AskForRefund({ policy, accountId, company, onClose, onDone }: {
+function AskForRefund({ policy, accountId, company, currency, onClose, onDone }: {
   policy: NonNullable<RefundBook['policy']>
   accountId: string
   company: string
+  /* The account's, so the order this refund is raised against is quoted in the
+     money the order was actually billed in. */
+  currency: string
   onClose: () => void
   onDone: () => Promise<void>
 }) {
+  const { money } = useAccountMoney(currency)
   const [options, setOptions] = useState<Refundable[] | null>(null)
   const [pick, setPick] = useState('')
   const [reason, setReason] = useState<RefundReason>('faulty')
@@ -322,7 +331,7 @@ function AskForRefund({ policy, accountId, company, onClose, onDone }: {
             <Select value={pick} onChange={e => setPick(e.target.value)}>
               {options.map(o => (
                 <option key={`${o.order_ref}::${o.product_id}`} value={`${o.order_ref}::${o.product_id}`}>
-                  {o.item} — ${fmtMoney(o.amount)} · {o.seller}
+                  {o.item} — {money(o.amount)} · {o.seller}
                 </option>
               ))}
             </Select>

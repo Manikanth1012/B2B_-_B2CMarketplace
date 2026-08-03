@@ -291,8 +291,10 @@ export async function setAway(me: Person, away: boolean, book: AdminBook): Promi
   }
 }
 
-export async function setDelegate(me: Person, delegateId: string | null, book: AdminBook): Promise<Result> {
-  const check = validateDelegate(me, delegateId, book.people, book.roles)
+export async function setDelegate(
+  me: Person, delegateId: string | null, book: AdminBook, currency: string,
+): Promise<Result> {
+  const check = validateDelegate(me, delegateId, book.people, book.roles, currency)
   if (!check.ok) return check
 
   const { data, error } = await supabase.from('enterprise_users')

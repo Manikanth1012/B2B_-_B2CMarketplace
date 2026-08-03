@@ -1,11 +1,15 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, Search, Shield, Cpu, Monitor, ShoppingCart, SquareCheck as CheckSquare, Users, History, User, ChevronDown, Bell as BellIcon, LogOut, Menu, X, Building2, BookOpen, RotateCcw, Repeat, Receipt, Zap, LifeBuoy } from 'lucide-react'
+import { LayoutDashboard, Search, Shield, Cpu, Monitor, ShoppingCart, SquareCheck as CheckSquare, Users, History, User, Bell as BellIcon, LogOut, Menu, X, Building2, BookOpen, RotateCcw, Repeat, Receipt, Zap, LifeBuoy, Wallet as WalletIcon, KeyRound } from 'lucide-react'
 import type { EnterpriseView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
+import { AccountMenu } from '../AccountMenu'
 
 interface EnterpriseShellProps {
   view: EnterpriseView
-  onNavigate: (v: EnterpriseView) => void
+  /* `anchor` names a card on the destination screen. "Sign-in & security" is a
+     section of My details rather than a screen of its own, and without a way to
+     say which section the menu item had nowhere to go. */
+  onNavigate: (v: EnterpriseView, anchor?: string) => void
   onSignOut: () => void
   children: React.ReactNode
 }
@@ -34,6 +38,9 @@ const NAV_SECTIONS: { label: string; items: { id: EnterpriseView; label: string;
       { id: 'en-refunds', label: 'Refunds', icon: <RotateCcw size={18} /> },
       { id: 'en-subs', label: 'Subscriptions', icon: <Repeat size={18} /> },
       { id: 'en-billing', label: 'Billing', icon: <Receipt size={18} /> },
+      /* Money the marketplace is holding for the company. It sat in the
+         database with no screen anywhere in this persona. */
+      { id: 'en-wallet', label: 'Wallet', icon: <WalletIcon size={18} /> },
       { id: 'en-rewards', label: 'Rewards', icon: <Zap size={18} /> },
       { id: 'en-support', label: 'Support', icon: <LifeBuoy size={18} /> },
     ]
@@ -52,14 +59,6 @@ const NAV_SECTIONS: { label: string; items: { id: EnterpriseView; label: string;
 
 export function EnterpriseShell({ view, onNavigate, onSignOut, children }: EnterpriseShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const [profileOpen, setProfileOpen] = useState(false)
-
-  useEffect(() => {
-    if (!profileOpen) return
-    const close = () => setProfileOpen(false)
-    window.addEventListener('click', close)
-    return () => window.removeEventListener('click', close)
-  }, [profileOpen])
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-alt)', display: 'flex' }}>
@@ -161,35 +160,22 @@ export function EnterpriseShell({ view, onNavigate, onSignOut, children }: Enter
               <span style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--danger)' }} />
             </button>
             <ContextualHelp persona="enterprise" view={view} onOpenCatalogue={() => onNavigate('en-kb')} />
-            <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
-              <button
-                onClick={() => setProfileOpen(!profileOpen)}
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 8px 4px 4px', borderRadius: 'var(--radius-full)', background: 'var(--bg-alt)', border: 'none', cursor: 'pointer' }}
-              >
-                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#006B6B', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 'var(--text-xs)' }}>VS</div>
-                <div className="hide-mobile" style={{ textAlign: 'left' }}>
-                  <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>Vikram Shah</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>Procurement Lead</div>
-                </div>
-                <ChevronDown size={14} style={{ color: 'var(--text-tertiary)' }} />
-              </button>
-              {profileOpen && (
-                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', minWidth: '220px', zIndex: 200, overflow: 'hidden' }}>
-                  <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-light)' }}>
-                    <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text)' }}>Vikram Shah</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>Procurement Lead · SmartBuild Ltd</div>
-                  </div>
-                  <div style={{ padding: '4px' }}>
-                    <ProfileItem label="My profile" onClick={() => { onNavigate('en-profile'); setProfileOpen(false) }} />
-                    <ProfileItem label="Sign-in & security" onClick={() => setProfileOpen(false)} />
-                    <ProfileItem label="Sessions" onClick={() => setProfileOpen(false)} />
-                  </div>
-                  <div style={{ padding: '4px', borderTop: '1px solid var(--border-light)' }}>
-                    <ProfileItem label="Sign out" onClick={onSignOut} />
-                  </div>
-                </div>
-              )}
-            </div>
+            <AccountMenu
+              initials="VS" name="Vikram Shah" role="Procurement Lead" org="SmartBuild Ltd"
+              colour="#006B6B"
+              onSignOut={onSignOut} signOutIcon={<LogOut size={16} />}
+              items={[
+                { icon: <User size={16} />, label: 'My details', onClick: () => onNavigate('en-profile') },
+                /* This used to close the menu and do nothing else. The card is
+                   on My details — it just had no name to aim at. Sessions are
+                   listed inside the same card, so there is one item rather than
+                   two that land in the same place. */
+                { icon: <KeyRound size={16} />, label: 'Sign-in & security', onClick: () => onNavigate('en-profile', 'security') },
+                { icon: <WalletIcon size={16} />, label: 'Wallet', onClick: () => onNavigate('en-wallet') },
+                { icon: <BellIcon size={16} />, label: 'Notifications', onClick: () => onNavigate('en-notifications') },
+                { icon: <BookOpen size={16} />, label: 'Knowledge base', onClick: () => onNavigate('en-kb') },
+              ]}
+            />
           </div>
         </header>
 
@@ -203,10 +189,4 @@ export function EnterpriseShell({ view, onNavigate, onSignOut, children }: Enter
   )
 }
 
-function ProfileItem({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button onClick={onClick} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px', borderRadius: 'var(--radius)', border: 'none', background: 'none', color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', fontWeight: 500, cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-alt)'} onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
-      {label}
-    </button>
-  )
-}
+

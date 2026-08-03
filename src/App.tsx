@@ -77,6 +77,8 @@ import { EnterpriseOrders } from './components/enterprise/EnterpriseOrders'
 import { EnterpriseAudit } from './components/enterprise/EnterpriseMisc'
 import { EnterpriseTeam } from './components/enterprise/EnterpriseTeam'
 import { EnterpriseProfile } from './components/enterprise/EnterpriseProfile'
+import { EnterpriseWallet } from './components/enterprise/EnterpriseWallet'
+import { OperatorProfile } from './components/operator/OperatorProfile'
 import { EnterpriseNotifications } from './components/enterprise/EnterpriseNotifications'
 import { EnterpriseApprovals } from './components/enterprise/EnterpriseApprovals'
 import { EnterpriseRefunds } from './components/enterprise/EnterpriseRefunds'
@@ -115,6 +117,14 @@ function AppInner() {
   }
   const [ptView, setPtView] = useState<PartnerView>('pt-dashboard')
   const [enView, setEnView] = useState<EnterpriseView>('en-dashboard')
+  /* Which card on the destination screen to open at. The account menus offer
+     "Sign-in & security" and "Sessions", and both are sections of a long
+     profile page rather than screens of their own — without somewhere to put
+     the section name, those items had nowhere to go and did nothing. */
+  const [ptAnchor, setPtAnchor] = useState<string | undefined>()
+  const [enAnchor, setEnAnchor] = useState<string | undefined>()
+  const goPartner = (v: PartnerView, anchor?: string) => { setPtAnchor(anchor); setPtView(v) }
+  const goEnterprise = (v: EnterpriseView, anchor?: string) => { setEnAnchor(anchor); setEnView(v) }
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [cartItems, setCartItems] = useState<CartItem[]>([])
@@ -318,7 +328,7 @@ function AppInner() {
   // ---------- Operator persona ----------
   if (persona === 'operator') {
     return (
-      <OperatorShell view={opView} onNavigate={v => goOperator(v)} onSignOut={handleSignOut}>
+      <OperatorShell view={opView} onNavigate={(v, anchor) => goOperator(v, anchor ? { focus: anchor } : undefined)} onSignOut={handleSignOut}>
         {opView === 'op-dashboard' && <OperatorDashboard onNavigate={goOperator} />}
         {opView === 'op-onboarding' && <OperatorOnboarding />}
         {opView === 'op-partners' && <OperatorPartners focus={opFocus} />}
@@ -331,6 +341,7 @@ function AppInner() {
         {opView === 'op-promotions' && <OperatorPromotions />}
         {opView === 'op-banners' && <OperatorBanners />}
         {opView === 'op-billtemplates' && <OperatorBillTemplates />}
+        {opView === 'op-profile' && <OperatorProfile anchor={opFocus ?? undefined} />}
         {opView === 'op-markets' && <OperatorMarkets />}
         {opView === 'op-notifications' && <OperatorNotifications />}
         {opView === 'op-channels' && <OperatorChannels />}
@@ -352,7 +363,7 @@ function AppInner() {
   // ---------- Partner persona ----------
   if (persona === 'partner') {
     return (
-      <PartnerShell view={ptView} onNavigate={setPtView} onSignOut={handleSignOut}>
+      <PartnerShell view={ptView} onNavigate={goPartner} onSignOut={handleSignOut}>
         {ptView === 'pt-dashboard' && <PartnerDashboard onNavigate={setPtView} />}
         {ptView === 'pt-onboarding' && <PartnerOnboarding partnerId={session!.partnerId!} />}
         {ptView === 'pt-listings' && <PartnerListings partnerId={session!.partnerId!} onNewListing={() => setPtView('pt-newlisting')} />}
@@ -369,7 +380,7 @@ function AppInner() {
         {ptView === 'pt-notifications' && <PartnerNotifications partnerId={session!.partnerId!} />}
         {ptView === 'pt-team' && <PartnerTeam partnerId={session!.partnerId!} />}
         {ptView === 'pt-audit' && <PartnerAudit />}
-        {ptView === 'pt-profile' && <PartnerDetails partnerId={session!.partnerId!} />}
+        {ptView === 'pt-profile' && <PartnerDetails partnerId={session!.partnerId!} anchor={ptAnchor} />}
         {ptView === 'pt-kb' && <KnowledgeBase persona="partner" title="Knowledge base" feedbackAs={{ actor: 'Rajesh Kumar', org: 'Nimbus Sensors' }} />}
       </PartnerShell>
     )
@@ -378,7 +389,7 @@ function AppInner() {
   // ---------- Enterprise persona ----------
   if (persona === 'enterprise') {
     return (
-      <EnterpriseShell view={enView} onNavigate={setEnView} onSignOut={handleSignOut}>
+      <EnterpriseShell view={enView} onNavigate={goEnterprise} onSignOut={handleSignOut}>
         {enView === 'en-dashboard' && <EnterpriseDashboard onNavigate={setEnView} />}
         {enView === 'en-browse' && <EnterpriseBrowse />}
         {enView === 'en-iot' && <EnterpriseMarketplace vertical="iot" />}
@@ -394,7 +405,8 @@ function AppInner() {
         {enView === 'en-notifications' && <EnterpriseNotifications />}
         {enView === 'en-team' && <EnterpriseTeam />}
         {enView === 'en-audit' && <EnterpriseAudit />}
-        {enView === 'en-profile' && <EnterpriseProfile />}
+        {enView === 'en-profile' && <EnterpriseProfile anchor={enAnchor} />}
+        {enView === 'en-wallet' && <EnterpriseWallet />}
         {enView === 'en-kb' && <KnowledgeBase persona="enterprise" title="Knowledge base" feedbackAs={{ actor: 'Vikram Shah', org: 'SmartBuild Ltd' }} />}
       </EnterpriseShell>
     )

@@ -25,6 +25,7 @@ export type OperatorView =
   | 'op-revshare'
   | 'op-billtemplates'
   | 'op-markets'
+  | 'op-profile'
   | 'op-kb'
 
 export type PartnerView =
@@ -58,6 +59,7 @@ export type EnterpriseView =
   | 'en-subs'
   | 'en-refunds'
   | 'en-billing'
+  | 'en-wallet'
   | 'en-rewards'
   | 'en-support'
   | 'en-notifications'

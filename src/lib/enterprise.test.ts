@@ -53,7 +53,7 @@ function sub(over: Partial<Subscription> = {}): Subscription {
 
 function inv(over: Partial<Invoice> = {}): Invoice {
   return {
-    id: 'INV-1', account_id: 'ENT-2007', period: 'Jul 2026', kind: 'recurring',
+    id: 'INV-1', account_id: 'ENT-2007', period: 'Jul 2026', currency: 'USD', kind: 'recurring',
     issued: '2026-07-29', due: '2026-08-20', recurring: 6700, oneoff: 5432, tax_rate: 18,
     tax: 2183.76, total: 14315.76, status: 'open', paid_on: null, po_ref: null, note: null,
     sort_order: 1, ...over,
@@ -115,11 +115,11 @@ describe('needFor', () => {
 
 describe('policyNoteFor', () => {
   it('explains a below-threshold security purchase without implying it was expensive', () => {
-    expect(policyNoteFor('it', 136, policy)).toMatch(/Below the \$2,000.00 threshold, but a security purchase/)
+    expect(policyNoteFor('it', 136, policy, 'USD')).toMatch(/Below the USD 2,000.00 threshold, but a security purchase/)
   })
 
   it('does not say "below the threshold" about something above it', () => {
-    expect(policyNoteFor('it', 5000, { ...policy, threshold: 2000 })).not.toMatch(/Below/)
+    expect(policyNoteFor('it', 5000, { ...policy, threshold: 2000 }, 'USD')).not.toMatch(/Below/)
   })
 })
 
@@ -176,17 +176,17 @@ describe('waiting and decided', () => {
 
 describe('canDecide', () => {
   it('lets the procurement lead decide anything', () => {
-    expect(canDecide(req({ need: 'both' }), LEAD, policy).ok).toBe(true)
+    expect(canDecide(req({ need: 'both' }), LEAD, policy, 'USD').ok).toBe(true)
   })
 
   it('refuses somebody who is not an approver at all, and says what they are', () => {
-    const c = canDecide(req(), BUYER, policy)
+    const c = canDecide(req(), BUYER, policy, 'USD')
     expect(c.ok).toBe(false)
     if (!c.ok) expect(c.reason).toMatch(/is not an approver/)
   })
 
   it('refuses self-approval before it refuses anything else', () => {
-    const c = canDecide(req({ raised_by: LEAD.id }), LEAD, policy)
+    const c = canDecide(req({ raised_by: LEAD.id }), LEAD, policy, 'USD')
     expect(c.ok).toBe(false)
     if (!c.ok) expect(c.reason).toMatch(/separation of duties/)
   })
@@ -196,7 +196,7 @@ describe('canDecide', () => {
   })
 
   it('will not let IT sign off on a finance question', () => {
-    const c = canDecide(req({ need: 'finance' }), IT, policy)
+    const c = canDecide(req({ need: 'finance' }), IT, policy, 'USD')
     expect(c.ok).toBe(false)
     if (!c.ok) expect(c.reason).toMatch(/needs finance approval/)
   })
@@ -208,13 +208,13 @@ describe('canDecide', () => {
   })
 
   it('holds an approver to their own limit', () => {
-    const c = canDecide(req({ amount: 40000 }), CFO, policy)
+    const c = canDecide(req({ amount: 40000 }), CFO, policy, 'USD')
     expect(c.ok).toBe(false)
-    if (!c.ok) expect(c.reason).toMatch(/above the \$25,000.00 you may approve/)
+    if (!c.ok) expect(c.reason).toMatch(/above the USD 25,000.00 you may approve/)
   })
 
   it('treats a null limit as no ceiling rather than zero', () => {
-    expect(canDecide(req({ amount: 900000 }), LEAD, policy).ok).toBe(true)
+    expect(canDecide(req({ amount: 900000 }), LEAD, policy, 'USD').ok).toBe(true)
   })
 
   it('lets a requester confirm their own within-policy purchase', () => {
@@ -225,13 +225,13 @@ describe('canDecide', () => {
   })
 
   it('still stops a viewer placing a within-policy order', () => {
-    const c = canDecide(req({ need: 'none' }), VIEWER, policy)
+    const c = canDecide(req({ need: 'none' }), VIEWER, policy, 'USD')
     expect(c.ok).toBe(false)
     if (!c.ok) expect(c.reason).toMatch(/cannot place an order/)
   })
 
   it('refuses to re-open something already decided', () => {
-    const c = canDecide(req({ state: 'approved' }), LEAD, policy)
+    const c = canDecide(req({ state: 'approved' }), LEAD, policy, 'USD')
     expect(c.ok).toBe(false)
     if (!c.ok) expect(c.reason).toMatch(/not re-openable/)
   })
@@ -294,12 +294,12 @@ describe('approvalImpact', () => {
 
   it('counts a monthly commitment three times against a quarterly cap', () => {
     const out = approvalImpact(req({ model: 'monthly', amount: 570 }), lines, ACCOUNT, [centre()], 0)
-    expect(out.some(s => /\$5,430.00 of its \$18,000.00 cap/.test(s))).toBe(true)
+    expect(out.some(s => /USD 5,430.00 of its USD 18,000.00 cap/.test(s))).toBe(true)
   })
 
   it('says plainly when it would breach the cap', () => {
     const out = approvalImpact(req({ amount: 20000 }), lines, ACCOUNT, [centre()], 0)
-    expect(out.some(s => /goes \$5,720.00 over its \$18,000.00 cap/.test(s))).toBe(true)
+    expect(out.some(s => /goes USD 5,720.00 over its USD 18,000.00 cap/.test(s))).toBe(true)
   })
 
   it('never reports a negative budget remaining', () => {
@@ -584,14 +584,14 @@ describe('reconcileInvoice', () => {
   it('catches lines that do not add to the invoice', () => {
     const c = reconcileInvoice(inv(), [line({ amount: 100 })])
     expect(c.ok).toBe(false)
-    if (!c.ok) expect(c.reason).toMatch(/lines add to \$100.00/)
+    if (!c.ok) expect(c.reason).toMatch(/lines add to USD 100.00/)
   })
 
   it('catches tax charged at the wrong rate', () => {
     const bad = inv({ tax: 1000, total: 13132 })
     const c = reconcileInvoice(bad, [line({ id: 'a', amount: 6700 }), line({ id: 'b', amount: 5432 })])
     expect(c.ok).toBe(false)
-    if (!c.ok) expect(c.reason).toMatch(/18% of \$12,132.00 is \$2,183.76/)
+    if (!c.ok) expect(c.reason).toMatch(/18% of USD 12,132.00 is USD 2,183.76/)
   })
 
   it('refuses an invoice with nothing behind it', () => {
@@ -659,12 +659,22 @@ describe('taxPosition', () => {
 
 describe('formatting', () => {
   it('groups thousands and always shows cents', () => {
-    expect(money(14315.76)).toBe('$14,315.76')
-    expect(money(0)).toBe('$0.00')
+    expect(money(14315.76, 'USD')).toBe('USD 14,315.76')
+    expect(money(0, 'USD')).toBe('USD 0.00')
   })
 
   it('rounds to whole money where cents would be noise', () => {
-    expect(money0(5927.4)).toBe('$5,927')
+    expect(money0(5927.4, 'USD')).toBe('USD 5,927')
+  })
+
+  it('marks the money it is given, which is why the currency is a parameter', () => {
+    /* Not one business account on this marketplace is invoiced in dollars, and
+       both of these used to write a `$` whatever they were handed. With no
+       currency table to read, `format` falls back to the ISO code — unambiguous,
+       and how a cross-border document is written anyway. Screens pass `fmtIn`
+       and get the mark. */
+    expect(money(14315.76, 'INR')).toBe('INR 14,315.76')
+    expect(money0(5927.4, 'KES')).toBe('KES 5,927')
   })
 
   it('writes a date a person can read, and hands back what it cannot parse', () => {

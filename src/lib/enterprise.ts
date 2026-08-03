@@ -1,3 +1,5 @@
+import { format as formatMoney, money as asMoney } from './money'
+
 /* The enterprise buyer's account — approvals, refunds and billing.
    No React and no Supabase, so the rules can be tested without a network.
 
@@ -148,6 +150,10 @@ export interface Invoice {
   id: string
   account_id: string
   period: string
+  /* What this invoice was raised in. An account is invoiced in one currency,
+     but the column is on the invoice because the invoice is the document — a
+     reprint has to come out in the money it was issued in. */
+  currency: string
   kind: 'recurring' | 'oneoff'
   issued: string
   due: string
@@ -207,8 +213,8 @@ export function needFor(
 }
 
 /** Why it needs what it needs, in the sentence a requester will read. */
-export function policyNoteFor(need: Need, amount: number, policy: Policy): string {
-  const t = money(policy.threshold)
+export function policyNoteFor(need: Need, amount: number, policy: Policy, currency: string): string {
+  const t = money(policy.threshold, currency)
   switch (need) {
     case 'both':
       return `At or above the ${t} threshold and a security purchase — finance approval and IT sign-off both required`
@@ -276,7 +282,15 @@ export function decided(reqs: Requisition[]): Requisition[] {
  * limit. Getting "you cannot approve your own" before "you are not an
  * approver" would be a confusing thing to be told.
  */
-export function canDecide(req: Requisition, me: Member, policy: Policy): Check {
+/**
+ * `currency` is optional, and its absence changes the sentence rather than the
+ * verdict. Three callers in this file ask only whether the answer is yes and
+ * throw the reason away; handing them a currency they do not have would mean
+ * inventing one, and inventing one is how every figure in this persona came to
+ * wear a dollar sign. Without it the over-limit refusal names no figure at all,
+ * which is worse prose and true.
+ */
+export function canDecide(req: Requisition, me: Member, policy: Policy, currency?: string): Check {
   if (req.state !== 'pending') {
     return { ok: false, reason: `${req.id} was already ${req.state}. A decision is not re-openable.` }
   }
@@ -306,7 +320,9 @@ export function canDecide(req: Requisition, me: Member, policy: Policy): Check {
   if (me.approve_limit !== null && req.amount > me.approve_limit) {
     return {
       ok: false,
-      reason: `${money(req.amount)} is above the ${money(me.approve_limit)} you may approve.`,
+      reason: currency
+        ? `${money(req.amount, currency)} is above the ${money(me.approve_limit, currency)} you may approve.`
+        : 'That is above the value you may approve.',
     }
   }
   return { ok: true }
@@ -322,9 +338,9 @@ export function whoCanDecide(req: Requisition, members: Member[], policy: Policy
 }
 
 export function validateDecision(
-  req: Requisition, me: Member, policy: Policy, approve: boolean, note: string,
+  req: Requisition, me: Member, policy: Policy, approve: boolean, note: string, currency?: string,
 ): Check {
-  const allowed = canDecide(req, me, policy)
+  const allowed = canDecide(req, me, policy, currency)
   if (!allowed.ok) return allowed
   if (!approve && !note.trim()) {
     return {
@@ -340,6 +356,7 @@ export function validateDecision(
 export function approvalImpact(
   req: Requisition, lines: ReqLine[], account: Account, centres: CostCentre[], spentYear: number,
 ): string[] {
+  const c = account.currency
   const sellers = [...new Set(lines.map(l => l.seller))]
   const out: string[] = []
   out.push(
@@ -349,20 +366,20 @@ export function approvalImpact(
   )
   out.push(
     req.model === 'monthly'
-      ? `${money(req.amount)} a month is added to the committed spend and appears on the next invoice.`
-      : `${money(req.amount)} is invoiced on ${account.terms}.`,
+      ? `${money(req.amount, c)} a month is added to the committed spend and appears on the next invoice.`
+      : `${money(req.amount, c)} is invoiced on ${account.terms}.`,
   )
   const cc = centres.find(c => c.id === req.cost_centre)
   if (cc) {
     const after = cc.spent_quarter + (req.model === 'monthly' ? req.amount * 3 : req.amount)
     out.push(
       after > cc.cap_quarter
-        ? `${cc.name} goes ${money(after - cc.cap_quarter)} over its ${money(cc.cap_quarter)} cap for ${cc.quarter}.`
-        : `${cc.name} moves to ${money(after)} of its ${money(cc.cap_quarter)} cap for ${cc.quarter}.`,
+        ? `${cc.name} goes ${money(after - cc.cap_quarter, c)} over its ${money(cc.cap_quarter, c)} cap for ${cc.quarter}.`
+        : `${cc.name} moves to ${money(after, c)} of its ${money(cc.cap_quarter, c)} cap for ${cc.quarter}.`,
     )
   }
   const left = account.budget_year - spentYear - (req.model === 'monthly' ? req.amount : req.amount)
-  out.push(`Budget remaining drops to about ${money(Math.max(0, left))} for the year.`)
+  out.push(`Budget remaining drops to about ${money(Math.max(0, left), c)} for the year.`)
   return out
 }
 
@@ -560,21 +577,22 @@ export function byCostCentre(lines: InvoiceLine[], centres: CostCentre[]): {
 /** Does the invoice equal the lines under it. A buyer being asked to pay a
     total they cannot reconstruct is a buyer who disputes it. */
 export function reconcileInvoice(invoice: Invoice, lines: InvoiceLine[]): Check {
+  const c = invoice.currency
   const mine = lines.filter(l => l.invoice_id === invoice.id)
   if (!mine.length) return { ok: false, reason: `${invoice.id} has no lines behind it` }
   const sum = round2(mine.reduce((a, l) => a + l.amount, 0))
   const net = round2(invoice.recurring + invoice.oneoff)
   if (sum !== net) {
-    return { ok: false, reason: `${invoice.id} is ${money(net)} before tax but its lines add to ${money(sum)}` }
+    return { ok: false, reason: `${invoice.id} is ${money(net, c)} before tax but its lines add to ${money(sum, c)}` }
   }
   const tax = round2((net * invoice.tax_rate) / 100)
   if (tax !== round2(invoice.tax)) {
-    return { ok: false, reason: `${invoice.id} charges ${money(invoice.tax)} tax where ${invoice.tax_rate}% of ${money(net)} is ${money(tax)}` }
+    return { ok: false, reason: `${invoice.id} charges ${money(invoice.tax, c)} tax where ${invoice.tax_rate}% of ${money(net, c)} is ${money(tax, c)}` }
   }
   if (round2(net + invoice.tax) !== round2(invoice.total)) {
-    return { ok: false, reason: `${invoice.id} totals ${money(invoice.total)} where its parts add to ${money(net + invoice.tax)}` }
+    return { ok: false, reason: `${invoice.id} totals ${money(invoice.total, c)} where its parts add to ${money(net + invoice.tax, c)}` }
   }
-  return { ok: true, note: `${mine.length} lines, ${money(net)} plus ${money(invoice.tax)} tax` }
+  return { ok: true, note: `${mine.length} lines, ${money(net, c)} plus ${money(invoice.tax, c)} tax` }
 }
 
 export const DUNNING = { restrictAfterDays: 14, suspendAfterDays: 30 }
@@ -626,7 +644,7 @@ export function taxPosition(account: Account, invoices: Invoice[]): {
     return {
       reclaimable,
       blocked: true,
-      why: `${money(reclaimable)} of tax has been charged on these invoices. Without a registration number on file none of it can be reclaimed.`,
+      why: `${money(reclaimable, account.currency)} of tax has been charged on these invoices. Without a registration number on file none of it can be reclaimed.`,
     }
   }
   if (account.tax_exempt && !account.exempt_cert) {
@@ -639,7 +657,7 @@ export function taxPosition(account: Account, invoices: Invoice[]): {
   return {
     reclaimable,
     blocked: false,
-    why: `${money(reclaimable)} of input tax across these invoices, against ${account.registration}.`,
+    why: `${money(reclaimable, account.currency)} of input tax across these invoices, against ${account.registration}.`,
   }
 }
 
@@ -648,12 +666,28 @@ export function taxPosition(account: Account, invoices: Invoice[]): {
 export function round1(n: number): number { return Math.round(n * 10) / 10 }
 export function round2(n: number): number { return Math.round(n * 100) / 100 }
 
-export function money(n: number): string {
-  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+/**
+ * An amount, in the currency it is actually in.
+ *
+ * These two used to write a `$` and there was nothing else they could say. Every
+ * business account on this marketplace is invoiced in rupees, dirhams or
+ * shillings — none in dollars — so the Billing screen drew ₹9,22,365 of invoices
+ * under a heading that said $27,27,882, and "Budget used" compared a rupee spend
+ * to a dollar budget and reported 2,273%.
+ *
+ * The currency is now a parameter with no default, which is the point: a caller
+ * that does not know what money it is holding cannot format it. `format` in
+ * `money.ts` is the one formatter, and with no currency table to read it falls
+ * back to the ISO code — "INR 27,27,882", which is unambiguous and is how a
+ * cross-border document is written anyway. Screens pass `fmtIn` from
+ * `useMarket`, which has the table, and get "₹27,27,882".
+ */
+export function money(n: number, currency: string): string {
+  return formatMoney(asMoney(n, currency), [])
 }
 
-export function money0(n: number): string {
-  return `$${Math.round(n).toLocaleString('en-US')}`
+export function money0(n: number, currency: string): string {
+  return formatMoney(asMoney(n, currency), [], { decimals: false })
 }
 
 /** "20 Aug 2026" from an ISO date, and anything unparseable handed straight

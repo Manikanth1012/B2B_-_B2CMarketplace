@@ -2,15 +2,19 @@ import { useState, useEffect } from 'react'
 import {
   Star,
   LayoutDashboard, Route, Package, ShoppingCart, Wallet, FileText,
-  BarChart3, Plug, LifeBuoy, Users, History, User, ChevronDown,
-  Search, Bell as BellIcon, LogOut, Menu, X, Store, BookOpen, RotateCcw, Gift
+  BarChart3, Plug, LifeBuoy, Users, History, User,
+  Search, Bell as BellIcon, LogOut, Menu, X, Store, BookOpen, RotateCcw, Gift,
+  KeyRound, Monitor
 } from 'lucide-react'
 import type { PartnerView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
+import { AccountMenu } from '../AccountMenu'
 
 interface PartnerShellProps {
   view: PartnerView
-  onNavigate: (v: PartnerView) => void
+  /* `anchor` names a card on the destination screen — "Sign-in & security"
+     is a section of My details rather than a screen of its own. */
+  onNavigate: (v: PartnerView, anchor?: string) => void
   onSignOut: () => void
   children: React.ReactNode
 }
@@ -63,14 +67,6 @@ const NAV_SECTIONS: { label: string; items: { id: PartnerView; label: string; ic
 
 export function PartnerShell({ view, onNavigate, onSignOut, children }: PartnerShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
-  const [profileOpen, setProfileOpen] = useState(false)
-
-  useEffect(() => {
-    if (!profileOpen) return
-    const close = () => setProfileOpen(false)
-    window.addEventListener('click', close)
-    return () => window.removeEventListener('click', close)
-  }, [profileOpen])
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-alt)', display: 'flex' }}>
@@ -200,35 +196,21 @@ export function PartnerShell({ view, onNavigate, onSignOut, children }: PartnerS
               <span style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--danger)' }} />
             </button>
             <ContextualHelp persona="partner" view={view} onOpenCatalogue={() => onNavigate('pt-kb')} />
-            <div style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
-              <button
-                onClick={() => setProfileOpen(!profileOpen)}
-                style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 8px 4px 4px', borderRadius: 'var(--radius-full)', background: 'var(--bg-alt)', border: 'none', cursor: 'pointer' }}
-              >
-                <div style={{ width: '32px', height: '32px', borderRadius: '50%', background: '#5E4B9B', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 'var(--text-xs)' }}>RK</div>
-                <div className="hide-mobile" style={{ textAlign: 'left' }}>
-                  <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>Rajesh Kumar</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>Seller Operations</div>
-                </div>
-                <ChevronDown size={14} style={{ color: 'var(--text-tertiary)' }} />
-              </button>
-              {profileOpen && (
-                <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '8px', background: 'white', borderRadius: 'var(--radius-lg)', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--border)', minWidth: '220px', zIndex: 200, overflow: 'hidden' }}>
-                  <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border-light)' }}>
-                    <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text)' }}>Rajesh Kumar</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>Seller Operations · Nimbus Sensors</div>
-                  </div>
-                  <div style={{ padding: '4px' }}>
-                    <ProfileItem label="My profile" onClick={() => { onNavigate('pt-profile'); setProfileOpen(false) }} />
-                    <ProfileItem label="Sign-in & security" onClick={() => setProfileOpen(false)} />
-                    <ProfileItem label="Sessions" onClick={() => setProfileOpen(false)} />
-                  </div>
-                  <div style={{ padding: '4px', borderTop: '1px solid var(--border-light)' }}>
-                    <ProfileItem label="Sign out" onClick={onSignOut} />
-                  </div>
-                </div>
-              )}
-            </div>
+            <AccountMenu
+              initials="RK" name="Rajesh Kumar" role="Seller Operations" org="Nimbus Sensors"
+              colour="#5E4B9B"
+              onSignOut={onSignOut} signOutIcon={<LogOut size={16} />}
+              items={[
+                { icon: <User size={16} />, label: 'My details', onClick: () => onNavigate('pt-profile') },
+                /* The card is on My details, and it lists the active sessions
+                   too — so one item rather than two that land in the same
+                   place. It had no name to aim at until `SectionCard` grew an
+                   anchor, which is why it did nothing at all. */
+                { icon: <KeyRound size={16} />, label: 'Sign-in & security', onClick: () => onNavigate('pt-profile', 'security') },
+                { icon: <BellIcon size={16} />, label: 'Notifications', onClick: () => onNavigate('pt-notifications') },
+                { icon: <BookOpen size={16} />, label: 'Knowledge base', onClick: () => onNavigate('pt-kb') },
+              ]}
+            />
           </div>
         </header>
 
@@ -244,10 +226,4 @@ export function PartnerShell({ view, onNavigate, onSignOut, children }: PartnerS
   )
 }
 
-function ProfileItem({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button onClick={onClick} style={{ display: 'block', width: '100%', textAlign: 'left', padding: '10px 12px', borderRadius: 'var(--radius)', border: 'none', background: 'none', color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', fontWeight: 500, cursor: 'pointer' }} onMouseEnter={(e) => e.currentTarget.style.background = 'var(--bg-alt)'} onMouseLeave={(e) => e.currentTarget.style.background = 'none'}>
-      {label}
-    </button>
-  )
-}
+

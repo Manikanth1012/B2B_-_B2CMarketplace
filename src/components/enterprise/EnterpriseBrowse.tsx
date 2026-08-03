@@ -3,7 +3,7 @@ import { Search, Package, Star } from 'lucide-react'
 import { SectionCard, Btn, toast, fmtMoney } from '../operator/shared'
 import { ENTERPRISE_CATALOGUE, VERTICAL_NAMES } from './data'
 import { loadAccount } from '../../lib/enterpriseRepo'
-import { money0 } from '../../lib/enterprise'
+import { useAccountMoney } from './money'
 import type { Policy } from '../../lib/enterprise'
 
 export function EnterpriseBrowse() {
@@ -14,7 +14,17 @@ export function EnterpriseBrowse() {
      catalogue that promises a different rule from the one the Approvals screen
      applies is worse than one that promises nothing. */
   const [policy, setPolicy] = useState<Policy | null>(null)
-  useEffect(() => { void (async () => setPolicy((await loadAccount()).policy))() }, [])
+  /* The account's own currency too, for the same reason: a threshold quoted in
+     dollars to a company invoiced in rupees is a different rule again. */
+  const [currency, setCurrency] = useState<string | null>(null)
+  const { money0 } = useAccountMoney(currency)
+  useEffect(() => {
+    void (async () => {
+      const book = await loadAccount()
+      setPolicy(book.policy)
+      setCurrency(book.account?.currency ?? null)
+    })()
+  }, [])
   const [sort, setSort] = useState('popular')
 
   let results = ENTERPRISE_CATALOGUE.filter(p => p.status === 'live')

@@ -482,7 +482,7 @@ function LadderEditor(
         </Callout>
       )}
 
-      <SectionCard title="Who it applies to, and how long they get">
+      <SectionCard pad title="Who it applies to, and how long they get">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
           <FormField label="Ladder name" required>
             <TextInput value={draft.name} onChange={e => set('name', e.target.value)} placeholder="Retail — Gold" />

@@ -8,12 +8,13 @@ import {
   FormField, TextArea, TextInput, EmptyState,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
+import { useAccountMoney } from './money'
 import { loadAccount, decideRequisition, savePolicy } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
 import {
   waiting, decided, canDecide, whoCanDecide, approvalImpact, duplicatesOf,
   summariseApprovals, byRequester, centreUse, centresAtRisk, policyImpact,
-  spentThisYear, money, money0, day, NEED_LABEL,
+  spentThisYear, day, NEED_LABEL,
 } from '../../lib/enterprise'
 import type { Requisition, Policy, Member } from '../../lib/enterprise'
 import { may, roleName } from '../../lib/enterpriseAdmin'
@@ -40,6 +41,7 @@ export function EnterpriseApprovals() {
   const [editPolicy, setEditPolicy] = useState(false)
 
   const reload = useCallback(async () => setBook(await loadAccount()), [])
+  const { money, money0 } = useAccountMoney(book?.account?.currency)
   useEffect(() => { void reload() }, [reload])
 
   if (!book) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
@@ -89,12 +91,12 @@ export function EnterpriseApprovals() {
           <StatCard label="Waiting on you" value={fmtInt(summary.mine)}
                     sublabel={summary.blocked ? `${summary.blocked} more need somebody else` : 'Nothing needs another approver'}
                     color={summary.mine ? 'var(--warning)' : 'var(--success)'} />
-          <StatCard label="Value in the queue" value={`$${fmtMoney(summary.value)}`}
+          <StatCard label="Value in the queue" value={money(summary.value)}
                     sublabel={`${summary.waiting} requisitions, oldest first`} />
           <StatCard label="Decided" value={fmtInt(summary.approved + summary.declined)}
                     sublabel={`${summary.approved} approved · ${summary.declined} declined`} />
           <StatCard label="Budget used"
-                    value={`$${fmtMoney(spentThisYear(book.invoices, account))}`}
+                    value={money(spentThisYear(book.invoices, account))}
                     sublabel={`of ${money0(account.budget_year)} for the year from ${day(account.fy_starts)}`} />
         </div>
       )}
@@ -127,7 +129,7 @@ export function EnterpriseApprovals() {
               </Td>
               <Td right>{r.raised}</Td>
               <Td right>{r.pending || '—'}</Td>
-              <Td right>${fmtMoney(r.value)}</Td>
+              <Td right>{money(r.value)}</Td>
             </tr>
           ))}
         </Table>
@@ -142,9 +144,9 @@ export function EnterpriseApprovals() {
                 <Td><div style={{ fontWeight: 600 }}>{c.name}</div>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{c.id}</div></Td>
                 <Td right style={{ fontSize: 'var(--text-xs)' }}>{c.owner}</Td>
-                <Td right>${fmtMoney(c.cap_quarter)}</Td>
-                <Td right>${fmtMoney(c.spent_quarter)}</Td>
-                <Td right style={{ color: u.over ? 'var(--danger)' : undefined }}>${fmtMoney(u.left)}</Td>
+                <Td right>{money(c.cap_quarter)}</Td>
+                <Td right>{money(c.spent_quarter)}</Td>
+                <Td right style={{ color: u.over ? 'var(--danger)' : undefined }}>{money(u.left)}</Td>
                 <Td right>
                   <div style={{ minWidth: '110px' }}>
                     <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: u.pct >= 90 ? 'var(--danger)' : u.pct >= 75 ? 'var(--warning)' : 'var(--text-secondary)' }}>
@@ -180,7 +182,7 @@ export function EnterpriseApprovals() {
                   )}
                 </Td>
                 <Td right style={{ fontSize: 'var(--text-xs)' }}>{nameOf(book.members, r.raised_by)}</Td>
-                <Td right>${fmtMoney(r.amount)}{r.model === 'monthly' ? '/mo' : ''}</Td>
+                <Td right>{money(r.amount)}{r.model === 'monthly' ? '/mo' : ''}</Td>
                 <Td right style={{ fontSize: 'var(--text-xs)' }}>{NEED_LABEL[r.need]}</Td>
                 <Td right style={{ fontSize: 'var(--text-xs)' }}>
                   {nameOf(book.members, r.decided_by)}
@@ -220,9 +222,12 @@ function nameOf(members: Member[], id: string | null): string {
 function RequisitionCard({ book, req, onDecide }: {
   book: AccountBook; req: Requisition; onDecide: (approve: boolean) => void
 }) {
+  const { money } = useAccountMoney(book.account?.currency)
   const { me, policy } = book
   const lines = book.lines.filter(l => l.requisition_id === req.id)
-  const allowed = me && policy ? canDecide(req, me, policy) : { ok: false as const, reason: 'Not signed in' }
+  const allowed = me && policy
+    ? canDecide(req, me, policy, book.account?.currency ?? 'USD')
+    : { ok: false as const, reason: 'Not signed in' }
   const others = policy ? whoCanDecide(req, book.members, policy) : []
   const dupes = policy?.duplicate_flag ? duplicatesOf(lines, book.subscriptions) : []
   const centre = book.centres.find(c => c.id === req.cost_centre)
@@ -256,7 +261,7 @@ function RequisitionCard({ book, req, onDecide }: {
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '6px' }}>{req.policy_note}</div>
           </div>
           <div style={{ textAlign: 'right', flexShrink: 0 }}>
-            <div style={{ fontWeight: 800, fontSize: 'var(--text-lg)' }}>${fmtMoney(req.amount)}</div>
+            <div style={{ fontWeight: 800, fontSize: 'var(--text-lg)' }}>{money(req.amount)}</div>
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
               {req.model === 'monthly' ? 'per month' : 'one-off'}
             </div>
@@ -271,8 +276,8 @@ function RequisitionCard({ book, req, onDecide }: {
                   <Td>{l.name}</Td>
                   <Td right style={{ fontSize: 'var(--text-xs)' }}>{l.seller}</Td>
                   <Td right>{fmtInt(l.quantity)}</Td>
-                  <Td right>${fmtMoney(l.unit_price)}</Td>
-                  <Td right style={{ fontWeight: 600 }}>${fmtMoney(l.line_total)}</Td>
+                  <Td right>{money(l.unit_price)}</Td>
+                  <Td right style={{ fontWeight: 600 }}>{money(l.line_total)}</Td>
                 </tr>
               ))}
             </Table>
@@ -328,7 +333,7 @@ function DecideModal({ book, me, policy, req, approve, onClose, onDone }: {
 
   const submit = async () => {
     setBusy(true)
-    const res = await decideRequisition({ req, me, policy, approve, note })
+    const res = await decideRequisition({ req, me, policy, approve, note, currency: book.account?.currency ?? 'USD' })
     setBusy(false)
     toast(res.ok ? res.note ?? 'Saved' : res.reason, res.ok ? 'success' : 'error')
     if (res.ok) await onDone()

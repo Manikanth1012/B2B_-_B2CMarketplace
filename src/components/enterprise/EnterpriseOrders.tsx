@@ -5,9 +5,10 @@ import {
   StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, fmtInt, Btn, EmptyState,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
+import { useAccountMoney } from './money'
 import { loadAccount } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
-import { money, money0, day } from '../../lib/enterprise'
+import { day } from '../../lib/enterprise'
 
 /* Orders, as the middle of a chain rather than a list.
  *
@@ -69,6 +70,7 @@ export function EnterpriseOrders() {
   const [account, setAccount] = useState<AccountBook | null>(null)
   const [open, setOpen] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const { money, money0 } = useAccountMoney(account?.account?.currency)
 
   const reload = useCallback(async () => {
     const [o, i, r, t, a] = await Promise.all([
@@ -159,7 +161,7 @@ export function EnterpriseOrders() {
                     </Td>
                     <Td right style={{ fontSize: 'var(--text-xs)' }}>{o.seller}</Td>
                     <Td right style={{ fontSize: 'var(--text-xs)' }}>{nameOf(o.ordered_by)}</Td>
-                    <Td right style={{ fontWeight: 600 }}>${fmtMoney(Number(o.total))}</Td>
+                    <Td right style={{ fontWeight: 600 }}>{money(Number(o.total))}</Td>
                     <Td right style={{ fontSize: 'var(--text-xs)', minWidth: '150px' }}>
                       <div style={{ fontWeight: 600, color: o.failed ? 'var(--danger)' : undefined }}>
                         {o.stages[o.stage] ?? '—'}
@@ -209,6 +211,7 @@ function Rail({ stage, stages, failed }: { stage: number; stages: string[]; fail
 function Detail({ order, items, account, refunds, tickets }: {
   order: Order; items: Item[]; account: AccountBook; refunds: Refund[]; tickets: Ticket[]
 }) {
+  const { money } = useAccountMoney(account.account?.currency)
   const req = account.requisitions.find(r => r.id === order.requisition_id)
   const invoice = account.invoices.find(i => i.id === order.invoice_id)
   const centre = account.centres.find(c => c.id === order.cost_centre)
@@ -221,8 +224,8 @@ function Detail({ order, items, account, refunds, tickets }: {
             <Td>{i.product_name}</Td>
             <Td right style={{ fontSize: 'var(--text-xs)' }}>{i.fulfil === 'digital' ? 'Provisioned' : 'Shipped'}</Td>
             <Td right>{fmtInt(i.quantity)}</Td>
-            <Td right>${fmtMoney(Number(i.price))}</Td>
-            <Td right style={{ fontWeight: 600 }}>${fmtMoney(Number(i.price) * i.quantity)}</Td>
+            <Td right>{money(Number(i.price))}</Td>
+            <Td right style={{ fontWeight: 600 }}>{money(Number(i.price) * i.quantity)}</Td>
           </tr>
         ))}
       </Table>

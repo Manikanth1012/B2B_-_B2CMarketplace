@@ -7,13 +7,14 @@ import {
   TextInput, TextArea, Select,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
+import { useAccountMoney } from './money'
 import { loadAdmin, inviteMember, changeRole, changeStatus, saveRole, deleteRole } from '../../lib/enterpriseAdminRepo'
 import type { AdminBook } from '../../lib/enterpriseAdminRepo'
 import { loadAccount } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
 import {
   CAPABILITIES, MFA_FORCING, roleOf, holders, may, summariseRole,
-  securityGaps, when, money0, validateInvite, validateRoleChange, validateStatusChange,
+  securityGaps, when, validateInvite, validateRoleChange, validateStatusChange,
   validateRole, validateRoleDelete,
 } from '../../lib/enterpriseAdmin'
 import type { EnterpriseRole, Person, RoleDraft, Standing } from '../../lib/enterpriseAdmin'
@@ -43,6 +44,8 @@ const BLANK_ROLE: RoleDraft = {
 export function EnterpriseTeam() {
   const [book, setBook] = useState<AdminBook | null>(null)
   const [account, setAccount] = useState<AccountBook | null>(null)
+  const cur = account?.account?.currency ?? 'USD'
+  const { money0 } = useAccountMoney(cur)
   const [inviting, setInviting] = useState(false)
   const [managing, setManaging] = useState<Person | null>(null)
   const [editing, setEditing] = useState<{ role?: EnterpriseRole; draft: RoleDraft } | null>(null)
@@ -170,7 +173,7 @@ export function EnterpriseTeam() {
                   <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{p.title}</div>
                 </Td>
                 <Td style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
-                  {r ? summariseRole(r) : '—'}
+                  {r ? summariseRole(r, cur) : '—'}
                 </Td>
                 <Td style={{ fontSize: 'var(--text-xs)' }}>
                   {centres.find(c => c.id === p.cost_centre)?.name ?? p.cost_centre ?? '—'}
@@ -293,13 +296,13 @@ export function EnterpriseTeam() {
       </SectionCard>
 
       <InviteModal
-        open={inviting} onClose={() => setInviting(false)} book={book} centres={centres}
+        open={inviting} onClose={() => setInviting(false)} book={book} centres={centres} cur={cur}
         onSend={draft => run(inviteMember(draft, book), () => setInviting(false))}
       />
 
       {managing && (
         <ManageModal
-          person={managing} book={book} onClose={() => setManaging(null)}
+          person={managing} book={book} cur={cur} onClose={() => setManaging(null)}
           onRole={id => run(changeRole(managing, id, book), () => setManaging(null))}
           onStatus={s => run(changeStatus(managing, s, book), () => setManaging(null))}
         />
@@ -332,9 +335,12 @@ export function EnterpriseTeam() {
 
 /* ------------------------------------------------------------ the dialogs -- */
 
-function InviteModal({ open, onClose, book, centres, onSend }: {
+function InviteModal({ open, onClose, book, centres, cur, onSend }: {
   open: boolean; onClose: () => void; book: AdminBook
   centres: { id: string; name: string }[]
+  /* The account's currency, so an approval limit beside a role name is quoted
+     in the money that limit is actually set in. */
+  cur: string
   onSend: (draft: { name: string; email: string; title: string; role: string; cost_centre: string | null }) => void
 }) {
   const [name, setName] = useState('')
@@ -370,7 +376,7 @@ function InviteModal({ open, onClose, book, centres, onSend }: {
       </FormField>
       <FormField label="Role" required hint="What they can do on their first day. It can be changed afterwards.">
         <Select value={role} onChange={e => setRole(e.target.value)}>
-          {book.roles.map(r => <option key={r.id} value={r.id}>{r.name} — {summariseRole(r)}</option>)}
+          {book.roles.map(r => <option key={r.id} value={r.id}>{r.name} — {summariseRole(r, cur)}</option>)}
         </Select>
       </FormField>
       <FormField label="Cost centre" hint="Where their spend lands. Leave blank if they only approve.">
@@ -393,8 +399,8 @@ function InviteModal({ open, onClose, book, centres, onSend }: {
   )
 }
 
-function ManageModal({ person, book, onClose, onRole, onStatus }: {
-  person: Person; book: AdminBook; onClose: () => void
+function ManageModal({ person, book, cur, onClose, onRole, onStatus }: {
+  person: Person; book: AdminBook; cur: string; onClose: () => void
   onRole: (roleId: string) => void
   onStatus: (next: Standing) => void
 }) {
@@ -421,9 +427,9 @@ function ManageModal({ person, book, onClose, onRole, onStatus }: {
         <Fact label="Password last changed" value={person.password_changed ?? 'Never set'} />
       </div>
 
-      <FormField label="Role" hint={current ? `Today: ${current.name} — ${summariseRole(current)}` : undefined}>
+      <FormField label="Role" hint={current ? `Today: ${current.name} — ${summariseRole(current, cur)}` : undefined}>
         <Select value={role} onChange={e => setRole(e.target.value)}>
-          {book.roles.map(r => <option key={r.id} value={r.id}>{r.name} — {summariseRole(r)}</option>)}
+          {book.roles.map(r => <option key={r.id} value={r.id}>{r.name} — {summariseRole(r, cur)}</option>)}
         </Select>
       </FormField>
 

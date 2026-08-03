@@ -168,11 +168,11 @@ export function may(me: { role: string } | null, roles: EnterpriseRole[], capabi
  * A permission grid answers "may they" precisely and "what is this role"
  * badly. Both belong on the page — this is the second one.
  */
-export function summariseRole(role: EnterpriseRole): string {
+export function summariseRole(role: EnterpriseRole, currency: string): string {
   const parts: string[] = []
   if (role.can_raise) parts.push('raises')
   if (role.approves_finance) {
-    parts.push(role.approve_limit === null ? 'approves any value' : `approves up to ${money0(role.approve_limit)}`)
+    parts.push(role.approve_limit === null ? 'approves any value' : `approves up to ${money0(role.approve_limit, currency)}`)
   }
   if (role.approves_it) parts.push('signs off on security')
   if (role.can_manage_users) parts.push('manages people')
@@ -513,7 +513,7 @@ export function validatePassword(next: string, again: string): Check {
  * arrive with is the opposite one — that handing work over hands over the
  * authority to finish it.
  */
-export function validateDelegate(me: Person, delegateId: string | null, people: Person[], roles: EnterpriseRole[]): Check {
+export function validateDelegate(me: Person, delegateId: string | null, people: Person[], roles: EnterpriseRole[], currency: string): Check {
   if (!delegateId) return { ok: true, note: 'No delegate — anything assigned to you waits until you are back.' }
   if (delegateId === me.id) return { ok: false, reason: 'You cannot delegate to yourself.' }
   const to = people.find(p => p.id === delegateId)
@@ -534,7 +534,7 @@ export function validateDelegate(me: Person, delegateId: string | null, people: 
     ok: true,
     note: ceiling === null
       ? `${to.name} can act in your place. The audit log still records who actually acted.`
-      : `${to.name} can act in your place up to your own limit of ${money(ceiling)}. Anything above it still escalates — a delegation is not a promotion.`,
+      : `${to.name} can act in your place up to your own limit of ${money(ceiling, currency)}. Anything above it still escalates — a delegation is not a promotion.`,
   }
 }
 
@@ -560,7 +560,7 @@ export interface CreditPosition {
  * year. A limit is a position, and last quarter's paid invoices are not part
  * of it.
  */
-export function creditPosition(billing: Billing, invoices: { total: number; status: string }[]): CreditPosition {
+export function creditPosition(billing: Billing, invoices: { total: number; status: string }[], currency: string): CreditPosition {
   const owed = invoices
     .filter(i => i.status === 'open' || i.status === 'overdue' || i.status === 'disputed')
     .reduce((a, i) => a + Number(i.total), 0)
@@ -577,8 +577,8 @@ export function creditPosition(billing: Billing, invoices: { total: number; stat
     note: state === 'at-limit'
       ? `The line is fully drawn. ${billing.at_limit_note}`
       : state === 'watch'
-        ? `${money0(headroom)} left of ${money0(limit)}. A large requisition would take this past the limit.`
-        : `${money0(headroom)} left of ${money0(limit)} on ${billing.terms.toLowerCase()}.`,
+        ? `${money0(headroom, currency)} left of ${money0(limit, currency)}. A large requisition would take this past the limit.`
+        : `${money0(headroom, currency)} left of ${money0(limit, currency)} on ${billing.terms.toLowerCase()}.`,
   }
 }
 
@@ -632,6 +632,7 @@ export function auditTrail(
     invoices: { id: string; total: number; status: string; paid_on: string | null; period: string; note: string | null }[]
     people: Person[]
   },
+  currency: string,
   limit = 40,
 ): AuditEntry[] {
   const name = (id: string) => people.find(p => p.id === id)?.name ?? id
@@ -640,14 +641,14 @@ export function auditTrail(
   for (const r of requisitions) {
     out.push({
       when: r.raised_on, who: name(r.raised_by), action: 'Raised a requisition',
-      detail: `${r.id} · ${r.title} · ${money(Number(r.amount))}`,
+      detail: `${r.id} · ${r.title} · ${money(Number(r.amount), currency)}`,
       severity: 'normal',
     })
     if (r.decided_on && r.decided_by) {
       out.push({
         when: r.decided_on, who: name(r.decided_by),
         action: r.state === 'approved' ? 'Approved a requisition' : r.state === 'declined' ? 'Declined a requisition' : 'Withdrew a requisition',
-        detail: [`${r.id} · ${money(Number(r.amount))}`, r.order_ref ? `ordered as ${r.order_ref}` : null, r.decision_note]
+        detail: [`${r.id} · ${money(Number(r.amount), currency)}`, r.order_ref ? `ordered as ${r.order_ref}` : null, r.decision_note]
           .filter(Boolean).join(' · '),
         severity: 'high',
       })
@@ -658,14 +659,14 @@ export function auditTrail(
     if (i.paid_on) {
       out.push({
         when: i.paid_on, who: 'Direct debit', action: 'Invoice paid',
-        detail: `${i.id} · ${i.period} · ${money(Number(i.total))}`,
+        detail: `${i.id} · ${i.period} · ${money(Number(i.total), currency)}`,
         severity: 'normal',
       })
     }
     if (i.status === 'disputed') {
       out.push({
         when: i.period, who: 'This account', action: 'Invoice disputed',
-        detail: `${i.id} · ${money(Number(i.total))}${i.note ? ` · ${i.note}` : ''}`,
+        detail: `${i.id} · ${money(Number(i.total), currency)}${i.note ? ` · ${i.note}` : ''}`,
         severity: 'high',
       })
     }

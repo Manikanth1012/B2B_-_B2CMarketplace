@@ -29,7 +29,7 @@ export function EnterpriseAudit() {
         requisitions: account.requisitions,
         invoices: account.invoices,
         people: admin.people,
-      }))
+      }, account.account?.currency ?? 'USD'))
     })()
   }, [])
 

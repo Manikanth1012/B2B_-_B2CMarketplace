@@ -5,7 +5,8 @@ import { VERTICAL_NAMES } from './data'
 import { supabase } from '../../lib/supabase'
 import { loadAccount } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
-import { waiting, committed, budgetPosition, money, money0, NEED_LABEL } from '../../lib/enterprise'
+import { waiting, committed, budgetPosition, NEED_LABEL } from '../../lib/enterprise'
+import { useAccountMoney } from './money'
 import type { EnterpriseView } from '../../types/view'
 
 const TODAY = new Date().toISOString().slice(0, 10)
@@ -27,6 +28,7 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
   }, [])
 
   const account = book?.account ?? null
+  const { money, money0 } = useAccountMoney(account?.currency)
   const queue = book ? waiting(book.requisitions) : []
   const com = book ? committed(book.subscriptions) : { billed: 0, renewing: 0, suspended: 0 }
   const budget = book && account ? budgetPosition(book.invoices, account, TODAY) : null
@@ -120,7 +122,7 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
                   <div style={{ flex: 1, height: '14px', borderRadius: '3px', background: 'var(--bg-alt)', overflow: 'hidden', position: 'relative' }}>
                     <div style={{ position: 'absolute', inset: 0, width: `${budgetPerMonth ? (monthly / budgetPerMonth) * 100 : 0}%`, background: 'var(--brand-accent-dark)', borderRadius: '3px' }} />
                   </div>
-                  <span style={{ fontSize: 'var(--text-xs)', width: '50px', textAlign: 'right', color: 'var(--text-tertiary)' }}>${fmtInt(monthly)}</span>
+                  <span style={{ fontSize: 'var(--text-xs)', width: '78px', textAlign: 'right', color: 'var(--text-tertiary)' }}>{money0(monthly)}</span>
                 </div>
               )
             })}
@@ -137,7 +139,7 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
                 <div key={v} style={{ marginBottom: '14px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-sm)', marginBottom: '4px' }}>
                     <span style={{ fontWeight: 500 }}>{VERTICAL_NAMES[v]?.replace(' Marketplace', '')}</span>
-                    <span style={{ color: 'var(--text-tertiary)' }}>${fmtMoney(spend)}/mo</span>
+                    <span style={{ color: 'var(--text-tertiary)' }}>{money(spend)}/mo</span>
                   </div>
                   <div style={{ height: '10px', borderRadius: '5px', background: 'var(--bg-alt)', overflow: 'hidden' }}>
                     <div style={{ height: '100%', width: `${(spend / max) * 100}%`, background: v === 'iot' ? '#006B6B' : v === 'security' ? '#B45309' : '#5E4B9B', borderRadius: '5px' }} />
@@ -147,7 +149,7 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
             })}
             <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border-light)', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
               One-off purchases are not in this split — it is monthly commitment only. One-off ordered to date:
-              ${fmtMoney(orders.filter(o => !o.failed).reduce((a, o) => a + Number(o.total), 0))}
+              {money(orders.filter(o => !o.failed).reduce((a, o) => a + Number(o.total), 0))}
             </div>
           </div>
         </SectionCard>

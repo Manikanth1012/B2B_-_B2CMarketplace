@@ -5,6 +5,7 @@ import {
   FormField, TextArea, EmptyState,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
+import { useAccountMoney } from './money'
 import { loadAccount, payInvoice, disputeInvoice, invoiceCsv } from '../../lib/enterpriseRepo'
 import { loadDocumentSetup } from '../../lib/documentRepo'
 import type { DocumentSetup } from '../../lib/documentRepo'
@@ -14,7 +15,7 @@ import { billPdf, pdfNameFor, saveBlob } from '../../lib/billPdf'
 import type { AccountBook } from '../../lib/enterpriseRepo'
 import {
   outstanding, budgetPosition, bySeller, byCostCentre, reconcileInvoice, arrears,
-  taxPosition, committed, idleSeats, renewingWithin, money, money0, day,
+  taxPosition, committed, idleSeats, renewingWithin, day,
 } from '../../lib/enterprise'
 import type { Invoice } from '../../lib/enterprise'
 import { Pager, usePaging } from '../Pager'
@@ -39,6 +40,7 @@ export function EnterpriseBilling() {
   const [disputing, setDisputing] = useState<Invoice | null>(null)
 
   const reload = useCallback(async () => setBook(await loadAccount()), [])
+  const { money, money0 } = useAccountMoney(book?.account?.currency)
   useEffect(() => { void reload() }, [reload])
 
   /* Above the loading guard, and reading through an empty list until the book
@@ -119,10 +121,10 @@ export function EnterpriseBilling() {
       })}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
-        <StatCard label="Outstanding" value={`$${fmtMoney(due.total)}`}
+        <StatCard label="Outstanding" value={money(due.total)}
                   sublabel={`${due.count} unsettled${due.overdue ? ` · ${money(due.overdue)} of it overdue` : ''}`}
                   color={due.overdue ? 'var(--danger)' : undefined} />
-        <StatCard label="Billed each month" value={`$${fmtMoney(com.billed)}`}
+        <StatCard label="Billed each month" value={money(com.billed)}
                   sublabel={com.suspended
                     ? `${money(com.renewing)} renewing · ${money(com.suspended)} running to contract end`
                     : `${book.subscriptions.filter(s => s.status === 'active').length} subscriptions`} />
@@ -166,10 +168,10 @@ export function EnterpriseBilling() {
                     </Td>
                     <Td right style={{ fontSize: 'var(--text-xs)' }}>{day(i.issued)}</Td>
                     <Td right style={{ fontSize: 'var(--text-xs)' }}>{day(i.due)}</Td>
-                    <Td right>{i.recurring ? `$${fmtMoney(i.recurring)}` : '—'}</Td>
-                    <Td right>{i.oneoff ? `$${fmtMoney(i.oneoff)}` : '—'}</Td>
-                    <Td right>${fmtMoney(i.tax)}</Td>
-                    <Td right style={{ fontWeight: 700 }}>${fmtMoney(i.total)}</Td>
+                    <Td right>{i.recurring ? money(i.recurring) : '—'}</Td>
+                    <Td right>{i.oneoff ? money(i.oneoff) : '—'}</Td>
+                    <Td right>{money(i.tax)}</Td>
+                    <Td right style={{ fontWeight: 700 }}>{money(i.total)}</Td>
                     <Td right>
                       <StatusPill status={i.status === 'overdue' ? 'escalated' : i.status === 'paid' ? 'resolved' : i.status === 'disputed' ? 'pending' : 'open'} />
                       {i.paid_on && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>{day(i.paid_on)}</div>}
@@ -210,7 +212,7 @@ export function EnterpriseBilling() {
               <tr key={r.seller}>
                 <Td>{r.seller}</Td>
                 <Td right>{r.lines}</Td>
-                <Td right>${fmtMoney(r.amount)}</Td>
+                <Td right>{money(r.amount)}</Td>
                 <Td right>{r.share}%</Td>
               </tr>
             ))}
@@ -225,7 +227,7 @@ export function EnterpriseBilling() {
             ).map(r => (
               <tr key={r.id}>
                 <Td>{r.name}<div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{r.id}</div></Td>
-                <Td right>${fmtMoney(r.amount)}</Td>
+                <Td right>{money(r.amount)}</Td>
                 <Td right>{r.share}%</Td>
               </tr>
             ))}
@@ -245,7 +247,7 @@ export function EnterpriseBilling() {
                   <Td right style={{ fontSize: 'var(--text-xs)' }}>{s.seller}</Td>
                   <Td right>{fmtInt(s.quantity)}</Td>
                   <Td right>{fmtInt(s.seats_used)}</Td>
-                  <Td right>${fmtMoney(s.monthly)}</Td>
+                  <Td right>{money(s.monthly)}</Td>
                   <Td right style={{ fontSize: 'var(--text-xs)' }}>{day(s.renews)}</Td>
                   <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '320px', textAlign: 'right' }}>
                     {s.status === 'suspended'
@@ -297,6 +299,10 @@ function currentInvoice(book: AccountBook): Invoice | undefined {
 }
 
 function InvoiceDetail({ invoice, book }: { invoice: Invoice; book: AccountBook }) {
+  /* The invoice's own currency rather than the account's. They agree — the
+     guard sees to that — but a document is read in the money it was issued in,
+     and a reprint of an old one must not follow the account somewhere else. */
+  const { money } = useAccountMoney(invoice.currency)
   const lines = book.invoiceLines.filter(l => l.invoice_id === invoice.id)
   const check = reconcileInvoice(invoice, book.invoiceLines)
   return (
@@ -316,8 +322,8 @@ function InvoiceDetail({ invoice, book }: { invoice: Invoice; book: AccountBook 
               {book.centres.find(c => c.id === l.cost_centre)?.name ?? 'Not allocated'}
             </Td>
             <Td right>{l.quantity === null ? '—' : fmtInt(l.quantity)}</Td>
-            <Td right>{l.unit_price === null ? '—' : `$${fmtMoney(l.unit_price)}`}</Td>
-            <Td right style={{ fontWeight: 600 }}>${fmtMoney(l.amount)}</Td>
+            <Td right>{l.unit_price === null ? '—' : money(l.unit_price)}</Td>
+            <Td right style={{ fontWeight: 600 }}>{money(l.amount)}</Td>
           </tr>
         ))}
       </Table>
@@ -345,6 +351,7 @@ function Fact({ label, value }: { label: string; value: string }) {
 function PayModal({ invoice, onClose, onDone }: {
   invoice: Invoice; onClose: () => void; onDone: () => Promise<void>
 }) {
+  const { money } = useAccountMoney(invoice.currency)
   const [busy, setBusy] = useState(false)
   const submit = async () => {
     setBusy(true)
@@ -357,7 +364,7 @@ function PayModal({ invoice, onClose, onDone }: {
     <Modal open onClose={onClose} title={`Pay ${invoice.id}`}
       footer={<>
         <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
-        <Btn size="sm" onClick={submit} disabled={busy}>{busy ? 'Paying…' : `Pay $${fmtMoney(invoice.total)}`}</Btn>
+        <Btn size="sm" onClick={submit} disabled={busy}>{busy ? 'Paying…' : `Pay ${money(invoice.total)}`}</Btn>
       </>}>
       <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
         {money(invoice.total)} against {invoice.id} for {invoice.period}, from the account on file. Remittance

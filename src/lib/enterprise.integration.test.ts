@@ -137,13 +137,33 @@ describe('what the account is billed', () => {
   })
 
   it('bills exactly what the account holds on the current recurring invoice', () => {
+    /* Scoped to the account's own currency, which is not pedantry: this account
+       has sites in two countries and one Kenyan invoice among its Indian ones,
+       and the Kenyan one is the most recent. `committed` adds the monthly
+       commitment on subscriptions priced in rupees, so the invoice it has to
+       equal is the rupee one — comparing it against the shilling invoice is
+       comparing two different currencies and getting a number either way. */
+    const home = book.account!.currency
     const current = book.invoices
-      .filter(i => i.kind === 'recurring')
+      .filter(i => i.kind === 'recurring' && i.currency === home)
       .sort((a, b) => b.issued.localeCompare(a.issued))[0]
+    expect(current, `no recurring invoice in ${home}, so this compares nothing`).toBeTruthy()
+
     const billed = book.invoiceLines
       .filter(l => l.invoice_id === current.id && l.kind === 'subscription')
       .reduce((a, l) => a + Number(l.amount), 0)
+    expect(billed, 'the invoice has no subscription lines to compare').toBeGreaterThan(0)
     expect(Math.round(billed * 100) / 100).toBe(committed(book.subscriptions).billed)
+  })
+
+  it('is invoiced in more than one currency, which is why the check above is scoped', () => {
+    /* The thing that made the assertion above wrong when it was unscoped, held
+       as a fact rather than left implicit — if this account ever stops having a
+       second-currency invoice, that test is comparing like with like by accident
+       and should be simplified rather than quietly kept. */
+    const seen = new Set(book.invoices.map(i => i.currency))
+    expect(seen.size, `every invoice on this account is in ${[...seen][0]}`).toBeGreaterThan(1)
+    expect(seen.has(book.account!.currency)).toBe(true)
   })
 
   it('has an outstanding balance with something overdue behind it', () => {
@@ -279,6 +299,7 @@ describe('a decision, made and put back', () => {
   it('approves it, stamps who decided, and places the order in the same write', async () => {
     const res = await decideRequisition({
       req: target, me: book.me!, policy: book.policy!, approve: true, note: 'Approved for the integration test.',
+      currency: book.account!.currency,
     })
     expect(res.ok, res.ok ? '' : res.reason).toBe(true)
 
@@ -295,6 +316,7 @@ describe('a decision, made and put back', () => {
     const saved = after.requisitions.find(r => r.id === target.id)!
     const res = await decideRequisition({
       req: saved, me: after.me!, policy: after.policy!, approve: false, note: 'changed my mind',
+      currency: after.account!.currency,
     })
     expect(res.ok).toBe(false)
     if (!res.ok) expect(res.reason).toMatch(/already approved|not re-openable/i)

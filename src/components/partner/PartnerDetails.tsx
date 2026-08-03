@@ -9,6 +9,7 @@ import {
   toast, fmtDate,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
+import { useAnchor } from '../useAnchor'
 import { loadMyDetails, saveProfile, setAway, setMfa, signOutOtherSessions,
   stampPasswordChange, addContact, verifyContact, removeContact,
   requestBankChange, withdrawBankChange, recordTreatyCertificate,
@@ -61,7 +62,7 @@ function Pill({ tone, children }: { tone: Tone; children: React.ReactNode }) {
   )
 }
 
-export function PartnerDetails({ partnerId }: { partnerId: string }) {
+export function PartnerDetails({ partnerId, anchor }: { partnerId: string; anchor?: string }) {
   const [snap, setSnap] = useState<MyDetails | null>(null)
   const [record, setRecord] = useState<SellerRecord | null>(null)
   const [tab, setTab] = useState<Tab>('you')
@@ -72,6 +73,14 @@ export function PartnerDetails({ partnerId }: { partnerId: string }) {
     setRecord(r)
   }, [partnerId])
   useEffect(() => { void reload() }, [reload])
+
+  /* The card the account menu points at lives on the "you" tab, and a scroll to
+     a card that is not rendered lands nowhere — so the tab is selected first
+     and the scroll waits for the page to have its data. */
+  useEffect(() => {
+    if (anchor === 'security') setTab('you')
+  }, [anchor])
+  useAnchor(anchor, snap !== null && record !== null)
 
   if (!snap || !record) {
     return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
@@ -294,7 +303,7 @@ function YouTab({ snap, onChanged }: { snap: MyDetails; onChanged: () => Promise
       </SectionCard>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
-        <SectionCard title="Your sign-in and security"
+        <SectionCard anchor="security" title="Your sign-in and security"
                      action={<Btn variant="primary" size="sm" onClick={() => setPwdOpen(true)}>
                        <Key size={13} /> Change password
                      </Btn>}>

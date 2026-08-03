@@ -295,7 +295,7 @@ describe('my own details', () => {
 
     book = await loadAdmin()
     const colleague = book.people.find(p => p.status === 'active' && p.id !== me.id)!
-    const d = await setDelegate(book.me!, colleague.id, book)
+    const d = await setDelegate(book.me!, colleague.id, book, 'INR')
     expect(d.ok, d.ok ? '' : d.reason).toBe(true)
 
     book = await loadAdmin()
@@ -317,7 +317,7 @@ describe('my own details', () => {
 
   it('reads a credit position that agrees with the invoices behind it', async () => {
     const account = await loadAccount()
-    const pos = creditPosition(book.billing!, account.invoices)
+    const pos = creditPosition(book.billing!, account.invoices, account.account!.currency)
     const owed = account.invoices
       .filter(i => ['open', 'overdue', 'disputed'].includes(i.status))
       .reduce((a, i) => a + Number(i.total), 0)

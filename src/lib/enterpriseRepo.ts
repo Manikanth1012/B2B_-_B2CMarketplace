@@ -100,11 +100,14 @@ export async function loadAccount(): Promise<AccountBook> {
  * same update as the decision.
  */
 export async function decideRequisition(
-  { req, me, policy, approve, note }: {
+  { req, me, policy, approve, note, currency }: {
     req: Requisition; me: Member; policy: Policy; approve: boolean; note: string
+    /* The account's, so the note that comes back names the sum in the money the
+       account is actually invoiced in. */
+    currency: string
   },
 ): Promise<Result> {
-  const check = validateDecision(req, me, policy, approve, note)
+  const check = validateDecision(req, me, policy, approve, note, currency)
   if (!check.ok) return check
 
   const { data, error } = await supabase.from('enterprise_requisitions').update({
@@ -121,7 +124,7 @@ export async function decideRequisition(
   return {
     ok: true,
     note: approve
-      ? `${req.id} approved — the order has gone to the seller and ${money(req.amount)} is committed.`
+      ? `${req.id} approved — the order has gone to the seller and ${money(req.amount, currency)} is committed.`
       : `${req.id} declined. Nothing was ordered and the requester has been told why.`,
   }
 }
@@ -194,7 +197,7 @@ export async function raiseRequisition(
     id, account_id: account.id, raised_by: me.id, raised_on: today, raised_at: 'Just now',
     title: draft.title.trim(), vertical: draft.vertical, cost_centre: draft.cost_centre,
     amount, model: draft.model, reason: draft.reason.trim(),
-    need, policy_note: policyNoteFor(need, amount, policy), state: 'pending',
+    need, policy_note: policyNoteFor(need, amount, policy, account.currency), state: 'pending',
     po_ref: draft.po_ref.trim() || null,
     sort_order: 0,
   })
@@ -218,8 +221,8 @@ export async function raiseRequisition(
   return {
     ok: true,
     note: need === 'none'
-      ? `${id} raised for ${money(amount)}. It is within policy, so the order has been placed.`
-      : `${id} raised for ${money(amount)}. It needs ${need === 'both' ? 'finance approval and IT sign-off' : need === 'finance' ? 'finance approval' : 'IT sign-off'} before anything is ordered.`,
+      ? `${id} raised for ${money(amount, account.currency)}. It is within policy, so the order has been placed.`
+      : `${id} raised for ${money(amount, account.currency)}. It needs ${need === 'both' ? 'finance approval and IT sign-off' : need === 'finance' ? 'finance approval' : 'IT sign-off'} before anything is ordered.`,
   }
 }
 
@@ -261,7 +264,7 @@ export async function payInvoice(invoice: Invoice): Promise<Result> {
   if (!data?.length) return { ok: false, reason: REFUSED }
   return {
     ok: true,
-    note: `${money(invoice.total)} paid against ${invoice.id}. Remittance advice follows to the finance address on file.`,
+    note: `${money(invoice.total, invoice.currency)} paid against ${invoice.id}. Remittance advice follows to the finance address on file.`,
   }
 }
 

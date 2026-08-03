@@ -69,9 +69,17 @@ export function PriorityPill({ priority }: { priority: string }) {
   )
 }
 
-export function SectionCard({ title, subtitle, children, action }: { title: string; subtitle?: string; children: React.ReactNode; action?: React.ReactNode }) {
+/**
+ * `anchor` gives the card a name the account menu can send somebody to.
+ *
+ * The three consoles' avatar menus offer "Sign-in & security" and "Sessions",
+ * and both live on a long profile page rather than on screens of their own.
+ * Without a name to aim at, those two items had nowhere to go — which is why
+ * they did nothing at all until now.
+ */
+export function SectionCard({ title, subtitle, children, action, anchor, pad }: { title: string; subtitle?: string; children: React.ReactNode; action?: React.ReactNode; anchor?: string; pad?: boolean }) {
   return (
-    <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+    <div id={anchor} style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden', scrollMarginTop: '84px' }}>
       <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 700, color: 'var(--text)' }}>{title}</h3>
@@ -79,7 +87,22 @@ export function SectionCard({ title, subtitle, children, action }: { title: stri
         </div>
         {action}
       </div>
-      {children}
+      {/* A table runs edge to edge and a form does not.
+       *
+       * The body has always been unpadded, which is right for a `Table` — its
+       * own cells carry the inset — and wrong for anything else. Every screen
+       * that puts a form in one of these was expected to remember its own
+       * wrapper, and six of them did not: the inputs sat flush against the
+       * card's border, so the field box and the card box drew one on top of the
+       * other and read as a single merged edge.
+       *
+       * `pad` rather than padding by default, because changing the default
+       * would inset every table on the console by twenty pixels it does not
+       * need. The last row's own margin is pulled back so the padding below a
+       * form is the padding and not the padding plus a field's tail. */}
+      {pad
+        ? <div style={{ padding: '18px 20px 4px' }}>{children}</div>
+        : children}
     </div>
   )
 }

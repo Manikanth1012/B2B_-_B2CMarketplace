@@ -7,6 +7,8 @@ import {
   SectionCard, Btn, toast, Modal, FormField, TextInput, Select, StatCard, Table, Td,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
+import { useAnchor } from '../useAnchor'
+import { useAccountMoney } from './money'
 import { EvidenceLink } from '../EvidenceLink'
 import type { Viewer } from '../../lib/evidence'
 import {
@@ -45,7 +47,7 @@ const TIMEZONES = ['Asia/Kolkata (IST)', 'Asia/Dubai (GST)', 'Europe/London (GMT
 const DATE_FORMATS = ['DD MMM YYYY', 'YYYY-MM-DD', 'MM/DD/YYYY']
 const MFA_METHODS = ['Authenticator app', 'SMS to your phone', 'Hardware security key']
 
-export function EnterpriseProfile() {
+export function EnterpriseProfile({ anchor }: { anchor?: string }) {
   const [book, setBook] = useState<AdminBook | null>(null)
   const [account, setAccount] = useState<AccountBook | null>(null)
   const [draft, setDraft] = useState<{ name: string; title: string; phone: string; timezone: string; language: string; date_format: string } | null>(null)
@@ -67,6 +69,11 @@ export function EnterpriseProfile() {
   }, [])
   useEffect(() => { void reload() }, [reload])
 
+  const cur = account?.account?.currency ?? 'USD'
+  const { money0 } = useAccountMoney(cur)
+
+  useAnchor(anchor, book !== null && account !== null)
+
   if (!book || !account) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
   const me = book.me
@@ -84,7 +91,7 @@ export function EnterpriseProfile() {
   const canSeeBilling = may(me, book.roles, 'can_view_billing')
   const canRevealBank = may(me, book.roles, 'can_reveal_bank')
   const billing = book.billing
-  const credit = billing ? creditPosition(billing, account.invoices) : null
+  const credit = billing ? creditPosition(billing, account.invoices, cur) : null
   const review = billing ? creditReview(billing, TODAY) : null
   const progress = onboardingProgress(book.onboarding)
   /* The account's own id is the folder its onboarding pack is filed under, and
@@ -171,7 +178,7 @@ export function EnterpriseProfile() {
       <SectionCard title="Your access" subtitle="What your role lets you do, and what it deliberately does not.">
         <div style={{ padding: '20px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '18px' }}>
-            <Fact icon={<Shield size={15} />} label="Role" value={role?.name ?? me.role} note={role ? summariseRole(role) : undefined} />
+            <Fact icon={<Shield size={15} />} label="Role" value={role?.name ?? me.role} note={role ? summariseRole(role, cur) : undefined} />
             <Fact icon={<Building2 size={15} />} label="Organisation" value={org.company} note={org.legal_name} />
             <Fact icon={<User size={15} />} label="Your reference" value={me.user_ref ?? me.id} note={`Cost centre ${me.cost_centre ?? 'not allocated'}`} />
             <Fact icon={<ClipboardCheck size={15} />} label="On the account since" value={day(me.joined)} note={`Last signed in ${when(me.last_sign_in).toLowerCase()}`} />
@@ -207,7 +214,7 @@ export function EnterpriseProfile() {
 
       {/* -------------------------------------------- sign-in and security -- */}
 
-      <SectionCard title="Sign-in and security" subtitle="Your password, your second factor and everywhere you are signed in.">
+      <SectionCard anchor="security" title="Sign-in and security" subtitle="Your password, your second factor and everywhere you are signed in.">
         <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '24px' }}>
           <div>
             <Row label="Password"
@@ -295,11 +302,11 @@ export function EnterpriseProfile() {
             <input type="checkbox" checked={me.out_of_office} onChange={e => run(setAway(me, e.target.checked, book))} />
             <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>Mark me as away</span>
           </label>
-          <FormField label="Delegate" hint={validateDelegate(me, me.delegate_id, book.people, book.roles).ok
-            ? (validateDelegate(me, me.delegate_id, book.people, book.roles) as { note?: string }).note
+          <FormField label="Delegate" hint={validateDelegate(me, me.delegate_id, book.people, book.roles, cur).ok
+            ? (validateDelegate(me, me.delegate_id, book.people, book.roles, cur) as { note?: string }).note
             : undefined}>
             <Select value={me.delegate_id ?? ''} disabled={!me.out_of_office}
-                    onChange={e => run(setDelegate(me, e.target.value || null, book))}>
+                    onChange={e => run(setDelegate(me, e.target.value || null, book, cur))}>
               <option value="">Nobody — work waits for me</option>
               {delegateOptions(me, book.people).map(p => (
                 <option key={p.id} value={p.id}>{p.name} · {roleOf(p, book.roles)?.name ?? p.role}</option>

@@ -7,8 +7,17 @@
    exists to prevent. */
 
 import { supabase } from './supabase'
-import { canTopUp, settleOnClosure, canCloseWallet, planSpend } from './wallet'
-import type { Wallet, WalletPolicy, LedgerEntry } from './wallet'
+import { canTopUp, settleOnClosure, canCloseWallet, planSpend, limitFor } from './wallet'
+import type { Wallet, WalletPolicy, WalletLimit, LedgerEntry } from './wallet'
+import { format as formatMoney, money as asMoney } from './money'
+import type { Currency } from './money'
+
+/* Every refusal and every confirmation below quotes a figure, and each one used
+   to quote it with a `$`. The wallet knows what it is in; this turns that into
+   a formatter, using the same `format` the screens use rather than a second
+   copy of the rules for where a mark goes. */
+const writer = (currency: string, currencies: readonly Currency[]) =>
+  (n: number) => formatMoney(asMoney(n, currency), currencies)
 
 export interface WalletSource {
   id: string
@@ -43,50 +52,69 @@ export interface WalletBookSnapshot {
   ledger: LedgerEntry[]
   sources: WalletSource[]
   policy: WalletPolicy
+  /* One ceiling and floor per currency. The single dollar pair on
+     `wallet_policy` is still there for the prose it carries — what is
+     refundable and what is not — but the numbers come from here. */
+  limits: WalletLimit[]
+  currencies: Currency[]
   closures: WalletClosure[]
   loadError?: string
 }
 
 /** Everything the operator sees: the whole book, because it is their liability. */
 export async function loadWalletBook(): Promise<WalletBookSnapshot> {
-  const [wRes, lRes, sRes, pRes, cRes] = await Promise.all([
+  const [wRes, lRes, sRes, pRes, cRes, xRes, curRes] = await Promise.all([
     supabase.from('wallets').select('*').order('sort_order'),
     supabase.from('wallet_ledger').select('*').order('when_date', { ascending: false }),
     supabase.from('wallet_sources').select('*').order('sort_order'),
     supabase.from('wallet_policy').select('*').eq('id', 'marketplace').maybeSingle(),
     supabase.from('wallet_closures').select('*').order('requested_at', { ascending: false }),
+    supabase.from('wallet_limits').select('*'),
+    supabase.from('currencies').select('*').order('sort_order'),
   ])
 
   const errors: string[] = []
   const note = (label: string, e: { message: string } | null) => { if (e) errors.push(`${label}: ${e.message}`) }
   note('wallets', wRes.error); note('ledger', lRes.error); note('sources', sRes.error)
-  note('policy', pRes.error); note('closures', cRes.error)
+  note('policy', pRes.error); note('closures', cRes.error); note('limits', xRes.error)
 
   return {
     wallets: (wRes.data ?? []) as Wallet[],
     ledger: (lRes.data ?? []) as LedgerEntry[],
     sources: (sRes.data ?? []) as WalletSource[],
     policy: (pRes.data as WalletPolicy | null) ?? DEFAULT_POLICY,
+    limits: numericLimits((xRes.data ?? []) as WalletLimit[]),
+    currencies: (curRes.data ?? []) as Currency[],
     closures: (cRes.data ?? []) as WalletClosure[],
     ...(errors.length > 0 ? { loadError: `Could not load the wallet book (${errors.join('; ')}).` } : {}),
   }
 }
+
+/* PostgREST hands numerics back as strings, and a ceiling that is a string
+   compares as text — "500" > "200000" — so a top-up would be refused for
+   crossing a limit it is nowhere near. */
+const numericLimits = (rows: WalletLimit[]): WalletLimit[] =>
+  rows.map(l => ({ ...l, max_balance: Number(l.max_balance), min_topup: Number(l.min_topup) }))
 
 export interface MyWallet {
   wallet: Wallet | null
   ledger: LedgerEntry[]
   sources: WalletSource[]
   policy: WalletPolicy
+  limits: WalletLimit[]
+  currencies: Currency[]
   loadError?: string
 }
 
 /** What the signed-in customer sees: their own wallet and nothing else. RLS
     does the narrowing, so this is the same query the operator runs. */
 export async function loadMyWallet(): Promise<MyWallet> {
-  const [wRes, sRes, pRes] = await Promise.all([
+  const [wRes, sRes, pRes, xRes, curRes] = await Promise.all([
     supabase.from('wallets').select('*').maybeSingle(),
     supabase.from('wallet_sources').select('*').order('sort_order'),
     supabase.from('wallet_policy').select('*').eq('id', 'marketplace').maybeSingle(),
+    supabase.from('wallet_limits').select('*'),
+    supabase.from('currencies').select('*').order('sort_order'),
   ])
   const wallet = (wRes.data as Wallet | null) ?? null
 
@@ -104,6 +132,8 @@ export async function loadMyWallet(): Promise<MyWallet> {
     ledger: (lRes.data ?? []) as LedgerEntry[],
     sources: (sRes.data ?? []) as WalletSource[],
     policy: (pRes.data as WalletPolicy | null) ?? DEFAULT_POLICY,
+    limits: numericLimits((xRes.data ?? []) as WalletLimit[]),
+    currencies: (curRes.data ?? []) as Currency[],
     ...(errors.length > 0 ? { loadError: `Could not load your wallet (${errors.join('; ')}).` } : {}),
   }
 }
@@ -115,13 +145,24 @@ const txId = () => `WTX-${Date.now().toString(36).slice(-6).toUpperCase()}`
 
 /* Re-read before deciding. The ceiling is checked against what the wallet holds
    now, not what the screen was showing when the form opened. */
-async function fresh(walletId: string): Promise<{ wallet: Wallet; policy: WalletPolicy } | null> {
-  const [w, p] = await Promise.all([
+async function fresh(walletId: string): Promise<
+  { wallet: Wallet; policy: WalletPolicy; limit: WalletLimit; fmt: (n: number) => string } | null
+> {
+  const [w, p, x, cur] = await Promise.all([
     supabase.from('wallets').select('*').eq('id', walletId).maybeSingle(),
     supabase.from('wallet_policy').select('*').eq('id', 'marketplace').maybeSingle(),
+    supabase.from('wallet_limits').select('*'),
+    supabase.from('currencies').select('*').order('sort_order'),
   ])
   if (w.error || !w.data) return null
-  return { wallet: w.data as Wallet, policy: (p.data as WalletPolicy | null) ?? DEFAULT_POLICY }
+  const wallet = w.data as Wallet
+  const policy = (p.data as WalletPolicy | null) ?? DEFAULT_POLICY
+  const currencies = (cur.data ?? []) as Currency[]
+  return {
+    wallet, policy,
+    limit: limitFor(numericLimits((x.data ?? []) as WalletLimit[]), wallet.currency, policy),
+    fmt: writer(wallet.currency, currencies),
+  }
 }
 
 /**
@@ -136,7 +177,7 @@ export async function topUp(
   const now = await fresh(walletId)
   if (!now) return { ok: false, reason: 'Could not read the wallet. Try again.' }
 
-  const verdict = canTopUp(now.wallet, amount, now.policy)
+  const verdict = canTopUp(now.wallet, amount, now.limit, now.fmt)
   if (!verdict.ok) return verdict
   if (!instrument.trim()) return { ok: false, reason: 'Choose what to pay with.' }
 
@@ -154,7 +195,7 @@ export async function topUp(
     return { ok: false, reason: `The movement was recorded but the balance did not update: ${error.message}. Tell support before trying again.` }
   }
 
-  return { ok: true, note: `$${amount.toFixed(2)} added. It is your money and you can ask for it back at any time.` }
+  return { ok: true, note: `${now.fmt(amount)} added. It is your money and you can ask for it back at any time.` }
 }
 
 /**
@@ -178,10 +219,10 @@ export async function creditWalletFromRewards(
   if (!now) return { ok: false, reason: 'Could not read the wallet. Try again.' }
 
   const after = +(Number(now.wallet.balance) + credit).toFixed(2)
-  if (after > now.policy.max_balance) {
+  if (after > now.limit.max_balance) {
     return {
       ok: false,
-      reason: `That would take your wallet to $${after.toFixed(2)}, past the $${now.policy.max_balance.toFixed(2)} ceiling. Spend some before converting more.`,
+      reason: `That would take your wallet to ${now.fmt(after)}, past the ${now.fmt(now.limit.max_balance)} ceiling. Spend some before converting more.`,
     }
   }
 

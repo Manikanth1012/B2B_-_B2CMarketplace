@@ -620,7 +620,7 @@ function ArticleEditor(
         </Callout>
       )}
 
-      <SectionCard title="What it says">
+      <SectionCard pad title="What it says">
         <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr', gap: '0 16px' }}>
           <FormField label="Title" required>
             <TextInput value={draft.title} onChange={e => set('title', e.target.value)} />
@@ -644,7 +644,7 @@ function ArticleEditor(
         </FormField>
       </SectionCard>
 
-      <SectionCard title="Who it is published to"
+      <SectionCard pad title="Who it is published to"
         subtitle="One article can be the same article for two audiences. Writing it twice is how two copies of one policy drift apart.">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
           {PERSONAS.map(p => {
@@ -696,7 +696,7 @@ function ArticleEditor(
         </div>
       </SectionCard>
 
-      <SectionCard title="The article itself" subtitle="A heading and its prose, in order">
+      <SectionCard pad title="The article itself" subtitle="A heading and its prose, in order">
         {draft.body.map((pair, i) => (
           <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 2.4fr auto', gap: '10px', alignItems: 'start', marginBottom: '10px' }}>
             <TextInput value={pair[0]} placeholder="Heading"
