@@ -9,7 +9,7 @@ import type { ConsumerProfile } from './types'
 import { restoreSession, signOut } from './lib/authRepo'
 import type { CartItem, Product } from './types'
 import { MarketProvider, useMarket } from './lib/MarketContext'
-import { loadPriceBook, reprice } from './lib/moneyRepo'
+import { loadPriceBook, loadCopyBook, reprice } from './lib/moneyRepo'
 import { LoginScreen } from './components/LoginScreen'
 import { PublicShell } from './components/public/PublicShell'
 import { LandingPage } from './components/public/LandingPage'
@@ -170,16 +170,17 @@ function AppInner() {
    * Reloaded when the market changes, for the same reason the grid is: a basket
    * left over from a different currency is a basket priced in it. */
   const loadCart = useCallback(async () => {
-    const [{ data: cart }, book] = await Promise.all([
+    const [{ data: cart }, book, copy] = await Promise.all([
       supabase.from('cart_items')
         .select('*, product:products(*)')
         .order('created_at', { ascending: false }),
       loadPriceBook(shopCurrency),
+      loadCopyBook(),
     ])
     if (cart) {
       const lines = (cart as CartItem[]).map(l => ({
         ...l,
-        product: l.product ? reprice(l.product, book, shopCurrency) : l.product,
+        product: l.product ? reprice(l.product, book, shopCurrency, copy) : l.product,
       }))
       setCartItems(lines)
       /* Saved lines are in the basket but not of it — the badge counts what is

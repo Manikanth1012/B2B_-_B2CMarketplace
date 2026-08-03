@@ -210,6 +210,27 @@ export function formatGroups(
   return groups.map(g => fmt(g.total.amount, g.currency)).join(' · ')
 }
 
+/**
+ * Which description a shopper in this currency should read.
+ *
+ * The prose counterpart to a price. A description quoting a sum insured, an
+ * excess or an overage rate is a price wearing words, and is chosen per market
+ * for the same reason a price is — ₹2 crore of travel cover is what an insurer
+ * in India writes, not AED 1,000,000 converted.
+ *
+ * Falls back to the product's own description, which is written without a
+ * currency in it precisely so it can be the fallback: "an excess set for your
+ * market" is true everywhere and specific nowhere, which is the right trade for
+ * a market nobody has written copy for yet.
+ */
+export function describeIn(
+  product: { id: string; description: string },
+  copy: ReadonlyMap<string, string>,
+  currency: string,
+): string {
+  return copy.get(`${product.id}|${currency}`) ?? product.description
+}
+
 /* ---------------------------------------------------------- exchange --- */
 
 /**

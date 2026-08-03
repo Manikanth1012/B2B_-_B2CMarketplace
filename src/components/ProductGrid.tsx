@@ -3,7 +3,7 @@ import { Star, Plus, Search, SlidersHorizontal } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Product, Category } from '../types'
 import { categoriesFor } from '../lib/storefront'
-import { loadPriceBook, repriceAll } from '../lib/moneyRepo'
+import { loadPriceBook, loadCopyBook, repriceAll } from '../lib/moneyRepo'
 import { useMarket } from '../lib/MarketContext'
 import { ProductCard } from './ProductCard'
 
@@ -70,8 +70,8 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
     /* Priced as they are loaded, in the market's own currency, rather than
        converted where they are drawn. One place decides the currency; every
        card below just prints the price it was handed. */
-    Promise.all([query, loadPriceBook(currencyCode)]).then(([{ data }, book]) => {
-      if (data) setProducts(repriceAll(data as Product[], book, currencyCode))
+    Promise.all([query, loadPriceBook(currencyCode), loadCopyBook()]).then(([{ data }, book, copy]) => {
+      if (data) setProducts(repriceAll(data as Product[], book, currencyCode, copy))
       setLoading(false)
     })
   }, [categoryFilter, categories, currencyCode])

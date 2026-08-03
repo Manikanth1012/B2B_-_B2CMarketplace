@@ -4,6 +4,7 @@ import {
   roundMinor, round, minorUnitsOf, rateOn, convert, totalIn,
   format, symbolOf, charmPrice, wasPriceFor, priceBandOk,
   currenciesOf, marketTakes, marketsTaking,
+  describeIn,
 } from './money'
 import type { Currency, Market, MarketCurrency, Rate } from './money'
 
@@ -427,5 +428,39 @@ describe('formatGroups', () => {
   it('never produces a figure that is the sum of two currencies', () => {
     const groups = byCurrency([money(100, 'INR'), money(100, 'KES')])
     expect(formatGroups(groups, fmt)).not.toContain('200')
+  })
+})
+
+describe('describeIn', () => {
+  const product = { id: 'SKU-2004', description: 'Cover for one handset, with an excess set for your market.' }
+  const copy = new Map([
+    ['SKU-2004|INR', 'Cover for one handset. Two claims per year, ₹4,000 excess.'],
+    ['SKU-2004|AED', 'Cover for one handset. Two claims per year, AED 185 excess.'],
+  ])
+
+  it('gives the copy written for that currency', () => {
+    expect(describeIn(product, copy, 'INR')).toContain('₹4,000')
+    expect(describeIn(product, copy, 'AED')).toContain('AED 185')
+  })
+
+  it('falls back to the base row where no copy was written', () => {
+    /* Which is why the base row names no currency: "an excess set for your
+       market" is true everywhere, and a rupee figure would not be. */
+    expect(describeIn(product, copy, 'KES')).toBe(product.description)
+    expect(describeIn(product, copy, 'KES')).not.toMatch(/₹|AED|\$/)
+  })
+
+  it('never shows one market’s figure to another', () => {
+    expect(describeIn(product, copy, 'AED')).not.toContain('₹')
+    expect(describeIn(product, copy, 'INR')).not.toContain('AED')
+  })
+
+  it('handles a product with no copy at all', () => {
+    const plain = { id: 'SKU-9999', description: 'A thing.' }
+    expect(describeIn(plain, copy, 'INR')).toBe('A thing.')
+  })
+
+  it('handles an empty book', () => {
+    expect(describeIn(product, new Map(), 'INR')).toBe(product.description)
   })
 })

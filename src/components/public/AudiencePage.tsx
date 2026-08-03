@@ -3,7 +3,7 @@ import { PublicProductGrid } from './PublicProductGrid'
 import { CategoryShowcase } from './CategoryShowcase'
 import { BANNERS } from '../../lib/assets'
 import { loadCatalogue, loadCategories, countByCategory } from '../../lib/storefrontRepo'
-import { loadPriceBook, repriceAll } from '../../lib/moneyRepo'
+import { loadPriceBook, loadCopyBook, repriceAll } from '../../lib/moneyRepo'
 import { useMarket } from '../../lib/MarketContext'
 import { productsForPage, categoriesForPage } from '../../lib/storefront'
 import type { Category, Product } from '../../types'
@@ -66,8 +66,8 @@ export function AudiencePage({ page, onSignIn, onApply, onAddToBasket }: {
   useEffect(() => {
     /* Priced for the market too. A shopper who sees $18.00 before signing in
        and ₹1,599.00 after has been shown two different shops. */
-    Promise.all([loadCatalogue(), loadPriceBook(currencyCode)])
-      .then(([rows, book]) => setCatalogue(repriceAll(rows, book, currencyCode)))
+    Promise.all([loadCatalogue(), loadPriceBook(currencyCode), loadCopyBook()])
+      .then(([rows, book, copy]) => setCatalogue(repriceAll(rows, book, currencyCode, copy)))
     loadCategories().then(setCategories)
     /* The currency is a dependency: without it this closes over the first one
        it saw and the page keeps showing that market's prices forever. */

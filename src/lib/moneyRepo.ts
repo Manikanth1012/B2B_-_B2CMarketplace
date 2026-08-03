@@ -12,7 +12,7 @@
  * currency — which is the failure mode with no visible symptom.
  */
 import { supabase } from './supabase'
-import { wasPriceFor } from './money'
+import { wasPriceFor, describeIn } from './money'
 import type { Currency, Rate, Market, MarketCurrency } from './money'
 import type { Product } from '../types'
 import type { BookRow, PartnerMarket } from './marketPricing'
@@ -78,6 +78,32 @@ export async function loadPriceBook(currency: string): Promise<Map<string, Price
 }
 
 /**
+ * Copy for one product in one currency, or nothing.
+ *
+ * The counterpart to `PriceRow`. A description that quotes a figure — a sum
+ * insured, an excess, an overage rate — is a price wearing prose, and is chosen
+ * per market for the same reason a price is. Most products quote no figure and
+ * have no rows here at all.
+ */
+/* Re-exported so a caller that already imports the repo does not have to reach
+   into `money.ts` for the one function that pairs with `loadCopyBook`. */
+export { describeIn }
+
+export interface CopyRow {
+  product_id: string
+  currency: string
+  description: string
+}
+
+/** Every piece of per-currency copy, keyed for `describeIn`. */
+export async function loadCopyBook(): Promise<Map<string, string>> {
+  const { data } = await supabase.from('product_copy').select('*')
+  const out = new Map<string, string>()
+  for (const r of (data ?? []) as CopyRow[]) out.set(`${r.product_id}|${r.currency}`, r.description)
+  return out
+}
+
+/**
  * One product, priced in the given currency.
  *
  * A product with no row in the book keeps its base price and base currency
@@ -86,11 +112,20 @@ export async function loadPriceBook(currency: string): Promise<Map<string, Price
  * showing the dollar price and saying so — and the migration asserts the book
  * is complete, so this is a fallback that should never fire.
  */
-export function reprice(product: Product, book: Map<string, PriceRow>, currency: string): Product {
+export function reprice(
+  product: Product, book: Map<string, PriceRow>, currency: string,
+  copy?: ReadonlyMap<string, string>,
+): Product {
+  /* Copy is applied whether or not the price book covers the product: a
+     description is right or wrong for a market independently of whether that
+     market has a price on file. */
+  const described = copy
+    ? { ...product, description: describeIn(product, copy, currency) }
+    : product
   const row = book.get(product.id)
-  if (!row) return { ...product, currency: product.currency ?? 'USD' }
+  if (!row) return { ...described, currency: described.currency ?? 'USD' }
   return {
-    ...product,
+    ...described,
     price: row.price,
     was_price: wasPriceFor(row.price, row.was_price),
     floor_price: row.floor_price ?? undefined,
@@ -99,8 +134,10 @@ export function reprice(product: Product, book: Map<string, PriceRow>, currency:
   }
 }
 
-export const repriceAll = (products: readonly Product[], book: Map<string, PriceRow>, currency: string): Product[] =>
-  products.map(p => reprice(p, book, currency))
+export const repriceAll = (
+  products: readonly Product[], book: Map<string, PriceRow>, currency: string,
+  copy?: ReadonlyMap<string, string>,
+): Product[] => products.map(p => reprice(p, book, currency, copy))
 
 /* ====================================================== writing the book === */
 

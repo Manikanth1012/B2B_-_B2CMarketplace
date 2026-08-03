@@ -6,7 +6,7 @@
    so a refusal cannot be skipped by talking to the API directly. */
 
 import { supabase } from './supabase'
-import { loadPriceBook } from './moneyRepo'
+import { loadPriceBook, loadCopyBook, describeIn } from './moneyRepo'
 import {
   needFor, policyNoteFor, validateDecision, validateRequisition, requisitionTotal, money,
 } from './enterprise'
@@ -343,10 +343,11 @@ export interface EnterpriseListing {
 }
 
 export async function loadEnterpriseCatalogue(currency: string): Promise<EnterpriseListing[]> {
-  const [p, book] = await Promise.all([
+  const [p, book, copy] = await Promise.all([
     supabase.from('products').select('*')
       .contains('audiences', ['enterprise']).eq('status', 'live').order('sort_order'),
     loadPriceBook(currency),
+    loadCopyBook(),
   ])
   type Row = {
     id: string; name: string; category_id: string; sub_category: string | null
@@ -366,7 +367,10 @@ export async function loadEnterpriseCatalogue(currency: string): Promise<Enterpr
       currency: priced ? currency : 'USD',
       model: r.model, unit: r.unit,
       rating: Number(r.rating ?? 0), reviews: Number(r.reviews ?? 0),
-      stock: r.stock, description: r.description ?? '',
+      stock: r.stock,
+      /* The copy for this account's currency, falling back to the base row —
+         a pooled-data overage rate is a price and is set per market. */
+      description: describeIn({ id: r.id, description: r.description ?? '' }, copy, currency),
     }
   })
 }

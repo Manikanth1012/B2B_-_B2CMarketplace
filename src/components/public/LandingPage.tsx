@@ -5,7 +5,7 @@ import { PromoStrip } from './PromoStrip'
 import { HERO, CAROUSEL, BANNERS } from '../../lib/assets'
 import { withCaptions } from '../../lib/carousel'
 import { loadPromoBanners, loadCategories, loadCatalogue, countByCategory } from '../../lib/storefrontRepo'
-import { loadPriceBook, repriceAll } from '../../lib/moneyRepo'
+import { loadPriceBook, loadCopyBook, repriceAll } from '../../lib/moneyRepo'
 import { useMarket } from '../../lib/MarketContext'
 import {
   promoStrip, retailCategories, enterpriseCategories,
@@ -34,8 +34,8 @@ export function LandingPage({ onNavigate }: { onNavigate: (p: PublicPage) => voi
     loadCategories().then(setCategories)
     /* Priced for the market too. A shopper who sees $18.00 before signing in
        and ₹1,599.00 after has been shown two different shops. */
-    Promise.all([loadCatalogue(), loadPriceBook(currencyCode)])
-      .then(([rows, book]) => setCatalogue(repriceAll(rows, book, currencyCode)))
+    Promise.all([loadCatalogue(), loadPriceBook(currencyCode), loadCopyBook()])
+      .then(([rows, book, copy]) => setCatalogue(repriceAll(rows, book, currencyCode, copy)))
     /* The currency is a dependency: without it this closes over the first one
        it saw and the page keeps showing that market's prices forever. */
   }, [currencyCode])
