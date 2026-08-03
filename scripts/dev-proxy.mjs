@@ -75,9 +75,22 @@ http.createServer(async (req, res) => {
 
   /* Single-page app: anything that is not a real file is the app's own route. */
   let file = path.join(DIST, decodeURIComponent(req.url.split('?')[0]))
-  if (!file.startsWith(DIST) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+  const missing = !file.startsWith(DIST) || !fs.existsSync(file) || fs.statSync(file).isDirectory()
+
+  if (missing) {
+    /* ...unless it is asking for a file. A request with an extension we know
+       wants that thing, not the app, and answering it with index.html at 200
+       is how a missing `/favicon.ico` came back as HTML the browser could not
+       decode — a generic globe where the icon should be, and no error anywhere
+       to say why. A 404 is the honest answer and the visible one. */
+    if (TYPES[path.extname(file)]) {
+      res.writeHead(404, { 'content-type': 'text/plain' })
+      res.end(`Not found: ${req.url}\n`)
+      return
+    }
     file = path.join(DIST, 'index.html')
   }
+
   res.writeHead(200, { 'content-type': TYPES[path.extname(file)] ?? 'application/octet-stream' })
   fs.createReadStream(file).pipe(res)
 }).listen(PORT, '127.0.0.1', () => {
