@@ -48,7 +48,7 @@ const STEPS = [...CON_STEPS, ...PTR_STEPS]
 
 const dcase = (over: Partial<Case> & { id: string }): Case => ({
   account_name: 'Priya Raman', account_type: 'consumer', tier: 'gold',
-  amount: 42, age_days: 18, step: 6, step_name: 'Suspend', ladder_id: 'DL-CON',
+  amount: 4499, currency: 'INR', age_days: 18, step: 6, step_name: 'Suspend', ladder_id: 'DL-CON',
   attempts: 4, reason: 'Card expired', collector: null, promise_to_pay: null,
   status: 'active', sort_order: 1, ...over,
 })

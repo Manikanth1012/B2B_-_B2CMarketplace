@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Trash2, Pencil, ArrowLeft, ArrowUp, ArrowDown, Lock } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import {
-  SectionCard, Table, Td, StatusPill, EmptyState, fmtMoney, fmtDate, Btn, Modal,
+  SectionCard, Table, Td, StatusPill, EmptyState, fmtDate, Btn, Modal,
   FormField, TextInput, TextArea, Select, toast, ConfirmDialog, StatCard,
 } from './shared'
 import { Callout } from '../OnboardingJourney'
@@ -16,6 +16,8 @@ import {
   currentStep, caseState, suspendsOn, tierLabel, TIERS, CHANNELS, ACTIONS, AUDIENCE_LABEL,
 } from '../../lib/dunning'
 import type { Ladder, Step, Case, Audience } from '../../lib/dunning'
+import { useMarket } from '../../lib/MarketContext'
+import { byCurrency, formatGroups, money } from '../../lib/money'
 
 /* Collections showed which ladder a case was running on and gave nobody a way
    to see what that ladder was. The steps were an array inside a click handler
@@ -39,6 +41,7 @@ const ACTOR = 'Marketplace operations'
 const AUDIENCES: Audience[] = ['consumer', 'enterprise', 'partner']
 
 export function OperatorDunning() {
+  const { fmtIn } = useMarket()
   const [book, setBook] = useState<DunningBook | null>(null)
   const [tab, setTab] = useState<'cases' | 'ladders'>('cases')
   const [editing, setEditing] = useState<Ladder | 'new' | null>(null)
@@ -61,7 +64,10 @@ export function OperatorDunning() {
   }
 
   const active = book.cases.filter(c => c.status === 'active')
-  const outstanding = book.cases.reduce((s, c) => s + Number(c.amount), 0)
+  /* Grouped, not added. The four cases are in rupees and dollars — a consumer
+     is chased in the money their bills are in, a seller against a settlement —
+     and one figure over the two is a quantity of nothing. */
+  const outstanding = byCurrency(book.cases.map(c => money(Number(c.amount), c.currency)))
   const soonest = active
     .map(c => suspendsOn(c, book.ladders.find(l => l.id === c.ladder_id) ?? null))
     .filter((d): d is number => d !== null)
@@ -73,7 +79,7 @@ export function OperatorDunning() {
         <div>
           <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Collections</h1>
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            {active.length} active {active.length === 1 ? 'case' : 'cases'} · ${fmtMoney(outstanding)} outstanding
+            {active.length} active {active.length === 1 ? 'case' : 'cases'} · {formatGroups(outstanding, fmtIn, 'nothing')} outstanding
             {soonest !== undefined && (soonest >= 0
               ? ` · soonest interruption in ${soonest} ${soonest === 1 ? 'day' : 'days'}`
               : ` · one account is ${Math.abs(soonest)} days past its interruption date`)}
@@ -102,10 +108,22 @@ export function OperatorDunning() {
 /* ---------------------------------------------------------------- cases --- */
 
 function Cases({ book, onChanged }: { book: DunningBook; onChanged: () => Promise<void> }) {
+  const { book: moneyBook, fmtIn } = useMarket()
+  /* What a new case defaults to. A seller is chased against a settlement, which
+     is in the reporting currency; a customer in the money of the market they
+     buy in. The collector can change it — a business invoiced in shillings is
+     chased in shillings — but the default should be right more often than not. */
+  const reporting = moneyBook.currencies.find(c => c.is_reporting)?.code ?? 'USD'
+  const homeMarket = moneyBook.markets.find(m => m.is_default)?.currency ?? reporting
   const page = usePaging(book.cases)
   const [addModal, setAddModal] = useState(false)
   const [promising, setPromising] = useState<Case | null>(null)
-  const [newCase, setNewCase] = useState({ account_name: '', account_type: 'consumer' as Audience, tier: '', amount: 0, reason: '' })
+  const [newCase, setNewCase] = useState({
+    account_name: '', account_type: 'consumer' as Audience, tier: '',
+    amount: 0, currency: '', reason: '',
+  })
+  const draftCurrency = newCase.currency
+    || (newCase.account_type === 'partner' ? reporting : homeMarket)
 
   const ladderOf = (c: Case) => book.ladders.find(l => l.id === c.ladder_id) ?? null
 
@@ -162,7 +180,7 @@ function Cases({ book, onChanged }: { book: DunningBook; onChanged: () => Promis
     const { error } = await supabase.from('operator_dunning_cases').insert({
       id: `dc-${Date.now()}`,
       account_name: newCase.account_name, account_type: newCase.account_type, tier,
-      amount: newCase.amount, age_days: 0,
+      amount: newCase.amount, currency: draftCurrency, age_days: 0,
       step: first?.step_no ?? 1, step_name: first?.name ?? 'Opened',
       ladder: newCase.account_type, ladder_id: l.id,
       attempts: 0, reason: newCase.reason || 'New case',
@@ -171,7 +189,7 @@ function Cases({ book, onChanged }: { book: DunningBook; onChanged: () => Promis
     })
     if (error) { toast(error.message, 'error'); return }
     toast(`Case opened on ${l.name}.`)
-    setNewCase({ account_name: '', account_type: 'consumer', tier: '', amount: 0, reason: '' })
+    setNewCase({ account_name: '', account_type: 'consumer', tier: '', amount: 0, currency: '', reason: '' })
     setAddModal(false)
     await onChanged()
   }
@@ -183,7 +201,7 @@ function Cases({ book, onChanged }: { book: DunningBook; onChanged: () => Promis
           const mine = book.cases.filter(c => c.account_type === a && c.status === 'active')
           return (
             <StatCard key={a} label={AUDIENCE_LABEL[a]}
-              value={`$${fmtMoney(mine.reduce((s, c) => s + Number(c.amount), 0))}`}
+              value={formatGroups(byCurrency(mine.map(c => money(Number(c.amount), c.currency))), fmtIn, '—')}
               sublabel={(() => {
                 const n = new Set(mine.map(c => c.ladder_id)).size
                 return `${mine.length} active · ${n} ${n === 1 ? 'ladder' : 'ladders'} in use`
@@ -215,7 +233,7 @@ function Cases({ book, onChanged }: { book: DunningBook; onChanged: () => Promis
                       {tierLabel(c.account_type as Audience, c.tier)}
                     </div>
                   </Td>
-                  <Td right style={{ fontWeight: 700, color: 'var(--danger)' }}>${fmtMoney(Number(c.amount))}</Td>
+                  <Td right style={{ fontWeight: 700, color: 'var(--danger)' }}>{fmtIn(Number(c.amount), c.currency)}</Td>
                   <Td right style={{ color: c.age_days > 30 ? 'var(--danger)' : c.age_days > 14 ? 'var(--warning)' : 'var(--text)' }}>
                     {c.age_days}d
                   </Td>
@@ -276,6 +294,15 @@ function Cases({ book, onChanged }: { book: DunningBook; onChanged: () => Promis
             </FormField>
           </div>
           <div style={{ flex: 1 }}>
+            <FormField label="Owed in"
+                       hint="A debtor is quoted their own figure, so this is their billing currency and not the marketplace's.">
+              <Select value={draftCurrency}
+                      onChange={e => setNewCase({ ...newCase, currency: e.target.value })}>
+                {moneyBook.currencies.map(c => (
+                  <option key={c.code} value={c.code}>{c.code} — {c.name}</option>
+                ))}
+              </Select>
+            </FormField>
             <FormField label="Amount" required>
               <TextInput type="number" step="0.01" value={newCase.amount}
                 onChange={e => setNewCase({ ...newCase, amount: parseFloat(e.target.value) || 0 })} />

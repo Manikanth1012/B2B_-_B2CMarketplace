@@ -3,6 +3,10 @@
 import type { Category } from '../types'
 
 export interface MonthRow {
+  /* The reporting currency the aggregate is expressed in. Optional on the type
+     because the pure module does the arithmetic and never the formatting — the
+     screen that prints these reads it and says which currency it is in. */
+  currency?: string
   id: string
   month: string
   month_start: string
@@ -17,6 +21,8 @@ export interface MonthRow {
 }
 
 export interface VerticalRow {
+  /* As `MonthRow`: a reporting figure, in the currency the table names. */
+  currency?: string
   category_id: string
   orders: number
   gross: number

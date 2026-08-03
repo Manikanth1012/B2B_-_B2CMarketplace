@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { OperatorPromotion } from '../../types'
-import { SectionCard, Table, Td, StatusPill, EmptyState, fmtMoney, fmtDate, Btn, Modal, FormField, TextInput, Select, TextArea, toast, ConfirmDialog } from './shared'
+import { SectionCard, Table, Td, StatusPill, EmptyState, fmtDate, Btn, Modal, FormField, TextInput, Select, TextArea, toast, ConfirmDialog } from './shared'
+import { useMarket } from '../../lib/MarketContext'
+import { byCurrency, formatGroups, money } from '../../lib/money'
 
 export function OperatorPromotions() {
+  const { fmtIn } = useMarket()
   const [promos, setPromos] = useState<OperatorPromotion[]>([])
   const [loading, setLoading] = useState(true)
   const [editModal, setEditModal] = useState<OperatorPromotion | null>(null)
@@ -20,8 +23,12 @@ export function OperatorPromotions() {
 
   const activeCount = promos.filter(p => p.status === 'active').length
   const pausedCount = promos.filter(p => p.status === 'paused').length
-  const totalBudget = promos.reduce((sum, p) => sum + p.budget, 0)
-  const totalSpent = promos.reduce((sum, p) => sum + p.spent, 0)
+  /* A promotion is an offer to a customer, so it is denominated where the
+     customer is. Grouped rather than added, for the same reason as everywhere
+     else: the day a second market runs its own campaign, one total over the two
+     is a number in no currency. */
+  const budgetBy = byCurrency(promos.map(p => money(Number(p.budget), p.currency)))
+  const spentBy = byCurrency(promos.map(p => money(Number(p.spent), p.currency)))
 
   const refresh = async () => {
     const { data } = await supabase.from('operator_promotions').select('*').order('sort_order')
@@ -61,7 +68,9 @@ export function OperatorPromotions() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
           <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Promotions</h1>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>{activeCount} active · {pausedCount} paused · ${fmtMoney(totalSpent)} of ${fmtMoney(totalBudget)} budget used</p>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+            {activeCount} active · {pausedCount} paused · {formatGroups(spentBy, fmtIn, 'nothing')} of {formatGroups(budgetBy, fmtIn, 'nothing')} budget used
+          </p>
         </div>
         <Btn onClick={() => setAddModal(true)}>New promotion</Btn>
       </div>
@@ -76,11 +85,11 @@ export function OperatorPromotions() {
                   <Td>{p.name}</Td>
                   <Td>{p.description}</Td>
                   <Td right>{p.effect_type}</Td>
-                  <Td right>{p.effect_type === 'percentage' ? `${p.effect_value}%` : p.effect_type === 'fixed' ? `$${fmtMoney(p.effect_value)}` : `${p.effect_value} mo`}</Td>
+                  <Td right>{p.effect_type === 'percentage' ? `${p.effect_value}%` : p.effect_type === 'fixed' ? fmtIn(Number(p.effect_value), p.currency) : `${p.effect_value} mo`}</Td>
                   <Td right>{p.stacking ? 'Yes' : 'No'}</Td>
                   <Td right>{p.priority}</Td>
-                  <Td right>${fmtMoney(p.budget)}</Td>
-                  <Td right style={{ color: Number(pct) > 80 ? 'var(--danger)' : Number(pct) > 50 ? 'var(--warning)' : 'var(--success)' }}>${fmtMoney(p.spent)} ({pct}%)</Td>
+                  <Td right>{fmtIn(Number(p.budget), p.currency)}</Td>
+                  <Td right style={{ color: Number(pct) > 80 ? 'var(--danger)' : Number(pct) > 50 ? 'var(--warning)' : 'var(--success)' }}>{fmtIn(Number(p.spent), p.currency)} ({pct}%)</Td>
                   <Td right><StatusPill status={p.status} /></Td>
                   <Td right>
                     <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
@@ -102,8 +111,15 @@ export function OperatorPromotions() {
 }
 
 function PromoModal({ promo, onClose, onSave }: { promo: OperatorPromotion | null; onClose: () => void; onSave: (p: OperatorPromotion) => void }) {
+  const { book: moneyBook } = useMarket()
+  /* A new promotion is offered where the customers are, so it defaults to the
+     default market's currency rather than to the marketplace's reporting one.
+     A budget of 1000 was a dollar figure; the equivalent in rupees is not 1000,
+     and neither is it 87,420 — it is a round number somebody would sign off. */
+  const homeCurrency = moneyBook.markets.find(m => m.is_default)?.currency
+    ?? moneyBook.currencies.find(c => c.is_reporting)?.code ?? 'USD'
   const [form, setForm] = useState<OperatorPromotion>(promo || {
-    id: '', name: '', description: '', effect_type: 'percentage', effect_value: 10, conditions: {}, stacking: false, priority: 50, budget: 1000, spent: 0, status: 'active', starts_at: null, ends_at: null, sort_order: 0,
+    id: '', name: '', description: '', effect_type: 'percentage', effect_value: 10, conditions: {}, stacking: false, priority: 50, budget: 100000, spent: 0, currency: homeCurrency, status: 'active', starts_at: null, ends_at: null, sort_order: 0,
   })
   useEffect(() => { if (promo) setForm(promo) }, [promo])
 
@@ -124,6 +140,13 @@ function PromoModal({ promo, onClose, onSave }: { promo: OperatorPromotion | nul
       </div>
       <div style={{ display: 'flex', gap: '12px' }}>
         <div style={{ flex: 1 }}><FormField label="Priority (lower runs first)"><TextInput type="number" value={form.priority} onChange={(e) => setForm({ ...form, priority: parseInt(e.target.value) || 50 })} /></FormField></div>
+        <div style={{ flex: 1 }}>
+          <FormField label="Currency" hint="What the discount, the minimum basket and the budget are all in.">
+            <Select value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })}>
+              {moneyBook.currencies.map(c => <option key={c.code} value={c.code}>{c.code} — {c.name}</option>)}
+            </Select>
+          </FormField>
+        </div>
         <div style={{ flex: 1 }}><FormField label="Budget"><TextInput type="number" step="0.01" value={form.budget} onChange={(e) => setForm({ ...form, budget: parseFloat(e.target.value) || 0 })} /></FormField></div>
       </div>
       <div style={{ display: 'flex', gap: '12px' }}>

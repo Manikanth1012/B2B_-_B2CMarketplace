@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Plus, Pause, Play, Trash2, Pencil, TriangleAlert, Image as ImageIcon, ExternalLink } from 'lucide-react'
 import {
   SectionCard, EmptyState, Btn, Modal, FormField, TextInput, Select,
-  Table, Td, toast, fmtInt, fmtMoney, StatCard,
+  Table, Td, toast, fmtInt, StatCard,
 } from './shared'
 import { Callout } from '../OnboardingJourney'
 import { loadBanners, saveBanner, setBannerStatus, deleteBanner } from '../../lib/bannerRepo'
@@ -12,6 +12,7 @@ import {
   metrics, destinationLabel, AUDIENCES, DESTINATIONS,
 } from '../../lib/banners'
 import type { BannerRow, BannerSlot, BannerDraft, Dimensions, ArtworkVerdict } from '../../lib/banners'
+import { useMarket } from '../../lib/MarketContext'
 import { BANNERS as LIBRARY } from '../../lib/assets'
 
 /* Merchandising. A banner occupies a slot with a size and a capacity, competes
@@ -28,6 +29,7 @@ const STATUS_INK: Record<string, string> = {
 }
 
 export function OperatorBanners() {
+  const { book: moneyBook, fmtIn } = useMarket()
   const [snap, setSnap] = useState<BannerSnapshot | null>(null)
   const [tab, setTab] = useState<'banners' | 'slots'>('banners')
   const [editing, setEditing] = useState<BannerRow | 'new' | null>(null)
@@ -53,6 +55,13 @@ export function OperatorBanners() {
 
   const totalImpressions = snap.banners.reduce((n, b) => n + b.impressions, 0)
   const totalClicks = snap.banners.reduce((n, b) => n + b.clicks, 0)
+  /* Revenue attributed to a banner is a rollup across every market it ran in,
+     already converted into the reporting currency — so this one is added and
+     labelled rather than grouped. The opposite of the wallets screen, and the
+     distinction is worth keeping straight: a rollup says what it converted
+     into, cash says what it is. */
+  const reportingCurrency = moneyBook.currencies.find(c => c.is_reporting)?.code ?? 'USD'
+  const report = (n: number) => fmtIn(Number(n), reportingCurrency)
   const totalRevenue = snap.banners.reduce((n, b) => n + Number(b.revenue), 0)
 
   return (
@@ -92,7 +101,7 @@ export function OperatorBanners() {
         <StatCard label="Impressions" value={fmtInt(totalImpressions)} sublabel="Across every banner ever run" />
         <StatCard label="Click-through" value={totalImpressions === 0 ? '—' : `${Math.round((totalClicks / totalImpressions) * 1000) / 10}%`}
                   sublabel={`${fmtInt(totalClicks)} clicks`} />
-        <StatCard label="Attributed revenue" value={`$${fmtMoney(totalRevenue)}`}
+        <StatCard label={`Attributed revenue, in ${reportingCurrency}`} value={report(totalRevenue)}
                   sublabel="Orders that began with a banner" color="var(--success)" />
       </div>
 
@@ -191,7 +200,7 @@ export function OperatorBanners() {
                     <Td right>{b.weight}</Td>
                     <Td right>{b.impressions === 0 ? '—' : fmtInt(b.impressions)}</Td>
                     <Td right>{m.ctr === null ? '—' : `${m.ctr}%`}</Td>
-                    <Td right>{Number(b.revenue) === 0 ? '—' : `$${fmtMoney(Number(b.revenue))}`}</Td>
+                    <Td right>{Number(b.revenue) === 0 ? '—' : fmtIn(Number(b.revenue), b.currency ?? reportingCurrency)}</Td>
                     <Td>
                       <span style={{ fontSize: '10px', fontWeight: 800, color: STATUS_INK[b.status] }}>{b.status}</span>
                     </Td>

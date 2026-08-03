@@ -1,13 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Wallet as WalletIcon, Lock, Zap, Clock, TriangleAlert } from 'lucide-react'
 import {
-  SectionCard, EmptyState, Btn, Table, Td, toast, fmtMoney, fmtInt, fmtDate, StatCard,
+  SectionCard, EmptyState, Btn, Table, Td, toast, fmtInt, fmtDate, StatCard,
 } from './shared'
 import { Callout } from '../OnboardingJourney'
 import { loadWalletBook, markReturnPaid } from '../../lib/walletRepo'
 import type { WalletBookSnapshot } from '../../lib/walletRepo'
 import { summariseBook, runningBalance, isDormant } from '../../lib/wallet'
 import type { Wallet } from '../../lib/wallet'
+import { useMarket } from '../../lib/MarketContext'
+import { byCurrency, formatGroups, money, totalIn } from '../../lib/money'
 
 /* The marketplace's own liability. A wallet balance is money held on behalf of
    somebody else — never income, however long it sits there — and how much of it
@@ -15,6 +17,11 @@ import type { Wallet } from '../../lib/wallet'
    is the reason this screen leads with two numbers rather than one. */
 
 const ACTOR = 'Marketplace operations'
+
+/* The date the reporting figures are converted at. Named rather than "today",
+   so two people reading this screen a week apart see the same total and can say
+   which rates produced it. Same constant, same reason, as the rewards screen. */
+const AS_OF = '2026-08-01'
 
 const STATE_INK: Record<string, string> = {
   active: 'var(--success)', dormant: 'var(--warning)',
@@ -24,6 +31,7 @@ const STATE_INK: Record<string, string> = {
 export function OperatorWallets() {
   const [snap, setSnap] = useState<WalletBookSnapshot | null>(null)
   const [open, setOpen] = useState<string | null>(null)
+  const { book: moneyBook, fmtIn } = useMarket()
 
   const reload = useCallback(async () => setSnap(await loadWalletBook()), [])
   useEffect(() => { void reload() }, [reload])
@@ -33,6 +41,29 @@ export function OperatorWallets() {
   const book = summariseBook(snap.wallets)
   const owing = snap.closures.filter(c => c.state === 'requested')
   const selected = snap.wallets.find(w => w.id === open) ?? null
+
+  /* Ten wallets in three currencies. `summariseBook`'s scalars add them
+     together, which is a quantity of nothing — ₹36,015 plus KSh 24,508 is not
+     a number anybody can act on, and it looked entirely reasonable with a
+     dollar sign in front of it.
+
+     The headline is converted at a named date and says so; the spread underneath
+     is what the marketplace actually holds. Both, because a treasurer needs the
+     one figure and an operator needs to know it is three. */
+  const home = moneyBook.currencies.find(c => c.is_reporting)?.code ?? 'USD'
+  const reported = (list: Parameters<typeof totalIn>[0]) =>
+    totalIn(list, home, moneyBook.rates, AS_OF, moneyBook.currencies)
+  const spread = (groups: Parameters<typeof formatGroups>[0]) =>
+    formatGroups(groups, fmtIn, 'Nothing held')
+  const held = reported(book.totalBy.map(g => g.total))
+  const heldCash = reported(book.cashBy.map(g => g.total))
+  const heldPromo = reported(book.promoBy.map(g => g.total))
+  const heldDormant = reported(book.dormantBy.map(g => g.total))
+  /* Which wallet a ledger row or a closure belongs to, and therefore what it is
+     in. Neither table carries a currency of its own — they cannot: a movement
+     is in the money of the wallet it moved. */
+  const curOf = (walletId: string) =>
+    snap.wallets.find(w => w.id === walletId)?.currency ?? home
 
   const act = async (fn: () => Promise<{ ok: boolean; reason?: string; note?: string }>, ok: string) => {
     const res = await fn()
@@ -65,7 +96,7 @@ export function OperatorWallets() {
             const w = snap.wallets.find(x => x.id === c.wallet_id)
             return (
               <div key={c.id} style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '5px', flexWrap: 'wrap' }}>
-                <strong>${fmtMoney(Number(c.cash_returned))}</strong>
+                <strong>{fmtIn(Number(c.cash_returned), curOf(c.wallet_id))}</strong>
                 <span>to {w?.name ?? c.wallet_id} — {c.instrument}</span>
                 <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
                   requested {fmtDate(c.requested_at)}
@@ -80,18 +111,44 @@ export function OperatorWallets() {
       )}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
-        <StatCard label="Held in wallets" value={`$${fmtMoney(book.total)}`}
-                  sublabel={`Across ${book.accounts} accounts`} />
-        <StatCard label="The customer's own money" value={`$${fmtMoney(book.cash)}`}
+        <StatCard label={`Held in wallets, in ${home}`}
+                  value={fmtIn(held.total.amount, held.total.currency)}
+                  sublabel={`Across ${book.accounts} accounts in ${book.currencies.length} ${book.currencies.length === 1 ? 'currency' : 'currencies'} · at ${AS_OF} rates`} />
+        <StatCard label="The customer's own money"
+                  value={fmtIn(heldCash.total.amount, heldCash.total.currency)}
                   sublabel="Top-ups and refunds — refundable on request" color="var(--danger)" />
-        <StatCard label="Credit we issued" value={`$${fmtMoney(book.promo)}`}
+        <StatCard label="Credit we issued"
+                  value={fmtIn(heldPromo.total.amount, heldPromo.total.currency)}
                   sublabel="Rewards and goodwill — spendable, not refundable" color="var(--success)" />
-        <StatCard label="Dormant" value={book.dormant === 0 ? 'None' : `$${fmtMoney(book.dormantValue)}`}
+        <StatCard label="Dormant"
+                  value={book.dormant === 0 ? 'None' : fmtIn(heldDormant.total.amount, heldDormant.total.currency)}
                   sublabel={book.dormant === 0
                     ? 'Every account has moved recently'
                     : `${book.dormant} account${book.dormant === 1 ? '' : 's'} untouched for ${snap.policy.dormancy_months} months`}
                   color={book.dormant > 0 ? 'var(--warning)' : undefined} />
       </div>
+
+      {/* What is actually held, before anything was converted. A reporting total
+          is a view of the balance sheet; this is the balance sheet. */}
+      {book.currencies.length > 1 && (
+        <Callout tone="info" title={`Held in ${book.currencies.join(', ')}`}>
+          <div><strong>Total held:</strong> {spread(book.totalBy)}</div>
+          <div><strong>Of which the customers' own:</strong> {spread(book.cashBy)}</div>
+          <div style={{ marginTop: '6px' }}>
+            The tiles above convert these at {AS_OF} rates so there is one number to report.
+            The money itself is in {book.currencies.length} currencies and has to be held in each —
+            a reporting total is a view of the balance sheet, not the balance sheet.
+          </div>
+        </Callout>
+      )}
+
+      {held.missing.length > 0 && (
+        <Callout tone="danger" title={`${held.missing.join(', ')} could not be converted`}>
+          There is no rate on file for {held.missing.join(' or ')} at {AS_OF}, so the reported totals
+          leave those wallets out. A liability computed over some of the currencies is worse than no
+          total, which is why it says so here rather than quietly rounding down.
+        </Callout>
+      )}
 
       <SectionCard title="Whose money it is"
                    subtitle="Two pots, because they are legally different and mixing them is how a platform refunds its own promotional credit as cash">
@@ -99,14 +156,14 @@ export function OperatorWallets() {
           <div style={{ border: '1px solid var(--danger)', borderRadius: 'var(--radius-md)', padding: '12px 14px', background: 'var(--danger-bg)' }}>
             <div style={{ display: 'flex', gap: '7px', alignItems: 'center', marginBottom: '5px' }}>
               <Lock size={14} style={{ color: 'var(--danger)' }} />
-              <strong style={{ fontSize: 'var(--text-sm)' }}>Refundable — ${fmtMoney(book.cash)}</strong>
+              <strong style={{ fontSize: 'var(--text-sm)' }}>Refundable — {spread(book.cashBy)}</strong>
             </div>
             <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: 0 }}>{snap.policy.cash_refundable}</p>
           </div>
           <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '12px 14px', background: 'var(--bg-alt)' }}>
             <div style={{ display: 'flex', gap: '7px', alignItems: 'center', marginBottom: '5px' }}>
               <Zap size={14} style={{ color: 'var(--success)' }} />
-              <strong style={{ fontSize: 'var(--text-sm)' }}>Not refundable — ${fmtMoney(book.promo)}</strong>
+              <strong style={{ fontSize: 'var(--text-sm)' }}>Not refundable — {spread(book.promoBy)}</strong>
             </div>
             <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: 0 }}>{snap.policy.non_refundable}</p>
           </div>
@@ -125,12 +182,14 @@ export function OperatorWallets() {
         <Table headers={['Source', 'Movements', 'Value', 'Pot', 'What it means']}>
           {snap.sources.map(s => {
             const rows = snap.ledger.filter(l => l.source === s.id)
-            const value = rows.reduce((n, l) => n + Number(l.amount), 0)
+            /* Grouped rather than added: one source draws from wallets in three
+               currencies, and the sum of those is not a figure. */
+            const value = byCurrency(rows.map(l => money(Math.abs(Number(l.amount)), curOf(l.wallet_id))))
             return (
               <tr key={s.id}>
                 <Td><strong style={{ fontSize: 'var(--text-xs)' }}>{s.label}</strong></Td>
                 <Td right>{fmtInt(rows.length)}</Td>
-                <Td right>${fmtMoney(Math.abs(value))}</Td>
+                <Td right>{spread(value)}</Td>
                 <Td>
                   <span style={{ fontSize: '10px', fontWeight: 700, color: s.pot === 'cash' ? 'var(--danger)' : 'var(--success)' }}>
                     {s.pot === 'cash' ? "The customer's" : 'Not refundable'}
@@ -154,9 +213,9 @@ export function OperatorWallets() {
                   <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{w.party} · {w.id}</div>
                 </Td>
                 <Td><span style={{ fontSize: '11px' }}>{w.kind}</span></Td>
-                <Td right>${fmtMoney(Number(w.cash))}</Td>
-                <Td right>{Number(w.promo) === 0 ? '—' : `$${fmtMoney(Number(w.promo))}`}</Td>
-                <Td right><strong>${fmtMoney(Number(w.balance))}</strong></Td>
+                <Td right>{fmtIn(Number(w.cash), w.currency)}</Td>
+                <Td right>{Number(w.promo) === 0 ? '—' : fmtIn(Number(w.promo), w.currency)}</Td>
+                <Td right><strong>{fmtIn(Number(w.balance), w.currency)}</strong></Td>
                 <Td><span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{fmtDate(w.opened)}</span></Td>
                 <Td><span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{fmtDate(w.last_move)}</span></Td>
                 <Td>
@@ -178,6 +237,10 @@ export function OperatorWallets() {
 function WalletDrawer({ wallet, snap, onClose }: {
   wallet: Wallet; snap: WalletBookSnapshot; onClose: () => void
 }) {
+  /* Everything in this drawer is one wallet's, so it is all in one currency —
+     the wallet's. Nothing here is converted and nothing needs grouping. */
+  const { fmtIn } = useMarket()
+  const mny = (n: number) => fmtIn(Number(n), wallet.currency)
   const mine = snap.ledger.filter(l => l.wallet_id === wallet.id)
   const statement = runningBalance(mine).reverse()
   const dormant = isDormant(wallet, snap.policy, new Date())
@@ -208,9 +271,9 @@ function WalletDrawer({ wallet, snap, onClose }: {
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
             {([
-              ['Their money', `$${fmtMoney(Number(wallet.cash))}`, 'var(--danger)'],
-              ['Our credit', `$${fmtMoney(Number(wallet.promo))}`, 'var(--success)'],
-              ['Balance', `$${fmtMoney(Number(wallet.balance))}`, 'var(--text)'],
+              ['Their money', mny(wallet.cash), 'var(--danger)'],
+              ['Our credit', mny(wallet.promo), 'var(--success)'],
+              ['Balance', mny(wallet.balance), 'var(--text)'],
             ] as [string, string, string][]).map(([k, v, ink]) => (
               <div key={k} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '10px 12px' }}>
                 <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--text-tertiary)', fontWeight: 700 }}>{k}</div>
@@ -222,8 +285,8 @@ function WalletDrawer({ wallet, snap, onClose }: {
           {closure && (
             <Callout tone={closure.state === 'returned' ? 'success' : 'warning'}
                      title={closure.state === 'returned' ? 'Closed and settled' : 'Closing — money still owed'}>
-              ${fmtMoney(Number(closure.cash_returned))} returned to {closure.instrument};
-              {' '}${fmtMoney(Number(closure.promo_written_off))} of promotional credit written off.
+              {mny(closure.cash_returned)} returned to {closure.instrument};
+              {' '}{mny(closure.promo_written_off)} of promotional credit written off.
               {closure.note && ` ${closure.note}`}
             </Callout>
           )}
@@ -252,10 +315,10 @@ function WalletDrawer({ wallet, snap, onClose }: {
                         fontSize: 'var(--text-xs)', fontWeight: 700, minWidth: '72px', textAlign: 'right',
                         color: Number(e.amount) < 0 ? 'var(--text-secondary)' : 'var(--success)',
                       }}>
-                        {Number(e.amount) < 0 ? '−' : '+'}${fmtMoney(Math.abs(Number(e.amount)))}
+                        {Number(e.amount) < 0 ? '−' : '+'}{mny(Math.abs(Number(e.amount)))}
                       </span>
                       <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', minWidth: '62px', textAlign: 'right' }}>
-                        ${fmtMoney(e.balance)}
+                        {mny(e.balance)}
                       </span>
                     </div>
                   )
@@ -267,7 +330,7 @@ function WalletDrawer({ wallet, snap, onClose }: {
           {Number(wallet.cash) > 0 && (
             <Callout tone="info">
               <TriangleAlert size={12} style={{ display: 'inline', verticalAlign: '-2px', marginRight: '4px' }} />
-              ${fmtMoney(Number(wallet.cash))} of this is the holder's own money. If they close the account it
+              {mny(wallet.cash)} of this is the holder's own money. If they close the account it
               goes back to the instrument that funded it, and the marketplace cannot keep it.
             </Callout>
           )}

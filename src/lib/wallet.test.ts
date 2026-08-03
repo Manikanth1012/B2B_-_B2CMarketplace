@@ -283,6 +283,49 @@ describe('summariseBook', () => {
   it('handles an empty book', () => {
     expect(summariseBook([])).toMatchObject({ accounts: 0, total: 0, cash: 0, promo: 0 })
   })
+
+  /* The marketplace holds ten wallets in three currencies. The scalars above
+     add them, which is a quantity of nothing — and it looked entirely
+     reasonable on the operator screen with a dollar sign in front of it. */
+  const mixed = [
+    wallet({ id: 'W1', currency: 'INR', cash: 2241, promo: 1049 }),
+    wallet({ id: 'W2', currency: 'KES', cash: 8322, promo: 0 }),
+    wallet({ id: 'W3', currency: 'INR', cash: 718, promo: 1311 }),
+    wallet({ id: 'W4', currency: 'AED', cash: 267, promo: 0, state: 'dormant' }),
+  ]
+
+  it('keeps the book apart by currency', () => {
+    const s = summariseBook(mixed)
+    expect(s.currencies).toEqual(['AED', 'INR', 'KES'])
+    expect(s.totalBy.find(g => g.currency === 'INR')!.total.amount).toBe(2241 + 1049 + 718 + 1311)
+    expect(s.totalBy.find(g => g.currency === 'KES')!.total.amount).toBe(8322)
+  })
+
+  it('splits cash and credit by currency too, not just in total', () => {
+    const s = summariseBook(mixed)
+    expect(s.cashBy.find(g => g.currency === 'INR')!.total.amount).toBe(2241 + 718)
+    expect(s.promoBy.find(g => g.currency === 'KES')!.total.amount).toBe(0)
+  })
+
+  it('reports dormancy in the dormant wallet\'s own money', () => {
+    const s = summariseBook(mixed)
+    expect(s.dormantBy).toHaveLength(1)
+    expect(s.dormantBy[0]).toMatchObject({ currency: 'AED' })
+    expect(s.dormantBy[0].total.amount).toBe(267)
+  })
+
+  it('says one currency when there is one, so a screen can print the scalar', () => {
+    expect(summariseBook(book).currencies).toEqual(['USD'])
+  })
+
+  it('groups each holder type separately as well', () => {
+    const s = summariseBook([
+      wallet({ id: 'A', kind: 'consumer', currency: 'INR', cash: 100, promo: 0 }),
+      wallet({ id: 'B', kind: 'enterprise', currency: 'KES', cash: 900, promo: 0 }),
+    ])
+    const ent = s.byKind.find(k => k.kind === 'enterprise')!
+    expect(ent.totalBy).toEqual([expect.objectContaining({ currency: 'KES' })])
+  })
 })
 
 describe('isDormant', () => {

@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { TrendingUp, TrendingDown, TriangleAlert } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import type { OperatorProfile, OperatorTicket, SettlementStatement, Category, OperatorListing } from '../../types'
-import { StatCard, SectionCard, Table, Td, StatusPill, PriorityPill, fmtMoney, fmtInt, Btn } from './shared'
+import { StatCard, SectionCard, Table, Td, StatusPill, PriorityPill, fmtInt, Btn } from './shared'
+import { useMarket } from '../../lib/MarketContext'
 import { ColumnChart, DonutChart, SERIES, seriesColour } from './charts'
 import { monthlyStats, verticalSplit, inversionInsight, type MonthRow, type VerticalRow } from '../../lib/operatorStats'
 import type { OperatorView } from '../../types/view'
@@ -25,6 +26,7 @@ export function OperatorDashboard(
   const [queue, setQueue] = useState<OperatorListing[]>([])
   const [applications, setApplications] = useState(0)
   const [loading, setLoading] = useState(true)
+  const { book: moneyBook, fmtIn } = useMarket()
 
   useEffect(() => {
     Promise.all([
@@ -52,6 +54,14 @@ export function OperatorDashboard(
   if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
   if (!profile) return null
 
+  /* Every figure on this screen is a reporting figure: the tables hold one
+     currency (`20260802400000` made them say which) and the aggregate over
+     three markets has already been converted into it. So there is nothing to
+     group here — there is something to label, which is the opposite mistake to
+     the one the wallets screen was making. */
+  const reportingCurrency = profile.currency ?? moneyBook.currencies.find(c => c.is_reporting)?.code ?? 'USD'
+  const report = (n: number, currency?: string) => fmtIn(Number(n), currency ?? reportingCurrency)
+
   const openTickets = tickets.filter(t => t.status === 'open')
   const breachedTickets = tickets.filter(t => t.breached)
   const stats = monthlyStats(months)
@@ -75,8 +85,14 @@ export function OperatorDashboard(
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
-        <StatCard label="Total GMV" value={`$${fmtMoney(profile.gmv)}`} sublabel={`${fmtInt(profile.total_orders)} orders · $${fmtMoney(profile.avg_order_value)} avg`} color="var(--brand-navy)" />
-        <StatCard label="Commission" value={`$${fmtMoney(profile.commission)}`} sublabel={`${profile.commission_rate}% blended take`} color="var(--brand-accent-dark)" />
+        {/* A rollup over orders placed in rupees, shillings and dirhams. It is
+            already converted — that is what a reporting figure is — and now it
+            says so, because "$4.2m GMV" and "$4.2m in the bank" are different
+            claims and the screen was making the second one by accident. */}
+        <StatCard label={`Total GMV, in ${reportingCurrency}`} value={report(profile.gmv)}
+                  sublabel={`${fmtInt(profile.total_orders)} orders · ${report(profile.avg_order_value)} avg`} color="var(--brand-navy)" />
+        <StatCard label={`Commission, in ${reportingCurrency}`} value={report(profile.commission)}
+                  sublabel={`${profile.commission_rate}% blended take`} color="var(--brand-accent-dark)" />
         <Go to="op-partners" go={onNavigate}>
           <StatCard label="Active Partners" value={fmtInt(profile.active_partners)} sublabel={`${profile.pending_applications} pending applications`} />
         </Go>
@@ -137,7 +153,7 @@ export function OperatorDashboard(
                 <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{c.audience}</div>
                 {v && (
                   <div style={{ marginTop: '8px', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
-                    <div style={{ fontWeight: 700, color: 'var(--text)' }}>${fmtMoney(v.gross)}</div>
+                    <div style={{ fontWeight: 700, color: 'var(--text)' }}>{report(v.gross, v.currency)}</div>
                     <div>{fmtInt(v.orders)} orders</div>
                   </div>
                 )}
@@ -157,8 +173,8 @@ export function OperatorDashboard(
             data={months.map(m => ({ label: m.month.split(' ')[0], value: Number(m.gross), muted: m.aggregated, note: `${fmtInt(m.orders)} orders` }))}
           />
           <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border-light)' }}>
-            <Figure label="Average month" value={`$${fmtMoney(stats.average)}`} />
-            <Figure label="Best month" value={`$${fmtMoney(stats.best?.gross ?? 0)}`} sub={stats.best?.month} />
+            <Figure label="Average month" value={report(stats.average)} />
+            <Figure label="Best month" value={report(stats.best?.gross ?? 0)} sub={stats.best?.month} />
             <Figure label="Orders" value={fmtInt(stats.orders)} />
             <div style={{ flex: 1 }} />
             {/* A chart that mixes carried-forward aggregates with line-level months
@@ -191,7 +207,7 @@ export function OperatorDashboard(
             <DonutChart
               label="Commission by marketplace"
               data={split.commission}
-              centre={`$${fmtMoney(profile.commission)}`}
+              centre={report(profile.commission)}
               centreSub="commission"
             />
           </div>
@@ -203,7 +219,7 @@ export function OperatorDashboard(
           <div style={{ display: 'flex', gap: '32px', flexWrap: 'wrap' }}>
             <div>
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase' }}>Projected GMV</div>
-              <div style={{ fontSize: 'var(--text-3xl)', fontWeight: 800, color: 'var(--brand-navy)', marginTop: '4px' }}>${fmtMoney(profile.forecast_gmv)}</div>
+              <div style={{ fontSize: 'var(--text-3xl)', fontWeight: 800, color: 'var(--brand-navy)', marginTop: '4px' }}>{report(profile.forecast_gmv)}</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
                 {gmvTrendNum > 0 ? <TrendingUp size={14} style={{ color: 'var(--success)' }} /> : <TrendingDown size={14} style={{ color: 'var(--danger)' }} />}
                 <span style={{ fontSize: 'var(--text-xs)', color: gmvTrendNum > 0 ? 'var(--success)' : 'var(--danger)', fontWeight: 600 }}>{gmvTrendNum > 0 ? '+' : ''}{gmvTrend}%</span>
@@ -211,7 +227,7 @@ export function OperatorDashboard(
             </div>
             <div>
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', fontWeight: 600, textTransform: 'uppercase' }}>Projected Commission</div>
-              <div style={{ fontSize: 'var(--text-3xl)', fontWeight: 800, color: 'var(--brand-accent-dark)', marginTop: '4px' }}>${fmtMoney(profile.forecast_commission)}</div>
+              <div style={{ fontSize: 'var(--text-3xl)', fontWeight: 800, color: 'var(--brand-accent-dark)', marginTop: '4px' }}>{report(profile.forecast_commission)}</div>
             </div>
           </div>
           <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '12px' }}>
@@ -237,8 +253,8 @@ export function OperatorDashboard(
                   title={onNavigate ? `Open ${s.partner_name} in Settlement Runs` : undefined}>
                 <Td>{s.partner_name}</Td>
                 <Td right>{s.period}</Td>
-                <Td right>${fmtMoney(s.gross)}</Td>
-                <Td right>${fmtMoney(s.net)}</Td>
+                <Td right>{fmtIn(Number(s.gross), s.currency ?? reportingCurrency)}</Td>
+                <Td right>{fmtIn(Number(s.net), s.currency ?? reportingCurrency)}</Td>
                 {/* Stops the row's own click from firing behind it — approving
                     and opening are different intentions. */}
                 <Td right><Btn variant="success" size="sm"

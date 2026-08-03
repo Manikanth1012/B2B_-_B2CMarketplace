@@ -59,6 +59,9 @@ export interface Case {
   account_type: string
   tier: string | null
   amount: number
+  /* What the debt is owed in. A collections desk quotes a debtor their own
+     figure, and the four cases on this marketplace are in two currencies. */
+  currency: string
   age_days: number
   step: number
   step_name: string

@@ -6,8 +6,9 @@ import {
   stockBadge, stockLabel, lineValue, totalValue, attentionOrder, canStock,
 } from '../../lib/inventory'
 import { Callout } from '../OnboardingJourney'
+import { useMarket } from '../../lib/MarketContext'
 import {
-  SectionCard, Table, Td, StatusPill, EmptyState, fmtMoney, fmtInt, fmtDate,
+  SectionCard, Table, Td, StatusPill, EmptyState, fmtInt, fmtDate,
   Btn, Modal, FormField, TextInput, Select, toast,
 } from './shared'
 
@@ -18,6 +19,13 @@ import {
 const SELECT = '*, product:products(id,name,seller,category_id,price), warehouse:operator_warehouses(id,name,type,categories)'
 
 export function OperatorInventory() {
+  /* Stock is bought centrally in the marketplace's reporting currency, and the
+     unit cost is compared against `products.price`, which is in the same one.
+     So this is a single-currency screen — the mark comes from the currency
+     table rather than being typed, and nothing here needs grouping. */
+  const { book: moneyBook, fmtIn } = useMarket()
+  const cost = (n: number) =>
+    fmtIn(Number(n), moneyBook.currencies.find(c => c.is_reporting)?.code ?? 'USD')
   const [inventory, setInventory] = useState<OperatorInventory[]>([])
   const [warehouses, setWarehouses] = useState<OperatorWarehouse[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -89,7 +97,7 @@ export function OperatorInventory() {
           <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Inventory &amp; WMS</h1>
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
             {inventory.length} stock lines across {warehouses.filter(w => w.type !== 'returns').length} fulfilment
-            {' '}locations · ${fmtMoney(value)} at cost
+            {' '}locations · {cost(value)} at cost
           </p>
         </div>
         <Btn onClick={() => tab === 'stock' ? setAddModal(true) : setWhAddModal(true)}>
@@ -215,8 +223,8 @@ export function OperatorInventory() {
                     }}>{fmtInt(i.available)}</Td>
                     <Td right>{fmtInt(i.reorder_point)}</Td>
                     <Td right>{i.inbound > 0 ? `${fmtInt(i.inbound)} (${fmtDate(i.inbound_due)})` : '—'}</Td>
-                    <Td right>${fmtMoney(i.unit_cost)}</Td>
-                    <Td right>${fmtMoney(lineValue(i))}</Td>
+                    <Td right>{cost(i.unit_cost)}</Td>
+                    <Td right>{cost(lineValue(i))}</Td>
                     <Td right>
                       <Btn variant="secondary" size="sm" onClick={() => setEditModal(i)}>Edit</Btn>
                     </Td>
@@ -308,6 +316,11 @@ function InvModal({ item, products, warehouses, taken, onClose, onSaved }: {
   onClose: () => void
   onSaved: (message: string) => void
 }) {
+  /* Same currency as the list behind it — the modal quotes the sale price it is
+     checking the cost against, and the two must be marked the same way. */
+  const { book: moneyBook, fmtIn } = useMarket()
+  const cost = (n: number) =>
+    fmtIn(Number(n), moneyBook.currencies.find(c => c.is_reporting)?.code ?? 'USD')
   const [productId, setProductId] = useState(item?.product_id ?? products[0]?.id ?? '')
   const [warehouseId, setWarehouseId] = useState(item?.warehouse_id ?? '')
   const [onHand, setOnHand] = useState(item?.on_hand ?? 0)
@@ -344,7 +357,7 @@ function InvModal({ item, products, warehouses, taken, onClose, onSaved }: {
     : reserved > onHand ? 'Reserved cannot exceed what is on hand — that would be stock sold twice.'
     : onHand < 0 || reserved < 0 ? 'Quantities cannot be negative.'
     : unitCost <= 0 ? 'A unit cost is required. It is the figure a stock write-down is taken against.'
-    : product && unitCost >= product.price ? `Unit cost is at or above the ${product.name} sale price of $${fmtMoney(product.price)}.`
+    : product && unitCost >= product.price ? `Unit cost is at or above the ${product.name} sale price of ${cost(product.price)}.`
     : inbound > 0 && !inboundDue ? 'An inbound quantity needs a date, or nobody can tell whether it will arrive in time.'
     : duplicate ? 'This product already has a line in that warehouse. Edit that one rather than opening a second count.'
     : null

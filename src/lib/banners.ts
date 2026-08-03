@@ -24,6 +24,9 @@ export interface BannerSlot {
 export type BannerStatus = 'draft' | 'scheduled' | 'live' | 'paused' | 'ended'
 
 export interface BannerRow {
+  /* The reporting currency the attributed revenue is expressed in. Already
+     converted — a banner runs in every market it is shown in. */
+  currency?: string
   id: string
   slot: string
   name: string | null

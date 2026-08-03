@@ -372,6 +372,9 @@ export interface ConsumerTicket {
 // ---------- Operator Console Types ----------
 
 export interface OperatorProfile {
+  /* The reporting currency these aggregates are expressed in. A rollup over
+     orders placed in three currencies, already converted — not cash. */
+  currency: string
   id: string
   operator_name: string
   gmv: number
@@ -595,6 +598,10 @@ export interface OperatorUser {
 }
 
 export interface OperatorPromotion {
+  /* What the discount, the minimum basket and the budget are in. A promotion is
+     an offer to a customer, so it is the market's currency and not the
+     marketplace's reporting one. */
+  currency: string
   id: string
   name: string
   description: string

@@ -1,9 +1,18 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { OperatorChannel } from '../../types'
-import { SectionCard, Table, Td, StatusPill, EmptyState, fmtMoney, Btn, Modal, FormField, TextInput, Select, TextArea, toast, ConfirmDialog } from './shared'
+import { SectionCard, Table, Td, StatusPill, EmptyState, Btn, Modal, FormField, TextInput, Select, TextArea, toast, ConfirmDialog } from './shared'
+import { useMarket } from '../../lib/MarketContext'
 
 export function OperatorChannels() {
+  /* What the marketplace pays a carrier per message. It buys these centrally,
+     in its own reporting currency — so this is not a per-market figure and does
+     not want grouping. It wants the mark to come from the currency table
+     instead of being typed, which is the difference between "this is dollars"
+     and "somebody wrote a dollar sign". */
+  const { book: moneyBook, fmtIn } = useMarket()
+  const cost = (n: number) =>
+    fmtIn(Number(n), moneyBook.currencies.find(c => c.is_reporting)?.code ?? 'USD')
   const [channels, setChannels] = useState<OperatorChannel[]>([])
   const [loading, setLoading] = useState(true)
   const [editModal, setEditModal] = useState<OperatorChannel | null>(null)
@@ -77,7 +86,7 @@ export function OperatorChannels() {
                 </Td>
                 <Td right>{c.sender}</Td>
                 <Td right>{c.throughput}/s</Td>
-                <Td right>${fmtMoney(c.unit_cost)}</Td>
+                <Td right>{cost(c.unit_cost)}</Td>
                 <Td right>{c.success_rate > 0 ? `${c.success_rate}%` : '—'}</Td>
                 <Td right>{c.has_receipt ? 'Yes' : <span style={{ color: 'var(--warning)', fontWeight: 600 }}>No</span>}</Td>
                 <Td right>

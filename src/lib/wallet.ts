@@ -34,6 +34,9 @@ export interface WalletPolicy {
  * a five-rupee floor is not a floor at all. Both are chosen local figures now,
  * in `wallet_limits`, the same shape as `loyalty_point_rates`.
  */
+import { byCurrency, money } from './money'
+import type { Money } from './money'
+
 export interface WalletLimit {
   currency: string
   max_balance: number
@@ -286,6 +289,13 @@ export function canCloseWallet(
 
 export interface WalletBook {
   accounts: number
+  /* The scalars add every wallet together regardless of what it holds, which is
+     a quantity of nothing: ten wallets on this marketplace hold rupees,
+     shillings and dirhams. They are kept because they rank one kind of holder
+     against another and because a caller with a single-currency book still
+     wants a number — but nothing prints them. The screens read the `…By` groups
+     and either list them or convert them at a named date, saying which.
+     `20260802340000` and the operator rewards screen do the same. */
   total: number
   /* Split by whose money it is. The operator's headline number is a liability,
      and how much of it is refundable decides how much has to stay liquid. */
@@ -293,26 +303,44 @@ export interface WalletBook {
   promo: number
   dormant: number
   dormantValue: number
-  byKind: { kind: string; accounts: number; total: number }[]
+  byKind: { kind: string; accounts: number; total: number; totalBy: Group[] }[]
+  totalBy: Group[]
+  cashBy: Group[]
+  promoBy: Group[]
+  dormantBy: Group[]
+  /* How many distinct currencies the book is in. One means the scalars above
+     are safe to print; more means they are not, and a screen can say so. */
+  currencies: string[]
 }
+
+type Group = { currency: string; total: Money; count: number }
 
 export function summariseBook(wallets: readonly Wallet[]): WalletBook {
   const kinds = [...new Set(wallets.map(w => w.kind))]
+  const dormantWallets = wallets.filter(w => w.state === 'dormant')
+  const group = (list: readonly Wallet[], pick: (w: Wallet) => number): Group[] =>
+    byCurrency(list.map(w => money(Number(pick(w)), w.currency)))
+
   return {
     accounts: wallets.length,
     total: round2(wallets.reduce((n, w) => n + Number(w.balance), 0)),
     cash: round2(wallets.reduce((n, w) => n + Number(w.cash), 0)),
     promo: round2(wallets.reduce((n, w) => n + Number(w.promo), 0)),
-    dormant: wallets.filter(w => w.state === 'dormant').length,
-    dormantValue: round2(wallets.filter(w => w.state === 'dormant')
-      .reduce((n, w) => n + Number(w.balance), 0)),
+    dormant: dormantWallets.length,
+    dormantValue: round2(dormantWallets.reduce((n, w) => n + Number(w.balance), 0)),
     byKind: kinds.map(kind => {
       const mine = wallets.filter(w => w.kind === kind)
       return {
         kind, accounts: mine.length,
         total: round2(mine.reduce((n, w) => n + Number(w.balance), 0)),
+        totalBy: group(mine, w => w.balance),
       }
     }).sort((a, b) => b.total - a.total),
+    totalBy: group(wallets, w => w.balance),
+    cashBy: group(wallets, w => w.cash),
+    promoBy: group(wallets, w => w.promo),
+    dormantBy: group(dormantWallets, w => w.balance),
+    currencies: [...new Set(wallets.map(w => w.currency))].sort(),
   }
 }
 
