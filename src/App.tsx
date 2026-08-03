@@ -488,7 +488,7 @@ function AppInner() {
         {!loading && view === 'subscriptions' && <SubscriptionsView />}
         {!loading && view === 'rewards' && <RewardsView />}
         {!loading && view === 'account' && <AccountView initialTab={accountTab} onWatchesChanged={loadWatches} />}
-        {!loading && view === 'kb' && <div className="container" style={{ padding: '32px 24px' }}><KnowledgeBase persona="consumer" title="How things work" feedbackAs={{ actor: 'Priya Raman', org: 'Consumer' }} /></div>}
+        {!loading && view === 'kb' && <div className="container" style={{ paddingTop: '32px', paddingBottom: '32px' }}><KnowledgeBase persona="consumer" title="How things work" feedbackAs={{ actor: 'Priya Raman', org: 'Consumer' }} /></div>}
       </main>
       <Footer onNavigate={navigate} />
 

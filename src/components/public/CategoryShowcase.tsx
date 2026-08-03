@@ -27,7 +27,7 @@ export function CategoryShowcase({ title, subtitle, categories, products, counts
   if (categories.length === 0) return <></>
 
   return (
-    <section className="container" style={{ padding: '40px 24px' }} aria-labelledby={headingId}>
+    <section className="container" style={{ paddingTop: '40px', paddingBottom: '40px' }} aria-labelledby={headingId}>
       <h2 id={headingId} style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>{title}</h2>
       {subtitle && <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginTop: '4px' }}>{subtitle}</p>}
 

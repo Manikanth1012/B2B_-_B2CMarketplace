@@ -192,7 +192,7 @@ export function RewardsView() {
 
   if (loading || !programme || !member) {
     return (
-      <div className="container" style={{ padding: '80px 0', textAlign: 'center' }}>
+      <div className="container" style={{ paddingTop: '80px', paddingBottom: '80px', textAlign: 'center' }}>
         <div style={{ fontSize: 'var(--text-lg)', color: 'var(--text-secondary)' }}>Loading rewards…</div>
       </div>
     )
@@ -208,7 +208,7 @@ export function RewardsView() {
   )
 
   return (
-    <div className="container" style={{ padding: '32px 0' }}>
+    <div className="container" style={{ paddingTop: '32px', paddingBottom: '32px' }}>
       {/* Page header */}
       <div style={{ marginBottom: '32px' }}>
         <h1 style={{ fontSize: 'var(--text-3xl)', fontWeight: 800, marginBottom: '8px' }}>{programme.name}</h1>

@@ -80,7 +80,7 @@ export function AudiencePage({ page, onSignIn, onApply, onAddToBasket }: {
   return (
     <>
       <section style={{ background: 'var(--brand-navy)', color: 'white' }}>
-        <div className="container" style={{ padding: '56px 24px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px', alignItems: 'center' }}>
+        <div className="container" style={{ paddingTop: '56px', paddingBottom: '56px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px', alignItems: 'center' }}>
           <div>
             <h1 style={{ fontSize: 'var(--text-4xl)', fontWeight: 800, lineHeight: 1.15 }}>{c.title}</h1>
             <p style={{ fontSize: 'var(--text-lg)', color: 'rgba(255,255,255,0.75)', marginTop: '16px' }}>{c.blurb}</p>

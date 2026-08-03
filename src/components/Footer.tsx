@@ -23,7 +23,7 @@ export function Footer({ onNavigate }: FooterProps) {
 
   return (
     <footer style={{ background: 'var(--brand-navy-dark)', color: 'rgba(255,255,255,0.7)', marginTop: '64px' }}>
-      <div className="container" style={{ padding: '48px 24px' }}>
+      <div className="container" style={{ paddingTop: '48px', paddingBottom: '48px' }}>
         <div style={{
           display: 'grid',
           gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr',

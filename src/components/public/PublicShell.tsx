@@ -102,7 +102,7 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, children }: {
           page can move on without scrolling back up. Sign-in is deliberately not
           among them — it lives in the header, and one way in is enough. */}
       <footer style={{ background: 'var(--brand-navy-dark)', color: 'rgba(255,255,255,0.7)' }}>
-        <div className="container" style={{ padding: '40px 24px 32px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '32px' }}>
+        <div className="container" style={{ paddingTop: '40px', paddingBottom: '32px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '32px' }}>
           <div style={{ minWidth: '220px' }}>
             <img src="/assets/brand/6d-logo-white.png" alt="" style={{ height: '28px', opacity: 0.9 }} />
             <p style={{ fontSize: 'var(--text-sm)', margin: '12px 0 0', maxWidth: '280px', lineHeight: 1.6 }}>
@@ -126,7 +126,7 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, children }: {
           </nav>
         </div>
 
-        <div className="container" style={{ padding: '0 24px 28px' }}>
+        <div className="container" style={{ paddingBottom: '28px' }}>
           <span style={{ fontSize: 'var(--text-sm)', color: 'rgba(255,255,255,0.55)' }}>
             © 2026 6D Marketplace · India · UAE · Kenya
           </span>

@@ -9,7 +9,7 @@ export function ProductRail({ title, subtitle, tiles }: {
   const headingId = useId()
 
   return (
-    <section className="container" style={{ padding: '40px 24px' }}>
+    <section className="container" style={{ paddingTop: '40px', paddingBottom: '40px' }}>
       <h2 id={headingId} style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>{title}</h2>
       {subtitle && <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginTop: '4px' }}>{subtitle}</p>}
 
