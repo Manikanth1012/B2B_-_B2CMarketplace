@@ -162,3 +162,85 @@ export const suspensionCost = (
   priced > 0
     ? `${priced} listing${priced === 1 ? '' : 's'} will come off the shelf in ${market.name}.`
     : null
+
+/* ------------------------------------------------- holes in the book --- */
+
+/**
+ * A market×currency pair a shopper can choose but the catalogue cannot serve.
+ *
+ * Adding a currency to a market is one click, and it opens a shelf the price
+ * book may not cover. `reprice` falls back to the product's base row when the
+ * book has no price in the chosen currency, so the shopper is shown a plausible
+ * number in the wrong money — the failure with no symptom, and the one nothing
+ * on the operator's screen could see.
+ *
+ * `20260802430000` found exactly one such hole (a free product never given a
+ * dollar price, because nothing had asked for one until a market started taking
+ * dollars) and asserts against it in the database. This is the same question
+ * asked in front of the operator, so the gap is visible before somebody buys
+ * through it rather than after.
+ */
+export interface BookGap {
+  market_code: string
+  currency: string
+  missing: number
+  of: number
+}
+
+export function bookGaps(
+  markets: readonly Market[],
+  accepted: readonly MarketCurrency[],
+  products: readonly { id: string }[],
+  prices: readonly { product_id: string; currency: string }[],
+): BookGap[] {
+  const priced = new Set(prices.map(p => `${p.product_id}|${p.currency}`))
+  const out: BookGap[] = []
+  for (const m of markets) {
+    for (const currency of currenciesOf(m.code, accepted)) {
+      const missing = products.filter(p => !priced.has(`${p.id}|${currency}`)).length
+      if (missing > 0) out.push({ market_code: m.code, currency, missing, of: products.length })
+    }
+  }
+  /* Worst first: an operator with one afternoon should fix the shelf that is
+     emptiest, and a market quoted in that currency by default before one where
+     it is a second choice. */
+  return out.sort((a, b) => b.missing - a.missing || a.market_code.localeCompare(b.market_code))
+}
+
+/* ------------------------------------------------- rates on file --- */
+
+/**
+ * Whether the marketplace can settle into a currency at all.
+ *
+ * Since `20260802420000` a seller is paid in the money their bank takes, and
+ * that conversion needs a rate at or before the period end. A currency a market
+ * accepts but the treasury has no rate for is a currency the marketplace can
+ * charge in and cannot pay out of — which is a state worth naming on the screen
+ * that grants it, not one to discover when a settlement run refuses.
+ */
+export function unsettleable(
+  accepted: readonly MarketCurrency[],
+  rates: readonly { base: string; quote: string }[],
+  reporting: string,
+): string[] {
+  const pairs = new Set(rates.map(r => `${r.base}|${r.quote}`))
+  return [...new Set(accepted.map(a => a.currency))]
+    .filter(c => c !== reporting && !pairs.has(`${reporting}|${c}`))
+    .sort()
+}
+
+/** The most recent fix on file for each currency the marketplace trades in. */
+export function latestFixes(
+  rates: readonly { base: string; quote: string; rate: number; as_of: string }[],
+  reporting: string,
+): { currency: string; rate: number; as_of: string }[] {
+  const best = new Map<string, { rate: number; as_of: string }>()
+  for (const r of rates) {
+    if (r.base !== reporting) continue
+    const held = best.get(r.quote)
+    if (!held || r.as_of > held.as_of) best.set(r.quote, { rate: Number(r.rate), as_of: r.as_of })
+  }
+  return [...best.entries()]
+    .map(([currency, v]) => ({ currency, ...v }))
+    .sort((a, b) => a.currency.localeCompare(b.currency))
+}

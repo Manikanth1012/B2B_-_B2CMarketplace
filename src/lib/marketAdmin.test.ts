@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest'
-import { addableTo, canRemove, canMakeDefault, grid, tallyFor, outstanding, suspensionCost } from './marketAdmin'
+import {
+  addableTo, canRemove, canMakeDefault, grid, tallyFor, outstanding, suspensionCost,
+  bookGaps, unsettleable, latestFixes,
+} from './marketAdmin'
 import type { Market, MarketCurrency } from './money'
 import type { PartnerMarket } from './marketPricing'
 
@@ -172,5 +175,89 @@ describe('what suspending costs', () => {
 
   it('says nothing when nothing is priced there', () => {
     expect(suspensionCost(MARKETS[2], 0)).toBeNull()
+  })
+})
+
+/* -------------------------------------------------- holes in the book --- */
+
+describe('bookGaps', () => {
+  const PRODUCTS = [{ id: 'A' }, { id: 'B' }, { id: 'C' }]
+  const full = PRODUCTS.flatMap(p =>
+    ['INR', 'KES', 'AED', 'USD'].map(currency => ({ product_id: p.id, currency })))
+
+  it('says nothing when every shelf is priced', () => {
+    expect(bookGaps(MARKETS, ACCEPTED, PRODUCTS, full)).toEqual([])
+  })
+
+  it('finds the market and currency a product is missing a price in', () => {
+    /* The real one: a free product never given a dollar price, because nothing
+       asked for one until a market started accepting dollars. */
+    const holed = full.filter(p => !(p.product_id === 'C' && p.currency === 'USD'))
+    const gaps = bookGaps(MARKETS, ACCEPTED, PRODUCTS, holed)
+    expect(gaps.map(g => `${g.market_code}/${g.currency}`).sort()).toEqual(['AE/USD', 'KE/USD'])
+    expect(gaps[0]).toMatchObject({ missing: 1, of: 3 })
+  })
+
+  it('only asks about currencies the market actually takes', () => {
+    /* India takes rupees alone, so a missing dirham price is not India's
+       problem — reporting it would send an operator to fix a shelf nobody in
+       that market can see. */
+    const holed = full.filter(p => p.currency !== 'AED')
+    const gaps = bookGaps(MARKETS, ACCEPTED, PRODUCTS, holed)
+    expect(gaps.map(g => g.market_code)).not.toContain('IN')
+    expect(gaps.map(g => g.market_code)).toContain('AE')
+  })
+
+  it('puts the emptiest shelf first', () => {
+    const holed = full.filter(p =>
+      !(p.currency === 'USD' && p.product_id !== 'A') && !(p.currency === 'AED' && p.product_id === 'A'))
+    const gaps = bookGaps(MARKETS, ACCEPTED, PRODUCTS, holed)
+    expect(gaps[0].missing).toBeGreaterThanOrEqual(gaps[gaps.length - 1].missing)
+  })
+
+  it('handles an empty catalogue without claiming a gap', () => {
+    expect(bookGaps(MARKETS, ACCEPTED, [], [])).toEqual([])
+  })
+})
+
+/* ------------------------------------------------------- rates on file --- */
+
+const FIXES = [
+  { base: 'USD', quote: 'INR', rate: 86.9, as_of: '2026-07-01' },
+  { base: 'USD', quote: 'INR', rate: 87.42, as_of: '2026-08-01' },
+  { base: 'USD', quote: 'KES', rate: 129.2, as_of: '2026-08-01' },
+]
+
+describe('unsettleable', () => {
+  it('names a currency the marketplace can charge in but cannot pay out of', () => {
+    /* Since settlements remit in the seller's own money, a market accepting a
+       currency with no rate on file is a shelf that can take money and a payout
+       that will refuse. */
+    expect(unsettleable(ACCEPTED, FIXES, 'USD')).toEqual(['AED'])
+  })
+
+  it('does not ask for a rate from the reporting currency to itself', () => {
+    expect(unsettleable(ACCEPTED, FIXES, 'USD')).not.toContain('USD')
+  })
+
+  it('says nothing when every currency has a fix', () => {
+    const all = [...FIXES, { base: 'USD', quote: 'AED', rate: 3.6725, as_of: '2026-08-01' }]
+    expect(unsettleable(ACCEPTED, all, 'USD')).toEqual([])
+  })
+})
+
+describe('latestFixes', () => {
+  it('gives the newest fix per currency, not the first one found', () => {
+    const out = latestFixes(FIXES, 'USD')
+    expect(out.find(f => f.currency === 'INR')).toMatchObject({ rate: 87.42, as_of: '2026-08-01' })
+  })
+
+  it('leaves out rates that are not from the reporting currency', () => {
+    const out = latestFixes([...FIXES, { base: 'INR', quote: 'KES', rate: 1.5, as_of: '2026-08-01' }], 'USD')
+    expect(out.map(f => f.currency).sort()).toEqual(['INR', 'KES'])
+  })
+
+  it('handles no rates at all', () => {
+    expect(latestFixes([], 'USD')).toEqual([])
   })
 })

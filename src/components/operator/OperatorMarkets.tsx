@@ -22,7 +22,10 @@ import {
 } from '../../lib/moneyRepo'
 import { currenciesOf, symbolOf } from '../../lib/money'
 import type { MarketCurrency } from '../../lib/money'
-import { addableTo, canRemove, canMakeDefault, grid, tallyFor, outstanding } from '../../lib/marketAdmin'
+import {
+  addableTo, canRemove, canMakeDefault, grid, tallyFor, outstanding,
+  bookGaps, unsettleable, latestFixes,
+} from '../../lib/marketAdmin'
 import type { Cell, GrantState } from '../../lib/marketAdmin'
 import type { PartnerMarket } from '../../lib/marketPricing'
 import { supabase } from '../../lib/supabase'
@@ -42,6 +45,14 @@ export function OperatorMarkets() {
   const [sellers, setSellers] = useState<Seller[]>([])
   const [grants, setGrants] = useState<PartnerMarket[]>([])
   const [priced, setPriced] = useState<Record<string, number>>({})
+  /* Two things this screen could not see, and both are consequences of the one
+     click it exists to make. Adding a currency to a market opens a shelf the
+     price book may not cover, and opens a currency the treasury may have no
+     rate to settle out of. `20260802430000` found the first as a data defect
+     and `20260802420000` made the second load-bearing; neither was visible to
+     the person doing the granting. */
+  const [gaps, setGaps] = useState<ReturnType<typeof bookGaps>>([])
+  const [rates, setRates] = useState<{ base: string; quote: string; rate: number; as_of: string }[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState<string | null>(null)
   const [adding, setAdding] = useState<string | null>(null)
@@ -49,13 +60,20 @@ export function OperatorMarkets() {
     { market: string; currency: string; warning?: string } | null>(null)
 
   const reload = useCallback(async () => {
-    const [mb, s, g, pp] = await Promise.all([
+    const [mb, s, g, pp, live] = await Promise.all([
       loadMoneyBook(),
       supabase.from('partners').select('id,name,type,country').order('name'),
       loadPartnerMarkets(),
-      supabase.from('product_prices').select('currency'),
+      supabase.from('product_prices').select('product_id, currency'),
+      supabase.from('products').select('id').eq('status', 'live'),
     ])
     setAccepted(mb.accepted)
+    setRates(mb.rates)
+    setGaps(bookGaps(
+      mb.markets, mb.accepted,
+      (live.data ?? []) as { id: string }[],
+      (pp.data ?? []) as { product_id: string; currency: string }[],
+    ))
     setSellers((s.data ?? []) as Seller[])
     setGrants(g)
     /* One count per currency, for the "what would this remove" line. */
@@ -72,6 +90,8 @@ export function OperatorMarkets() {
   const markets = book.markets
   const cells = grid(sellers, markets, grants)
   const waiting = outstanding(cells)
+  const reporting = book.currencies.find(c => c.is_reporting)?.code ?? 'USD'
+  const fixes = latestFixes(rates, reporting)
 
   async function add(marketCode: string, currency: string) {
     setBusy(`${marketCode}|${currency}`)
@@ -151,6 +171,80 @@ export function OperatorMarkets() {
                   color={waiting.length ? 'var(--warning)' : undefined}
                   sublabel={waiting.length ? 'Nobody can trade until these are decided' : 'Nothing outstanding'} />
       </div>
+
+      {/* Two consequences of granting a currency that nothing on this screen
+          could see until now. Both are stated before the section that does the
+          granting, because they are the reason to look twice at it. */}
+      {gaps.length > 0 && (
+        <div style={{
+          padding: '13px 16px', borderRadius: 'var(--radius-md)',
+          background: 'var(--warning-bg)', border: '1px solid var(--warning)',
+          fontSize: 'var(--text-sm)', lineHeight: 1.6,
+        }}>
+          <strong>
+            {gaps.length} {gaps.length === 1 ? 'shelf is' : 'shelves are'} not fully priced.
+          </strong>
+          <div style={{ marginTop: '5px', fontSize: 'var(--text-xs)' }}>
+            {gaps.map(g => {
+              const m = markets.find(x => x.code === g.market_code)
+              return `${m?.name ?? g.market_code} in ${g.currency}: ${g.missing} of ${g.of} unpriced`
+            }).join(' · ')}
+          </div>
+          <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+            A shopper who chooses one of these is shown the product's base price instead — a plausible
+            number in the wrong money, which is the kind of wrong nothing on the page can look wrong.
+          </div>
+        </div>
+      )}
+
+      {unsettleable(accepted, rates, reporting).length > 0 && (
+        <div style={{
+          padding: '13px 16px', borderRadius: 'var(--radius-md)',
+          background: 'var(--danger-bg)', border: '1px solid var(--danger)',
+          fontSize: 'var(--text-sm)', lineHeight: 1.6,
+        }}>
+          <strong>
+            No rate on file for {unsettleable(accepted, rates, reporting).join(', ')}.
+          </strong>{' '}
+          The marketplace can take money in {unsettleable(accepted, rates, reporting).length === 1 ? 'it' : 'them'} and
+          cannot pay a seller out of {unsettleable(accepted, rates, reporting).length === 1 ? 'it' : 'them'} — a
+          settlement into that account will refuse rather than convert at a rate nobody set.
+        </div>
+      )}
+
+      {/* ============================ the fixes settlements convert at ==== */}
+
+      <SectionCard
+        title="Rates on file"
+        subtitle={`The most recent fix for each currency, from ${reporting}. A settlement uses the fix in force when its period closed, never the newest — so these are what the next run will use, not what the last one did.`}
+      >
+        {fixes.length === 0 ? (
+          <EmptyState message="No rates on file" />
+        ) : (
+          <Table headers={['Currency', 'One ' + reporting + ' buys', 'Fixed on', 'Source']}>
+            {fixes.map(f => {
+              const cur = book.currencies.find(c => c.code === f.currency)
+              const row = rates.find(r => r.quote === f.currency && r.as_of === f.as_of) as
+                { pegged?: boolean; source?: string } | undefined
+              return (
+                <tr key={f.currency}>
+                  <Td>
+                    <strong style={{ fontSize: 'var(--text-xs)' }}>{f.currency}</strong>
+                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{cur?.name ?? ''}</div>
+                  </Td>
+                  <Td right>{f.rate}</Td>
+                  <Td right>{f.as_of}</Td>
+                  <Td right>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                      {row?.source ?? '—'}{row?.pegged ? ' · pegged' : ''}
+                    </span>
+                  </Td>
+                </tr>
+              )
+            })}
+          </Table>
+        )}
+      </SectionCard>
 
       {/* =============================== what each market trades in ======= */}
 
