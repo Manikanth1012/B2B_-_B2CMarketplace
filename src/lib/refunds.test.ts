@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  STATES, REASONS, sla, escalationDue, ownership, fundedBy, autoApproves,
+  STATES, REASONS, sla, escalationDue, ownership, fundedBy, autoApproves, thresholdFor,
   canDecide, validateDecision, applyDecision, summarise, queue, byCategory,
   slowSellers, windowFor, insideWindow,
 } from './refunds'
@@ -147,23 +147,62 @@ describe('fundedBy', () => {
   })
 })
 
+describe('thresholdFor', () => {
+  const set = [
+    { currency: 'USD', auto_approve_below: 25 },
+    { currency: 'INR', auto_approve_below: 2000 },
+  ]
+
+  it('gives each currency its own figure', () => {
+    expect(thresholdFor(set, 'INR', policy)).toBe(2000)
+    expect(thresholdFor(set, 'USD', policy)).toBe(25)
+  })
+
+  it('falls back to the marketplace policy for a currency nobody has set', () => {
+    expect(thresholdFor(set, 'KES', policy)).toBe(policy.auto_approve_below)
+  })
+
+  it('does not convert — a rupee threshold is a chosen figure, not 25 times a rate', () => {
+    /* 25 USD at 87.42 is 2185.50. If this ever equals that, somebody has
+       replaced the table with a multiplication. */
+    expect(thresholdFor(set, 'INR', policy)).not.toBeCloseTo(25 * 87.42, 2)
+  })
+})
+
 describe('autoApproves', () => {
+  const usd = (n: number) => `$${n.toFixed(2)}`
+  const inr = (n: number) => `₹${n.toFixed(2)}`
+
   it('approves a duplicate charge at any value — it is provable, not a judgement', () => {
-    const v = autoApproves('duplicate', 5000, policy)
+    const v = autoApproves('duplicate', 5000, policy, 25, usd)
     expect(v.yes).toBe(true)
     expect(v.because).toMatch(/not a judgement call/)
   })
 
   it('approves anything under the threshold, because arguing costs more', () => {
-    expect(autoApproves('changed-mind', 6.49, policy).because).toMatch(/costs both sides more/)
+    expect(autoApproves('changed-mind', 6.49, policy, 25, usd).because).toMatch(/costs both sides more/)
   })
 
   it('leaves a real claim for a person', () => {
-    expect(autoApproves('faulty', 168, policy).yes).toBe(false)
+    expect(autoApproves('faulty', 168, policy, 25, usd).yes).toBe(false)
   })
 
   it('treats the threshold as exclusive', () => {
-    expect(autoApproves('changed-mind', 25, policy).yes).toBe(false)
+    expect(autoApproves('changed-mind', 25, policy, 25, usd).yes).toBe(false)
+  })
+
+  /* The bug this signature exists to stop. A ₹549 refund is a small claim in
+     India and was being measured against twenty-five of something else — so it
+     stopped deciding itself the moment the refunds were restated into rupees,
+     and nothing in the code changed to say so. */
+  it('measures a rupee refund against the rupee threshold', () => {
+    expect(autoApproves('changed-mind', 549, policy, 2000, inr).yes).toBe(true)
+    expect(autoApproves('changed-mind', 549, policy, 25, usd).yes).toBe(false)
+  })
+
+  it('quotes the threshold in the money it is in', () => {
+    expect(autoApproves('changed-mind', 549, policy, 2000, inr).because).toContain('₹2000.00')
+    expect(autoApproves('changed-mind', 549, policy, 2000, inr).because).not.toContain('$')
   })
 })
 
@@ -296,6 +335,31 @@ describe('summarise', () => {
     expect(summarise(rows, on('2026-07-31')).heldPct).toBe(50)
   })
 
+  it('keeps a mixed book apart by currency rather than adding it up', () => {
+    const mixed = [
+      r({ id: 'a', amount: 89980, currency: 'INR', sla_due: '2026-08-05' }),
+      r({ id: 'b', amount: 2547, currency: 'AED', sla_due: '2026-08-05' }),
+      r({ id: 'c', amount: 20999, currency: 'KES', sla_due: '2026-08-05' }),
+    ]
+    const s = summarise(mixed, on('2026-07-31'))
+    expect(s.atStakeBy.map(g => g.currency).sort()).toEqual(['AED', 'INR', 'KES'])
+    expect(s.atStakeBy.find(g => g.currency === 'INR')!.total.amount).toBe(89980)
+    /* And the scalar is still there, still adding three currencies together —
+       which is why the screens print the groups. */
+    expect(s.atStake).toBe(89980 + 2547 + 20999)
+  })
+
+  it('groups what actually went back, and leaves out what did not', () => {
+    const mixed = [
+      r({ id: 'a', state: 'refunded', amount: 549, refunded: 549, currency: 'INR', decided_on: 'x', decided_by: 'y', decision_note: 'z' }),
+      r({ id: 'b', state: 'refunded', amount: 849, refunded: 849, currency: 'AED', decided_on: 'x', decided_by: 'y', decision_note: 'z' }),
+      r({ id: 'c', state: 'declined', amount: 999, currency: 'INR', decided_on: 'x', decided_by: 'y', decision_note: 'z' }),
+    ]
+    const s = summarise(mixed, on('2026-07-31'))
+    expect(s.refundedBy).toHaveLength(2)
+    expect(s.refundedBy.find(g => g.currency === 'INR')!.total.amount).toBe(549)
+  })
+
   it('returns null rather than zero when nothing has closed', () => {
     /* 0% held and "nothing has closed yet" are different states. */
     expect(summarise([r({ id: 'a' })], on('2026-07-31')).heldPct).toBeNull()
@@ -357,6 +421,20 @@ describe('slowSellers', () => {
       r({ id: 'a', partner_id: 'PTR-2', seller: 'Slow', state: 'escalated', amount: 300, escalated_on: 'x', escalated_why: 'y' }),
     ], on('2026-07-31'))
     expect(out[0]).toMatchObject({ overdue: 0, escalated: 1 })
+  })
+
+  it('keeps a seller’s waiting money apart by currency', () => {
+    /* A seller approved in India and the UAE is late in two currencies. The
+       scalar `value` adds them, which is defensible for ranking one seller
+       against another and indefensible as a figure — so the screen reads
+       `valueBy`. */
+    const out = slowSellers([
+      r({ id: 'a', partner_id: 'PTR-2', seller: 'Slow', sla_due: '2026-07-01', amount: 4499, currency: 'INR' }),
+      r({ id: 'b', partner_id: 'PTR-2', seller: 'Slow', sla_due: '2026-07-01', amount: 349, currency: 'AED' }),
+    ], on('2026-07-31'))
+    expect(out[0].valueBy).toHaveLength(2)
+    expect(out[0].valueBy.find(g => g.currency === 'AED')!.total.amount).toBe(349)
+    expect(out[0].valueBy.find(g => g.currency === 'INR')!.total.amount).toBe(4499)
   })
 
   it('leaves the marketplace’s own out — it is not a seller', () => {

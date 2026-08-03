@@ -7,6 +7,9 @@
    sold itself, and steps in on a third-party refund only where a rule it
    published says it must. */
 
+import { byCurrency, money } from './money'
+import type { Money } from './money'
+
 export type RefundState =
   | 'requested' | 'approved' | 'refunded' | 'declined' | 'escalated' | 'partial'
 
@@ -224,17 +227,53 @@ export function fundedBy(refund: Refund, policy: RefundPolicy): string {
   return policy.funded_by
 }
 
-/** Would this decide itself? A duplicate charge is provable from the payment
-    records and is never a judgement call; below the small-claim threshold,
-    arguing costs both sides more than the refund. */
+/**
+ * The small-claim threshold, per currency.
+ *
+ * Not one figure converted four ways. "Below this, arguing costs both sides
+ * more than the refund" is a judgement about what somebody's afternoon is
+ * worth, and that is chosen per market — ₹2,000 is a number you would write in
+ * a policy, ₹2,185.50 is a number a spreadsheet produced.
+ */
+export interface RefundThreshold {
+  currency: string
+  auto_approve_below: number
+  note?: string
+}
+
+/**
+ * What decides itself in this currency.
+ *
+ * Falls back to the marketplace-wide policy, which is a dollar figure — so a
+ * currency nobody has set a threshold for is a thing to notice rather than to
+ * paper over. The migration asserts every currency a market trades in has a
+ * row, so the fallback should never be reached.
+ */
+export const thresholdFor = (
+  thresholds: readonly RefundThreshold[], currency: string, policy: RefundPolicy,
+): number =>
+  thresholds.find(t => t.currency === currency)?.auto_approve_below
+  ?? policy.auto_approve_below
+
+/**
+ * Would this decide itself? A duplicate charge is provable from the payment
+ * records and is never a judgement call; below the small-claim threshold,
+ * arguing costs both sides more than the refund.
+ *
+ * `below` and `fmt` are passed in rather than read off the policy: this used to
+ * print `$${policy.auto_approve_below}` and was therefore quoting a dollar
+ * threshold at a customer whose refund is in rupees. A caller that has a
+ * refund has its currency, so it can supply both.
+ */
 export function autoApproves(
   reason: RefundReason, amount: number, policy: RefundPolicy,
+  below: number, fmt: (n: number) => string,
 ): { yes: boolean; because: string } {
   if (policy.auto_approve_reasons.includes(reason)) {
     return { yes: true, because: `${REASONS[reason].label} is provable from the record, so it is not a judgement call.` }
   }
-  if (amount < policy.auto_approve_below) {
-    return { yes: true, because: `Under the $${policy.auto_approve_below.toFixed(2)} threshold, where arguing about it costs both sides more than the refund.` }
+  if (amount < below) {
+    return { yes: true, because: `Under the ${fmt(below)} threshold, where arguing about it costs both sides more than the refund.` }
   }
   return { yes: false, because: 'Somebody has to decide this one.' }
 }
@@ -332,7 +371,10 @@ export function applyDecision(
 export interface Summary {
   open: number
   /* Money that will leave if every open request is granted. Not a prediction —
-     a ceiling, and the only number worth putting at the top of the page. */
+     a ceiling, and the only number worth putting at the top of the page.
+     Meaningful only where every refund in the book is in one currency, which is
+     true of an enterprise account and false of the marketplace's whole book —
+     so `atStakeBy` is the one a mixed screen reads. */
   atStake: number
   overdue: number
   escalated: number
@@ -341,6 +383,12 @@ export interface Summary {
   /* Of the ones that closed, how many did not cost the seller anything. Null
      when nothing has closed, because 0% and "nothing yet" are different. */
   heldPct: number | null
+  /* The same two figures, kept apart by currency. A seller trading in three
+     markets has three at-stake numbers and no fourth one: adding ₹89,980 to
+     AED 2,547 gives a quantity of nothing, and it looked entirely plausible on
+     the screen because both are just numbers by then. */
+  atStakeBy: { currency: string; total: Money; count: number }[]
+  refundedBy: { currency: string; total: Money; count: number }[]
 }
 
 export function summarise(refunds: readonly Refund[], now: Date): Summary {
@@ -356,6 +404,10 @@ export function summarise(refunds: readonly Refund[], now: Date): Summary {
     decided: closed.length,
     refundedValue: +closed.reduce((n, r) => n + Number(r.refunded ?? 0), 0).toFixed(2),
     heldPct: closed.length === 0 ? null : Math.round((held.length / closed.length) * 1000) / 10,
+    atStakeBy: byCurrency(open.map(r => money(Number(r.amount), r.currency))),
+    refundedBy: byCurrency(closed
+      .filter(r => Number(r.refunded ?? 0) > 0)
+      .map(r => money(Number(r.refunded), r.currency))),
   }
 }
 
@@ -398,23 +450,38 @@ export function byCategory(refunds: readonly Refund[]): {
 /** Which sellers are letting the clock run. The operator's version of the
     queue: not who has the most refunds, but who is not answering them. */
 export function slowSellers(refunds: readonly Refund[], now: Date): {
-  partner_id: string; seller: string; overdue: number; escalated: number; value: number
+  partner_id: string; seller: string; overdue: number; escalated: number
+  value: number
+  /* What is waiting on them, kept apart by currency. A seller approved in three
+     markets is late in three currencies, and `value` adds those together —
+     which is why it is used only to rank one seller against another and never
+     printed. Ranking on a mixed sum over-weights the currency with the smaller
+     unit, and that is a defensible bias for a sort and an indefensible one for
+     a figure on the page. */
+  valueBy: { currency: string; total: Money; count: number }[]
 }[] {
   const today = todayUtc(now)
-  const map = new Map<string, { seller: string; overdue: number; escalated: number; value: number }>()
+  const map = new Map<string, {
+    seller: string; overdue: number; escalated: number; value: number; amounts: Money[]
+  }>()
   for (const r of refunds) {
     if (!r.partner_id) continue
     const late = r.state === 'requested' && toUtc(r.sla_due) < today
     const esc = r.state === 'escalated'
     if (!late && !esc) continue
-    const row = map.get(r.partner_id) ?? { seller: r.seller, overdue: 0, escalated: 0, value: 0 }
+    const row = map.get(r.partner_id)
+      ?? { seller: r.seller, overdue: 0, escalated: 0, value: 0, amounts: [] }
     if (late) row.overdue += 1
     if (esc) row.escalated += 1
     row.value += Number(r.amount)
+    row.amounts.push(money(Number(r.amount), r.currency))
     map.set(r.partner_id, row)
   }
   return [...map.entries()]
-    .map(([partner_id, v]) => ({ partner_id, ...v, value: +v.value.toFixed(2) }))
+    .map(([partner_id, v]) => ({
+      partner_id, seller: v.seller, overdue: v.overdue, escalated: v.escalated,
+      value: +v.value.toFixed(2), valueBy: byCurrency(v.amounts),
+    }))
     .sort((a, b) => (b.overdue + b.escalated) - (a.overdue + a.escalated) || b.value - a.value)
 }
 

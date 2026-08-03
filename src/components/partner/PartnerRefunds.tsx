@@ -5,8 +5,10 @@ import {
 } from 'lucide-react'
 import {
   SectionCard, StatCard, Btn, Modal, FormField, TextInput, TextArea, Select,
-  toast, fmtMoney, fmtDate,
+  toast, fmtDate,
 } from '../operator/shared'
+import { useMarket } from '../../lib/MarketContext'
+import { formatGroups } from '../../lib/money'
 import { Callout } from '../OnboardingJourney'
 import { loadSellerRefunds, decideRefund } from '../../lib/refundRepo'
 import type { RefundBook } from '../../lib/refundRepo'
@@ -37,6 +39,10 @@ const TONE: Record<string, { bg: string; ink: string }> = {
 }
 
 export function PartnerRefunds({ partnerId }: { partnerId: string }) {
+  /* A seller trades in whatever markets they are approved for, so their book is
+     not in one currency. Every figure is drawn in the currency of the row it
+     came from, and the two rollups are grouped rather than added. */
+  const { fmtIn } = useMarket()
   const [book, setBook] = useState<RefundBook | null>(null)
   const [deciding, setDeciding] = useState<Refund | null>(null)
   const [tab, setTab] = useState<'open' | 'decided'>('open')
@@ -60,7 +66,7 @@ export function PartnerRefunds({ partnerId }: { partnerId: string }) {
         <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Refunds</h1>
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
           What customers have asked to have back, and what you have decided. {stats.open} open ·
-          ${fmtMoney(stats.atStake)} at stake if every one of them is granted.
+          {' '}{formatGroups(stats.atStakeBy, fmtIn)} at stake if every one of them is granted.
         </p>
       </div>
 
@@ -85,9 +91,9 @@ export function PartnerRefunds({ partnerId }: { partnerId: string }) {
                   value={String(open.filter(r => ownership(r).owner === 'seller' && r.state === 'requested').length)}
                   sublabel={stats.overdue > 0 ? `${stats.overdue} already late` : 'None late'}
                   color={stats.overdue > 0 ? 'var(--danger)' : undefined} />
-        <StatCard label="At stake" value={`$${fmtMoney(stats.atStake)}`}
+        <StatCard label="At stake" value={formatGroups(stats.atStakeBy, fmtIn)}
                   sublabel="If every open request is granted" />
-        <StatCard label="Refunded to date" value={`$${fmtMoney(stats.refundedValue)}`}
+        <StatCard label="Refunded to date" value={formatGroups(stats.refundedBy, fmtIn)}
                   sublabel={`across ${stats.decided} decided`} />
         <StatCard label="Held" value={stats.heldPct === null ? '—' : `${stats.heldPct}%`}
                   sublabel={stats.heldPct === null ? 'Nothing decided yet' : 'of decided requests refused'}
@@ -128,6 +134,9 @@ export function PartnerRefunds({ partnerId }: { partnerId: string }) {
 function RefundCard({ refund, book, now, onDecide }: {
   refund: Refund; book: RefundBook; now: Date; onDecide: () => void
 }) {
+  const { fmtIn } = useMarket()
+  /* The refund's own currency, not the seller's and not the viewer's market. */
+  const mny = (n: number) => fmtIn(Number(n), refund.currency)
   const clock = book.policy ? sla(refund, book.policy, now) : null
   const own = ownership(refund)
   const spec = STATES[refund.state]
@@ -136,7 +145,7 @@ function RefundCard({ refund, book, now, onDecide }: {
 
   return (
     <SectionCard
-      title={`${refund.item} — $${fmtMoney(Number(refund.amount))}`}
+      title={`${refund.item} — ${mny(refund.amount)}`}
       subtitle={`${refund.id} · ${refund.customer} · ${refund.order_ref} · raised ${fmtDate(refund.requested)}`}
       action={
         <span style={{
@@ -189,7 +198,7 @@ function RefundCard({ refund, book, now, onDecide }: {
             {refund.decision_note}
             {refund.refunded !== null && refund.state === 'partial' && (
               <div style={{ marginTop: '6px', fontWeight: 700 }}>
-                ${fmtMoney(Number(refund.refunded))} of ${fmtMoney(Number(refund.amount))} returned.
+                {mny(refund.refunded)} of {mny(refund.amount)} returned.
               </div>
             )}
           </Quote>
@@ -236,6 +245,8 @@ export function DecideModal({ refund, amount, as = 'seller', by, onClose, onDone
   onClose: () => void
   onDone: () => Promise<void>
 }) {
+  const { fmtIn } = useMarket()
+  const mny = (n: number) => fmtIn(Number(n), refund.currency)
   const [decision, setDecision] = useState<Decision>('approve')
   const [partial, setPartial] = useState(String((amount / 2).toFixed(2)))
   const [note, setNote] = useState('')
@@ -261,13 +272,13 @@ export function DecideModal({ refund, amount, as = 'seller', by, onClose, onDone
                     await onDone()
                   }}>
                {saving ? 'Saving…'
-                 : decision === 'approve' ? `Refund $${fmtMoney(amount)}`
-                 : decision === 'partial' ? `Refund $${fmtMoney(Number(partial) || 0)}`
+                 : decision === 'approve' ? `Refund ${mny(amount)}`
+                 : decision === 'partial' ? `Refund ${mny(Number(partial) || 0)}`
                  : 'Decline it'}
              </Btn>
            </>}>
       <div style={{ marginBottom: '16px' }}>
-        <Callout tone="info" title={`${refund.customer} asked for $${fmtMoney(amount)} back on ${fmtDate(refund.requested)}`}>
+        <Callout tone="info" title={`${refund.customer} asked for ${mny(amount)} back on ${fmtDate(refund.requested)}`}>
           {REASONS[refund.reason].label}. {refund.detail ?? ''}
         </Callout>
       </div>
@@ -282,7 +293,7 @@ export function DecideModal({ refund, amount, as = 'seller', by, onClose, onDone
 
       {decision === 'partial' && (
         <FormField label="How much to return" required
-                   hint={`Anything from $0.01 to $${fmtMoney(amount - 0.01)}. To return all of it, approve instead.`}>
+                   hint={`Anything from ${mny(0.01)} to ${mny(amount - 0.01)}. To return all of it, approve instead.`}>
           <TextInput type="number" step="0.01" min="0.01" max={amount - 0.01}
                      value={partial} onChange={e => setPartial(e.target.value)} />
         </FormField>

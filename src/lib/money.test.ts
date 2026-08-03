@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  money, add, sumOf, byCurrency, isMixed, currenciesIn, negate,
+  money, add, sumOf, byCurrency, formatGroups, isMixed, currenciesIn, negate,
   roundMinor, round, minorUnitsOf, rateOn, convert, totalIn,
   format, symbolOf, charmPrice, wasPriceFor, priceBandOk,
   currenciesOf, marketTakes, marketsTaking,
@@ -401,5 +401,31 @@ describe('the price band', () => {
   it('rejects a floor above the price or a list below it', () => {
     expect(priceBandOk({ price: 999, floor_price: 1099 })).toBe(false)
     expect(priceBandOk({ price: 999, list_price: 899 })).toBe(false)
+  })
+})
+
+
+describe('formatGroups', () => {
+  const fmt = (n: number, c: string) => `${c} ${n.toFixed(2)}`
+
+  it('writes every currency rather than one total', () => {
+    const groups = byCurrency([money(89980, 'INR'), money(2547, 'AED'), money(20, 'INR')])
+    expect(formatGroups(groups, fmt)).toBe('INR 90000.00 · AED 2547.00')
+  })
+
+  it('writes one figure when there is only one currency', () => {
+    expect(formatGroups(byCurrency([money(549, 'INR')]), fmt)).toBe('INR 549.00')
+  })
+
+  it('says nothing rather than zero when there is nothing', () => {
+    /* "0" in a box labelled "at stake" is a claim that nothing is at stake.
+       Nothing having been measured is a different statement. */
+    expect(formatGroups([], fmt)).toBe('—')
+    expect(formatGroups([], fmt, 'Nothing outstanding')).toBe('Nothing outstanding')
+  })
+
+  it('never produces a figure that is the sum of two currencies', () => {
+    const groups = byCurrency([money(100, 'INR'), money(100, 'KES')])
+    expect(formatGroups(groups, fmt)).not.toContain('200')
   })
 })

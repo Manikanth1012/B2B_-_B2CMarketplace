@@ -191,6 +191,25 @@ export function byCurrency(list: readonly Money[]): { currency: string; total: M
     .sort((a, b) => b.total.amount - a.total.amount)
 }
 
+/**
+ * Several currencies, said as several figures.
+ *
+ * The counterpart to `byCurrency`: that one refuses to add them, this one
+ * writes what it got. "₹89,980 · AED 2,547" is longer than a single number and
+ * it is the only honest thing to put in a box labelled "at stake" — the sum
+ * would be a quantity of nothing, and it would look entirely reasonable on the
+ * screen, which is what makes it worth a function of its own rather than a
+ * `.join` written out at each call site with a different fallback.
+ */
+export function formatGroups(
+  groups: readonly { currency: string; total: Money }[],
+  fmt: (amount: number, currency: string) => string,
+  empty = '—',
+): string {
+  if (groups.length === 0) return empty
+  return groups.map(g => fmt(g.total.amount, g.currency)).join(' · ')
+}
+
 /* ---------------------------------------------------------- exchange --- */
 
 /**

@@ -4,10 +4,24 @@
 import { supabase } from './supabase'
 import {
   STATES, REASONS, canDecide, validateDecision, applyDecision, escalationDue, ownership,
+  thresholdFor,
 } from './refunds'
-import type { Refund, RefundPolicy, RefundReason, Decision } from './refunds'
+import type { Refund, RefundPolicy, RefundReason, Decision, RefundThreshold } from './refunds'
+import { format as formatMoney, money as asMoney } from './money'
 
 export type Result = { ok: true; note?: string } | { ok: false; reason: string }
+
+/**
+ * A figure in the money it is actually in.
+ *
+ * The currency table is not loaded here — this module runs outside React and
+ * has no market context — so `format` falls back to the ISO code and writes
+ * "INR 549.00" rather than "₹549.00". That is the deliberate trade: a screen
+ * with the context renders the symbol, and a toast or an audit line from here
+ * says the code. Both are true. `$549.00` was neither.
+ */
+const mny = (n: number, currency: string): string =>
+  formatMoney(asMoney(Number(n), currency), [])
 
 export interface RefundWindow { category_id: string; days: number; note: string }
 
@@ -15,23 +29,36 @@ export interface RefundBook {
   refunds: Refund[]
   policy: RefundPolicy | null
   windows: RefundWindow[]
+  /* Per-currency small-claim thresholds. Held with the book because every
+     screen that offers "ask for a refund" has to quote the one that applies to
+     the customer looking at it. */
+  thresholds: RefundThreshold[]
   loadError?: string
 }
 
 /* The policy is the same for everybody, so it is fetched with every view rather
    than passed around — a screen that reasons about an SLA it has not read is a
    screen that will one day quote the wrong one. */
-async function loadRules(): Promise<{ policy: RefundPolicy | null; windows: RefundWindow[]; errors: string[] }> {
-  const [p, w] = await Promise.all([
+async function loadRules(): Promise<{
+  policy: RefundPolicy | null; windows: RefundWindow[]
+  thresholds: RefundThreshold[]; errors: string[]
+}> {
+  const [p, w, t] = await Promise.all([
     supabase.from('refund_policy').select('*').eq('id', 'current').maybeSingle(),
     supabase.from('refund_windows').select('*'),
+    supabase.from('refund_thresholds').select('*'),
   ])
   const errors: string[] = []
   if (p.error) errors.push(`refund policy: ${p.error.message}`)
   if (w.error) errors.push(`refund windows: ${w.error.message}`)
+  if (t.error) errors.push(`refund thresholds: ${t.error.message}`)
   return {
     policy: (p.data ?? null) as RefundPolicy | null,
     windows: (w.data ?? []) as RefundWindow[],
+    /* PostgREST hands numerics back as strings, and a threshold that is a
+       string compares as one — '2000' < 549 is false and so is '2000' > 549. */
+    thresholds: ((t.data ?? []) as RefundThreshold[])
+      .map(r => ({ ...r, auto_approve_below: Number(r.auto_approve_below) })),
     errors,
   }
 }
@@ -49,6 +76,7 @@ export async function loadSellerRefunds(partnerId: string): Promise<RefundBook> 
     refunds: (res.data ?? []) as Refund[],
     policy: rules.policy,
     windows: rules.windows,
+    thresholds: rules.thresholds,
     ...(errors.length > 0 ? { loadError: `Some of this did not load (${errors.join('; ')}).` } : {}),
   }
 }
@@ -65,6 +93,7 @@ export async function loadAllRefunds(): Promise<RefundBook> {
     refunds: (res.data ?? []) as Refund[],
     policy: rules.policy,
     windows: rules.windows,
+    thresholds: rules.thresholds,
     ...(errors.length > 0 ? { loadError: `Some of this did not load (${errors.join('; ')}).` } : {}),
   }
 }
@@ -73,7 +102,7 @@ export async function loadAllRefunds(): Promise<RefundBook> {
 export async function loadMyRefunds(): Promise<RefundBook> {
   const { data: session } = await supabase.auth.getSession()
   const uid = session.session?.user.id
-  if (!uid) return { refunds: [], policy: null, windows: [] }
+  if (!uid) return { refunds: [], policy: null, windows: [], thresholds: [] }
   const [res, rules] = await Promise.all([
     supabase.from('refunds').select('*').eq('user_id', uid).order('requested', { ascending: false }),
     loadRules(),
@@ -84,6 +113,7 @@ export async function loadMyRefunds(): Promise<RefundBook> {
     refunds: (res.data ?? []) as Refund[],
     policy: rules.policy,
     windows: rules.windows,
+    thresholds: rules.thresholds,
     ...(errors.length > 0 ? { loadError: `Some of this did not load (${errors.join('; ')}).` } : {}),
   }
 }
@@ -108,6 +138,7 @@ export async function loadAccountRefunds(accountId: string): Promise<RefundBook>
     refunds: (res.data ?? []) as Refund[],
     policy: rules.policy,
     windows: rules.windows,
+    thresholds: rules.thresholds,
     ...(errors.length > 0 ? { loadError: `Some of this did not load (${errors.join('; ')}).` } : {}),
   }
 }
@@ -143,13 +174,13 @@ export async function decideRefund(
 
   await writeAudit(by, `refund.${decision}d`, refund.id,
     decision === 'decline' ? 'warn' : 'notice',
-    `${refund.customer} · ${refund.item} · $${Number(refund.amount).toFixed(2)} — ${note.trim()}`)
+    `${refund.customer} · ${refund.item} · ${mny(refund.amount, refund.currency)} — ${note.trim()}`)
 
   if (decision === 'approve') {
-    return { ok: true, note: `Agreed. $${Number(refund.amount).toFixed(2)} is queued back to the instrument that paid, and it comes off ${as === 'marketplace' && refund.first_party ? 'the marketplace' : 'your'} next settlement.` }
+    return { ok: true, note: `Agreed. ${mny(refund.amount, refund.currency)} is queued back to the instrument that paid, and it comes off ${as === 'marketplace' && refund.first_party ? 'the marketplace' : 'your'} next settlement.` }
   }
   if (decision === 'partial') {
-    return { ok: true, note: `$${refunded.toFixed(2)} of $${Number(refund.amount).toFixed(2)} refunded. The customer sees the difference and your explanation of it.` }
+    return { ok: true, note: `${mny(refunded, refund.currency)} of ${mny(refund.amount, refund.currency)} refunded. The customer sees the difference and your explanation of it.` }
   }
   return { ok: true, note: 'Declined, with your reason sent to the customer. They can escalate it to the marketplace.' }
 }
@@ -193,7 +224,7 @@ export async function escalateRefund(
   if (error) return { ok: false, reason: `That did not save: ${error.message}` }
 
   await writeAudit(by, 'refund.escalated', refund.id, 'warn',
-    `${refund.seller} · ${refund.customer} · $${Number(refund.amount).toFixed(2)} — ${reason}`)
+    `${refund.seller} · ${refund.customer} · ${mny(refund.amount, refund.currency)} — ${reason}`)
   return { ok: true, note: `The marketplace decides this now. ${refund.seller} has been told why.` }
 }
 
@@ -211,8 +242,8 @@ export async function markRefundPaid(refund: Refund, by: string): Promise<Result
   }).eq('id', refund.id)
   if (error) return { ok: false, reason: `That did not save: ${error.message}` }
   await writeAudit(by, 'refund.paid', refund.id, 'notice',
-    `$${Number(refund.amount).toFixed(2)} returned to ${refund.customer}`)
-  return { ok: true, note: `$${Number(refund.amount).toFixed(2)} returned to the instrument that paid.` }
+    `${mny(refund.amount, refund.currency)} returned to ${refund.customer}`)
+  return { ok: true, note: `${mny(refund.amount, refund.currency)} returned to the instrument that paid.` }
 }
 
 /**
@@ -224,13 +255,17 @@ export async function markRefundPaid(refund: Refund, by: string): Promise<Result
  * records.
  */
 export async function requestRefund(
-  { order, policy, reason, detail, evidence, accountId }: {
+  { order, policy, thresholds, reason, detail, evidence, accountId }: {
     order: {
       order_ref: string; product_id: string; item: string; category_id: string | null
       partner_id: string | null; seller: string; first_party: boolean
-      customer: string; amount: number
+      /* The money the order was placed in. `guard_refund_currency` refuses a
+         refund raised in anything else, and `refunds.currency` is NOT NULL — so
+         this is not decoration, it is what makes the insert land. */
+      customer: string; amount: number; currency: string
     }
     policy: RefundPolicy
+    thresholds: readonly RefundThreshold[]
     reason: RefundReason
     detail: string
     evidence: string
@@ -249,7 +284,11 @@ export async function requestRefund(
   const uid = session.session?.user.id
   if (!uid) return { ok: false, reason: 'Sign in to raise a refund.' }
 
-  const auto = policy.auto_approve_reasons.includes(reason) || order.amount < policy.auto_approve_below
+  /* The threshold that applies where this customer is, not the reporting one.
+     Read through `thresholdFor` so a ₹549 refund is measured against ₹2,000
+     rather than against twenty-five of something else. */
+  const below = thresholdFor(thresholds, order.currency, policy)
+  const auto = policy.auto_approve_reasons.includes(reason) || order.amount < below
   const today = new Date()
   const due = new Date(today.getTime() + policy.seller_sla_hours * 3600000)
   const iso = (d: Date) => d.toISOString().slice(0, 10)
@@ -262,6 +301,7 @@ export async function requestRefund(
     order_ref: order.order_ref, product_id: order.product_id, item: order.item,
     category_id: order.category_id, partner_id: order.partner_id, seller: order.seller,
     first_party: order.first_party, customer: order.customer,
+    currency: order.currency,
     buyer_type: accountId ? 'enterprise' : 'consumer',
     user_id: accountId ? null : uid,
     account_id: accountId ?? null,
@@ -273,7 +313,7 @@ export async function requestRefund(
     decision_note: auto
       ? (policy.auto_approve_reasons.includes(reason)
           ? `${REASONS[reason].label} is provable from the payment record and is never a judgement call, so it approved itself.`
-          : `Under the $${Number(policy.auto_approve_below).toFixed(2)} threshold, where arguing about it costs both sides more than the refund.`)
+          : `Under the ${mny(below, order.currency)} threshold, where arguing about it costs both sides more than the refund.`)
       : null,
     sort_order: 0,
   })
@@ -282,7 +322,7 @@ export async function requestRefund(
   return {
     ok: true,
     note: auto
-      ? `Agreed on the spot. $${order.amount.toFixed(2)} is queued back to the instrument that paid.`
+      ? `Agreed on the spot. ${mny(order.amount, order.currency)} is queued back to the instrument that paid.`
       : `Raised. ${order.first_party ? 'The marketplace' : order.seller} owes you an answer by ${iso(due)}, and if none comes the marketplace takes the decision itself.`,
   }
 }

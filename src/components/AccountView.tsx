@@ -28,8 +28,8 @@ import { billPdf, pdfNameFor, saveBlob } from '../lib/billPdf'
 import type { BillBook } from '../lib/consumerBillDoc'
 import { loadMyRefunds, requestRefund } from '../lib/refundRepo'
 import type { RefundBook } from '../lib/refundRepo'
-import { STATES, REASONS, REASON_LIST, sla, ownership, autoApproves } from '../lib/refunds'
-import type { RefundPolicy, RefundReason } from '../lib/refunds'
+import { STATES, REASONS, REASON_LIST, sla, ownership, autoApproves, thresholdFor } from '../lib/refunds'
+import type { RefundPolicy, RefundReason, RefundThreshold } from '../lib/refunds'
 
 type Tab = 'profile' | 'security' | 'notifications' | 'activity' | 'household' | 'wallet' | 'refunds' | 'bills' | 'support'
 
@@ -38,21 +38,12 @@ function isTab(v: string): v is Tab {
 }
 
 
-/**
- * For the figures on this screen that are still held in the reporting currency.
- *
- * Wallet balances, refunds, household caps and order totals have not been given
- * a currency yet — they are dollar amounts, and they are labelled as dollars.
- * Marking them with a rupee sign because the shopper picked India would be the
- * relabelling error `20260802140000` exists to undo: a number does not become
- * rupees by being printed next to a ₹.
- *
- * Bills are different and do not come through here — they carry their own
- * currency and are formatted with it.
- */
-function fmtMoney(n: number): string {
-  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
+/* Every figure on this screen now carries a currency: the profile has one, each
+   refund has one, and an order has the one it was placed in. So there is no
+   module-level formatter any more — a function that cannot see a currency can
+   only guess at one, and the guess was a dollar sign over rupee data.
+   Components call `fmtIn` from the market context with the currency the row
+   itself names. */
 
 function fmtPts(n: number): string {
   return Math.round(n).toLocaleString('en-US') + ' pts'
@@ -89,7 +80,7 @@ export function AccountView({ initialTab, onWatchesChanged }: {
   const [profile, setProfile] = useState<ConsumerProfile | null>(null)
   const [auditLog, setAuditLog] = useState<ConsumerAuditEntry[]>([])
   const [household, setHousehold] = useState<ConsumerHouseholdMember[]>([])
-  const [refundBook, setRefundBook] = useState<RefundBook>({ refunds: [], policy: null, windows: [] })
+  const [refundBook, setRefundBook] = useState<RefundBook>({ refunds: [], policy: null, windows: [], thresholds: [] })
   const [bills, setBills] = useState<ConsumerBill[]>([])
   const [tickets, setTickets] = useState<ConsumerTicket[]>([])
   const [loading, setLoading] = useState(true)
@@ -206,7 +197,7 @@ export function AccountView({ initialTab, onWatchesChanged }: {
         <NotificationPreferencesView persona="consumer" onToast={(m) => showToast(m)} />
       )}
       {tab === 'activity' && <ActivityTab log={auditLog} />}
-      {tab === 'household' && <HouseholdTab members={household} showToast={showToast} />}
+      {tab === 'household' && <HouseholdTab members={household} currency={profile.currency} showToast={showToast} />}
       {tab === 'wallet' && <WalletTab />}
       {tab === 'refunds' && <RefundsTab book={refundBook} onChanged={loadData} showToast={showToast} />}
       {tab === 'bills' && <BillsTab bills={bills} showToast={showToast} />}
@@ -233,6 +224,7 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
   showToast: (m: string) => void
   onWatchesChanged?: () => void
 }) {
+  const { fmtIn } = useMarket()
   const [name, setName] = useState(profile.name)
   const [email, setEmail] = useState(profile.email)
   const [phone, setPhone] = useState(profile.msisdn)
@@ -375,7 +367,7 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
             <SummaryRow label="Customer ID" value={profile.customer_id} />
             <SummaryRow label="Member since" value={profile.since} />
             <SummaryRow label="Tier" value={profile.tier} />
-            <SummaryRow label="Wallet balance" value={fmtMoney(profile.wallet)} />
+            <SummaryRow label="Wallet balance" value={fmtIn(profile.wallet, profile.currency)} />
             <SummaryRow label="Reward points" value={fmtPts(profile.points)} />
             <SummaryRow label="Payment method" value={profile.payment_method} />
           </div>
@@ -885,14 +877,30 @@ const ROLE_OPTIONS = [
   { value: 'View only', label: 'View only — sees the bill, cannot buy' },
 ]
 
-function HouseholdTab({ members: initialMembers, showToast }: { members: ConsumerHouseholdMember[]; showToast: (m: string) => void }) {
+function HouseholdTab({ members: initialMembers, currency, showToast }: {
+  members: ConsumerHouseholdMember[]
+  /* The household spends the account holder's money. One currency for the whole
+     card, taken from the profile rather than from the market the storefront
+     happens to be set to. */
+  currency: string
+  showToast: (m: string) => void
+}) {
+  const { fmtIn, book } = useMarket()
+  const mark = book.currencies.find(c => c.code === currency)?.symbol ?? currency
   const [members, setMembers] = useState<ConsumerHouseholdMember[]>(initialMembers)
   const [showAdd, setShowAdd] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [addName, setAddName] = useState('')
   const [addEmail, setAddEmail] = useState('')
   const [addRole, setAddRole] = useState('Adult member')
-  const [addCap, setAddCap] = useState('40')
+  /* A starting figure in the household's own money. '40' was a dollar default,
+     and left alone it becomes a forty-rupee monthly allowance — about the price
+     of nothing. Taken from what the other members are actually capped at, which
+     is the only figure on this screen that is already in the right currency. */
+  const capSuggestion = members
+    .map(m => Number(m.cap ?? 0)).filter(c => c > 0).sort((a, b) => a - b)[0] ?? 0
+  const capStep = capSuggestion >= 500 ? 100 : 5
+  const [addCap, setAddCap] = useState(capSuggestion ? String(capSuggestion) : '')
   const [saving, setSaving] = useState(false)
 
   // Per-member edit state
@@ -942,7 +950,7 @@ function HouseholdTab({ members: initialMembers, showToast }: { members: Consume
       role_id: 'CO-ADULT', role_name: addRole, status: 'invited',
       joined: 'Just now', last_active: 'Never',
       mfa: false, is_you: false,
-      cap: addRole === 'View only' ? null : parseFloat(addCap) || 40,
+      cap: addRole === 'View only' ? null : parseFloat(addCap) || capSuggestion,
       spent: 0,
     }
     await supabase.from('consumer_household').insert({
@@ -1015,9 +1023,9 @@ function HouseholdTab({ members: initialMembers, showToast }: { members: Consume
                 {m.cap !== null && m.cap !== undefined && m.cap > 0 && (
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>Monthly cap</div>
-                    <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>{fmtMoney(m.cap)}</div>
+                    <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>{fmtIn(m.cap, currency)}</div>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                      {fmtMoney(m.spent ?? 0)} spent
+                      {fmtIn(m.spent ?? 0, currency)} spent
                     </div>
                   </div>
                 )}
@@ -1073,11 +1081,11 @@ function HouseholdTab({ members: initialMembers, showToast }: { members: Consume
                       </select>
                     </Field>
                     {editRole !== 'View only' && (
-                      <Field label="Monthly spend cap ($)" icon={<Wallet size={14} />}>
+                      <Field label={`Monthly spend cap (${mark})`} icon={<Wallet size={14} />}>
                         <input
-                          style={inputStyle} type="number" min="0" step="5"
+                          style={inputStyle} type="number" min="0" step={capStep}
                           value={editCap} onChange={(e) => setEditCap(e.target.value)}
-                          placeholder="e.g. 40 — leave blank for no cap"
+                          placeholder={`e.g. ${capSuggestion || capStep} — leave blank for no cap`}
                         />
                       </Field>
                     )}
@@ -1129,11 +1137,11 @@ function HouseholdTab({ members: initialMembers, showToast }: { members: Consume
                 </select>
               </Field>
               {addRole !== 'View only' && (
-                <Field label="Monthly spend cap ($)" icon={<Wallet size={14} />}>
+                <Field label={`Monthly spend cap (${mark})`} icon={<Wallet size={14} />}>
                   <input
-                    style={inputStyle} type="number" min="0" step="5"
+                    style={inputStyle} type="number" min="0" step={capStep}
                     value={addCap} onChange={(e) => setAddCap(e.target.value)}
-                    placeholder="e.g. 40 — leave blank for no cap"
+                    placeholder={`e.g. ${capSuggestion || capStep} — leave blank for no cap`}
                   />
                 </Field>
               )}
@@ -1169,17 +1177,25 @@ const btnSecondarySmall: React.CSSProperties = {
 function RefundsTab({ book, onChanged, showToast }: {
   book: RefundBook; onChanged: () => Promise<void> | void; showToast: (m: string) => void
 }) {
+  const { fmtIn } = useMarket()
   const [asking, setAsking] = useState(false)
   const now = new Date()
-  const back = book.refunds
+  /* Grouped rather than added up. A customer's refunds are normally all in one
+     currency, but "normally" is not a rule the code can rely on — somebody who
+     bought while abroad has two, and one added total of them would be a number
+     in no currency at all. */
+  const back = byCurrency(book.refunds
     .filter((r) => r.state === 'refunded' || r.state === 'partial')
-    .reduce((a, r) => a + Number(r.refunded ?? 0), 0)
+    .map((r) => money(Number(r.refunded ?? 0), r.currency)))
   const waiting = book.refunds.filter((r) => !STATES[r.state].final)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}>
-        <StatBox icon={<RotateCcw size={20} />} label="Money back" value={fmtMoney(back)} />
+        <StatBox icon={<RotateCcw size={20} />} label="Money back"
+                 value={back.length === 0
+                   ? fmtIn(0, book.refunds[0]?.currency ?? 'USD')
+                   : back.map((b) => fmtIn(b.total.amount, b.currency)).join(' · ')} />
         <StatBox icon={<Clock size={20} />} label="Still waiting" value={String(waiting.length)} />
         <StatBox icon={<Check size={20} />} label="Requests made" value={String(book.refunds.length)} />
       </div>
@@ -1237,11 +1253,11 @@ function RefundsTab({ book, onChanged, showToast }: {
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <div style={{ fontWeight: 800, fontSize: 'var(--text-lg)', marginBottom: '4px' }}>
-                      {fmtMoney(Number(r.refunded ?? r.amount))}
+                      {fmtIn(Number(r.refunded ?? r.amount), r.currency)}
                     </div>
                     {r.state === 'partial' && (
                       <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
-                        of {fmtMoney(Number(r.amount))} asked for
+                        of {fmtIn(Number(r.amount), r.currency)} asked for
                       </div>
                     )}
                     <span style={{
@@ -1273,7 +1289,7 @@ function RefundsTab({ book, onChanged, showToast }: {
       )}
 
       {asking && book.policy && (
-        <AskForRefund policy={book.policy} onClose={() => setAsking(false)}
+        <AskForRefund policy={book.policy} thresholds={book.thresholds} onClose={() => setAsking(false)}
                       onDone={async () => { setAsking(false); await onChanged() }} showToast={showToast} />
       )}
     </div>
@@ -1283,18 +1299,23 @@ function RefundsTab({ book, onChanged, showToast }: {
 interface RefundableOrder {
   order_ref: string; product_id: string; item: string; category_id: string | null
   partner_id: string | null; seller: string; first_party: boolean
-  customer: string; amount: number; placed: string
+  /* Carried from the order rather than from the shopper's current market: the
+     refund is of that transaction, and the guard trigger refuses one raised in
+     anything else. */
+  customer: string; amount: number; currency: string; placed: string
 }
 
 /* Raising one. The order picker is the point: a refund against an order that
    does not exist is a support ticket, not a refund, and typing an order number
    by hand is how you get one. */
-function AskForRefund({ policy, onClose, onDone, showToast }: {
+function AskForRefund({ policy, thresholds, onClose, onDone, showToast }: {
   policy: RefundPolicy
+  thresholds: RefundThreshold[]
   onClose: () => void
   onDone: () => Promise<void>
   showToast: (m: string) => void
 }) {
+  const { fmtIn } = useMarket()
   const [orders, setOrders] = useState<RefundableOrder[] | null>(null)
   const [pick, setPick] = useState('')
   const [reason, setReason] = useState<RefundReason>('faulty')
@@ -1306,7 +1327,7 @@ function AskForRefund({ policy, onClose, onDone, showToast }: {
   useEffect(() => {
     void (async () => {
       const [oRes, iRes, pRes, existing] = await Promise.all([
-        supabase.from('orders').select('id,order_ref,buyer_name,placed_date,total'),
+        supabase.from('orders').select('id,order_ref,buyer_name,placed_date,total,currency'),
         supabase.from('order_items').select('order_id,product_id,product_name,price,quantity'),
         supabase.from('products').select('id,category_id,partner_id,seller'),
         supabase.from('refunds').select('order_ref,product_id'),
@@ -1315,7 +1336,7 @@ function AskForRefund({ policy, onClose, onDone, showToast }: {
       const claimed = new Set(((existing.data ?? []) as { order_ref: string; product_id: string }[])
         .map((r) => `${r.order_ref}::${r.product_id}`))
       const rows: RefundableOrder[] = []
-      for (const o of (oRes.data ?? []) as { id: string; order_ref: string; buyer_name: string; placed_date: string; total: number }[]) {
+      for (const o of (oRes.data ?? []) as { id: string; order_ref: string; buyer_name: string; placed_date: string; total: number; currency: string }[]) {
         for (const i of (iRes.data ?? []) as { order_id: string; product_id: string; product_name: string; price: number; quantity: number }[]) {
           if (i.order_id !== o.id) continue
           if (claimed.has(`${o.order_ref}::${i.product_id}`)) continue
@@ -1325,7 +1346,7 @@ function AskForRefund({ policy, onClose, onDone, showToast }: {
             category_id: p?.category_id ?? null, partner_id: p?.partner_id ?? null,
             seller: p?.seller ?? 'Aventa Telecom', first_party: !p?.partner_id,
             customer: o.buyer_name, amount: Number(i.price) * Number(i.quantity),
-            placed: o.placed_date,
+            currency: o.currency, placed: o.placed_date,
           })
         }
       }
@@ -1335,7 +1356,12 @@ function AskForRefund({ policy, onClose, onDone, showToast }: {
   }, [])
 
   const chosen = orders?.find((o) => `${o.order_ref}::${o.product_id}` === pick) ?? null
-  const auto = chosen ? autoApproves(reason, chosen.amount, policy) : null
+  /* The threshold that applies to this order's money, quoted in it. */
+  const auto = chosen
+    ? autoApproves(reason, chosen.amount, policy,
+        thresholdFor(thresholds, chosen.currency, policy),
+        (n) => fmtIn(n, chosen.currency))
+    : null
 
   return (
     <Modal title="Ask for a refund" onClose={onClose}>
@@ -1353,7 +1379,7 @@ function AskForRefund({ policy, onClose, onDone, showToast }: {
               <select style={inputStyle} value={pick} onChange={(e) => setPick(e.target.value)}>
                 {orders.map((o) => (
                   <option key={`${o.order_ref}::${o.product_id}`} value={`${o.order_ref}::${o.product_id}`}>
-                    {o.item} — {fmtMoney(o.amount)} · {o.order_ref} · {o.placed}
+                    {o.item} — {fmtIn(o.amount, o.currency)} · {o.order_ref} · {o.placed}
                   </option>
                 ))}
               </select>
@@ -1396,7 +1422,7 @@ function AskForRefund({ policy, onClose, onDone, showToast }: {
                 onClick={async () => {
                   if (!chosen) return
                   setSaving(true); setErr('')
-                  const r = await requestRefund({ order: chosen, policy, reason, detail, evidence })
+                  const r = await requestRefund({ order: chosen, policy, thresholds, reason, detail, evidence })
                   setSaving(false)
                   if (!r.ok) { setErr(r.reason); return }
                   showToast(r.note ?? 'Refund requested')

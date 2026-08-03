@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { RotateCcw, Plus, TriangleAlert as AlertTriangle, Clock } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import {
-  StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, fmtInt, Btn, toast, Modal,
+  StatCard, SectionCard, Table, Td, StatusPill, fmtInt, Btn, toast, Modal,
   FormField, TextArea, TextInput, Select, EmptyState,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
@@ -10,9 +10,9 @@ import { loadAccountRefunds, requestRefund } from '../../lib/refundRepo'
 import type { RefundBook } from '../../lib/refundRepo'
 import { loadAccount } from '../../lib/enterpriseRepo'
 import {
-  STATES, REASONS, summarise, sla, ownership, fundedBy, autoApproves, byCategory,
+  STATES, REASONS, summarise, sla, ownership, fundedBy, autoApproves, byCategory, thresholdFor,
 } from '../../lib/refunds'
-import type { Refund, RefundReason } from '../../lib/refunds'
+import type { Refund, RefundReason, RefundThreshold } from '../../lib/refunds'
 import { day } from '../../lib/enterprise'
 import { useAccountMoney } from './money'
 
@@ -41,7 +41,7 @@ export function EnterpriseRefunds() {
 
   const reload = useCallback(async () => {
     const acct = await loadAccount()
-    if (!acct.account) { setBook({ refunds: [], policy: null, windows: [], loadError: acct.loadError }); return }
+    if (!acct.account) { setBook({ refunds: [], policy: null, windows: [], thresholds: [], loadError: acct.loadError }); return }
     setAccount({ id: acct.account.id, company: acct.account.company, currency: acct.account.currency })
     setBook(await loadAccountRefunds(acct.account.id))
   }, [])
@@ -73,7 +73,7 @@ export function EnterpriseRefunds() {
       {policy && (
         <Callout tone="info" title="How a refund is decided">
           The seller has {policy.seller_sla_hours} hours to answer. {policy.escalation_rule} {policy.funded_by}
-          {' '}Refunds under {money(Number(policy.auto_approve_below))} and anything provable from the payment record
+          {' '}Refunds under {money(thresholdFor(book.thresholds, account?.currency ?? 'USD', policy))} and anything provable from the payment record
           approve themselves, because arguing about them costs both sides more than the money.
         </Callout>
       )}
@@ -193,7 +193,8 @@ export function EnterpriseRefunds() {
       </SectionCard>
 
       {asking && policy && account && (
-        <AskForRefund policy={policy} accountId={account.id} company={account.company}
+        <AskForRefund policy={policy} thresholds={book.thresholds}
+                      accountId={account.id} company={account.company}
                       currency={account.currency}
                       onClose={() => setAsking(false)}
                       onDone={async () => { setAsking(false); await reload() }} />
@@ -240,8 +241,9 @@ interface Refundable {
   partner_id: string | null; seller: string; first_party: boolean; amount: number
 }
 
-function AskForRefund({ policy, accountId, company, currency, onClose, onDone }: {
+function AskForRefund({ policy, thresholds, accountId, company, currency, onClose, onDone }: {
   policy: NonNullable<RefundBook['policy']>
+  thresholds: RefundThreshold[]
   accountId: string
   company: string
   /* The account's, so the order this refund is raised against is quoted in the
@@ -297,14 +299,21 @@ function AskForRefund({ policy, accountId, company, currency, onClose, onDone }:
   }, [accountId])
 
   const chosen = options?.find(o => `${o.order_ref}::${o.product_id}` === pick) ?? null
-  const auto = chosen ? autoApproves(reason, chosen.amount, policy) : null
+  /* The threshold for the account's own money, quoted in it. */
+  const auto = chosen
+    ? autoApproves(reason, chosen.amount, policy,
+        thresholdFor(thresholds, currency, policy), money)
+    : null
 
   const submit = async () => {
     if (!chosen) return
     setBusy(true)
     const res = await requestRefund({
-      order: { ...chosen, customer: company },
-      policy, reason, detail, evidence, accountId,
+      /* An enterprise is invoiced in one currency, so the line being claimed
+         against is in that one — the guard trigger checks it against the
+         account and refuses anything else. */
+      order: { ...chosen, customer: company, currency },
+      policy, thresholds, reason, detail, evidence, accountId,
     })
     setBusy(false)
     toast(res.ok ? res.note ?? 'Raised' : res.reason, res.ok ? 'success' : 'error')

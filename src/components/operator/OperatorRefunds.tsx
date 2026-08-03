@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { TriangleAlert as AlertTriangle, Clock, Scale, Gavel, Banknote } from 'lucide-react'
 import {
-  SectionCard, StatCard, Btn, Modal, FormField, TextArea, toast, fmtMoney, fmtDate,
+  SectionCard, StatCard, Btn, Modal, FormField, TextArea, toast, fmtDate,
 } from './shared'
 import { Callout } from '../OnboardingJourney'
 import { loadAllRefunds, escalateRefund, markRefundPaid } from '../../lib/refundRepo'
@@ -11,6 +11,8 @@ import {
 } from '../../lib/refunds'
 import type { Refund } from '../../lib/refunds'
 import { DecideModal } from '../partner/PartnerRefunds'
+import { useMarket } from '../../lib/MarketContext'
+import { formatGroups } from '../../lib/money'
 
 /* The marketplace's view of every refund on the platform.
  *
@@ -31,6 +33,10 @@ export function OperatorRefunds() {
   const [deciding, setDeciding] = useState<Refund | null>(null)
   const [taking, setTaking] = useState<Refund | null>(null)
 
+  /* The marketplace's book spans every market, so nothing here is added up
+     across currencies — the rollups are grouped and each row is drawn in the
+     money it is in. */
+  const { fmtIn } = useMarket()
   const reload = useCallback(async () => setBook(await loadAllRefunds()), [])
   useEffect(() => { void reload() }, [reload])
 
@@ -56,7 +62,7 @@ export function OperatorRefunds() {
         <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Refunds</h1>
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
           Every refund on the platform, whoever sold it. {stats.open} open ·
-          ${fmtMoney(stats.atStake)} at stake · {stats.overdue} past the answer somebody owes.
+          {' '}{formatGroups(stats.atStakeBy, fmtIn)} at stake · {stats.overdue} past the answer somebody owes.
         </p>
       </div>
 
@@ -75,9 +81,9 @@ export function OperatorRefunds() {
         <StatCard label="On this desk" value={String(mine.length)}
                   sublabel="Escalated, first-party or bundled"
                   color={mine.length > 0 ? 'var(--warning)' : undefined} />
-        <StatCard label="At stake" value={`$${fmtMoney(stats.atStake)}`}
+        <StatCard label="At stake" value={formatGroups(stats.atStakeBy, fmtIn)}
                   sublabel="If every open request is granted" />
-        <StatCard label="Refunded to date" value={`$${fmtMoney(stats.refundedValue)}`}
+        <StatCard label="Refunded to date" value={formatGroups(stats.refundedBy, fmtIn)}
                   sublabel={`across ${stats.decided} decided`} />
       </div>
 
@@ -118,7 +124,7 @@ export function OperatorRefunds() {
                   <Metric n={s.overdue} label="past the deadline" tone={s.overdue > 0 ? 'var(--danger)' : undefined} />
                   <Metric n={s.escalated} label="already taken from them" tone={s.escalated > 0 ? 'var(--warning)' : undefined} />
                   <div style={{ textAlign: 'right', minWidth: '110px' }}>
-                    <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>${fmtMoney(s.value)}</div>
+                    <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>{formatGroups(s.valueBy, fmtIn)}</div>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>customers waiting on</div>
                   </div>
                 </div>
@@ -178,6 +184,7 @@ function Row({ refund, book, now, onTake, onDecide, onPay }: {
   refund: Refund; book: RefundBook; now: Date
   onTake: () => void; onDecide: () => void; onPay: () => Promise<void>
 }) {
+  const { fmtIn } = useMarket()
   const clock = book.policy ? sla(refund, book.policy, now) : null
   const own = ownership(refund)
   const spec = STATES[refund.state]
@@ -187,7 +194,7 @@ function Row({ refund, book, now, onTake, onDecide, onPay }: {
 
   return (
     <SectionCard
-      title={`${refund.item} — $${fmtMoney(Number(refund.amount))}`}
+      title={`${refund.item} — ${fmtIn(Number(refund.amount), refund.currency)}`}
       subtitle={`${refund.id} · ${refund.seller} · ${refund.customer} (${refund.buyer_type}) · ${refund.order_ref} · raised ${fmtDate(refund.requested)}`}
       action={
         <span style={{
@@ -252,7 +259,7 @@ function Row({ refund, book, now, onTake, onDecide, onPay }: {
             <div style={{ fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
               {refund.decision_note}
               {refund.state === 'partial' && refund.refunded !== null && (
-                <strong> ${fmtMoney(Number(refund.refunded))} of ${fmtMoney(Number(refund.amount))} returned.</strong>
+                <strong> {fmtIn(Number(refund.refunded), refund.currency)} of {fmtIn(Number(refund.amount), refund.currency)} returned.</strong>
               )}
             </div>
           </div>
