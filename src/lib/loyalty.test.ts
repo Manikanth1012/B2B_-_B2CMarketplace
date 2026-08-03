@@ -2,9 +2,10 @@ import { describe, it, expect } from 'vitest'
 import {
   offeredTo, worthOf, mostRedeemable, validateRedemption, canRedeemAnything,
   ladderFor, rungOf, rungState, nextRung,
+  rateFor, worthIn, ladderIn, returnRate, earnLine, pointsFor,
   fmtPoints, fmtMoney,
 } from './loyalty'
-import type { Member, Programme, RedeemOption } from './loyalty'
+import type { Member, Programme, RedeemOption, PointRate, Threshold } from './loyalty'
 
 const PROGRAMME: Programme = {
   id: 'LP-01', name: 'Aventa Rewards', unit: 'point', per_unit: 100, min_redeem: 500,
@@ -21,7 +22,7 @@ function option(over: Partial<RedeemOption> = {}): RedeemOption {
 
 function member(over: Partial<Member> = {}): Member {
   return {
-    id: 'LM-4001', name: 'Priya Raman', kind: 'consumer', tier: 'gold', balance: 12400,
+    id: 'LM-4001', name: 'Priya Raman', kind: 'consumer', currency: 'USD', tier: 'gold', balance: 12400,
     qualify_12m: 2100, lifetime_earned: 30000, lifetime_redeemed: 17600,
     expiring_soon: 800, expiring_on: '31 Dec 2026', last_activity: '25 Jul 2026',
     user_id: 'u1', ...over,
@@ -201,28 +202,28 @@ describe('which ladder an account climbs', () => {
 })
 
 describe('where the member is standing', () => {
-  const priya = { tier: 'gold', kind: 'consumer', qualify_12m: 2500 }
+  const priya = { tier: 'gold', qualify_12m: 2500 }
+  const RETAIL = ladderFor(RUNGS, 'consumer')
 
   it('finds the rung by id', () => {
-    expect(rungOf(RUNGS, priya)?.id).toBe('gold')
+    expect(rungOf(RETAIL, priya)?.id).toBe('gold')
   })
 
   it('will not find a rung from the other ladder', () => {
-    expect(rungOf(RUNGS, { tier: 'org-gold', kind: 'consumer' })).toBeNull()
+    expect(rungOf(RETAIL, { tier: 'org-gold' })).toBeNull()
   })
 
   /* The defect this is really about: rank is unique only within one ladder,
      so comparing sort_order marked Gold *and* Business Plus as "here". */
   it('marks exactly one rung as here', () => {
-    const current = rungOf(RUNGS, priya)
+    const current = rungOf(RETAIL, priya)
     const here = RUNGS.filter(t => rungState(t, current) === 'here')
     expect(here.map(t => t.id)).toEqual(['gold'])
   })
 
   it('calls the rungs below past and the rungs above future', () => {
-    const current = rungOf(RUNGS, priya)
-    const ladder = ladderFor(RUNGS, 'consumer')
-    expect(ladder.map(t => rungState(t, current))).toEqual(['past', 'past', 'here', 'future'])
+    const current = rungOf(RETAIL, priya)
+    expect(RETAIL.map(t => rungState(t, current))).toEqual(['past', 'past', 'here', 'future'])
   })
 
   it('calls everything future when the member is on no known rung', () => {
@@ -232,7 +233,7 @@ describe('where the member is standing', () => {
 
 describe('what the next rung costs', () => {
   it('names the next rung on the member’s own ladder', () => {
-    expect(nextRung(RUNGS, { tier: 'gold', kind: 'consumer', qualify_12m: 2500 }).next?.id)
+    expect(nextRung(ladderFor(RUNGS, 'consumer'), { tier: 'gold', qualify_12m: 2500 }).next?.id)
       .toBe('platinum')
   })
 
@@ -240,19 +241,148 @@ describe('what the next rung costs', () => {
     /* Gold is $1,800, Platinum $4,500, and this member has spent $2,500. That
        is 700 of a 2,700 span — 26%. Measured from zero it would read 56%,
        which flatters a member who has only just arrived. */
-    const p = nextRung(RUNGS, { tier: 'gold', kind: 'consumer', qualify_12m: 2500 })
+    const p = nextRung(ladderFor(RUNGS, 'consumer'), { tier: 'gold', qualify_12m: 2500 })
     expect(p.need).toBe(2000)
     expect(p.pct).toBe(26)
   })
 
   it('is complete at the top of the ladder', () => {
-    const p = nextRung(RUNGS, { tier: 'platinum', kind: 'consumer', qualify_12m: 9000 })
+    const p = nextRung(ladderFor(RUNGS, 'consumer'), { tier: 'platinum', qualify_12m: 9000 })
     expect(p).toEqual({ next: null, need: 0, pct: 100 })
   })
 
   it('never reports a negative gap or a percentage past 100', () => {
-    const p = nextRung(RUNGS, { tier: 'bronze', kind: 'consumer', qualify_12m: 100000 })
+    const p = nextRung(ladderFor(RUNGS, 'consumer'), { tier: 'bronze', qualify_12m: 100000 })
     expect(p.need).toBeGreaterThanOrEqual(0)
     expect(p.pct).toBeLessThanOrEqual(100)
+  })
+})
+
+/* ------------------------------------ what a point is worth, and where -- */
+
+const RATES: PointRate[] = [
+  { currency: 'USD', earn_per_unit: 1, per_unit: 100 },
+  { currency: 'INR', earn_per_unit: 0.01, per_unit: 1 },
+  { currency: 'AED', earn_per_unit: 0.25, per_unit: 25 },
+  { currency: 'KES', earn_per_unit: 0.01, per_unit: 1 },
+]
+
+const RETAIL = ladderFor(RUNGS, 'consumer')
+
+const THRESHOLDS: Threshold[] = [
+  { tier_id: 'bronze', currency: 'INR', qualify_spend: 0 },
+  { tier_id: 'silver', currency: 'INR', qualify_spend: 50000 },
+  { tier_id: 'gold', currency: 'INR', qualify_spend: 150000 },
+  { tier_id: 'platinum', currency: 'INR', qualify_spend: 400000 },
+]
+
+describe('rateFor', () => {
+  it('finds the rate set for a currency', () => {
+    expect(rateFor(RATES, 'INR')?.per_unit).toBe(1)
+  })
+
+  it('is null for a currency nobody has priced a point in, rather than the first one', () => {
+    /* Falling back to USD would value a member's balance at a hundredth of
+       what it is, silently and only for them. */
+    expect(rateFor(RATES, 'GBP')).toBeNull()
+  })
+})
+
+describe('worthIn', () => {
+  it('values points in the member’s own money, not always the dollar', () => {
+    expect(worthIn(2500, { value_per: 1 }, rateFor(RATES, 'USD'))).toBe(25)
+    expect(worthIn(2500, { value_per: 1 }, rateFor(RATES, 'INR'))).toBe(2500)
+    expect(worthIn(2500, { value_per: 1 }, rateFor(RATES, 'AED'))).toBe(100)
+  })
+
+  it('carries the option’s own premium through', () => {
+    /* A seller voucher is worth 20% more than plain credit, in every currency. */
+    expect(worthIn(1000, { value_per: 1.2 }, rateFor(RATES, 'INR'))).toBe(1200)
+    expect(worthIn(1000, { value_per: 1.2 }, rateFor(RATES, 'USD'))).toBe(12)
+  })
+
+  it('is worth nothing rather than worth somebody else’s number when unpriced', () => {
+    expect(worthIn(2500, { value_per: 1 }, null)).toBe(0)
+  })
+
+  it('does not divide by zero into an infinity', () => {
+    expect(worthIn(2500, { value_per: 1 }, { currency: 'XXX', earn_per_unit: 1, per_unit: 0 })).toBe(0)
+  })
+})
+
+describe('returnRate', () => {
+  it('gives every currency the same return, which is the only check that means anything', () => {
+    /* Each rate agrees with itself by construction, so comparing a rate to
+       itself proves nothing. What matters is that a rupee and a dirham hand
+       back the same proportion of what was spent. */
+    for (const r of RATES) expect(returnRate(r), r.currency).toBeCloseTo(1, 10)
+  })
+
+  it('catches a rate that has quietly become five times as generous', () => {
+    expect(returnRate({ currency: 'INR', earn_per_unit: 0.05, per_unit: 1 })).toBeCloseTo(5, 10)
+  })
+})
+
+describe('pointsFor', () => {
+  it('earns points on spend at the rung’s multiplier, in the local denomination', () => {
+    /* ₹14,000 at 1.5× Gold is the 210 points on Priya's ledger. */
+    expect(pointsFor(14000, rateFor(RATES, 'INR'), 1.5)).toBe(210)
+    /* The same 1.5× on $140 is the same 210 — the point is the unit that
+       travels, and only its value is local. */
+    expect(pointsFor(140, rateFor(RATES, 'USD'), 1.5)).toBe(210)
+  })
+
+  it('issues whole points, because the ledger holds whole points', () => {
+    expect(Number.isInteger(pointsFor(1333, rateFor(RATES, 'INR'), 1.5))).toBe(true)
+  })
+
+  it('earns nothing where nobody has priced a point', () => {
+    expect(pointsFor(14000, null, 1.5)).toBe(0)
+  })
+})
+
+describe('ladderIn', () => {
+  const indian = { kind: 'consumer', currency: 'INR' }
+
+  it('gives the member the rungs set for their own currency', () => {
+    expect(ladderIn(RETAIL, THRESHOLDS, indian).map(t => t.qualify_spend))
+      .toEqual([0, 50000, 150000, 400000])
+  })
+
+  it('leaves the business ladder out of a retail member’s rungs', () => {
+    expect(ladderIn(RUNGS, THRESHOLDS, indian).map(t => t.id))
+      .toEqual(['bronze', 'silver', 'gold', 'platinum'])
+  })
+
+  it('keeps a rung with no threshold in this currency rather than zeroing it', () => {
+    /* Zero reads as "already qualified" and quietly promotes somebody. */
+    expect(ladderIn(RETAIL, THRESHOLDS, { kind: 'consumer', currency: 'KES' })
+      .map(t => t.qualify_spend)).toEqual(RETAIL.map(t => t.qualify_spend))
+  })
+
+  it('is what stops a rupee customer being told she is at the top', () => {
+    /* ₹187,127 is past every dollar rung — $0, $600, $1,800, $4,500 — so an
+       unscoped ladder says there is nothing above Gold. */
+    const her = { tier: 'gold', qualify_12m: 187127 }
+    expect(nextRung(RETAIL, her).next).toBeNull()
+    expect(nextRung(ladderIn(RETAIL, THRESHOLDS, indian), her).next?.id).toBe('platinum')
+  })
+})
+
+describe('earnLine', () => {
+  it('says it the way a customer reads it in their own market', () => {
+    expect(earnLine(rateFor(RATES, 'INR')!)).toBe('1 point per 100 spent')
+    expect(earnLine(rateFor(RATES, 'INR')!, 1.5)).toBe('1.5 points per 100 spent')
+  })
+
+  it('flips to points-per-unit where a unit earns more than one', () => {
+    expect(earnLine(rateFor(RATES, 'USD')!)).toBe('1 point per 1 spent')
+    expect(earnLine(rateFor(RATES, 'USD')!, 2)).toBe('2 points per 1 spent')
+  })
+
+  it('does not write a currency of its own — the caller formats the figure', () => {
+    /* The stored tier prose used to say "Earn 1.5 points per $1", which is
+       wrong in three of the four currencies the marketplace trades in. */
+    for (const r of RATES) expect(earnLine(r, 1.5)).not.toMatch(/[$₹]|AED|KSh/)
   })
 })

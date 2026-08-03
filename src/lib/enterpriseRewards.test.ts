@@ -1,12 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import {
-  pointsValue, tiersFor, tierOf, tierProgress, qualifiesFor, movementDate, newestFirst,
+  pointsWorth, tiersFor, tierOf, tierProgress, qualifiesFor, movementDate, newestFirst,
   balanceOf, summarise, byRule, byVertical, optionsFor, canAfford, canPropose, canRelease,
   validateProposal, validateRelease, releaseImpact, waiting, settled, committedPoints,
-  availablePoints, fmtPoints, money, FUNDER_LABEL,
+  availablePoints, fmtPoints, ladderForMember, topRetailRung, pointsFor, returnRate,
+  FUNDER_LABEL,
 } from './enterpriseRewards'
 import type {
   Tier, RewardMember, Movement, RewardRule, RedeemOption, RewardPolicy, Redemption,
+  PointRate, Threshold, Fmt,
 } from './enterpriseRewards'
 
 const TIERS: Tier[] = [
@@ -18,9 +20,30 @@ const TIERS: Tier[] = [
   { id: 'org-platinum', name: 'Strategic', sort_order: 4, qualify_spend: 100000, multiplier: 2, colour: null, benefits: [], note: null, kind: 'enterprise' },
 ]
 
+/* The business ladder as it is set in rupees, and the retail one, so a
+   currency-scoped read can be told apart from an unscoped one. */
+const THRESHOLDS: Threshold[] = [
+  { tier_id: 'org-bronze', currency: 'INR', qualify_spend: 0 },
+  { tier_id: 'org-silver', currency: 'INR', qualify_spend: 1_000_000 },
+  { tier_id: 'org-gold', currency: 'INR', qualify_spend: 3_000_000 },
+  { tier_id: 'org-platinum', currency: 'INR', qualify_spend: 8_500_000 },
+  { tier_id: 'bronze', currency: 'INR', qualify_spend: 0 },
+  { tier_id: 'gold', currency: 'INR', qualify_spend: 150_000 },
+]
+
+const USD: PointRate = { currency: 'USD', earn_per_unit: 1, per_unit: 100 }
+const INR: PointRate = { currency: 'INR', earn_per_unit: 0.01, per_unit: 1 }
+
+/* The formatters a screen would pass in. Deliberately not `money.ts`'s
+   `format` — these rules do not care how the mark is drawn, only that they were
+   handed one and used it. */
+const usd: Fmt = n => `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+const inr: Fmt = n => `₹${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
 function member(over: Partial<RewardMember> = {}): RewardMember {
   return {
     id: 'LM-4104', account_id: 'ENT-2007', name: 'SmartBuild Ltd', kind: 'enterprise',
+    currency: 'USD',
     tier: 'org-gold', balance: 86630, joined: '12 Aug 2025', qualify_12m: 78412,
     lifetime_earned: 101630, lifetime_redeemed: 15000, expiring_soon: 0, expiring_on: null,
     last_activity: '29 Jul 2026', ...over,
@@ -31,7 +54,7 @@ function mv(over: Partial<Movement> = {}): Movement {
   return {
     id: 'LTX-1', member: 'LM-4104', when_date: '29 Jul 2026', type: 'earn', points: 1000,
     ref: 'INV-2026-0779', rule_id: 'ERN-01', funder: 'operator', seller_id: null,
-    value: 10, note: null, ...over,
+    value: 10, currency: 'USD', note: null, ...over,
   }
 }
 
@@ -64,7 +87,7 @@ const SOLO: RewardPolicy = { ...POLICY, release_roles: ['procurement-lead'] }
 function redemption(over: Partial<Redemption> = {}): Redemption {
   return {
     id: 'RDX-1101', account_id: 'ENT-2007', member_id: 'LM-4104', option_id: 'RDM-02',
-    points: 20000, value: 200, cost_centre: 'CC-1000', reason: 'Against the July invoice.',
+    points: 20000, value: 200, currency: 'USD', cost_centre: 'CC-1000', reason: 'Against the July invoice.',
     state: 'proposed', proposed_by: 'EU-2007-04', proposed_on: '2026-07-30',
     released_by: null, released_on: null, decision_note: null, applied_to: null,
     applied_on: null, ledger_ref: null, sort_order: 1, ...over,
@@ -81,18 +104,53 @@ describe('the two ladders', () => {
 
   it('qualifies a company on business thresholds, not a person\'s', () => {
     /* $78,412 would be several times top tier on the consumer ladder. */
-    expect(qualifiesFor(78412, TIERS, 'enterprise')!.id).toBe('org-gold')
-    expect(qualifiesFor(78412, TIERS, 'consumer')!.id).toBe('gold')
+    expect(qualifiesFor(78412, tiersFor(TIERS, 'enterprise'))!.id).toBe('org-gold')
+    expect(qualifiesFor(78412, tiersFor(TIERS, 'consumer'))!.id).toBe('gold')
   })
 
   it('puts a brand-new account at the bottom rather than nowhere', () => {
-    expect(qualifiesFor(0, TIERS, 'enterprise')!.id).toBe('org-bronze')
+    expect(qualifiesFor(0, tiersFor(TIERS, 'enterprise'))!.id).toBe('org-bronze')
+  })
+})
+
+describe('the ladder in the account\'s own currency', () => {
+  const indian = member({ currency: 'INR', tier: 'org-gold', qualify_12m: 6_854_777 })
+
+  it('carries the rupee thresholds rather than the dollar ones', () => {
+    expect(ladderForMember(TIERS, THRESHOLDS, indian).map(t => t.qualify_spend))
+      .toEqual([0, 1_000_000, 3_000_000, 8_500_000])
+  })
+
+  it('does not put a Business Plus account at the top of the ladder', () => {
+    /* The bug this exists to prevent: ₹6,854,777 is past every dollar rung,
+       including $100,000, so an unscoped ladder reports "nothing above". */
+    const wrong = tierProgress(indian, tiersFor(TIERS, 'enterprise'))
+    expect(wrong.top).toBe(true)
+
+    const right = tierProgress(indian, ladderForMember(TIERS, THRESHOLDS, indian))
+    expect(right.top).toBe(false)
+    expect(right.next!.id).toBe('org-platinum')
+    expect(right.need).toBe(1_645_223)
+  })
+
+  it('keeps a rung that has no threshold in this currency rather than zeroing it', () => {
+    /* Zero would read as "already qualified" and quietly promote somebody. */
+    const kenyan = member({ currency: 'KES' })
+    expect(ladderForMember(TIERS, THRESHOLDS, kenyan).map(t => t.qualify_spend))
+      .toEqual([0, 12000, 35000, 100000])
+  })
+
+  it('names the retail top rung in the reader\'s money, so the subtitle is not a dollar figure', () => {
+    expect(topRetailRung(TIERS, THRESHOLDS, 'INR')).toBe(150_000)
+    expect(topRetailRung(TIERS, THRESHOLDS, 'USD')).toBe(1800)
   })
 })
 
 describe('tierProgress', () => {
+  const ladder = tiersFor(TIERS, 'enterprise')
+
   it('measures the gap from the current tier, not from zero', () => {
-    const p = tierProgress(member(), TIERS)
+    const p = tierProgress(member(), ladder)
     expect(p.current!.id).toBe('org-gold')
     expect(p.next!.id).toBe('org-platinum')
     expect(p.need).toBe(21588)
@@ -101,14 +159,14 @@ describe('tierProgress', () => {
   })
 
   it('says plainly when there is nothing above', () => {
-    const p = tierProgress(member({ tier: 'org-platinum', qualify_12m: 140000 }), TIERS)
+    const p = tierProgress(member({ tier: 'org-platinum', qualify_12m: 140000 }), ladder)
     expect(p.top).toBe(true)
     expect(p.next).toBeNull()
     expect(p.pct).toBe(100)
   })
 
   it('never reports negative progress for an account holding a tier it has dropped below', () => {
-    const p = tierProgress(member({ tier: 'org-gold', qualify_12m: 20000 }), TIERS)
+    const p = tierProgress(member({ tier: 'org-gold', qualify_12m: 20000 }), ladder)
     expect(p.pct).toBe(0)
     expect(p.next!.id).toBe('org-gold')
   })
@@ -139,11 +197,17 @@ describe('summarise', () => {
   ]
 
   it('shows what the balance is made of rather than just the number', () => {
-    const s = summarise(log)
+    const s = summarise(log, USD)
     expect(s.balance).toBe(86630)
     expect(s.earned).toBe(101630)
     expect(s.redeemed).toBe(15000)
     expect(s.value).toBe(866.3)
+  })
+
+  it('values the same balance in the account\'s own money, not always the dollar', () => {
+    /* The whole point: 86,630 points is $866.30 to an American account and
+       ₹86,630 to an Indian one. It used to be $866.30 to both. */
+    expect(summarise(log, INR).value).toBe(86630)
   })
 
   it('counts an expiry and a reversal as points lost, not gained', () => {
@@ -166,7 +230,10 @@ describe('byRule', () => {
     expect(out.map(r => r.id)).toEqual(['ERN-20', 'ERN-01'])
     expect(out[0].count).toBe(2)
     expect(out[0].funder).toBe('shared')
-    expect(out[0].value).toBe(50)
+    /* The movements' own worth added up, not the points put back through a
+       rate. Recomputing means last year's earn is restated the day the
+       marketplace reprices a point. */
+    expect(out[0].value).toBe(20)
   })
 
   it('ignores redemptions, which no rule earned', () => {
@@ -265,36 +332,44 @@ describe('validateProposal', () => {
   const draft = { option: option(), points: 20000, reason: 'Against the July invoice', costCentre: 'CC-1000' }
 
   it('accepts a well-formed proposal', () => {
-    expect(validateProposal(draft, member(), POLICY).ok).toBe(true)
+    expect(validateProposal(draft, member(), POLICY, USD, usd).ok).toBe(true)
   })
 
   it('refuses more points than the account holds', () => {
-    const c = validateProposal({ ...draft, points: 999999 }, member(), POLICY)
+    const c = validateProposal({ ...draft, points: 999999 }, member(), POLICY, USD, usd)
     expect(c.ok).toBe(false)
     if (!c.ok) expect(c.reason).toMatch(/more than the 86,630 points/)
   })
 
   it('holds the account to its own floor, and says what it is worth', () => {
-    const c = validateProposal({ ...draft, points: 1000 }, member(), POLICY)
+    const c = validateProposal({ ...draft, points: 1000 }, member(), POLICY, USD, usd)
     expect(c.ok).toBe(false)
     if (!c.ok) expect(c.reason).toMatch(/minimum on this account is 5,000 points — worth \$50.00/)
   })
 
+  it('says what it is worth in the account\'s own money', () => {
+    /* 5,000 points is $50 to an American account and ₹5,000 to an Indian one.
+       The refusal used to say "$50.00" to both. */
+    const c = validateProposal({ ...draft, points: 1000 }, member({ currency: 'INR' }), POLICY, INR, inr)
+    expect(c.ok).toBe(false)
+    if (!c.ok) expect(c.reason).toMatch(/worth ₹5,000.00/)
+  })
+
   it('respects the step the option is sold in', () => {
-    const c = validateProposal({ ...draft, points: 20050 }, member(), POLICY)
+    const c = validateProposal({ ...draft, points: 20050 }, member(), POLICY, USD, usd)
     expect(c.ok).toBe(false)
     if (!c.ok) expect(c.reason).toMatch(/steps of 100 points/)
   })
 
   it('insists on a reason, because somebody else signs it', () => {
-    const c = validateProposal({ ...draft, reason: '  ' }, member(), POLICY)
+    const c = validateProposal({ ...draft, reason: '  ' }, member(), POLICY, USD, usd)
     expect(c.ok).toBe(false)
     if (!c.ok) expect(c.reason).toMatch(/company money on your say-so/)
   })
 
   it('insists on a cost centre only where the account allocates', () => {
-    expect(validateProposal({ ...draft, costCentre: null }, member(), POLICY).ok).toBe(false)
-    expect(validateProposal({ ...draft, costCentre: null }, member(), { ...POLICY, allocate_to_cost_centre: false }).ok).toBe(true)
+    expect(validateProposal({ ...draft, costCentre: null }, member(), POLICY, USD, usd).ok).toBe(false)
+    expect(validateProposal({ ...draft, costCentre: null }, member(), { ...POLICY, allocate_to_cost_centre: false }, USD, usd).ok).toBe(true)
   })
 })
 
@@ -310,14 +385,20 @@ describe('validateRelease', () => {
 
 describe('releaseImpact', () => {
   it('states the balance afterwards and where the credit lands', () => {
-    const out = releaseImpact(redemption(), member(), option(), POLICY)
+    const out = releaseImpact(redemption(), member(), option(), POLICY, usd)
     expect(out[0]).toMatch(/20,000 points leave the balance, worth \$200.00/)
     expect(out[1]).toMatch(/66,630 points left/)
     expect(out.some(s => /automatically/.test(s))).toBe(true)
   })
 
+  it('states it in the money the redemption is actually in', () => {
+    const r = redemption({ currency: 'INR', value: 20000 })
+    const out = releaseImpact(r, member({ currency: 'INR' }), option(), POLICY, inr)
+    expect(out[0]).toMatch(/worth ₹20,000.00/)
+  })
+
   it('says so when it has to be applied by hand', () => {
-    const out = releaseImpact(redemption(), member(), option(), { ...POLICY, auto_apply: false })
+    const out = releaseImpact(redemption(), member(), option(), { ...POLICY, auto_apply: false }, usd)
     expect(out.some(s => /by hand/.test(s))).toBe(true)
   })
 })
@@ -350,9 +431,28 @@ describe('formatting', () => {
     expect(fmtPoints(86630)).toBe('86,630 points')
   })
 
-  it('turns points into money at the programme rate', () => {
-    expect(pointsValue(86630)).toBe(866.3)
-    expect(money(pointsValue(20000))).toBe('$200.00')
+  it('turns points into money at the rate for the account\'s own currency', () => {
+    expect(pointsWorth(86630, USD)).toBe(866.3)
+    expect(pointsWorth(86630, INR)).toBe(86630)
+  })
+
+  it('is worth nothing rather than worth somebody else\'s number when unpriced', () => {
+    expect(pointsWorth(86630, null)).toBe(0)
+  })
+
+  it('gives every currency the same return, which is the check that a local rate is still one', () => {
+    /* Self-consistency proves nothing here — each rate agrees with itself by
+       construction. What matters is that a dirham and a rupee buy back the same
+       proportion of what was spent. */
+    expect(returnRate(USD)).toBeCloseTo(1, 10)
+    expect(returnRate(INR)).toBeCloseTo(1, 10)
+  })
+
+  it('earns points on spend at the rung\'s multiplier, in the local denomination', () => {
+    /* ₹14,000 at 1.5× Gold is 210 points — the figure on Priya's ledger. */
+    expect(pointsFor(14000, INR, 1.5)).toBe(210)
+    /* The same 1.5× on $140 of dollar spend is the same 210. */
+    expect(pointsFor(140, USD, 1.5)).toBe(210)
   })
 
   it('names who is paying in words rather than a code', () => {

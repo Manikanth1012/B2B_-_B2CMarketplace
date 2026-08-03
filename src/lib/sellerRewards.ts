@@ -4,9 +4,27 @@
    The whole subject is one question: who pays for a point. The marketplace can
    fund one as marketing spend, a seller can fund one to buy repeat business on
    their own line, or the two can split it. A seller is entitled to see their
-   own half and nothing about another seller's customers. */
+   own half and nothing about another seller's customers.
+
+   Every cost here is a `Money`, and the totals are lists of them rather than
+   numbers. A seller sells into more than one market: Nimbus Sensors has points
+   issued against its products in rupees, dirhams and shillings, and the old
+   single total added all three and printed a dollar sign in front. The sum was
+   a perfectly ordinary number, which is what makes that failure invisible. */
+
+import { money as asMoney, byCurrency } from './money'
+import type { Money } from './money'
+import { rateFor, worthIn } from './loyalty'
+import type { PointRate } from './loyalty'
+
+export type { Money, PointRate }
+export { rateFor, worthIn }
 
 export type Funder = 'operator' | 'partner' | 'shared'
+
+/** One total per currency, largest first — the honest shape of a mixed sum. */
+export const bucket = (list: readonly Money[]): Money[] =>
+  byCurrency(list).map(b => b.total)
 export type RuleStatus = 'active' | 'scheduled' | 'paused' | 'pending'
 export type MovementType = 'earn' | 'redeem' | 'reverse' | 'expire' | 'adjust'
 
@@ -45,6 +63,10 @@ export interface Movement {
   funder: Funder
   seller_id: string | null
   value: number
+  /* The currency `value` is in — the member's, not the seller's. A seller in
+     Bengaluru selling to a customer in Nairobi is charged in shillings for the
+     points that customer earned. */
+  currency: string
   note: string | null
 }
 
@@ -84,9 +106,10 @@ export function shareOf(movement: Movement, rules: readonly EarnRule[]): number 
   return +((100 - rule.split) / 100).toFixed(4)
 }
 
-/** What a movement actually costs this seller, to the cent. */
-export function costOf(movement: Movement, rules: readonly EarnRule[]): number {
-  return +(Number(movement.value) * shareOf(movement, rules)).toFixed(2)
+/** What a movement actually costs this seller, to the cent, in the money it
+    was issued in. */
+export function costOf(movement: Movement, rules: readonly EarnRule[]): Money {
+  return asMoney(+(Number(movement.value) * shareOf(movement, rules)).toFixed(2), movement.currency)
 }
 
 /* Dates on the ledger are written the way a statement writes them —
@@ -116,18 +139,22 @@ export function newestFirst(movements: readonly Movement[]): Movement[] {
 export interface RewardCost {
   /* Points issued on this seller's products under rules they fund some or all
      of. Reversals are counted separately rather than netted, because "you were
-     charged and then you were not" is two facts a seller wants to see. */
+     charged and then you were not" is two facts a seller wants to see.
+
+     Points add across currencies and money does not: a point is a unit the
+     marketplace issues, the same unit everywhere, and only what it is worth is
+     local. That is why these three stay plain numbers and the rest are lists. */
   issued: number
   clawed: number
   redeemed: number
-  /* Cost of issuing, less what came back on reversals. */
-  issuingCost: number
-  clawedBack: number
+  /* Cost of issuing, and what came back on reversals — one figure per currency. */
+  issuingCost: Money[]
+  clawedBack: Money[]
   /* Redemptions the seller funds are a second, separate bill: a voucher costs
      them at the moment it is spent, not when the point was earned. */
-  redemptionCost: number
-  /* What lands on the next settlement. */
-  total: number
+  redemptionCost: Money[]
+  /* What lands on the next settlement, per currency. */
+  total: Money[]
   movements: number
 }
 
@@ -136,18 +163,19 @@ export function rewardCost(movements: readonly Movement[], rules: readonly EarnR
   const reverses = movements.filter(m => m.type === 'reverse')
   const redeems = movements.filter(m => m.type === 'redeem')
 
-  const issuingCost = +earns.reduce((a, m) => a + costOf(m, rules), 0).toFixed(2)
-  const clawedBack = +reverses.reduce((a, m) => a + costOf(m, rules), 0).toFixed(2)
-  const redemptionCost = +redeems.reduce((a, m) => a + costOf(m, rules), 0).toFixed(2)
+  const cost = (ms: readonly Movement[], sign = 1) =>
+    ms.map(m => { const c = costOf(m, rules); return asMoney(c.amount * sign, c.currency) })
 
   return {
     issued: earns.reduce((a, m) => a + Number(m.points), 0),
     clawed: reverses.reduce((a, m) => a + Math.abs(Number(m.points)), 0),
     redeemed: redeems.reduce((a, m) => a + Math.abs(Number(m.points)), 0),
-    issuingCost,
-    clawedBack,
-    redemptionCost,
-    total: +(issuingCost - clawedBack + redemptionCost).toFixed(2),
+    issuingCost: bucket(cost(earns)),
+    clawedBack: bucket(cost(reverses)),
+    redemptionCost: bucket(cost(redeems)),
+    /* Issuing, less clawbacks, plus redemptions — netted inside each currency
+       and never across them. */
+    total: bucket([...cost(earns), ...cost(reverses, -1), ...cost(redeems)]),
     movements: movements.length,
   }
 }
@@ -155,7 +183,7 @@ export function rewardCost(movements: readonly Movement[], rules: readonly EarnR
 export interface RuleCost {
   rule: EarnRule
   points: number
-  cost: number
+  cost: Money[]
   movements: number
   /* What the seller's half actually is, said in words rather than as a
      percentage nobody converts in their head. */
@@ -165,22 +193,26 @@ export interface RuleCost {
 /** Cost per rule, so a seller can see which campaign is the expensive one
     rather than one total they cannot act on. */
 export function byRule(movements: readonly Movement[], rules: readonly EarnRule[]): RuleCost[] {
-  const map = new Map<string, { points: number; cost: number; movements: number }>()
+  const map = new Map<string, { points: number; cost: Money[]; movements: number }>()
   for (const m of movements) {
     if (!m.rule_id) continue
-    const row = map.get(m.rule_id) ?? { points: 0, cost: 0, movements: 0 }
+    const row = map.get(m.rule_id) ?? { points: 0, cost: [], movements: 0 }
+    const c = costOf(m, rules)
     row.points += Number(m.points)
-    row.cost += costOf(m, rules) * (m.type === 'reverse' ? -1 : 1)
+    row.cost.push(asMoney(c.amount * (m.type === 'reverse' ? -1 : 1), c.currency))
     row.movements += 1
     map.set(m.rule_id, row)
   }
   return [...map.entries()]
     .map(([id, v]) => {
       const rule = rules.find(r => r.id === id)!
-      return { rule, points: v.points, cost: +v.cost.toFixed(2), movements: v.movements, yourShare: shareLabel(rule) }
+      return { rule, points: v.points, cost: bucket(v.cost), movements: v.movements, yourShare: shareLabel(rule) }
     })
     .filter(r => r.rule)
-    .sort((a, b) => b.cost - a.cost)
+    /* Ranked on points rather than on cost. Cost is a list now and lists do not
+       compare — and ranking on the largest bucket would rank ₹500 above $50,
+       which is the same mistake in a different place. */
+    .sort((a, b) => b.points - a.points)
 }
 
 export function shareLabel(rule: EarnRule): string {
@@ -252,14 +284,30 @@ export function validateProposal(p: Proposal): Check {
   return { ok: true }
 }
 
-/** What agreeing to this actually commits the seller to. Computed rather than
-    written out, so the numbers cannot drift from the programme. */
-export function proposalImpact(p: Proposal, programme: Programme): string[] {
-  const perPoint = 1 / programme.per_unit
-  const worstCase = +(p.capPerOrder * perPoint).toFixed(2)
+/**
+ * What agreeing to this actually commits the seller to. Computed rather than
+ * written out, so the numbers cannot drift from the programme.
+ *
+ * A seller sells into every market they are approved for, so "the most one
+ * order can cost you" is a different figure in each — it used to be one dollar
+ * number, which is the cap priced as though every customer were American.
+ */
+export function proposalImpact(
+  p: Proposal, rates: readonly PointRate[], fmt: (amount: number, currency: string) => string,
+): string[] {
+  /* Dearest first, because the sentence is about the worst case. */
+  const worst = [...rates]
+    .map(r => ({ currency: r.currency, cost: worthIn(p.capPerOrder, { value_per: 1 }, r) }))
+    .sort((a, b) => b.cost - a.cost)
+
+  const perPoint = rates
+    .map(r => fmt(worthIn(1, { value_per: 1 }, r), r.currency))
+    .join(', ')
+
   return [
-    `You fund every point this rule issues, at $${perPoint.toFixed(2)} a point.`,
-    `At ${p.rate}× and a ${p.capPerOrder.toLocaleString()}-point cap, the most one order can cost you is $${worstCase.toFixed(2)}.`,
+    `You fund every point this rule issues — ${perPoint || 'at the rate set for each market'}, depending on where the customer is.`,
+    `At ${p.rate}× and a ${p.capPerOrder.toLocaleString()}-point cap, the most one order can cost you is ${
+      worst.length ? worst.map(w => fmt(w.cost, w.currency)).join(' · ') : 'set by the cap'}.`,
     'It issues nothing until the marketplace approves it. An unapproved rule is not a live rule.',
     'It applies to your products only — you cannot write a rule that spends somebody else’s margin.',
     'Points already issued are never withdrawn if you later stop the rule.',
@@ -287,49 +335,72 @@ export interface Liability {
      when it is spent. Breakage is the share the programme expects never to be
      redeemed — an estimate, and labelled as one. */
   outstandingPoints: number
-  gross: number
-  expected: number
-  breakageValue: number
+  /* One figure per currency. The marketplace owes rupees to its Indian members
+     and shillings to its Kenyan ones, and those are two debts, not one number.
+     A screen that wants a single headline converts them itself, with `totalIn`,
+     at a rate and a date it names. */
+  gross: Money[]
+  expected: Money[]
+  breakageValue: Money[]
   byFunder: Record<Funder, number>
 }
 
+/**
+ * What the programme owes, by currency.
+ *
+ * Was `outstandingPoints / programme.per_unit` — every member's balance divided
+ * by one marketplace-wide rate. That is a dollar answer for a member who has
+ * never been quoted a dollar, and adding those answers up gave the operator a
+ * gross liability figure that was wrong by two orders of magnitude for most of
+ * the members in it.
+ */
 export function liability(
-  members: readonly { balance: number }[],
+  members: readonly { balance: number; currency: string }[],
   movements: readonly Movement[],
   programme: Programme,
+  rates: readonly PointRate[],
 ): Liability {
   const outstandingPoints = members.reduce((a, m) => a + Number(m.balance), 0)
-  const gross = +(outstandingPoints / programme.per_unit).toFixed(2)
-  const expected = +(gross * (1 - programme.breakage)).toFixed(2)
+
+  const owed = members.map(m =>
+    asMoney(worthIn(Number(m.balance), { value_per: 1 }, rateFor(rates, m.currency)), m.currency))
+
+  const gross = bucket(owed)
+  const expected = gross.map(g => asMoney(+(g.amount * (1 - programme.breakage)).toFixed(2), g.currency))
+  const breakageValue = gross.map((g, i) => asMoney(+(g.amount - expected[i].amount).toFixed(2), g.currency))
+
   const byFunder: Record<Funder, number> = { operator: 0, partner: 0, shared: 0 }
   for (const m of movements) {
     if (m.points > 0) byFunder[m.funder] += Number(m.points)
   }
-  return { outstandingPoints, gross, expected, breakageValue: +(gross - expected).toFixed(2), byFunder }
+  return { outstandingPoints, gross, expected, breakageValue, byFunder }
 }
 
 export interface SellerLine {
   partner_id: string
   points: number
-  cost: number
+  cost: Money[]
   movements: number
 }
 
 /** What the programme costs each seller, for the marketplace's view. The
     marketplace's own share is not a seller line and is left out. */
 export function costBySeller(movements: readonly Movement[], rules: readonly EarnRule[]): SellerLine[] {
-  const map = new Map<string, { points: number; cost: number; movements: number }>()
+  const map = new Map<string, { points: number; cost: Money[]; movements: number }>()
   for (const m of movements) {
     if (!m.seller_id) continue
-    const row = map.get(m.seller_id) ?? { points: 0, cost: 0, movements: 0 }
+    const row = map.get(m.seller_id) ?? { points: 0, cost: [], movements: 0 }
+    const c = costOf(m, rules)
     row.points += m.type === 'earn' ? Number(m.points) : 0
-    row.cost += costOf(m, rules) * (m.type === 'reverse' ? -1 : 1)
+    row.cost.push(asMoney(c.amount * (m.type === 'reverse' ? -1 : 1), c.currency))
     row.movements += 1
     map.set(m.seller_id, row)
   }
   return [...map.entries()]
-    .map(([partner_id, v]) => ({ partner_id, ...v, cost: +v.cost.toFixed(2) }))
-    .sort((a, b) => b.cost - a.cost)
+    .map(([partner_id, v]) => ({ partner_id, points: v.points, movements: v.movements, cost: bucket(v.cost) }))
+    /* On points, for the same reason `byRule` is: costs in different currencies
+       do not order. */
+    .sort((a, b) => b.points - a.points)
 }
 
 /** Proposals waiting on the marketplace. Oldest first: a delay here costs the

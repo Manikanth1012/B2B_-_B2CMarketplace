@@ -227,6 +227,10 @@ export interface LoyaltyLedgerEntry {
   funder: string
   seller_id: string | null
   value: number
+  /* What `value` is in. A movement's worth is derived from its points at the
+     member's own rate, so it follows the member's currency and not the
+     marketplace's. */
+  currency: string
   note: string
 }
 

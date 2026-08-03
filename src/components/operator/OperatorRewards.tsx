@@ -2,15 +2,17 @@ import { useState, useEffect, useCallback } from 'react'
 import { Gift, Clock, TriangleAlert as AlertTriangle, Check, Pause } from 'lucide-react'
 import {
   SectionCard, StatCard, Btn, Modal, FormField, TextInput, TextArea, Select,
-  Table, Td, toast, fmtMoney, fmtInt,
+  Table, Td, toast, fmtInt,
 } from './shared'
 import { Callout } from '../OnboardingJourney'
+import { useMarket } from '../../lib/MarketContext'
 import { loadProgramme, approveProposal, rejectProposal, pauseRule } from '../../lib/rewardsRepo'
 import type { ProgrammeBook } from '../../lib/rewardsRepo'
 import {
   liability, costBySeller, pendingProposals, daysWaiting, shareLabel, FUNDERS,
 } from '../../lib/sellerRewards'
-import type { EarnRule, Funder } from '../../lib/sellerRewards'
+import type { EarnRule, Funder, Money } from '../../lib/sellerRewards'
+import { totalIn } from '../../lib/money'
 import { supabase } from '../../lib/supabase'
 
 /* The marketplace's view of the programme.
@@ -24,13 +26,19 @@ import { supabase } from '../../lib/supabase'
 
 const ACTOR = 'Marketplace growth desk'
 
-type Tab = 'proposals' | 'rules' | 'sellers'
+type Tab = 'proposals' | 'rules' | 'sellers' | 'currencies'
+
+/* The day the reporting rates are taken from. The marketplace's own books have
+   a closing date; converting at "today" would mean two people opening this page
+   a week apart cannot reconcile their figures. */
+const AS_OF = '2026-08-01'
 
 export function OperatorRewards() {
   const [book, setBook] = useState<ProgrammeBook | null>(null)
   const [names, setNames] = useState<Record<string, string>>({})
   const [tab, setTab] = useState<Tab>('proposals')
   const [deciding, setDeciding] = useState<EarnRule | null>(null)
+  const { book: moneyBook, fmtIn } = useMarket()
 
   const reload = useCallback(async () => {
     const [b, p] = await Promise.all([
@@ -46,10 +54,21 @@ export function OperatorRewards() {
 
   const programme = book.programme
   const now = new Date()
-  const owed = programme ? liability(book.members, book.movements, programme) : null
+  const owed = programme ? liability(book.members, book.movements, programme, book.rates) : null
   const pending = pendingProposals(book.rules)
   const sellers = costBySeller(book.movements, book.rules)
   const live = book.rules.filter(r => r.status === 'active' || r.status === 'scheduled')
+
+  /* The marketplace reports in one currency; its members hold points in four.
+     `totalIn` is the honest version of what this page used to do implicitly —
+     it converts at a named date's rates and hands back what it could not
+     convert, so a total computed over three of four currencies says so rather
+     than looking complete. */
+  const home = moneyBook.currencies.find(c => c.is_reporting)?.code ?? 'USD'
+  const reported = (list: readonly Money[]) =>
+    totalIn(list, home, moneyBook.rates, AS_OF, moneyBook.currencies)
+  const spread = (list: readonly Money[]) =>
+    list.map(m => fmtIn(m.amount, m.currency)).join(' · ') || '—'
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -78,25 +97,47 @@ export function OperatorRewards() {
         </Callout>
       )}
 
-      {owed && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-          <StatCard label="Points outstanding" value={fmtInt(owed.outstandingPoints)}
-                    sublabel={`across ${book.members.length} members`} />
-          <StatCard label="Gross liability" value={`$${fmtMoney(owed.gross)}`}
-                    sublabel="If every point were redeemed tomorrow" />
-          <StatCard label="Expected to be spent" value={`$${fmtMoney(owed.expected)}`}
-                    sublabel={`$${fmtMoney(owed.breakageValue)} of estimated breakage`} />
-          <StatCard label="Issued by sellers"
-                    value={fmtInt(owed.byFunder.partner + owed.byFunder.shared)}
-                    sublabel={`against ${fmtInt(owed.byFunder.operator)} the marketplace funded`} />
-        </div>
-      )}
+      {owed && (() => {
+        const gross = reported(owed.gross)
+        const expected = reported(owed.expected)
+        const breakage = reported(owed.breakageValue)
+        return (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+              <StatCard label="Points outstanding" value={fmtInt(owed.outstandingPoints)}
+                        sublabel={`across ${book.members.length} members, in ${owed.gross.length} ${owed.gross.length === 1 ? 'currency' : 'currencies'}`} />
+              {/* Converted, and said so. This tile used to divide every balance
+                  on the marketplace by one rate and put a dollar sign on the
+                  answer, which for a rupee member was out by a factor of a
+                  hundred. */}
+              <StatCard label={`Gross liability, in ${home}`}
+                        value={fmtIn(gross.total.amount, gross.total.currency)}
+                        sublabel={`If every point were redeemed tomorrow · at ${AS_OF} rates`} />
+              <StatCard label={`Expected to be spent, in ${home}`}
+                        value={fmtIn(expected.total.amount, expected.total.currency)}
+                        sublabel={`${fmtIn(breakage.total.amount, breakage.total.currency)} of estimated breakage`} />
+              <StatCard label="Issued by sellers"
+                        value={fmtInt(owed.byFunder.partner + owed.byFunder.shared)}
+                        sublabel={`against ${fmtInt(owed.byFunder.operator)} the marketplace funded`} />
+            </div>
+
+            {gross.missing.length > 0 && (
+              <Callout tone="danger" title={`${gross.missing.join(', ')} could not be converted`}>
+                There is no rate on file for {gross.missing.join(' or ')} at {AS_OF}, so the totals above
+                leave those members out. A liability computed over some of the currencies is worse than
+                no total, which is why it says so here rather than quietly rounding down.
+              </Callout>
+            )}
+          </>
+        )
+      })()}
 
       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
         {([
           ['proposals', `Waiting on you (${pending.length})`],
           ['rules', `Live rules (${live.length})`],
           ['sellers', `Cost by seller (${sellers.length})`],
+          ['currencies', `What is owed, and where (${owed?.gross.length ?? 0})`],
         ] as const).map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} style={{
             padding: '8px 15px', borderRadius: 'var(--radius)', cursor: 'pointer',
@@ -188,22 +229,64 @@ export function OperatorRewards() {
           </Callout>
         ) : (
           <SectionCard title="What the programme costs each seller"
-                       subtitle="Recovered on their settlement, itemised by rule on the statement">
-            <Table headers={['Seller', 'Points issued', 'Movements', 'Recovered from them']}>
-              {sellers.map(s => (
-                <tr key={s.partner_id}>
-                  <Td>
-                    <div style={{ fontWeight: 600 }}>{names[s.partner_id] ?? s.partner_id}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{s.partner_id}</div>
-                  </Td>
-                  <Td right>{fmtInt(s.points)}</Td>
-                  <Td right>{s.movements}</Td>
-                  <Td right><strong>${fmtMoney(s.cost)}</strong></Td>
-                </tr>
-              ))}
+                       subtitle={`Recovered on their settlement, itemised by rule on the statement · the ${home} column converts at ${AS_OF} rates`}>
+            <Table headers={['Seller', 'Points issued', 'Movements', 'Recovered from them',
+                             { label: `In ${home}`, align: 'right' }]}>
+              {sellers.map(s => {
+                const inHome = reported(s.cost)
+                return (
+                  <tr key={s.partner_id}>
+                    <Td>
+                      <div style={{ fontWeight: 600 }}>{names[s.partner_id] ?? s.partner_id}</div>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{s.partner_id}</div>
+                    </Td>
+                    <Td right>{fmtInt(s.points)}</Td>
+                    <Td right>{s.movements}</Td>
+                    {/* What they are actually charged, in the currencies they
+                        are actually charged in. A seller listing in three
+                        markets owes three amounts, and adding them was the
+                        whole bug. */}
+                    <Td right style={{ maxWidth: '160px' }}>
+                      {s.cost.map(m => (
+                        <div key={m.currency}><strong>{fmtIn(m.amount, m.currency)}</strong></div>
+                      ))}
+                    </Td>
+                    <Td right>{fmtIn(inHome.total.amount, inHome.total.currency)}</Td>
+                  </tr>
+                )
+              })}
             </Table>
           </SectionCard>
         )
+      )}
+
+      {tab === 'currencies' && owed && (
+        <SectionCard title="What is owed, and in what"
+                     subtitle="A point is a unit the marketplace issues; what it is worth is set per currency, so this is several debts rather than one">
+          <Table headers={['Currency', 'A point is worth', 'Members', 'Gross liability',
+                           'Expected to be spent', 'Breakage']}>
+            {owed.gross.map((g, i) => {
+              const rate = book.rates.find(r => r.currency === g.currency)
+              const members = book.members.filter(m => m.currency === g.currency)
+              return (
+                <tr key={g.currency}>
+                  <Td><strong>{g.currency}</strong></Td>
+                  <Td right>{rate ? fmtIn(1 / rate.per_unit, g.currency) : '—'}</Td>
+                  <Td right>{members.length}</Td>
+                  <Td right>{fmtIn(g.amount, g.currency)}</Td>
+                  <Td right>{fmtIn(owed.expected[i].amount, g.currency)}</Td>
+                  <Td right>{fmtIn(owed.breakageValue[i].amount, g.currency)}</Td>
+                </tr>
+              )
+            })}
+          </Table>
+          <div style={{ padding: '14px 20px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
+            Each rate is a chosen figure, not a converted one — a point is ₹1 in India because somebody
+            set it there, not because $0.01 comes to ₹0.87. What is checked instead is that every
+            currency hands back the same proportion of what was spent: {spread(owed.gross)} outstanding,
+            all of it earned at one percent.
+          </div>
+        </SectionCard>
       )}
 
       {deciding && (

@@ -1,21 +1,24 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Zap, Star, Gift, Lock, TrendingUp } from 'lucide-react'
 import {
-  StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, fmtInt, Btn, toast, Modal,
+  StatCard, SectionCard, Table, Td, StatusPill, fmtInt, Btn, toast, Modal,
   FormField, TextArea, TextInput, Select, EmptyState,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
 import { Pager, usePaging } from '../Pager'
+import { useMarket } from '../../lib/MarketContext'
 import { loadAccount } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
-import { loadRewards, proposeRedemption, decideRedemption, withdrawRedemption } from '../../lib/enterpriseRewardsRepo'
+import {
+  loadRewards, proposeRedemption, decideRedemption, withdrawRedemption, rateOf,
+} from '../../lib/enterpriseRewardsRepo'
 import type { RewardBook } from '../../lib/enterpriseRewardsRepo'
 import {
-  tiersFor, tierProgress, newestFirst, summarise, byRule, byVertical, optionsFor,
+  ladderForMember, tierProgress, newestFirst, summarise, byRule, byVertical, optionsFor,
   canAfford, canPropose, canRelease, releaseImpact, waiting, settled, committedPoints,
-  availablePoints, pointsValue, fmtPoints, money, money0, FUNDER_LABEL,
+  availablePoints, pointsWorth, pointsFor, worthIn, topRetailRung, fmtPoints, FUNDER_LABEL,
 } from '../../lib/enterpriseRewards'
-import type { Redemption, RedeemOption } from '../../lib/enterpriseRewards'
+import type { Redemption, RedeemOption, Fmt } from '../../lib/enterpriseRewards'
 
 /* Rewards, for a member that is a company rather than a person.
  *
@@ -35,6 +38,7 @@ export function EnterpriseRewards() {
   const [account, setAccount] = useState<AccountBook | null>(null)
   const [proposing, setProposing] = useState<RedeemOption | null>(null)
   const [deciding, setDeciding] = useState<{ r: Redemption; release: boolean } | null>(null)
+  const { fmtIn } = useMarket()
 
   const reload = useCallback(async () => {
     const [rw, acct] = await Promise.all([loadRewards(), loadAccount()])
@@ -59,9 +63,18 @@ export function EnterpriseRewards() {
     )
   }
 
-  const s = summarise(book.movements)
-  const progress = tierProgress(member, book.tiers)
-  const ladder = tiersFor(book.tiers, 'enterprise')
+  /* Every money figure on this page is in the currency the account is invoiced
+     in. The ladder carries the thresholds set for that currency rather than the
+     dollar ones on `loyalty_tiers` — ₹6,854,777 of spend is past every dollar
+     rung several times over, which would put a Business Plus account at the top
+     of the ladder with nothing above it. */
+  const rate = rateOf(book)
+  const money = (n: number) => fmtIn(n, member.currency)
+  const money0 = (n: number) => fmtIn(n, member.currency, { decimals: false })
+  const ladder = ladderForMember(book.tiers, book.thresholds, member)
+
+  const s = summarise(book.movements, rate)
+  const progress = tierProgress(member, ladder)
   const options = optionsFor(book.options, member)
   const queue = waiting(book.redemptions)
   const history = settled(book.redemptions)
@@ -93,7 +106,7 @@ export function EnterpriseRewards() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
         <StatCard label="Balance" value={fmtInt(member.balance)}
-                  sublabel={`Worth ${money(pointsValue(member.balance, book.perUnit))}${spokenFor ? ` · ${fmtInt(spokenFor)} already proposed` : ''}`}
+                  sublabel={`Worth ${money(pointsWorth(member.balance, rate))}${spokenFor ? ` · ${fmtInt(spokenFor)} already proposed` : ''}`}
                   color="var(--brand-accent-dark)" />
         <StatCard label="Tier" value={progress.current?.name ?? member.tier}
                   sublabel={`${progress.current?.multiplier ?? 1}× on everything the company buys`}
@@ -112,12 +125,19 @@ export function EnterpriseRewards() {
         <Callout tone="info" title={`${money0(progress.need)} more qualifying spend and the account is ${progress.next?.name}`}>
           {money0(Number(member.qualify_12m))} of the {money0(progress.next?.qualify_spend ?? 0)} needed — {progress.pct}% of the way.
           {' '}Moving up takes the earn rate from {progress.current?.multiplier ?? 1}× to {progress.next?.multiplier}×
-          on everything, which is worth about {money(pointsValue(Number(member.qualify_12m) * ((progress.next?.multiplier ?? 1) - (progress.current?.multiplier ?? 1)), book.perUnit))} a year at the current spend.
+          on everything, which is worth about{' '}
+          {/* The extra points that multiplier buys on the same spend, priced at
+              this account's own rate. It used to be `spend × Δmultiplier / 100`,
+              which is the dollar arithmetic with the currency left out. */}
+          {money(pointsWorth(
+            pointsFor(Number(member.qualify_12m), rate,
+              (progress.next?.multiplier ?? 1) - (progress.current?.multiplier ?? 1)), rate))} a year
+          at the current spend.
         </Callout>
       )}
 
       <SectionCard title="The business ladder"
-                   subtitle="Organisations qualify on business thresholds — the consumer ladder tops out at $4,500, which any company clears on its first invoice">
+                   subtitle={`Organisations qualify on business thresholds — the retail ladder tops out at ${money0(topRetailRung(book.tiers, book.thresholds, member.currency))}, which any company clears on its first invoice`}>
         <Table headers={['Tier', 'Qualifying spend', 'Earn rate', 'What it gives you', '']}>
           {ladder.map(t => {
             const held = t.id === member.tier
@@ -158,7 +178,7 @@ export function EnterpriseRewards() {
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontWeight: 800, fontSize: 'var(--text-lg)' }}>{fmtInt(r.points)}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>worth ${fmtMoney(Number(r.value))}</div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>worth {fmtIn(Number(r.value), r.currency)}</div>
                   </div>
                 </div>
                 <div style={{ marginTop: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
@@ -184,7 +204,8 @@ export function EnterpriseRewards() {
       )}
 
       <SectionCard title="What the points can become"
-                   subtitle={`${options.length} available to a business account · every one is spent inside the marketplace`}>
+                   subtitle={`${options.length} available to a business account · every one is spent inside the marketplace${
+                     rate ? ` · ${fmtPoints(rate.per_unit)} buy ${money(1)} back at the plain rate` : ''}`}>
         <div style={{ padding: '18px 20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '14px' }}>
           {options.map(o => {
             const afford = free >= o.min
@@ -194,6 +215,14 @@ export function EnterpriseRewards() {
                 opacity: afford ? 1 : 0.65, display: 'flex', flexDirection: 'column', gap: '8px',
               }}>
                 <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>{o.name}</div>
+                {/* What the minimum actually comes to, in the account's own
+                    money. The description no longer opens with "500 points
+                    becomes $5.00" — that sentence was true for one reader in
+                    four, and only this line knows both the option's rate and
+                    the account's currency. */}
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text)', fontWeight: 600 }}>
+                  {fmtInt(o.min)} points → {money(worthIn(o.min, o, rate))}
+                </div>
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.5, flex: 1 }}>{o.description}</div>
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
                   From {fmtInt(o.min)} points · funded by {FUNDER_LABEL[o.cost] ?? o.cost}
@@ -239,7 +268,9 @@ export function EnterpriseRewards() {
                 <Td>{v.vertical}</Td>
                 <Td right>{v.count}</Td>
                 <Td right>{fmtInt(v.points)}</Td>
-                <Td right>${fmtMoney(pointsValue(v.points, book.perUnit))}</Td>
+                {/* What the movements said they were worth when they were
+                    posted, not the points put back through today's rate. */}
+                <Td right>{money(v.value)}</Td>
               </tr>
             ))}
           </Table>
@@ -258,7 +289,7 @@ export function EnterpriseRewards() {
               <Td right style={{ fontWeight: 600, color: Number(m.points) < 0 ? 'var(--danger)' : 'var(--success)' }}>
                 {Number(m.points) > 0 ? '+' : ''}{fmtInt(Number(m.points))}
               </Td>
-              <Td right>${fmtMoney(Number(m.value))}</Td>
+              <Td right>{fmtIn(Number(m.value), m.currency)}</Td>
             </tr>
           ))}
         </Table>
@@ -277,7 +308,7 @@ export function EnterpriseRewards() {
                   {r.decision_note && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', maxWidth: '360px', lineHeight: 1.4 }}>{r.decision_note}</div>}
                 </Td>
                 <Td right style={{ fontSize: 'var(--text-xs)' }}>{account.members.find(m => m.id === r.proposed_by)?.name ?? r.proposed_by}</Td>
-                <Td right>{fmtInt(r.points)}<div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>${fmtMoney(Number(r.value))}</div></Td>
+                <Td right>{fmtInt(r.points)}<div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{fmtIn(Number(r.value), r.currency)}</div></Td>
                 <Td right style={{ fontSize: 'var(--text-xs)' }}>
                   {account.members.find(m => m.id === r.released_by)?.name ?? '—'}
                   <div style={{ color: 'var(--text-tertiary)' }}>{r.released_on ?? ''}</div>
@@ -293,12 +324,13 @@ export function EnterpriseRewards() {
       )}
 
       {proposing && me && (
-        <ProposeModal book={book} account={account} me={me} option={proposing} free={free}
+        <ProposeModal book={book} account={account} me={me} option={proposing} free={free} money={money}
                       onClose={() => setProposing(null)}
                       onDone={async () => { setProposing(null); await reload() }} />
       )}
       {deciding && me && (
         <DecideModal book={book} account={account} me={me} redemption={deciding.r} release={deciding.release}
+                     money={money}
                      onClose={() => setDeciding(null)}
                      onDone={async () => { setDeciding(null); await reload() }} />
       )}
@@ -306,9 +338,10 @@ export function EnterpriseRewards() {
   )
 }
 
-function ProposeModal({ book, account, me, option, free, onClose, onDone }: {
+function ProposeModal({ book, account, me, option, free, money, onClose, onDone }: {
   book: RewardBook; account: AccountBook; me: NonNullable<AccountBook['me']>
-  option: RedeemOption; free: number; onClose: () => void; onDone: () => Promise<void>
+  option: RedeemOption; free: number; money: Fmt
+  onClose: () => void; onDone: () => Promise<void>
 }) {
   const [pick, setPick] = useState(option.id)
   const [points, setPoints] = useState(String(Math.max(option.min, book.policy?.min_redeem ?? option.min)))
@@ -344,7 +377,7 @@ function ProposeModal({ book, account, me, option, free, onClose, onDone }: {
       </FormField>
 
       <FormField label="How many points" required
-                 hint={`${fmtInt(free)} free to spend${chosen ? ` · goes in steps of ${fmtInt(chosen.step)}` : ''} · worth ${money(pointsValue(n, book.perUnit))}`}>
+                 hint={`${fmtInt(free)} free to spend${chosen ? ` · goes in steps of ${fmtInt(chosen.step)}` : ''} · worth ${money(pointsWorth(n, rateOf(book)))}`}>
         <TextInput type="number" step={chosen?.step ?? 100} value={points} onChange={e => setPoints(e.target.value)} />
       </FormField>
 
@@ -370,14 +403,16 @@ function ProposeModal({ book, account, me, option, free, onClose, onDone }: {
   )
 }
 
-function DecideModal({ book, account, me, redemption, release, onClose, onDone }: {
+function DecideModal({ book, account, me, redemption, release, money, onClose, onDone }: {
   book: RewardBook; account: AccountBook; me: NonNullable<AccountBook['me']>
-  redemption: Redemption; release: boolean; onClose: () => void; onDone: () => Promise<void>
+  redemption: Redemption; release: boolean; money: Fmt
+  onClose: () => void; onDone: () => Promise<void>
 }) {
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const option = book.options.find(o => o.id === redemption.option_id) ?? null
-  const impact = book.member && book.policy ? releaseImpact(redemption, book.member, option, book.policy) : []
+  const impact = book.member && book.policy
+    ? releaseImpact(redemption, book.member, option, book.policy, money) : []
   const by = account.members.find(m => m.id === redemption.proposed_by)
 
   const submit = async () => {
@@ -397,7 +432,7 @@ function DecideModal({ book, account, me, redemption, release, onClose, onDone }
         </Btn>
       </>}>
       <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-        {by?.name ?? redemption.proposed_by} · {fmtInt(redemption.points)} points · ${fmtMoney(Number(redemption.value))} · {redemption.id}
+        {by?.name ?? redemption.proposed_by} · {fmtInt(redemption.points)} points · {money(Number(redemption.value))} · {redemption.id}
       </div>
 
       <FormField label={`Reason (shared with ${by?.name ?? 'the proposer'})`} required={!release}

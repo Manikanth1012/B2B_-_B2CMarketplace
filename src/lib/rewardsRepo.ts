@@ -3,14 +3,22 @@
 
 import { supabase } from './supabase'
 import { validateProposal, canWithdraw, validateApproval, validateRejection } from './sellerRewards'
-import type { EarnRule, Movement, Programme, Proposal, Funder } from './sellerRewards'
+import type { EarnRule, Movement, Programme, Proposal, Funder, PointRate } from './sellerRewards'
 
 export type Result = { ok: true; note?: string } | { ok: false; reason: string }
+
+/* PostgREST hands numerics back as strings, and a rate that is a string divides
+   to NaN — which renders as "NaN" rather than failing. */
+const numeric = (rows: PointRate[]): PointRate[] =>
+  rows.map(r => ({ ...r, earn_per_unit: Number(r.earn_per_unit), per_unit: Number(r.per_unit) }))
 
 export interface SellerRewards {
   movements: Movement[]
   rules: EarnRule[]
   programme: Programme | null
+  /* What a point is worth in each currency. A seller sells into more than one
+     market, so what a rule costs them is a different figure per market. */
+  rates: PointRate[]
   loadError?: string
 }
 
@@ -23,45 +31,53 @@ export interface SellerRewards {
  * the screen filters them to the ones that can cost this seller money.
  */
 export async function loadSellerRewards(partnerId: string): Promise<SellerRewards> {
-  const [mv, rules, prog] = await Promise.all([
+  const [mv, rules, prog, rates] = await Promise.all([
     supabase.from('loyalty_ledger').select('*').eq('seller_id', partnerId).order('when_date', { ascending: false }),
     supabase.from('loyalty_earn_rules').select('*').order('id'),
     supabase.from('loyalty_programme').select('*').maybeSingle(),
+    supabase.from('loyalty_point_rates').select('*'),
   ])
   const errors: string[] = []
   if (mv.error) errors.push(`movements: ${mv.error.message}`)
   if (rules.error) errors.push(`rules: ${rules.error.message}`)
   if (prog.error) errors.push(`programme: ${prog.error.message}`)
+  if (rates.error) errors.push(`what a point is worth: ${rates.error.message}`)
   return {
     movements: (mv.data ?? []) as Movement[],
     rules: (rules.data ?? []) as EarnRule[],
     programme: (prog.data ?? null) as Programme | null,
+    rates: numeric((rates.data ?? []) as PointRate[]),
     ...(errors.length > 0 ? { loadError: `Some of this did not load (${errors.join('; ')}).` } : {}),
   }
 }
 
 export interface ProgrammeBook extends SellerRewards {
-  members: { id: string; name: string; kind: string; tier: string; balance: number }[]
+  members: { id: string; name: string; kind: string; tier: string; balance: number; currency: string }[]
 }
 
 /** The whole programme, for the marketplace. */
 export async function loadProgramme(): Promise<ProgrammeBook> {
-  const [mv, rules, prog, members] = await Promise.all([
+  const [mv, rules, prog, members, rates] = await Promise.all([
     supabase.from('loyalty_ledger').select('*').order('when_date', { ascending: false }),
     supabase.from('loyalty_earn_rules').select('*').order('id'),
     supabase.from('loyalty_programme').select('*').maybeSingle(),
-    supabase.from('loyalty_members').select('id,name,kind,tier,balance'),
+    /* `currency` is what makes the liability rollup a set of debts rather than
+       one number nobody can pay. */
+    supabase.from('loyalty_members').select('id,name,kind,tier,balance,currency'),
+    supabase.from('loyalty_point_rates').select('*'),
   ])
   const errors: string[] = []
   if (mv.error) errors.push(`movements: ${mv.error.message}`)
   if (rules.error) errors.push(`rules: ${rules.error.message}`)
   if (prog.error) errors.push(`programme: ${prog.error.message}`)
   if (members.error) errors.push(`members: ${members.error.message}`)
+  if (rates.error) errors.push(`what a point is worth: ${rates.error.message}`)
   return {
     movements: (mv.data ?? []) as Movement[],
     rules: (rules.data ?? []) as EarnRule[],
     programme: (prog.data ?? null) as Programme | null,
     members: (members.data ?? []) as ProgrammeBook['members'],
+    rates: numeric((rates.data ?? []) as PointRate[]),
     ...(errors.length > 0 ? { loadError: `Some of this did not load (${errors.join('; ')}).` } : {}),
   }
 }

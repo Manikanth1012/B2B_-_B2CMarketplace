@@ -4,16 +4,17 @@ import {
 } from 'lucide-react'
 import {
   SectionCard, StatCard, Btn, Modal, FormField, TextInput, TextArea, Select,
-  Table, Td, toast, fmtMoney, fmtInt,
+  Table, Td, toast, fmtInt,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
+import { useMarket } from '../../lib/MarketContext'
 import { loadSellerRewards, proposeRule, withdrawProposal } from '../../lib/rewardsRepo'
 import type { SellerRewards } from '../../lib/rewardsRepo'
 import {
   rewardCost, byRule, rulesCosting, myProposals, shareLabel, costOf, canWithdraw, newestFirst,
-  proposalImpact, FUNDERS, MAX_RATE,
+  proposalImpact, worthIn, FUNDERS, MAX_RATE,
 } from '../../lib/sellerRewards'
-import type { EarnRule, Movement, Proposal } from '../../lib/sellerRewards'
+import type { EarnRule, Movement, Proposal, Money, PointRate } from '../../lib/sellerRewards'
 import { loadSellerRecord } from '../../lib/partnerRepo'
 import type { SellerRecord } from '../../lib/partnerRepo'
 import { supabase } from '../../lib/supabase'
@@ -38,12 +39,40 @@ const TYPE_LABEL: Record<string, string> = {
   earn: 'Issued', redeem: 'Redeemed', reverse: 'Taken back', expire: 'Expired', adjust: 'Adjusted',
 }
 
+/** An option that adds nothing of its own — what one point is simply worth. */
+const PLAIN = { value_per: 1 }
+
+/**
+ * A total that spans currencies, shown as the debts it actually is.
+ *
+ * A stat tile has one big number in it, so the largest bucket takes that slot
+ * and the rest go underneath. What must not happen is the three being added:
+ * ₹20,542 + KSh 1,200 + AED 37.60 = 21,779.60, which is a real number and not
+ * an amount of anything.
+ */
+function MoneyStat({ label, list, sublabel, colour, fmt }: {
+  label: string; list: readonly Money[]; sublabel: string
+  colour?: string; fmt: (n: number, c: string) => string
+}) {
+  const [lead, ...rest] = list
+  return (
+    <StatCard
+      label={label}
+      value={lead ? fmt(lead.amount, lead.currency) : '—'}
+      sublabel={[rest.map(m => `+ ${fmt(m.amount, m.currency)}`).join(' · '), sublabel]
+        .filter(Boolean).join(' · ')}
+      color={colour}
+    />
+  )
+}
+
 export function PartnerRewards({ partnerId }: { partnerId: string }) {
   const [snap, setSnap] = useState<SellerRewards | null>(null)
   const [record, setRecord] = useState<SellerRecord | null>(null)
   const [tiers, setTiers] = useState<Tier[]>([])
   const [proposing, setProposing] = useState(false)
   const [tab, setTab] = useState<'cost' | 'rules' | 'tier'>('cost')
+  const { book: moneyBook, fmtIn } = useMarket()
 
   const reload = useCallback(async () => {
     const [s, r, t] = await Promise.all([
@@ -58,6 +87,12 @@ export function PartnerRewards({ partnerId }: { partnerId: string }) {
   if (!snap || !record) {
     return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
   }
+
+  /* Read in whatever order Postgres handed them back, listed in the order the
+     marketplace lists its currencies — so "a point is worth …" reads the same
+     way here as the market switcher does. */
+  const order = moneyBook.currencies.map(c => c.code)
+  const rates = [...snap.rates].sort((a, b) => order.indexOf(a.currency) - order.indexOf(b.currency))
 
   const cost = rewardCost(snap.movements, snap.rules)
   const perRule = byRule(snap.movements, snap.rules)
@@ -83,7 +118,16 @@ export function PartnerRewards({ partnerId }: { partnerId: string }) {
       {snap.programme && (
         <Callout tone="info" title={snap.programme.funding_note}>
           Your share appears as a line on the next settlement, itemised by rule, so it can be argued with
-          rather than just deducted. A point is worth ${(1 / snap.programme.per_unit).toFixed(2)} when it is spent.
+          rather than just deducted.
+          {/* One sentence said "a point is worth $0.01 when it is spent", which
+              is true in one of the four markets this seller can list in. What a
+              point is worth is set per currency, and a seller is charged in
+              whichever one their customer was billed in. */}
+          {rates.length > 0 && (
+            <> A point is worth{' '}
+              {rates.map(r => fmtIn(worthIn(1, PLAIN, r), r.currency)).join(', ')}{' '}
+              when it is spent, depending on where the customer is.</>
+          )}
         </Callout>
       )}
 
@@ -97,20 +141,21 @@ export function PartnerRewards({ partnerId }: { partnerId: string }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
         <StatCard label="Points issued on your sales" value={fmtInt(cost.issued)}
                   sublabel={`${cost.movements} movements attributed to you`} />
-        <StatCard label="Cost of issuing" value={`$${fmtMoney(cost.issuingCost)}`}
-                  sublabel="Your share only — shared rules are split" />
-        <StatCard label="Cost of redemptions" value={`$${fmtMoney(cost.redemptionCost)}`}
-                  sublabel={cost.redeemed > 0
-                    ? `${fmtInt(cost.redeemed)} points spent with you`
-                    : 'Nothing redeemed against you yet'} />
-        <StatCard label="Lands on your settlement" value={`$${fmtMoney(cost.total)}`}
-                  sublabel="Issuing, less clawbacks, plus redemptions"
-                  color={cost.total > 0 ? 'var(--warning)' : undefined} />
+        <MoneyStat label="Cost of issuing" list={cost.issuingCost} fmt={fmtIn}
+                   sublabel="Your share only — shared rules are split" />
+        <MoneyStat label="Cost of redemptions" list={cost.redemptionCost} fmt={fmtIn}
+                   sublabel={cost.redeemed > 0
+                     ? `${fmtInt(cost.redeemed)} points spent with you`
+                     : 'Nothing redeemed against you yet'} />
+        <MoneyStat label="Lands on your settlement" list={cost.total} fmt={fmtIn}
+                   sublabel="Issuing, less clawbacks, plus redemptions"
+                   colour={cost.total.some(m => m.amount > 0) ? 'var(--warning)' : undefined} />
       </div>
 
       {cost.clawed > 0 && (
         <Callout tone="success" title={`${fmtInt(cost.clawed)} points were taken back`}>
-          Points issued against an order that was later refunded are reversed, and ${fmtMoney(cost.clawedBack)}{' '}
+          Points issued against an order that was later refunded are reversed, and{' '}
+          {cost.clawedBack.map(m => fmtIn(m.amount, m.currency)).join(' · ')}{' '}
           of cost came back to you with them. You are not charged for loyalty on a sale that did not stand.
         </Callout>
       )}
@@ -145,7 +190,11 @@ export function PartnerRewards({ partnerId }: { partnerId: string }) {
                     <Td>{r.yourShare}</Td>
                     <Td right>{fmtInt(r.points)}</Td>
                     <Td right>{r.movements}</Td>
-                    <Td right><strong>${fmtMoney(r.cost)}</strong></Td>
+                    <Td right style={{ maxWidth: '150px' }}>
+                      {r.cost.map(m => (
+                        <div key={m.currency}><strong>{fmtIn(m.amount, m.currency)}</strong></div>
+                      ))}
+                    </Td>
                   </tr>
                 ))}
               </Table>
@@ -163,7 +212,7 @@ export function PartnerRewards({ partnerId }: { partnerId: string }) {
               </div>
             ) : (
               <Table headers={['When', 'What', 'Against', 'Points', 'Costs you']}>
-                {newestFirst(snap.movements).map(m => <MovementRow key={m.id} m={m} snap={snap} />)}
+                {newestFirst(snap.movements).map(m => <MovementRow key={m.id} m={m} snap={snap} fmt={fmtIn} />)}
               </Table>
             )}
           </SectionCard>
@@ -206,10 +255,11 @@ export function PartnerRewards({ partnerId }: { partnerId: string }) {
         </>
       )}
 
-      {tab === 'tier' && <TierPanel record={record} tiers={tiers} />}
+      {tab === 'tier' && <TierPanel record={record} tiers={tiers} fmt={fmtIn} />}
 
       {proposing && snap.programme && (
         <ProposeModal partnerId={partnerId} programme={snap.programme} existing={snap.rules}
+                      rates={rates} fmt={fmtIn}
                       by={record.partner?.contact ?? 'The seller'}
                       onClose={() => setProposing(false)}
                       onDone={async () => { setProposing(false); await reload() }} />
@@ -218,7 +268,9 @@ export function PartnerRewards({ partnerId }: { partnerId: string }) {
   )
 }
 
-function MovementRow({ m, snap }: { m: Movement; snap: SellerRewards }) {
+function MovementRow({ m, snap, fmt }: {
+  m: Movement; snap: SellerRewards; fmt: (n: number, c: string) => string
+}) {
   const share = costOf(m, snap.rules)
   const rule = m.rule_id ? snap.rules.find(r => r.id === m.rule_id) : null
   const negative = Number(m.points) < 0
@@ -244,7 +296,7 @@ function MovementRow({ m, snap }: { m: Movement; snap: SellerRewards }) {
         {negative ? '' : '+'}{fmtInt(Number(m.points))}
       </Td>
       <Td right>
-        <div style={{ fontWeight: 600 }}>${fmtMoney(share)}</div>
+        <div style={{ fontWeight: 600 }}>{fmt(share.amount, share.currency)}</div>
         {rule && rule.funder === 'shared' && rule.split !== null && (
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{100 - rule.split}% share</div>
         )}
@@ -325,9 +377,19 @@ function RuleCard({ rule, partnerId, onChanged }: {
    to them. It is not the loyalty programme — it is the ladder they climb by
    trading — but a seller asking about rewards means both, and sending them to
    another screen for half the answer is the wrong call. */
-function TierPanel({ record, tiers }: { record: SellerRecord; tiers: Tier[] }) {
+function TierPanel({ record, tiers, fmt }: {
+  record: SellerRecord; tiers: Tier[]; fmt: (n: number, c: string, o?: { decimals?: boolean; code?: boolean }) => string
+}) {
   const current = tiers.find(t => t.id === record.partner?.tier_id) ?? null
   const next = current ? tiers.find(t => t.rank === current.rank + 1) ?? null : null
+
+  /* A seller's own tier is qualified on their settlements, and every settlement
+     statement on this marketplace is in dollars — so this figure is a dollar
+     figure and stays one. It carries its code because the rest of this screen
+     is now in the customer's money, and a bare `$` next to ₹ and KSh reads as a
+     leftover rather than as the different thing it is. Settlements getting
+     their own currency is task #43. */
+  const gross = (n: number) => fmt(n, 'USD', { decimals: false, code: true })
 
   if (!current) {
     return (
@@ -342,7 +404,7 @@ function TierPanel({ record, tiers }: { record: SellerRecord; tiers: Tier[] }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <SectionCard title={`${current.name} seller`}
-                   subtitle={`${current.rate_relief > 0 ? `${current.rate_relief} points off your commission rate · ` : ''}qualifying gross from $${fmtInt(current.qualify_gross)}`}>
+                   subtitle={`${current.rate_relief > 0 ? `${current.rate_relief} points off your commission rate · ` : ''}qualifying gross from ${gross(current.qualify_gross)}`}>
         <div style={{ padding: '20px' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {current.benefits.map((b, i) => (
@@ -355,7 +417,7 @@ function TierPanel({ record, tiers }: { record: SellerRecord; tiers: Tier[] }) {
           {next && (
             <div style={{ marginTop: '18px', paddingTop: '14px', borderTop: '1px solid var(--border-light)' }}>
               <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: '8px' }}>
-                {next.name} starts at ${fmtInt(next.qualify_gross)} of qualifying gross
+                {next.name} starts at {gross(next.qualify_gross)} of qualifying gross
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {next.benefits
@@ -381,10 +443,12 @@ function TierPanel({ record, tiers }: { record: SellerRecord; tiers: Tier[] }) {
   )
 }
 
-function ProposeModal({ partnerId, programme, existing, by, onClose, onDone }: {
+function ProposeModal({ partnerId, programme, existing, rates, fmt, by, onClose, onDone }: {
   partnerId: string
   programme: NonNullable<SellerRewards['programme']>
   existing: EarnRule[]
+  rates: PointRate[]
+  fmt: (n: number, c: string) => string
   by: string
   onClose: () => void
   onDone: () => Promise<void>
@@ -448,7 +512,7 @@ function ProposeModal({ partnerId, programme, existing, by, onClose, onDone }: {
       <div style={{ padding: '12px 14px', borderRadius: 'var(--radius)', background: 'var(--bg-alt)' }}>
         <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, marginBottom: '6px' }}>What agreeing to this commits you to</div>
         <ul style={{ margin: 0, paddingLeft: '18px', fontSize: 'var(--text-xs)', lineHeight: 1.7, color: 'var(--text-secondary)' }}>
-          {proposalImpact(p, programme).map((l, i) => <li key={i}>{l}</li>)}
+          {proposalImpact(p, rates, fmt).map((l, i) => <li key={i}>{l}</li>)}
         </ul>
       </div>
 

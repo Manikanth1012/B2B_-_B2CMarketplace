@@ -40,6 +40,9 @@ export interface Member {
   id: string
   name: string
   kind: string
+  /* What this member's money figures are in — their qualifying spend, and what
+     their points are worth. Follows the currency they are billed in. */
+  currency: string
   tier: string
   balance: number
   qualify_12m: number
@@ -190,9 +193,18 @@ export function ladderFor<T extends Rung>(tiers: readonly T[], memberKind: strin
   return tiers.filter(t => t.kind === kind).sort((a, b) => a.sort_order - b.sort_order)
 }
 
-/** The rung the member is on, or null when their tier names no rung we hold. */
-export function rungOf<T extends Rung>(tiers: readonly T[], member: { tier: string; kind: string }): T | null {
-  return ladderFor(tiers, member.kind).find(t => t.id === member.tier) ?? null
+/**
+ * The rung the member is on, or null when their tier names no rung in the list.
+ *
+ * Takes a ladder rather than every tier. It used to re-scope internally, which
+ * meant a caller who had already scoped — to the member's kind *and* to their
+ * currency's thresholds — silently got the unscoped list back. That is how the
+ * screen came to tell a Gold customer there was nothing above Gold: `nextRung`
+ * re-derived the ladder from the raw tiers, whose thresholds are dollars, and
+ * ₹187,127 is past every one of $0, $600, $1,800 and $4,500.
+ */
+export function rungOf<T extends Rung>(ladder: readonly T[], member: { tier: string }): T | null {
+  return ladder.find(t => t.id === member.tier) ?? null
 }
 
 /**
@@ -209,12 +221,17 @@ export function rungState<T extends Rung>(rung: T, current: T | null): 'past' | 
   return rung.sort_order < current.sort_order ? 'past' : 'future'
 }
 
-/** The next rung up, and what it would take. Scoped to the member's own ladder. */
+/**
+ * The next rung up, and what it would take.
+ *
+ * Takes the ladder the member actually climbs — scoped to their kind and
+ * carrying the thresholds set for their currency. See `rungOf` for why it does
+ * not scope for itself.
+ */
 export function nextRung<T extends Rung>(
-  tiers: readonly T[], member: { tier: string; kind: string; qualify_12m: number },
+  ladder: readonly T[], member: { tier: string; qualify_12m: number },
 ): { next: T | null; need: number; pct: number } {
-  const ladder = ladderFor(tiers, member.kind)
-  const current = rungOf(tiers, member)
+  const current = rungOf(ladder, member)
   const next = ladder.find(t => t.qualify_spend > member.qualify_12m) ?? null
   if (!next) return { next: null, need: 0, pct: 100 }
   /* Measured from the rung below rather than from zero, or a member who has
@@ -228,3 +245,102 @@ export function nextRung<T extends Rung>(
     pct: Math.max(0, Math.min(100, pct)),
   }
 }
+
+/* ------------------------------------------ what a point is worth, where -- */
+
+/**
+ * The denomination of a point in one currency.
+ *
+ * A point is a unit the marketplace issues, not a currency — but what it is
+ * worth is a local decision, made the same way a price is: chosen, not
+ * converted. `₹52,452` is what `$600` comes to; `₹50,000` is what somebody
+ * would actually set.
+ */
+export interface PointRate {
+  currency: string
+  /** Points earned per one unit of this currency spent, before tier multiplier. */
+  earn_per_unit: number
+  /** Points that buy one unit of this currency back, before the option's rate. */
+  per_unit: number
+}
+
+/** What it takes to reach one rung, in one currency. */
+export interface Threshold {
+  tier_id: string
+  currency: string
+  qualify_spend: number
+}
+
+export const rateFor = (rates: readonly PointRate[], currency: string): PointRate | null =>
+  rates.find(r => r.currency === currency) ?? null
+
+/**
+ * What a number of points is worth under an option, in the member's own money.
+ *
+ * Was `points / programme.per_unit`, with one `per_unit` for the whole
+ * marketplace — so a point was $0.01 to a customer billed in rupees. The rate
+ * is per currency now and the caller passes the member's.
+ */
+export function worthIn(
+  points: number, option: Pick<RedeemOption, 'value_per'>, rate: PointRate | null,
+): number {
+  if (!rate || rate.per_unit <= 0) return 0
+  return Math.round((points / rate.per_unit) * option.value_per * 100) / 100
+}
+
+/**
+ * The ladder as this member meets it: their own rungs, with the thresholds set
+ * for the currency they are billed in.
+ *
+ * Returned as rungs rather than as a lookup so everything downstream —
+ * `rungOf`, `rungState`, `nextRung` — keeps working on one shape and does not
+ * each need to know about currencies.
+ */
+export function ladderIn<T extends Rung & { id: string }>(
+  tiers: readonly T[], thresholds: readonly Threshold[], member: { kind: string; currency: string },
+): T[] {
+  return ladderFor(tiers, member.kind).map(t => {
+    const th = thresholds.find(x => x.tier_id === t.id && x.currency === member.currency)
+    /* A rung with no threshold in this currency keeps the one it came with
+       rather than dropping to zero — zero would read as "already qualified"
+       and quietly promote somebody. */
+    return th ? { ...t, qualify_spend: th.qualify_spend } : t
+  })
+}
+
+/**
+ * The points a spend earns, at a rung's multiplier.
+ *
+ * Rounded, because points are whole. Nothing on the marketplace issues a
+ * fraction of one, and a screen that quotes "210.4 points" is quoting a number
+ * the ledger will never contain.
+ */
+export const pointsFor = (spend: number, rate: PointRate | null, multiplier = 1): number =>
+  rate ? Math.round(spend * rate.earn_per_unit * multiplier) : 0
+
+/**
+ * How much of one unit of currency comes back as points, as a percentage.
+ *
+ * The number that says whether a "local" rate has quietly become five times as
+ * generous in one country. Every currency here returns 1%.
+ */
+export const returnRate = (rate: PointRate): number =>
+  rate.per_unit > 0 ? (rate.earn_per_unit / rate.per_unit) * 100 : 0
+
+/**
+ * "1 point per ₹100" — the earn side, said the way a customer reads it.
+ *
+ * Assembled rather than stored. The tiers used to carry "Earn 1.5 points per
+ * $1" as prose on every rung, which is wrong in three of the four currencies
+ * the marketplace trades in.
+ */
+export function earnLine(rate: PointRate, multiplier = 1): string {
+  const points = rate.earn_per_unit * multiplier
+  const spend = 1 / rate.earn_per_unit
+  return points >= 1
+    ? `${trim(points)} point${points === 1 ? '' : 's'} per 1 spent`
+    : `${trim(multiplier)} point${multiplier === 1 ? '' : 's'} per ${trim(spend)} spent`
+}
+
+const trim = (n: number): string =>
+  Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100)

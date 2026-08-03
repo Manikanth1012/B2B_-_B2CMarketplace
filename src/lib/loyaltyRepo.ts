@@ -3,12 +3,16 @@
 
 import { supabase } from './supabase'
 import { validateRedemption } from './loyalty'
-import type { Check, Member, Programme, RedeemOption } from './loyalty'
+import type { Check, Member, Programme, RedeemOption, PointRate, Threshold } from './loyalty'
 import type { LoyaltyTier, EarnRule, LoyaltyLedgerEntry } from '../types'
 
 export type Result = Check
 
 export interface RewardsBook {
+  /* Per currency, both of them: what a point is worth where this member is,
+     and what it takes to climb there. */
+  rates: PointRate[]
+  thresholds: Threshold[]
   programme: Programme | null
   member: Member | null
   tiers: LoyaltyTier[]
@@ -20,6 +24,7 @@ export interface RewardsBook {
 
 const EMPTY: RewardsBook = {
   programme: null, member: null, tiers: [], rules: [], options: [], ledger: [],
+  rates: [], thresholds: [],
 }
 
 /**
@@ -31,13 +36,19 @@ const EMPTY: RewardsBook = {
  * is the caller's own.
  */
 export async function loadMyRewards(): Promise<RewardsBook> {
-  const [p, m, t, r, o, l] = await Promise.all([
+  const [p, m, t, r, o, l, pr, th] = await Promise.all([
     supabase.from('loyalty_programme').select('*').maybeSingle(),
     supabase.from('loyalty_members').select('*').maybeSingle(),
     supabase.from('loyalty_tiers').select('*').order('sort_order'),
     supabase.from('loyalty_earn_rules').select('*').order('id'),
     supabase.from('loyalty_redeem_options').select('*').order('min'),
     supabase.from('loyalty_ledger').select('*').order('when_date', { ascending: false }),
+    /* What a point is worth where the member is, and what it takes to climb
+       there. Both are per currency: a point is $0.01 to a dollar customer and
+       ₹1 to a rupee one, and Silver is $600 or ₹50,000 depending who is
+       asking. */
+    supabase.from('loyalty_point_rates').select('*'),
+    supabase.from('loyalty_tier_thresholds').select('*'),
   ])
 
   const errors: string[] = []
@@ -53,6 +64,12 @@ export async function loadMyRewards(): Promise<RewardsBook> {
     programme: (p.data ?? null) as Programme | null,
     member: member ? { ...member, balance: Number(member.balance) } : null,
     tiers: grab<LoyaltyTier>(t, 'tiers'),
+    rates: grab<PointRate>(pr, 'what a point is worth').map(x => ({
+      ...x, earn_per_unit: Number(x.earn_per_unit), per_unit: Number(x.per_unit),
+    })),
+    thresholds: grab<Threshold>(th, 'tier thresholds').map(x => ({
+      ...x, qualify_spend: Number(x.qualify_spend),
+    })),
     rules: grab<EarnRule>(r, 'how points are earned'),
     options: grab<RedeemOption>(o, 'what points buy'),
     /* Only this member's movements. The seller and marketplace consoles read

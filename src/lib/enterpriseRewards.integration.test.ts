@@ -10,11 +10,13 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { supabase } from './supabase'
 import { signIn, signOut } from './authRepo'
 import { loadAccount } from './enterpriseRepo'
-import { loadRewards, proposeRedemption, decideRedemption, withdrawRedemption } from './enterpriseRewardsRepo'
+import {
+  loadRewards, proposeRedemption, decideRedemption, withdrawRedemption, rateOf,
+} from './enterpriseRewardsRepo'
 import type { RewardBook } from './enterpriseRewardsRepo'
 import {
   balanceOf, summarise, tiersFor, tierProgress, qualifiesFor, optionsFor,
-  canRelease, availablePoints, byRule,
+  canRelease, availablePoints, byRule, ladderForMember, ladderIn, returnRate, pointsWorth,
 } from './enterpriseRewards'
 import type { Member } from './enterprise'
 
@@ -54,15 +56,47 @@ describe('the organisation\'s reward account', () => {
     expect(tiersFor(book.tiers, 'enterprise').length).toBe(4)
   })
 
-  it('holds the tier its spend actually qualifies for', () => {
-    const should = qualifiesFor(Number(book.member!.qualify_12m), book.tiers, 'enterprise')!
+  it('holds the tier its spend actually qualifies for, on its own currency\'s rungs', () => {
+    const should = qualifiesFor(Number(book.member!.qualify_12m), ladderForMember(book.tiers, book.thresholds, book.member!))!
     expect(book.member!.tier).toBe(should.id)
   })
 
-  it('would be top tier on the consumer ladder, which is why there are two', () => {
-    const consumerTop = qualifiesFor(Number(book.member!.qualify_12m), book.tiers, 'consumer')!
-    expect(consumerTop.qualify_spend).toBeLessThan(Number(book.member!.qualify_12m))
-    expect(tierProgress(book.member!, book.tiers).top).toBe(false)
+  it('would be top tier on the retail ladder, which is why there are two', () => {
+    const retail = ladderIn(book.tiers, book.thresholds,
+      { kind: 'consumer', currency: book.member!.currency })
+    const top = qualifiesFor(Number(book.member!.qualify_12m), retail)!
+    expect(top.qualify_spend).toBeLessThan(Number(book.member!.qualify_12m))
+    expect(tierProgress(book.member!, ladderForMember(book.tiers, book.thresholds, book.member!)).top).toBe(false)
+  })
+
+  it('is denominated in something the marketplace has priced a point in', () => {
+    const rate = rateOf(book)
+    expect(rate, `nobody has priced a point in ${book.member!.currency}`).toBeTruthy()
+    /* A local rate that has quietly become five times as generous is invisible
+       to any check that compares the rate to itself. This compares them to each
+       other: every currency must hand back the same proportion of spend. */
+    for (const r of book.rates) expect(returnRate(r), `${r.currency} returns`).toBeCloseTo(1, 6)
+  })
+
+  it('holds every movement in the same currency as the member, which is what the guard is for', () => {
+    expect(book.movements.length).toBeGreaterThan(0)
+    for (const m of book.movements) {
+      expect(m.currency, `${m.id} is in ${m.currency}`).toBe(book.member!.currency)
+    }
+    for (const r of book.redemptions) {
+      expect(r.currency, `${r.id} is in ${r.currency}`).toBe(book.member!.currency)
+    }
+  })
+
+  it('does not quote dollars to an account that is not invoiced in them', () => {
+    /* The check that catches a relabelled figure rather than a converted one:
+       if this account were still carrying dollar amounts under a rupee label,
+       its balance would be worth a hundredth of what its ledger says. */
+    const rate = rateOf(book)!
+    const worth = pointsWorth(Number(book.member!.balance), rate)
+    const fromLedger = book.movements.reduce(
+      (n, m) => n + Number(m.value) * (Number(m.points) < 0 ? -1 : 1), 0)
+    expect(worth).toBeCloseTo(Math.round(fromLedger * 100) / 100, 2)
   })
 
   it('has a balance that is the sum of its movements, not a number somebody typed', () => {

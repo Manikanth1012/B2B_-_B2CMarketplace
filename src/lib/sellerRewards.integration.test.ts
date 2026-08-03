@@ -87,11 +87,27 @@ describe('the programme, read by the marketplace', () => {
     expect(new Set(pending.map(r => r.scope_id)).size).toBeGreaterThan(1)
   })
 
-  it('splits the outstanding liability by who funded it', async () => {
+  it('splits the outstanding liability by who funded it, and by what it is owed in', async () => {
     const book = await loadProgramme()
-    const owed = liability(book.members, book.movements, book.programme!)
-    expect(owed.gross).toBeGreaterThan(0)
-    expect(owed.expected).toBeLessThan(owed.gross)
+    const owed = liability(book.members, book.movements, book.programme!, book.rates)
+
+    /* Several debts, not one. The demo has members in rupees, shillings and
+       dirhams, so a single gross figure would be three currencies added up. */
+    expect(owed.gross.length, 'every member is in one currency, so this proves nothing')
+      .toBeGreaterThan(1)
+    for (const [i, g] of owed.gross.entries()) {
+      expect(g.amount, `${g.currency} owes nothing`).toBeGreaterThan(0)
+      expect(owed.expected[i].amount).toBeLessThan(g.amount)
+      expect(owed.expected[i].currency).toBe(g.currency)
+    }
+
+    /* Every currency the members hold points in has a price for one. A member
+       nobody has priced would be silently worth zero. */
+    for (const m of book.members) {
+      expect(book.rates.some(r => r.currency === m.currency),
+        `nobody has priced a point in ${m.currency}, which ${m.name} holds`).toBe(true)
+    }
+
     expect(owed.byFunder.operator + owed.byFunder.partner + owed.byFunder.shared)
       .toBeGreaterThan(0)
   })
@@ -126,20 +142,48 @@ describe('a seller reading what the programme costs them', () => {
     expect(data ?? []).toEqual([])
   })
 
-  it('has a bill with all four parts on it', async () => {
+  it('has a bill with all four parts on it, in each currency it trades in', async () => {
     const book = await loadSellerRewards(DEMO)
     const cost = rewardCost(book.movements, book.rules)
-    expect(cost.issuingCost).toBeGreaterThan(0)
-    expect(cost.clawedBack).toBeGreaterThan(0)
-    expect(cost.redemptionCost).toBeGreaterThan(0)
-    expect(cost.total).toBe(+(cost.issuingCost - cost.clawedBack + cost.redemptionCost).toFixed(2))
+    const at = (list: readonly { amount: number; currency: string }[], c: string) =>
+      list.find(m => m.currency === c)?.amount ?? 0
+
+    expect(cost.issuingCost.length).toBeGreaterThan(0)
+    expect(cost.clawedBack.length).toBeGreaterThan(0)
+    expect(cost.redemptionCost.length).toBeGreaterThan(0)
+
+    /* The identity, held inside each currency and never across them. */
+    for (const t of cost.total) {
+      expect(t.amount, `${t.currency} does not reconcile`).toBeCloseTo(
+        at(cost.issuingCost, t.currency)
+        - at(cost.clawedBack, t.currency)
+        + at(cost.redemptionCost, t.currency), 2)
+    }
+  })
+
+  it('is billed for points issued in a market other than its own', async () => {
+    /* This seller has points issued against its products in three currencies.
+       The old single total added them and printed a dollar sign; the check that
+       finds that is not arithmetic, it is that more than one currency is here
+       at all. */
+    const book = await loadSellerRewards(DEMO)
+    const seen = new Set(book.movements.map(m => m.currency))
+    expect(seen.size, `${DEMO} only ever sold into ${[...seen].join(', ')}`).toBeGreaterThan(1)
+    for (const m of book.movements) {
+      expect(book.rates.some(r => r.currency === m.currency),
+        `${m.id} is in ${m.currency}, which nobody has priced a point in`).toBe(true)
+    }
   })
 
   it('breaks the bill down by campaign', async () => {
     const book = await loadSellerRewards(DEMO)
     const rows = byRule(book.movements, book.rules)
     expect(rows.length).toBeGreaterThan(0)
-    expect(rows[0].cost).toBeGreaterThanOrEqual(rows[rows.length - 1].cost)
+    expect(rows[0].points).toBeGreaterThanOrEqual(rows[rows.length - 1].points)
+    /* Never a bucket per movement — each rule's cost is one figure per currency. */
+    for (const r of rows) {
+      expect(new Set(r.cost.map(m => m.currency)).size).toBe(r.cost.length)
+    }
   })
 
   it('is shown no rule scoped to somebody else', async () => {

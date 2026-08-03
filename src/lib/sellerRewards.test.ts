@@ -5,7 +5,20 @@ import {
   liability, costBySeller, pendingProposals, daysWaiting,
   validateApproval, validateRejection, newestFirst, movementDate,
 } from './sellerRewards'
-import type { EarnRule, Movement, Programme } from './sellerRewards'
+import type { EarnRule, Movement, Programme, PointRate } from './sellerRewards'
+
+/* What a point is worth in each currency, as the marketplace sets it. Every one
+   of these returns one percent of what was spent — chosen figures, not
+   conversions of each other. */
+const RATES: PointRate[] = [
+  { currency: 'USD', earn_per_unit: 1, per_unit: 100 },
+  { currency: 'INR', earn_per_unit: 0.01, per_unit: 1 },
+  { currency: 'AED', earn_per_unit: 0.25, per_unit: 25 },
+]
+
+/* Deliberately terse — these rules do not care how a mark is drawn, only that
+   they were handed a formatter and used it rather than writing a dollar sign. */
+const fmt = (n: number, c: string) => `${c} ${n.toFixed(2)}`
 
 const programme: Programme = {
   name: 'Aventa Rewards', unit: 'points', per_unit: 100, min_redeem: 500,
@@ -24,7 +37,7 @@ const rule = (over: Partial<EarnRule> & Pick<EarnRule, 'id'>): EarnRule => ({
 const mv = (over: Partial<Movement> & Pick<Movement, 'id'>): Movement => ({
   member: 'LM-4001', when_date: '01 Jul 2026', type: 'earn', points: 1000,
   ref: 'ORD-1', rule_id: 'ERN-09', funder: 'partner', seller_id: 'PTR-1004',
-  value: 10, note: null,
+  value: 10, currency: 'USD', note: null,
   ...over,
 })
 
@@ -61,7 +74,16 @@ describe('shareOf', () => {
 describe('costOf', () => {
   it('applies the share to the cent', () => {
     const rules = [rule({ id: 'ERN-10', funder: 'shared', split: 40 })]
-    expect(costOf(mv({ id: 'a', funder: 'shared', rule_id: 'ERN-10', value: 9.4 }), rules)).toBe(5.64)
+    expect(costOf(mv({ id: 'a', funder: 'shared', rule_id: 'ERN-10', value: 9.4 }), rules))
+      .toEqual({ amount: 5.64, currency: 'USD' })
+  })
+
+  it('keeps the currency the points were issued in, which is the customer\'s', () => {
+    /* A seller in Bengaluru selling to a customer in Nairobi is charged in
+       shillings. The cost is not converted to the seller's money here — that
+       is a decision with a rate and a date on it, made where it is displayed. */
+    const rules = [rule({ id: 'ERN-09' })]
+    expect(costOf(mv({ id: 'a', value: 1200, currency: 'KES' }), rules).currency).toBe('KES')
   })
 })
 
@@ -85,19 +107,37 @@ describe('rewardCost', () => {
 
   it('nets the clawback off the issuing cost but keeps redemption separate', () => {
     const c = rewardCost(rows, rules)
-    expect(c.issuingCost).toBe(18.8)
-    expect(c.clawedBack).toBe(6.8)
-    expect(c.redemptionCost).toBe(36)
-    expect(c.total).toBe(48)
+    expect(c.issuingCost).toEqual([{ amount: 18.8, currency: 'USD' }])
+    expect(c.clawedBack).toEqual([{ amount: 6.8, currency: 'USD' }])
+    expect(c.redemptionCost).toEqual([{ amount: 36, currency: 'USD' }])
+    expect(c.total).toEqual([{ amount: 48, currency: 'USD' }])
+  })
+
+  it('never adds one currency to another', () => {
+    /* The bug this shape exists to make impossible. These four figures used to
+       come back as 48 + 1200 + 300 = 1548, printed with a dollar sign — a real
+       number that is not an amount of anything. Points still add, because a
+       point is the same unit everywhere. */
+    const c = rewardCost([
+      ...rows,
+      mv({ id: 'e', points: 120000, value: 1200, currency: 'INR' }),
+      mv({ id: 'f', points: 1200, value: 300, currency: 'KES' }),
+    ], rules)
+    expect(c.issued).toBe(123080)
+    expect(c.total).toEqual([
+      { amount: 1200, currency: 'INR' },
+      { amount: 300, currency: 'KES' },
+      { amount: 48, currency: 'USD' },
+    ])
   })
 
   it('reports nothing rather than NaN on a seller with no movements', () => {
-    expect(rewardCost([], rules)).toMatchObject({ issued: 0, total: 0, movements: 0 })
+    expect(rewardCost([], rules)).toMatchObject({ issued: 0, total: [], movements: 0 })
   })
 })
 
 describe('byRule', () => {
-  it('ranks campaigns by what they cost, so the expensive one is actionable', () => {
+  it('ranks campaigns so the expensive one is actionable', () => {
     const rules = [rule({ id: 'ERN-09' }), rule({ id: 'ERN-03', name: 'Device trade-in bonus' })]
     const out = byRule([
       mv({ id: 'a', rule_id: 'ERN-09', value: 12 }),
@@ -105,8 +145,20 @@ describe('byRule', () => {
       mv({ id: 'c', rule_id: 'ERN-03', value: 6.8 }),
     ], rules)
     expect(out[0].rule.id).toBe('ERN-09')
-    expect(out[0].cost).toBe(21.4)
+    expect(out[0].cost).toEqual([{ amount: 21.4, currency: 'USD' }])
     expect(out[0].movements).toBe(2)
+  })
+
+  it('itemises a rule that has issued in more than one market', () => {
+    const rules = [rule({ id: 'ERN-09' })]
+    const out = byRule([
+      mv({ id: 'a', value: 12 }),
+      mv({ id: 'b', value: 1400, currency: 'INR' }),
+    ], rules)
+    expect(out[0].cost).toEqual([
+      { amount: 1400, currency: 'INR' },
+      { amount: 12, currency: 'USD' },
+    ])
   })
 
   it('subtracts a reversal from the rule it was issued under', () => {
@@ -115,7 +167,7 @@ describe('byRule', () => {
       mv({ id: 'a', value: 12 }),
       mv({ id: 'b', type: 'reverse', points: -1200, value: 12 }),
     ], rules)
-    expect(out[0].cost).toBe(0)
+    expect(out[0].cost).toEqual([{ amount: 0, currency: 'USD' }])
   })
 
   it('ignores a redemption, which belongs to no rule', () => {
@@ -214,16 +266,28 @@ describe('validateProposal', () => {
 })
 
 describe('proposalImpact', () => {
-  it('computes the worst case rather than describing it', () => {
-    const lines = proposalImpact({
-      name: 'x', rate: 2, capPerOrder: 1200, from: '', to: '', why: 'y',
-    }, programme)
-    expect(lines[0]).toMatch(/\$0\.01 a point/)
-    expect(lines[1]).toMatch(/most one order can cost you is \$12\.00/)
+  const draft = { name: 'x', rate: 2, capPerOrder: 1200, from: '', to: '', why: 'y' }
+
+  it('computes the worst case in every market the rule could issue in', () => {
+    /* A 1,200-point cap is $12 to an American customer, ₹1,200 to an Indian one
+       and AED 48 to one in Dubai. It used to be "$12.00" for all three. */
+    const lines = proposalImpact(draft, RATES, fmt)
+    expect(lines[0]).toMatch(/USD 0\.01, INR 1\.00, AED 0\.04/)
+    expect(lines[1]).toMatch(/most one order can cost you is INR 1200\.00 · AED 48\.00 · USD 12\.00/)
+  })
+
+  it('leads with the dearest market, because the sentence is about the worst case', () => {
+    const lines = proposalImpact(draft, RATES, fmt)
+    expect(lines[1].indexOf('INR')).toBeLessThan(lines[1].indexOf('USD'))
+  })
+
+  it('says something sensible before the rates have loaded', () => {
+    const lines = proposalImpact(draft, [], fmt)
+    expect(lines[1]).toMatch(/set by the cap/)
   })
 
   it('says that nothing issues before approval', () => {
-    const lines = proposalImpact({ name: 'x', rate: 2, capPerOrder: 100, from: '', to: '', why: 'y' }, programme)
+    const lines = proposalImpact({ ...draft, capPerOrder: 100 }, RATES, fmt)
     expect(lines.some(l => /not a live rule/.test(l))).toBe(true)
   })
 })
@@ -249,11 +313,32 @@ describe('canWithdraw', () => {
 
 describe('liability', () => {
   it('values every outstanding point, and says what it expects never to be spent', () => {
-    const l = liability([{ balance: 10000 }, { balance: 5000 }], [], programme)
+    const l = liability(
+      [{ balance: 10000, currency: 'USD' }, { balance: 5000, currency: 'USD' }],
+      [], programme, RATES)
     expect(l.outstandingPoints).toBe(15000)
-    expect(l.gross).toBe(150)
-    expect(l.expected).toBe(123)
-    expect(l.breakageValue).toBe(27)
+    expect(l.gross).toEqual([{ amount: 150, currency: 'USD' }])
+    expect(l.expected).toEqual([{ amount: 123, currency: 'USD' }])
+    expect(l.breakageValue).toEqual([{ amount: 27, currency: 'USD' }])
+  })
+
+  it('owes each currency separately, because they are separate debts', () => {
+    /* The bug: 10,000 rupee points and 10,000 dollar points came to "$200".
+       They are ₹10,000 and $100 — two debts, and neither of them is $200. */
+    const l = liability(
+      [{ balance: 10000, currency: 'INR' }, { balance: 10000, currency: 'USD' }],
+      [], programme, RATES)
+    expect(l.gross).toEqual([
+      { amount: 10000, currency: 'INR' },
+      { amount: 100, currency: 'USD' },
+    ])
+  })
+
+  it('owes nothing for a member in a currency nobody has priced a point in', () => {
+    /* Nothing rather than the dollar figure. A member whose points have no
+       stated value is a gap to fix, not a number to guess. */
+    const l = liability([{ balance: 10000, currency: 'KES' }], [], programme, RATES)
+    expect(l.gross).toEqual([{ amount: 0, currency: 'KES' }])
   })
 
   it('splits what was issued by who funded it', () => {
@@ -261,19 +346,31 @@ describe('liability', () => {
       mv({ id: 'a', points: 1000, funder: 'operator' }),
       mv({ id: 'b', points: 500, funder: 'partner' }),
       mv({ id: 'c', points: -200, funder: 'partner', type: 'reverse' }),
-    ], programme)
+    ], programme, RATES)
     expect(l.byFunder).toEqual({ operator: 1000, partner: 500, shared: 0 })
   })
 })
 
 describe('costBySeller', () => {
-  it('ranks sellers by what the programme costs them', () => {
+  it('itemises what the programme costs each seller, in the money it costs them', () => {
     const rules = [rule({ id: 'ERN-09' }), rule({ id: 'ERN-06', scope_id: 'PTR-1002' })]
     const out = costBySeller([
       mv({ id: 'a', value: 12 }),
-      mv({ id: 'b', seller_id: 'PTR-1002', rule_id: 'ERN-06', value: 30 }),
+      mv({ id: 'b', seller_id: 'PTR-1002', rule_id: 'ERN-06', points: 3000, value: 3000, currency: 'INR' }),
     ], rules)
-    expect(out[0]).toMatchObject({ partner_id: 'PTR-1002', cost: 30 })
+    expect(out[0]).toMatchObject({ partner_id: 'PTR-1002' })
+    expect(out[0].cost).toEqual([{ amount: 3000, currency: 'INR' }])
+  })
+
+  it('splits one seller\'s bill by the market it was earned in', () => {
+    const rules = [rule({ id: 'ERN-09' })]
+    const out = costBySeller([
+      mv({ id: 'a', value: 12 }),
+      mv({ id: 'b', value: 1400, currency: 'INR' }),
+      mv({ id: 'c', value: 620, currency: 'KES' }),
+    ], rules)
+    expect(out).toHaveLength(1)
+    expect(out[0].cost.map(m => m.currency)).toEqual(['INR', 'KES', 'USD'])
   })
 
   it('leaves the marketplace’s own spend out — it is not a seller', () => {

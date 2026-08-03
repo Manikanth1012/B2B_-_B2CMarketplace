@@ -147,7 +147,11 @@ const PERSONAS = {
     /* The account screens are behind the avatar menu rather than in the top
        nav, so they need opening first. Left out of the sweep entirely until
        now, which is exactly the sort of gap that makes an audit look clean. */
-    menu: { open: 'PR', items: ['My details', 'Wallet', 'My documents',
+    /* "My documents" is deliberately not here: documents are a card on My
+       details now rather than a screen of their own. Left in the list it
+       reported "no such nav item" on every run, which is a warning that means
+       nothing and trains you to skim past the ones that do. */
+    menu: { open: 'PR', items: ['My details', 'Wallet',
       'Sign-in & security', 'Notification preferences', 'My permissions', 'How things work'] },
   },
 }

@@ -2,9 +2,13 @@ import { useState, useEffect, useCallback } from 'react'
 import { Zap, Star, TrendingUp, Clock, Award, Gift, Wallet, FileText, Tag, RefreshCw, Send, X, Minus, Plus, Check, CircleAlert as AlertCircle, Info } from 'lucide-react'
 import { creditWalletFromRewards, loadMyWallet } from '../lib/walletRepo'
 import { loadMyRewards, redeemPoints as redeemThroughTheMarketplace } from '../lib/loyaltyRepo'
-import { validateRedemption, offeredTo, mostRedeemable, ladderFor, rungOf, rungState, nextRung } from '../lib/loyalty'
+import {
+  validateRedemption, offeredTo, mostRedeemable, ladderIn, rungOf, rungState, nextRung,
+  rateFor, worthIn, earnLine,
+} from '../lib/loyalty'
+import { useMarket } from '../lib/MarketContext'
 import type { LoyaltyTier, EarnRule, LoyaltyLedgerEntry } from '../types'
-import type { Programme as LoyaltyProgramme, RedeemOption, Member as LoyaltyMember } from '../lib/loyalty'
+import type { Programme as LoyaltyProgramme, RedeemOption, Member as LoyaltyMember, PointRate, Threshold } from '../lib/loyalty'
 import { Pager, usePaging } from './Pager'
 
 const KIND_ICONS: Record<string, typeof Wallet> = {
@@ -37,17 +41,21 @@ function fmtPts(n: number | null): string {
   return Math.round(n).toLocaleString('en-US') + ' pts'
 }
 
-function fmtMoney(n: number): string {
-  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
+/* Both of these used to write a `$` and nothing else could be said about it.
+   Every money figure on this screen is in the member's own currency now — what
+   their points are worth, what they have spent, what the next rung costs — so
+   the formatter takes it. */
 
-function fmtMoney0(n: number): string {
-  return '$' + Math.round(n).toLocaleString('en-US')
-}
+/* A point at the plain rate — no option's own multiplier on top. Used where the
+   screen says what a balance is worth in general rather than under one choice. */
+const BASE = { value_per: 1 }
 
 export function RewardsView() {
   const [programme, setProgramme] = useState<LoyaltyProgramme | null>(null)
   const [tiers, setTiers] = useState<LoyaltyTier[]>([])
+  const [rates, setRates] = useState<PointRate[]>([])
+  const [thresholds, setThresholds] = useState<Threshold[]>([])
+  const { fmtIn } = useMarket()
   const [earnRules, setEarnRules] = useState<EarnRule[]>([])
   const [redeemOptions, setRedeemOptions] = useState<RedeemOption[]>([])
   const [member, setMember] = useState<LoyaltyMember | null>(null)
@@ -68,6 +76,8 @@ export function RewardsView() {
     const book = await loadMyRewards()
     setProgramme(book.programme)
     setTiers(book.tiers)
+    setRates(book.rates)
+    setThresholds(book.thresholds)
     setEarnRules(book.rules)
     setRedeemOptions(book.options)
     setMember(book.member)
@@ -84,11 +94,24 @@ export function RewardsView() {
      unscoped list is eight interleaved rungs — and the fallback to `tiers[0]`
      below used to land a retail customer on "Registered", a business rung.
      The rules are in `loyalty.ts` and tested there. */
-  const ladder = ladderFor(tiers, member?.kind ?? 'consumer') as LoyaltyTier[]
+  /* The member's own money, everywhere on this screen. `rate` is what a point
+     is worth where they are — $0.01 to a dollar customer, ₹1 to a rupee one —
+     and the ladder carries the thresholds set for their currency rather than
+     the dollar ones every rung used to show. */
+  const rate = rateFor(rates, member?.currency ?? 'USD')
+  const money = (n: number) => fmtIn(n, member?.currency ?? 'USD')
+  const money0 = (n: number) => fmtIn(n, member?.currency ?? 'USD', { decimals: false })
+  const ladder = (member
+    ? ladderIn(tiers as unknown as (typeof tiers[number] & { id: string; sort_order: number; qualify_spend: number; kind: string })[], thresholds, member)
+    : []) as LoyaltyTier[]
 
+  /* Both read the ladder built above — scoped to the member's kind and carrying
+     the thresholds for their currency. Passing raw `tiers` here told a Gold
+     customer with ₹187,127 of spend that she was at the top, because every
+     dollar threshold on the raw rungs is below that number. */
   const tierProgress = (m: LoyaltyMember) => {
-    const cur = (rungOf(tiers, m) ?? ladder[0]) as LoyaltyTier
-    return { cur, ...nextRung(tiers, m) }
+    const cur = (rungOf(ladder, m) ?? ladder[0]) as LoyaltyTier
+    return { cur, ...nextRung(ladder, m) }
   }
 
   const openRedeem = (optId?: string) => {
@@ -131,7 +154,7 @@ export function RewardsView() {
        `redeem_points()` reads the option, the programme and the balance for
        itself and posts the movement. */
     const res = await redeemThroughTheMarketplace({
-      book: { programme, member, tiers, rules: earnRules, options: redeemOptions, ledger },
+      book: { programme, member, tiers, rules: earnRules, options: redeemOptions, ledger, rates, thresholds },
       optionId: opt.id,
       points: redeemPoints,
     })
@@ -233,7 +256,7 @@ export function RewardsView() {
           <div>
             <strong style={{ color: '#92400E' }}>{fmtPts(member.expiring_soon)} expire on {member.expiring_on}.</strong>{' '}
             <span style={{ color: '#92400E' }}>
-              That is {fmtMoney(member.expiring_soon / programme.per_unit)} of value that disappears if not used. Points expire {programme.expiry_months} months after they were earned, oldest first.
+              That is {money(worthIn(member.expiring_soon, BASE, rate))} of value that disappears if not used. Points expire {programme.expiry_months} months after they were earned, oldest first.
             </span>
           </div>
         </div>
@@ -259,9 +282,9 @@ export function RewardsView() {
 
       {/* Stats grid */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '32px' }}>
-        <StatCard icon={<Zap size={20} />} label="Balance" value={fmtPts(member.balance)} foot={`Worth ${fmtMoney(member.balance / programme.per_unit)} as wallet credit`} />
+        <StatCard icon={<Zap size={20} />} label="Balance" value={fmtPts(member.balance)} foot={`Worth ${money(worthIn(member.balance, BASE, rate))} as wallet credit`} />
         <StatCard icon={<Star size={20} />} label="Tier" value={progress.cur.name} foot={`${progress.cur.multiplier}× on everything you buy`} />
-        <StatCard icon={<TrendingUp size={20} />} label="Qualifying spend" value={fmtMoney0(member.qualify_12m)} foot="Rolling 12 months" />
+        <StatCard icon={<TrendingUp size={20} />} label="Qualifying spend" value={money0(member.qualify_12m)} foot="Rolling 12 months" />
         <StatCard
           icon={<Clock size={20} />}
           label="Expiring soon"
@@ -307,7 +330,7 @@ export function RewardsView() {
                 </div>
                 <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', marginBottom: '2px' }}>{t.name}</div>
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
-                  {t.qualify_spend > 0 ? `${fmtMoney0(t.qualify_spend)} a year` : 'No qualification'}
+                  {t.qualify_spend > 0 ? `${money0(t.qualify_spend)} a year` : 'No qualification'}
                 </div>
                 <div style={{ fontSize: 'var(--text-xs)' }}>{t.multiplier}× earn</div>
                 {/* t.colour comes from loyalty_tiers and is chosen for the badge, not for
@@ -344,11 +367,11 @@ export function RewardsView() {
                 />
               </div>
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
-                {fmtMoney0(member.qualify_12m)} of {fmtMoney0(progress.next.qualify_spend)}
+                {money0(member.qualify_12m)} of {money0(progress.next.qualify_spend)}
               </div>
             </div>
             <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-              {fmtMoney0(progress.need)} more qualifying spend and you are {progress.next.name}.
+              {money0(progress.need)} more qualifying spend and you are {progress.next.name}.
             </div>
           </div>
         ) : (
@@ -369,6 +392,18 @@ export function RewardsView() {
           <div>
             <h4 style={{ fontWeight: 700, fontSize: 'var(--text-sm)', marginBottom: '8px' }}>What {progress.cur.name} gives you</h4>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {/* The earn rate is assembled here rather than stored. It used to
+                  be prose on the tier — "Earn 1.5 points per $1" — which is
+                  wrong in three of the four currencies the marketplace trades
+                  in. The multiplier belongs to the rung, the currency to the
+                  reader, and the sentence needs both. */}
+              {rate && (
+                <li style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                  <Check size={14} style={{ color: 'var(--success)', flexShrink: 0, marginTop: 3 }} />
+                  Earn {earnLine(rate, Number(progress.cur.multiplier)).replace(
+                    /per ([\d.]+) spent/, (_, n) => `per ${money0(Number(n))} spent`)}
+                </li>
+              )}
               {progress.cur.benefits.map((b, i) => (
                 <li key={i} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
                   <Check size={14} style={{ color: 'var(--success)', flexShrink: 0, marginTop: 3 }} />
@@ -424,6 +459,14 @@ export function RewardsView() {
                   </div>
                   <div>
                     <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', marginBottom: '2px' }}>{o.name}</div>
+                    {/* What the minimum is worth, in the reader's own money.
+                        The description used to open with "100 points becomes
+                        $1.00" — one sentence, one currency, true for one reader
+                        in four. The rate belongs to the option, the currency to
+                        the reader, and only this line knows both. */}
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text)', fontWeight: 600 }}>
+                      {fmtPts(o.min)} → {money(worthIn(o.min, o, rate))}
+                    </div>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{o.description}</div>
                   </div>
                 </div>
@@ -500,7 +543,7 @@ export function RewardsView() {
                     <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: t.points < 0 ? 'var(--danger)' : t.points > 0 ? 'var(--success)' : 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                       {t.points > 0 ? '+' : ''}{Math.round(t.points).toLocaleString('en-US')}
                     </td>
-                    <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>{fmtMoney(t.value)}</td>
+                    <td style={{ padding: '10px 12px', textAlign: 'right', whiteSpace: 'nowrap' }}>{fmtIn(Number(t.value), t.currency ?? member.currency)}</td>
                   </tr>
                 )
               })}
@@ -671,10 +714,10 @@ export function RewardsView() {
               ) : (() => {
                 const opt = redeemOptions.find((o) => o.id === selectedOption)
                 if (!opt) return null
-                const worth = +((redeemPoints / programme.per_unit) * opt.value_per).toFixed(2)
+                const worth = worthIn(redeemPoints, opt, rate)
                 return (
                   <div style={{ background: 'var(--bg-alt)', borderRadius: 'var(--radius)', padding: '12px 16px', fontSize: 'var(--text-sm)' }}>
-                    <strong>{fmtPts(redeemPoints)} becomes {fmtMoney(worth)}.</strong> {opt.why}
+                    <strong>{fmtPts(redeemPoints)} becomes {money(worth)}.</strong> {opt.why}
                     <br />
                     The balance after this would be {fmtPts(member.balance - redeemPoints)}, and the liability behind those points is released the moment it happens.
                   </div>
