@@ -446,7 +446,7 @@ function AppInner() {
         {ptView === 'pt-onboarding' && <PartnerOnboarding partnerId={session!.partnerId!} />}
         {ptView === 'pt-listings' && <PartnerListings partnerId={session!.partnerId!} onNewListing={() => setPtView('pt-newlisting')} />}
         {ptView === 'pt-newlisting' && <PartnerNewListing partnerId={session!.partnerId!} />}
-        {ptView === 'pt-orders' && <PartnerOrders />}
+        {ptView === 'pt-orders' && <PartnerOrders partnerId={session!.partnerId!} />}
         {ptView === 'pt-settlement' && <PartnerSettlement partnerId={session!.partnerId!} />}
         {ptView === 'pt-plan' && <PartnerSettlementPlan partnerId={session!.partnerId!} />}
         {ptView === 'pt-performance' && <PartnerPerformance />}
