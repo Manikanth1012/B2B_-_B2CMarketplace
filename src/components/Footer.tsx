@@ -50,9 +50,15 @@ export function Footer({ onNavigate }: FooterProps) {
             { label: 'Help & Support', onClick: () => {} },
           ]} />
 
+          {/* No "Become a Partner" here. This footer renders only inside the
+              signed-in consumer storefront, and selling is not something a
+              retail customer does — a shopper's account cannot hold a partner
+              id, and the seller application is a separate journey that starts
+              from the public partner page. The link was a no-op, so nothing
+              behind it is lost; what goes is the suggestion that a shopper
+              could take that route at all. */}
           <FooterCol title="Company" links={[
             { label: 'About Aventa', onClick: () => {} },
-            { label: 'Become a Partner', onClick: () => {} },
             { label: 'Careers', onClick: () => {} },
             { label: 'Press', onClick: () => {} },
           ]} />
