@@ -5,7 +5,10 @@ import type { Category } from '../types'
 import type { View } from '../types/view'
 
 interface FooterProps {
-  onNavigate: (view: View, opts?: { category?: string }) => void
+  /* `tab` names a section of the account, the same way the account menu does —
+     "Help & Support" and the privacy controls are tabs there rather than pages
+     of their own, and without it this prop could only reach the ones that are. */
+  onNavigate: (view: View, opts?: { category?: string; tab?: string }) => void
 }
 
 export function Footer({ onNavigate }: FooterProps) {
@@ -24,9 +27,13 @@ export function Footer({ onNavigate }: FooterProps) {
   return (
     <footer style={{ background: 'var(--brand-navy-dark)', color: 'rgba(255,255,255,0.7)', marginTop: '64px' }}>
       <div className="container" style={{ paddingTop: '48px', paddingBottom: '48px' }}>
+        {/* Three link columns now rather than five, so the track list is
+            written to match. `auto-fit` rather than a fixed count: at 900px the
+            five-column version squeezed each heading onto two lines, and a
+            column list that only fits one layout is the reason it did. */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr',
+          gridTemplateColumns: 'minmax(240px, 2fr) repeat(auto-fit, minmax(150px, 1fr))',
           gap: '32px',
         }}>
           {/* Brand */}
@@ -43,31 +50,38 @@ export function Footer({ onNavigate }: FooterProps) {
             onClick: () => onNavigate('category', { category: c.id }),
           }))} />
 
+          {/* Every item here goes somewhere. "Track Order" is the orders list,
+              which is where tracking lives; "Help & Support" is the account tab
+              of that name, not a page that does not exist. */}
           <FooterCol title="Account" links={[
             { label: 'My Orders', onClick: () => onNavigate('orders') },
             { label: 'Subscriptions', onClick: () => onNavigate('subscriptions') },
-            { label: 'Track Order', onClick: () => {} },
-            { label: 'Help & Support', onClick: () => {} },
+            { label: 'Track Order', onClick: () => onNavigate('orders') },
+            { label: 'Help & Support', onClick: () => onNavigate('account', { tab: 'support' }) },
+            { label: 'Knowledge base', onClick: () => onNavigate('kb') },
           ]} />
 
-          {/* No "Become a Partner" here. This footer renders only inside the
-              signed-in consumer storefront, and selling is not something a
-              retail customer does — a shopper's account cannot hold a partner
-              id, and the seller application is a separate journey that starts
-              from the public partner page. The link was a no-op, so nothing
-              behind it is lost; what goes is the suggestion that a shopper
-              could take that route at all. */}
-          <FooterCol title="Company" links={[
-            { label: 'About Aventa', onClick: () => {} },
-            { label: 'Careers', onClick: () => {} },
-            { label: 'Press', onClick: () => {} },
-          ]} />
+          {/* What used to be Company and Legal: About Aventa, Careers, Press,
+              Terms of Service, Cookie Policy and Refund Policy were all wired to
+              `onClick: () => {}` — eight of the twelve links in this footer went
+              nowhere at all. A link that silently does nothing is worse than no
+              link: it reads as broken rather than as absent, and it is the kind
+              of thing a demo gets asked about.
 
-          <FooterCol title="Legal" links={[
-            { label: 'Terms of Service', onClick: () => {} },
-            { label: 'Privacy Policy', onClick: () => {} },
-            { label: 'Cookie Policy', onClick: () => {} },
-            { label: 'Refund Policy', onClick: () => {} },
+              They are not replaced with invented pages. A terms of service or a
+              refund policy is a legal document somebody has to write and stand
+              behind, and making one up to fill a footer slot would be the worst
+              possible way to fill it. When there is real copy, this is where it
+              goes back.
+
+              "Privacy & your data" survives because it has a real destination —
+              the privacy card on the account's security tab, where a customer
+              can see what is held and ask for it to be exported or deleted.
+              It is named for what it does rather than "Privacy Policy", which
+              would promise a document instead of a control. */}
+          <FooterCol title="Privacy" links={[
+            { label: 'Privacy & your data', onClick: () => onNavigate('account', { tab: 'security' }) },
+            { label: 'Who can access this account', onClick: () => onNavigate('account', { tab: 'household' }) },
           ]} />
         </div>
 
