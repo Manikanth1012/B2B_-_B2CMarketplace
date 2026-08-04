@@ -127,7 +127,7 @@ export function PartnerSettlement({ partnerId }: { partnerId: string }) {
         </Callout>
       ) : (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
+          <div className="stat-row">
             {/* What the seller's own bank will receive, not what the marketplace
                 booked. Kestrel Devices banks with HDFC in Bengaluru and was being
                 shown a dollar figure its account cannot take. */}

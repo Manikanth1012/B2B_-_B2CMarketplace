@@ -367,7 +367,7 @@ export function EnterpriseProfile({ anchor }: { anchor?: string }) {
       {canSeeBilling && credit && billing && review && (
         <SectionCard title="Credit position" subtitle="What the account owes right now against the limit it was assessed on.">
           <div style={{ padding: '20px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px', marginBottom: '16px' }}>
+            <div className="stat-row">
               <StatCard label="Limit" value={money0(credit.limit)} sublabel={billing.terms} />
               <StatCard label="Committed" value={money0(credit.committed)} sublabel="Invoiced and not yet paid" />
               <StatCard label="Headroom" value={money0(credit.headroom)}

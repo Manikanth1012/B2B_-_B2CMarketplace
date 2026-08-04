@@ -68,7 +68,7 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
       ))}
 
       {/* Stat cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
+      <div className="stat-row">
         <StatCard label="Committed monthly" value={money(com.billed)}
                   sublabel={com.suspended ? `${money(com.renewing)} renewing · ${money(com.suspended)} running to contract end` : `${book?.subscriptions.filter(s => s.status === 'active').length ?? 0} active subscriptions`}
                   color="var(--brand-navy)" />

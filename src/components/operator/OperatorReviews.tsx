@@ -93,7 +93,7 @@ export function OperatorReviews() {
       </Callout>
 
       {tab === 'pending' && pendingRaw.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
+        <div className="stat-row">
           <StatCard label="Awaiting a decision" value={String(summary.total)}
                     sublabel="Oldest first within each severity" />
           <StatCard label="Serious" value={String(summary.serious)}

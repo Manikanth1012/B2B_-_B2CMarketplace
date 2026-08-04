@@ -161,7 +161,7 @@ export function OperatorMarkets() {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
+      <div className="stat-row">
         <StatCard label="Markets open" value={String(markets.length)}
                   sublabel={markets.map(m => m.code).join(' · ')} />
         <StatCard label="Currencies accepted" value={String(new Set(accepted.map(a => a.currency)).size)}

@@ -103,7 +103,7 @@ export function OperatorRewards() {
         const breakage = reported(owed.breakageValue)
         return (
           <>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+            <div className="stat-row">
               <StatCard label="Points outstanding" value={fmtInt(owed.outstandingPoints)}
                         sublabel={`across ${book.members.length} members, in ${owed.gross.length} ${owed.gross.length === 1 ? 'currency' : 'currencies'}`} />
               {/* Converted, and said so. This tile used to divide every balance

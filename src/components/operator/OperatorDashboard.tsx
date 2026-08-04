@@ -84,7 +84,7 @@ export function OperatorDashboard(
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>{profile.operator_name} · Marketplace overview</p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
+      <div className="stat-row">
         {/* A rollup over orders placed in rupees, shillings and dirhams. It is
             already converted — that is what a reporting figure is — and now it
             says so, because "$4.2m GMV" and "$4.2m in the bank" are different
@@ -101,7 +101,7 @@ export function OperatorDashboard(
         </Go>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
+      <div className="stat-row">
         <Go to="op-settlement" go={onNavigate}>
           <StatCard label="Settlements Due" value={fmtInt(profile.settlement_due)} sublabel="Awaiting approval" color="var(--warning)" />
         </Go>

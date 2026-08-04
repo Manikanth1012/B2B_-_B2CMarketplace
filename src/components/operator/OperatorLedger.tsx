@@ -116,7 +116,7 @@ export function OperatorLedger() {
         is why the mapping below is configuration with a stated reason rather than something buried in code.
       </Callout>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+      <div className="stat-row">
         <StatCard label="Passed through" value={`$${fmtMoney(money.passedThrough)}`}
                   sublabel="Collected on sellers’ behalf — not income" />
         <StatCard label="Actually earned" value={`$${fmtMoney(money.revenue)}`}

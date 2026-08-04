@@ -75,7 +75,7 @@ export function OperatorContentFeedback() {
         of it is a status somebody set to make a number go down.
       </Callout>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+      <div className="stat-row">
         <StatCard label="Awaiting a decision" value={String(stats.awaiting)}
                   sublabel="Undecided, oldest and most misleading first"
                   color={stats.awaiting > 0 ? 'var(--warning)' : undefined} />

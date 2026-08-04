@@ -57,7 +57,7 @@ export function PartnerSupport({ partnerId }: { partnerId: string }) {
 
       {snap.loadError && <Callout tone="danger" title="Some of this page did not load">{snap.loadError}</Callout>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+      <div className="stat-row">
         <StatCard label="Open disputes" value={String(stats.open)}
                   sublabel={live.filter(d => d.owner === 'seller').length > 0
                     ? `${live.filter(d => d.owner === 'seller').length} waiting on you`

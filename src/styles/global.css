@@ -376,6 +376,28 @@ input, select, textarea {
   .op-grid-2col { grid-template-columns: 1fr !important; }
 }
 
+/* ---------- A row of stat cards ---------- */
+
+/* Every console opens with three to five stat cards, and they were laid out with
+   `repeat(auto-fill, minmax(240px, 1fr))` inline on each screen. On a laptop —
+   sidebar taken off, that leaves roughly 900px of content — 240px admits only
+   three tracks, so a fourth card dropped onto a line of its own with three
+   quarters of the row left empty beside it.
+
+   180px is what lets four fit in the width these consoles actually get. They
+   stay legible at that size because a stat card is a label, a number and a line
+   of context, none of which is long. Below about 800px it wraps to two and then
+   to one, which is the point at which four in a row genuinely does not fit.
+
+   `auto-fit` rather than `auto-fill`: with four cards and room for five tracks,
+   auto-fill leaves an empty fifth and the cards sit narrower than they need;
+   auto-fit collapses it and they share the row. */
+.stat-row {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
+}
+
 /* ---------- Table cells ---------- */
 
 /* A cell marked as holding a figure gets `white-space: nowrap`, because

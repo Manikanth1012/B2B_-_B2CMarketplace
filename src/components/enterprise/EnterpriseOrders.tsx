@@ -122,7 +122,7 @@ export function EnterpriseOrders() {
         </Callout>
       ))}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+      <div className="stat-row">
         <StatCard label="In flight" value={fmtInt(inFlight.length)}
                   sublabel="Being provisioned or delivered" color="var(--brand-accent-dark)" />
         <StatCard label="Completed" value={fmtInt(complete.length)}

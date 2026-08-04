@@ -110,7 +110,7 @@ export function OperatorWallets() {
         </Callout>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
+      <div className="stat-row">
         <StatCard label={`Held in wallets, in ${home}`}
                   value={fmtIn(held.total.amount, held.total.currency)}
                   sublabel={`Across ${book.accounts} accounts in ${book.currencies.length} ${book.currencies.length === 1 ? 'currency' : 'currencies'} · at ${AS_OF} rates`} />

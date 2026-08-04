@@ -58,7 +58,7 @@ export function PartnerIntegrations() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
+      <div className="stat-row">
         <StatCard label="Endpoints enabled" value={`${live.length} of ${PARTNER_ENDPOINTS.length}`} sublabel={`${PARTNER_ENDPOINTS.filter(e => e.env === 'Sandbox').length} sandbox`} />
         <StatCard label="Required events covered" value="2 of 2" sublabel="Order created, cancelled — both handled" color="var(--success)" />
         <StatCard label="Call success, last 7" value="40%" sublabel="3 failed, all on one endpoint" color="var(--danger)" />

@@ -104,7 +104,7 @@ export function EnterpriseRewards() {
         {policy.note}
       </Callout>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+      <div className="stat-row">
         <StatCard label="Balance" value={fmtInt(member.balance)}
                   sublabel={`Worth ${money(pointsWorth(member.balance, rate))}${spokenFor ? ` · ${fmtInt(spokenFor)} already proposed` : ''}`}
                   color="var(--brand-accent-dark)" />

@@ -18,7 +18,7 @@ export function PartnerPerformance() {
         </p>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
+      <div className="stat-row">
         <StatCard label="Listing views" value={fmtInt(views)} sublabel="Last 90 days" />
         <StatCard label="Orders" value={fmtInt(totalOrders)} sublabel={`Conversion ${conversion}%`} color="var(--brand-accent-dark)" />
         <StatCard label="Average order value" value={`$${fmtMoney(totalOrders ? totalGmv / totalOrders : 0)}`} sublabel="Bundles lift this materially" color="var(--brand-navy)" />

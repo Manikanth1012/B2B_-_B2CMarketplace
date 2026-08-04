@@ -66,7 +66,7 @@ export function PartnerSettlementPlan({ partnerId }: { partnerId: string }) {
         {ahead && ` At $${fmtMoney(ahead.toGo)} more you move to ${ahead.tier.rate}%.`}
       </Callout>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
+      <div className="stat-row">
         <StatCard label="Current rate" value={`${rate}%`} sublabel={plan.model} />
         <StatCard label="Trailing gross" value={`$${fmtMoney(gmv)}`} sublabel="Rolling 12 months" color="var(--brand-navy)" />
         <StatCard label="Payout cycle" value={plan.cycle.split(',')[0]} sublabel={plan.cycle.split(',')[1] || ''} />

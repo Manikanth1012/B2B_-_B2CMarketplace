@@ -99,7 +99,7 @@ export function OperatorNotifications() {
         switched off.
       </Callout>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+      <div className="stat-row">
         <StatCard label="Live rules" value={fmtInt(book.rules.filter(r => r.enabled).length)}
                   sublabel={`${fmtInt(book.rules.filter(r => r.mandatory).length)} cannot be switched off · ${fmtInt(book.rules.filter(r => !r.enabled).length)} paused`} />
         <StatCard label="Reached its recipient" value={summary.rate === null ? '—' : `${summary.rate}%`}

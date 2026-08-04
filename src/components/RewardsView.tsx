@@ -281,7 +281,7 @@ export function RewardsView() {
       )}
 
       {/* Stats grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '32px' }}>
+      <div className="stat-row">
         <StatCard icon={<Zap size={20} />} label="Balance" value={fmtPts(member.balance)} foot={`Worth ${money(worthIn(member.balance, BASE, rate))} as wallet credit`} />
         <StatCard icon={<Star size={20} />} label="Tier" value={progress.cur.name} foot={`${progress.cur.multiplier}× on everything you buy`} />
         <StatCard icon={<TrendingUp size={20} />} label="Qualifying spend" value={money0(member.qualify_12m)} foot="Rolling 12 months" />

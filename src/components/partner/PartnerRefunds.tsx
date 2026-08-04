@@ -86,7 +86,7 @@ export function PartnerRefunds({ partnerId }: { partnerId: string }) {
         </Callout>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+      <div className="stat-row">
         <StatCard label="Waiting on you"
                   value={String(open.filter(r => ownership(r).owner === 'seller' && r.state === 'requested').length)}
                   sublabel={stats.overdue > 0 ? `${stats.overdue} already late` : 'None late'}

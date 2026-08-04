@@ -95,7 +95,7 @@ export function OperatorBanners() {
         </Callout>
       ))}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
+      <div className="stat-row">
         <StatCard label="Live now" value={String(live.length)}
                   sublabel={`${snap.banners.filter(b => b.status === 'draft').length} drafts, ${snap.banners.filter(b => b.status === 'scheduled').length} scheduled`} />
         <StatCard label="Impressions" value={fmtInt(totalImpressions)} sublabel="Across every banner ever run" />

@@ -85,7 +85,7 @@ export function EnterpriseRefunds() {
         </Callout>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+      <div className="stat-row">
         <StatCard label="Waiting on a decision" value={fmtInt(s.open)}
                   sublabel={s.open ? `${money(s.atStake)} at stake${s.overdue ? ` · ${s.overdue} past the SLA` : ''}` : 'Nothing outstanding'}
                   color={s.overdue ? 'var(--danger)' : s.open ? 'var(--warning)' : 'var(--success)'} />

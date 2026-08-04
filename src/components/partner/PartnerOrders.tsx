@@ -1,11 +1,14 @@
 import { useState } from 'react'
 import { ShoppingCart, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle, Wallet, Download } from 'lucide-react'
-import { StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, fmtInt, Btn, toast } from '../operator/shared'
+import { StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, fmtInt, Btn, toast, Modal } from '../operator/shared'
 import { PARTNER_ORDERS, VERTICAL_NAMES } from './data'
 import { Pager, usePaging } from '../Pager'
 
 export function PartnerOrders() {
   const [orders, setOrders] = useState(PARTNER_ORDERS)
+  /* The order a seller asked to see. "View" was `toast('Order detail opened')` —
+     a message announcing a thing that did not happen. */
+  const [viewing, setViewing] = useState<typeof PARTNER_ORDERS[number] | null>(null)
   const page = usePaging(orders)
 
   const openOrders = orders.filter(o => o.stage < o.stages.length - 1 && !o.failed)
@@ -50,7 +53,7 @@ export function PartnerOrders() {
         </div>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '16px' }}>
+      <div className="stat-row">
         <StatCard label="To fulfil" value={fmtInt(openOrders.length)} sublabel="Dispatch target: next working day" color="var(--brand-accent-dark)" />
         <StatCard label="Completed" value={fmtInt(completedOrders.length)} sublabel="Last 90 days" color="var(--success)" />
         <StatCard label="Failed" value={fmtInt(failedOrders.length)} sublabel={failedOrders.length ? 'Action needed' : 'None'} color={failedOrders.length ? 'var(--danger)' : undefined} />
@@ -60,7 +63,7 @@ export function PartnerOrders() {
       <SectionCard title="Your Orders" subtitle={`${orders.length} total`}>
         <Table headers={['Order', 'Product', 'Buyer', 'Qty', 'Gross', 'Commission', 'Status', '']}>
           {page.rows.map(o => (
-            <tr key={o.id}>
+            <tr key={o.id} onClick={() => setViewing(o)} style={{ cursor: 'pointer' }} title="Open this order">
               <Td>
                 <div style={{ fontWeight: 600 }}>{o.id}</div>
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{o.placed}</div>
@@ -83,17 +86,101 @@ export function PartnerOrders() {
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>{o.stages[o.stage]}</div>
               </Td>
               <Td right>
+                {/* The stage button moves the order on; it must not also open
+                    the row it is sitting in. */}
                 {o.failed
-                  ? <Btn variant="primary" size="sm" onClick={() => toast('Redelivery arranged')}>Resolve</Btn>
+                  ? <Btn variant="primary" size="sm" onClick={e => { e.stopPropagation(); setViewing(o) }}>Resolve</Btn>
                   : o.stage < o.stages.length - 1
-                  ? <Btn variant="primary" size="sm" onClick={() => advanceOrder(o.id)}>{o.stages[o.stage + 1]}</Btn>
-                  : <Btn variant="secondary" size="sm" onClick={() => toast('Order detail opened')}>View</Btn>}
+                  ? <Btn variant="primary" size="sm" onClick={e => { e.stopPropagation(); advanceOrder(o.id) }}>{o.stages[o.stage + 1]}</Btn>
+                  : <Btn variant="secondary" size="sm" onClick={e => { e.stopPropagation(); setViewing(o) }}>View</Btn>}
               </Td>
             </tr>
           ))}
         </Table>
         <Pager page={page} noun="orders" />
       </SectionCard>
+
+      <Modal
+        open={!!viewing}
+        onClose={() => setViewing(null)}
+        title={viewing ? `${viewing.id} — ${viewing.name}` : ''}
+        footer={
+          <>
+            <Btn variant="secondary" size="sm" onClick={() => setViewing(null)}>Close</Btn>
+            {viewing && !viewing.failed && viewing.stage < viewing.stages.length - 1 && (
+              <Btn size="sm" onClick={() => { advanceOrder(viewing.id); setViewing(null) }}>
+                Mark {viewing.stages[viewing.stage + 1].toLowerCase()}
+              </Btn>
+            )}
+          </>
+        }
+      >
+        {viewing && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+              Placed {viewing.placed} · {VERTICAL_NAMES[viewing.v]}
+            </div>
+
+            {/* Where it has got to, in the same rail language the rest of the
+                console uses rather than a single word in a cell. */}
+            <div>
+              <div style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', marginBottom: '8px' }}>
+                Fulfilment
+              </div>
+              <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+                {viewing.stages.map((st, i) => {
+                  const done = i <= viewing.stage
+                  const stopped = viewing.failed && i === viewing.stage
+                  const ring = stopped ? 'var(--danger)' : done ? 'var(--success)' : 'var(--border)'
+                  const fill = stopped ? 'var(--danger-bg)' : done ? 'var(--success-bg)' : 'var(--bg-alt)'
+                  const ink = stopped ? 'var(--danger)' : done ? 'var(--success)' : 'var(--text-tertiary)'
+                  return (
+                    <li key={st} style={{ flex: '1 1 110px', minWidth: '110px' }}>
+                      <div style={{ padding: '9px 10px', borderRadius: 'var(--radius-md)', border: `1px solid ${ring}`, background: fill }}>
+                        <div style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: ink }}>
+                          {stopped ? 'Failed' : done ? 'Done' : `Step ${i + 1}`}
+                        </div>
+                        <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--text)', marginTop: '2px' }}>{st}</div>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ol>
+            </div>
+
+            <OrderFact label="Buyer" value={`${viewing.buyer} · ${viewing.buyerType} · ${viewing.channel}`} />
+            <OrderFact label="Quantity" value={fmtInt(viewing.qty)} />
+
+            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '12px 14px' }}>
+              <div style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', marginBottom: '8px' }}>
+                What you receive
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '4px 16px', fontSize: 'var(--text-sm)' }}>
+                <span>Gross</span><strong style={{ textAlign: 'right' }}>${fmtMoney(viewing.gross)}</strong>
+                <span>Commission</span><span style={{ textAlign: 'right' }}>− ${fmtMoney(viewing.comm)}</span>
+                <span style={{ fontWeight: 700 }}>Settles at</span>
+                <strong style={{ textAlign: 'right' }}>${fmtMoney(viewing.gross - viewing.comm)}</strong>
+              </div>
+            </div>
+
+            {viewing.failed && (
+              <div style={{ padding: '12px 14px', borderRadius: 'var(--radius-md)', background: 'var(--danger-bg)', border: '1px solid var(--danger)', color: 'var(--danger)', fontSize: 'var(--text-sm)' }}>
+                This order failed at fulfilment. It does not settle until it is resolved, and it counts
+                against your dispatch-on-time rate.
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+    </div>
+  )
+}
+
+function OrderFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: '12px', fontSize: 'var(--text-sm)' }}>
+      <span style={{ color: 'var(--text-tertiary)' }}>{label}</span>
+      <span style={{ color: 'var(--text)' }}>{value}</span>
     </div>
   )
 }

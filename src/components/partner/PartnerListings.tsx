@@ -10,6 +10,7 @@ import type { ListingQuery } from '../../lib/catalogueRepo'
 import { fmtDate, Modal } from '../operator/shared'
 import { PriceBookEditor } from '../PriceBookEditor'
 import { listingState, listingBreakdown, rateAt } from '../../lib/partnerCommerce'
+import type { ListingRow } from '../../lib/partnerCommerce'
 
 /* Reads the seller's real catalogue rows rather than a hard-coded list. The
    static one carried five products, two of them in a marketplace this seller is
@@ -30,6 +31,11 @@ export function PartnerListings({ partnerId, onNewListing }: {
   /* Which listing's per-market prices are open. A seller sells in more than one
      country, so a listing has more than one price and the row cannot show them
      all — the row shows the home market and this opens the rest. */
+  /* The row a seller clicked. The table showed eight columns of a listing and
+     had no way to open one — every cell was truncated to fit and the review
+     note, which is the thing a seller most needs to read, was three lines of
+     10px type in a column. */
+  const [viewing, setViewing] = useState<ListingRow | null>(null)
   const [pricing, setPricing] = useState<{ id: string; name: string; partner_id: string | null; price: number; currency?: string } | null>(null)
 
   useEffect(() => {
@@ -169,7 +175,10 @@ export function PartnerListings({ partnerId, onNewListing }: {
             {filtered.map(l => {
               const state = listingState(l.status)
               return (
-                <tr key={l.id}>
+                <tr key={l.id}
+                    onClick={() => setViewing(l)}
+                    style={{ cursor: 'pointer' }}
+                    title="Open this listing">
                   <Td>
                     <div style={{ display: 'flex', gap: '9px', alignItems: 'center' }}>
                       <div style={{ width: '34px', height: '34px', borderRadius: 'var(--radius)', background: 'var(--bg-alt)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -224,7 +233,9 @@ export function PartnerListings({ partnerId, onNewListing }: {
                     })()}
                   </Td>
                   <Td right>
-                    <Btn variant="secondary" size="sm" onClick={() => setPricing({ id: l.id, name: l.name, partner_id: partnerId, price: l.price })}>Prices</Btn>
+                    {/* Stops the row's own click — pricing is a different
+                        thing from reading the listing. */}
+                    <Btn variant="secondary" size="sm" onClick={e => { e.stopPropagation(); setPricing({ id: l.id, name: l.name, partner_id: partnerId, price: l.price }) }}>Prices</Btn>
                   </Td>
                 </tr>
               )
@@ -247,6 +258,16 @@ export function PartnerListings({ partnerId, onNewListing }: {
           />
         )}
       </Modal>
+    </div>
+  )
+}
+
+/** A labelled fact, so the modal reads as a record rather than as prose. */
+function Fact({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '140px 1fr', gap: '12px', fontSize: 'var(--text-sm)' }}>
+      <span style={{ color: 'var(--text-tertiary)' }}>{label}</span>
+      <span style={{ color: 'var(--text)' }}>{value}</span>
     </div>
   )
 }

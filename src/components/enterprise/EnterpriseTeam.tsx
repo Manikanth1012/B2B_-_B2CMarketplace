@@ -120,7 +120,7 @@ export function EnterpriseTeam() {
         </Callout>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
+      <div className="stat-row">
         <StatCard label="People" value={String(here.length)} sublabel={`${active.length} active`} />
         <StatCard label="Roles" value={String(roles.length)}
                   sublabel={`${roles.filter(r => r.system).length} built-in, ${roles.filter(r => !r.system).length} custom`} />

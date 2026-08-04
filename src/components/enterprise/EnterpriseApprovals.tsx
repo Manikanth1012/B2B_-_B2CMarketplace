@@ -98,7 +98,7 @@ export function EnterpriseApprovals() {
       )}
 
       {summary && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+        <div className="stat-row">
           <StatCard label="Waiting on you" value={fmtInt(summary.mine)}
                     sublabel={summary.blocked ? `${summary.blocked} more need somebody else` : 'Nothing needs another approver'}
                     color={summary.mine ? 'var(--warning)' : 'var(--success)'} />

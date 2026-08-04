@@ -120,7 +120,7 @@ export function EnterpriseBilling() {
         )
       })}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+      <div className="stat-row">
         <StatCard label="Outstanding" value={money(due.total)}
                   sublabel={`${due.count} unsettled${due.overdue ? ` · ${money(due.overdue)} of it overdue` : ''}`}
                   color={due.overdue ? 'var(--danger)' : undefined} />

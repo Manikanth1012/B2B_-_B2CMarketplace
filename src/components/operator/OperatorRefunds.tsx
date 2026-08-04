@@ -74,7 +74,7 @@ export function OperatorRefunds() {
         </Callout>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+      <div className="stat-row">
         <StatCard label="Past the deadline" value={String(stats.overdue)}
                   sublabel={slow.length > 0 ? `across ${slow.length} sellers` : 'Nobody is late'}
                   color={stats.overdue > 0 ? 'var(--danger)' : undefined} />

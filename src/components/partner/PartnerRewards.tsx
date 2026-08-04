@@ -138,7 +138,7 @@ export function PartnerRewards({ partnerId }: { partnerId: string }) {
         </Callout>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+      <div className="stat-row">
         <StatCard label="Points issued on your sales" value={fmtInt(cost.issued)}
                   sublabel={`${cost.movements} movements attributed to you`} />
         <MoneyStat label="Cost of issuing" list={cost.issuingCost} fmt={fmtIn}

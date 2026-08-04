@@ -79,7 +79,7 @@ export function EnterpriseSupport() {
         </Callout>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>
+      <div className="stat-row">
         <StatCard label="Open" value={fmtInt(s.open)}
                   sublabel={s.unassigned ? `${s.unassigned} not picked up yet` : 'All assigned'}
                   color={s.open ? 'var(--brand-accent-dark)' : 'var(--success)'} />

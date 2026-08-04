@@ -90,7 +90,7 @@ export function OperatorRevenueShare() {
 
       {book.loadError && <Callout tone="danger" title="Some of this did not load">{book.loadError}</Callout>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
+      <div className="stat-row">
         <StatCard label="Gross through the platform" value={`$${fmtMoney(split.gross)}`}
                   sublabel={`${statements.length} statements · ${fmtInt(lines.length)} order lines`} />
         <StatCard label="Sellers keep" value={`$${fmtMoney(split.sellerNet)}`}
