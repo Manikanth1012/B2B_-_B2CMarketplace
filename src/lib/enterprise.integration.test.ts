@@ -137,12 +137,16 @@ describe('what the account is billed', () => {
   })
 
   it('bills exactly what the account holds on the current recurring invoice', () => {
-    /* Scoped to the account's own currency, which is not pedantry: this account
-       has sites in two countries and one Kenyan invoice among its Indian ones,
-       and the Kenyan one is the most recent. `committed` adds the monthly
-       commitment on subscriptions priced in rupees, so the invoice it has to
-       equal is the rupee one — comparing it against the shilling invoice is
-       comparing two different currencies and getting a number either way. */
+    /* This used to be scoped to the account's own currency, and the comment
+       explaining why described a Kenyan invoice sitting among the Indian ones
+       as though it were a fact about the business. It was not — it was
+       SmartBuild's ordinary July bill for its own Indian subscriptions, raised
+       in shillings by mistake, and the scoping was working around a bad row
+       rather than fixing it. `20260802470000` restated it.
+
+       The filter on currency stays, because it is now a true statement rather
+       than a workaround: an account may be invoiced in any currency its market
+       takes, and `committed` sums subscriptions in the account's primary one. */
     const home = book.account!.currency
     const current = book.invoices
       .filter(i => i.kind === 'recurring' && i.currency === home)
@@ -156,14 +160,24 @@ describe('what the account is billed', () => {
     expect(Math.round(billed * 100) / 100).toBe(committed(book.subscriptions).billed)
   })
 
-  it('is invoiced in more than one currency, which is why the check above is scoped', () => {
-    /* The thing that made the assertion above wrong when it was unscoped, held
-       as a fact rather than left implicit — if this account ever stops having a
-       second-currency invoice, that test is comparing like with like by accident
-       and should be simplified rather than quietly kept. */
-    const seen = new Set(book.invoices.map(i => i.currency))
-    expect(seen.size, `every invoice on this account is in ${[...seen][0]}`).toBeGreaterThan(1)
-    expect(seen.has(book.account!.currency)).toBe(true)
+  it('raises every invoice where the account contracts, in money that market takes', () => {
+    /* This replaces a test asserting the account WAS invoiced in more than one
+       currency — which was true, and was the defect. Its own comment said that
+       if the second currency ever went away the test should be simplified
+       rather than quietly kept, so this is that, done deliberately.
+
+       The rule now: an invoice is raised in the account's own market, in any
+       currency that market trades in. SmartBuild contracts in India, which
+       takes rupees alone, so all of its are rupee invoices — and a Kenyan
+       account's could be shillings or dollars. */
+    const home = book.account!
+    for (const i of book.invoices) {
+      expect(i.market, `${i.id} was raised in ${i.market}`).toBe(home.market)
+    }
+    expect(book.invoices.length, 'no invoices, so this checked nothing').toBeGreaterThan(0)
+    /* And the primary currency is one of them, since that is what the budget,
+       the credit limit and the cost-centre caps are set in. */
+    expect(new Set(book.invoices.map(i => i.currency)).has(home.currency)).toBe(true)
   })
 
   it('has an outstanding balance with something overdue behind it', () => {

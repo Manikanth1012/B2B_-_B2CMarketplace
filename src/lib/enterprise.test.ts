@@ -53,7 +53,8 @@ function sub(over: Partial<Subscription> = {}): Subscription {
 
 function inv(over: Partial<Invoice> = {}): Invoice {
   return {
-    id: 'INV-1', account_id: 'ENT-2007', period: 'Jul 2026', currency: 'USD', kind: 'recurring',
+    id: 'INV-1', account_id: 'ENT-2007', period: 'Jul 2026', currency: 'USD', market: 'IN',
+    kind: 'recurring',
     issued: '2026-07-29', due: '2026-08-20', recurring: 6700, oneoff: 5432, tax_rate: 18,
     tax: 2183.76, total: 14315.76, status: 'open', paid_on: null, po_ref: null, note: null,
     sort_order: 1, ...over,
@@ -72,6 +73,7 @@ function line(over: Partial<InvoiceLine> = {}): InvoiceLine {
 const ACCOUNT: Account = {
   id: 'ENT-2007', company: 'SmartBuild Ltd', legal_name: 'SmartBuild Infrastructure Private Limited',
   segment: 'mid', industry: 'Construction', sites: 4, staff: 320, terms: 'Net 30', currency: 'USD',
+  market: 'IN',
   fy_starts: '2026-04-01', budget_year: 120000, reg_type: 'GSTIN', registration: '29AAJCS4718R1ZM',
   place_of_supply: 'Karnataka, India', po_required: true, reverse_charge: false,
   cost_centre_on_invoice: true, tax_exempt: false, exempt_cert: null, status: 'active',

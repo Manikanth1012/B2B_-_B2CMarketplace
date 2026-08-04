@@ -30,7 +30,15 @@ export interface Account {
   sites: number
   staff: number
   terms: string
+  /* The account's primary currency: what its budget, credit limit and
+     cost-centre caps are set in, because those are chosen figures somebody
+     signed off. An individual order or invoice may be in any currency the
+     account's market takes — a company in Nairobi has the choice a shopper in
+     Nairobi has. */
   currency: string
+  /* Where it contracts, from its place of supply. Decides which market's tax
+     its invoices are raised under, and which currencies it may transact in. */
+  market: string
   fy_starts: string
   budget_year: number
   reg_type: string
@@ -147,6 +155,10 @@ export interface Subscription {
 }
 
 export interface Invoice {
+  /* Where it was raised. Equal to the account's market — `guard_invoice_market`
+     refuses anything else, which is how a Kenyan invoice came to sit on an
+     Indian account before that guard existed. */
+  market: string
   id: string
   account_id: string
   period: string

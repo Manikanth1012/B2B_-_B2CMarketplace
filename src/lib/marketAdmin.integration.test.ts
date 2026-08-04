@@ -145,18 +145,24 @@ describe('as the operator, configuring a market', () => {
      the money, and it exercises `enterprise_invoices`, which the guard did not
      look at until this was written. */
   it('is refused a currency that would orphan money already billed in it', async () => {
-    const market = markets.find(m => currenciesOf(m.code, accepted).length > 1)
-    expect(market, 'no market takes a second currency, so nothing can be orphaned').toBeTruthy()
+    /* The market has to be one an actual account contracts in. This test used
+       to take the first multi-currency market and the first account it found,
+       and `20260802470000` started refusing the fixture — `guard_invoice_market`
+       will not raise an Emirati invoice against an Indian account, which is the
+       defect it exists to stop and which this test was unwittingly reproducing. */
+    const { data: acct } = await supabase.from('enterprise_accounts').select('id, market')
+    const accounts = (acct ?? []) as { id: string; market: string }[]
+    const usable = accounts.find(a => currenciesOf(a.market, accepted).length > 1)
+    expect(usable, 'no account contracts in a market with a second currency').toBeTruthy()
+
+    const market = markets.find(m => m.code === usable!.market)
     const second = currenciesOf(market!.code, accepted)[1]
+    const account = usable!.id
 
     /* Nothing is billed in it yet, so it comes off cleanly. */
     const clean = await currencyFootprint(market!.code, second)
     expect(clean.bills, `${second} already carries bills in ${market!.code}`).toBe(0)
     expect(canRemove(market!.code, second, accepted, clean).ok).toBe(true)
-
-    const { data: acct } = await supabase.from('enterprise_accounts').select('id').limit(1)
-    const account = ((acct ?? []) as { id: string }[])[0]?.id
-    expect(account, 'no business account to raise an invoice against').toBeTruthy()
 
     const id = `INV-TEST-${Date.now()}`
     try {

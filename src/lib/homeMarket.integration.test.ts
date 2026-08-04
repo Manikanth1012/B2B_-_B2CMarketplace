@@ -162,6 +162,45 @@ describe('a business contracts in one market and one currency', () => {
     const takes = (cur as { currency: string }[]).map(c => c.currency)
     expect(takes, `${account.market} does not trade in ${account.currency}`).toContain(account.currency)
   })
+
+  it('may transact in any currency its market takes, not only its primary one', async () => {
+    /* The rule as it now stands. `20260802450000` pinned a business to the one
+       currency on its account, which was stricter than intended: a company in
+       Nairobi has the same choice a shopper in Nairobi has. What stays pinned is
+       the market — and the primary currency, which is what the budget, the
+       credit limit and the cost-centre caps are set in.
+
+       Asserted against the guard rather than by inserting, because a business
+       buyer cannot write an order at all — see the test above. */
+    const { data: cur } = await supabase.rpc('currencies_for_market', { market_code: account.market })
+    const takes = (cur as { currency: string }[]).map(c => c.currency)
+    /* SmartBuild contracts in India, which trades in rupees alone, so there is
+       no second currency here to exercise. Said out loud rather than passing
+       silently on a set of one. */
+    if (takes.length < 2) {
+      expect(takes.length, `${account.market} trades in one currency, so nothing was proved about a second`).toBe(1)
+      return
+    }
+    expect(takes).toContain(account.currency)
+    expect(takes.length).toBeGreaterThan(1)
+  })
+
+  it('raises every invoice in its own market', async () => {
+    /* There was no guard on invoices at all until `20260802470000`, which is
+       how SmartBuild's July bill came to be raised in Kenya, in shillings, for
+       its own Indian subscriptions. */
+    const { data } = await supabase.from('enterprise_invoices')
+      .select('id, market, currency').eq('account_id', account.id)
+    const rows = (data ?? []) as { id: string; market: string; currency: string }[]
+    expect(rows.length, 'no invoices, so this checked nothing').toBeGreaterThan(0)
+
+    const { data: cur } = await supabase.rpc('currencies_for_market', { market_code: account.market })
+    const takes = new Set((cur as { currency: string }[]).map(c => c.currency))
+    for (const i of rows) {
+      expect(i.market, `${i.id} was raised in ${i.market}`).toBe(account.market)
+      expect(takes.has(i.currency), `${i.id} is in ${i.currency}, which ${i.market} does not take`).toBe(true)
+    }
+  })
 })
 
 describe('a seller prices only where they are approved to trade', () => {
