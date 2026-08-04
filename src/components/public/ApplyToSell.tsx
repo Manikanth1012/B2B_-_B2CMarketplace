@@ -31,7 +31,7 @@ import { Callout } from '../OnboardingJourney'
 import { GATES, SLA_DAYS } from '../../lib/onboarding'
 import {
   stepsOf, outstanding, canSubmit, progress, resumeAt, validateStart,
-  optionsOf, splitMulti, toggleMulti, answered, looksLikeReference,
+  optionsOf, splitMulti, toggleMulti, looksLikeReference,
 } from '../../lib/partnerApplication'
 import type {
   Answers, Application, Credentials, FieldSpec, StartDraft,

@@ -13,7 +13,7 @@
 
 import { supabase } from './supabase'
 import type {
-  Application, Answers, Check, Credentials, FieldSpec, StartDraft,
+  Application, Answers, Check, Credentials, DeskApplication, FieldSpec, StartDraft,
 } from './partnerApplication'
 import { normaliseCode } from './partnerApplication'
 
@@ -107,6 +107,71 @@ export async function submitApplication(reference: string, code: string): Promis
   const { error } = await supabase.rpc('submit_application', {
     p_ref: reference.trim().toUpperCase(),
     p_code: normaliseCode(code),
+  })
+  if (error) return { ok: false, reason: friendly(error.message) }
+  return { ok: true }
+}
+
+/* ----------------------------------------------------------------- the desk -- */
+
+/**
+ * Everything that has come in, for the onboarding desk.
+ *
+ * Straight off the tables rather than through a function: the operator policy
+ * already scopes these, and an applicant's access code is the thing that has no
+ * RLS answer, not the desk's read. The columns are named rather than `*` so the
+ * access code cannot arrive on a screen by being added to the table later.
+ */
+export async function loadDeskApplications(): Promise<{
+  applications: DeskApplication[]
+  answers: Record<string, Answers>
+  loadError?: string
+}> {
+  const [apps, rows] = await Promise.all([
+    supabase.from('partner_applications')
+      .select('id, email, phone, company, contact_name, country, kind, state, reached, started, last_saved, submitted_on, partner_id')
+      .order('started', { ascending: false }),
+    supabase.from('partner_application_answers').select('application_id, field_id, value'),
+  ])
+
+  const answers: Record<string, Answers> = {}
+  for (const r of (rows.data ?? []) as { application_id: string; field_id: string; value: string }[]) {
+    ;(answers[r.application_id] ??= {})[r.field_id] = r.value
+  }
+  const failed = apps.error ?? rows.error
+  return {
+    applications: (apps.data ?? []) as DeskApplication[],
+    answers,
+    ...(failed ? { loadError: `The application queue did not load (${failed.message}).` } : {}),
+  }
+}
+
+/**
+ * Accepting one, which is where a partner record comes from.
+ *
+ * Eight tables in one `security definer` function rather than eight writes from
+ * here. The desk-created path next to this one does three of them from the
+ * browser and reports "the partner was created but its gates were not", which
+ * is a true sentence about a partner nobody can now progress.
+ */
+export async function acceptApplication(
+  reference: string, note: string,
+): Promise<Result<{ partner_id: string }>> {
+  const { data, error } = await supabase.rpc('accept_application', {
+    p_ref: reference.trim().toUpperCase(),
+    p_note: note.trim() || null,
+  })
+  if (error) return { ok: false, reason: friendly(error.message) }
+  if (typeof data !== 'string' || !data) {
+    return { ok: false, reason: 'The application was not accepted, and no partner was created.' }
+  }
+  return { ok: true, value: { partner_id: data } }
+}
+
+export async function withdrawApplication(reference: string, note: string): Promise<Check> {
+  const { error } = await supabase.rpc('withdraw_application', {
+    p_ref: reference.trim().toUpperCase(),
+    p_note: note,
   })
   if (error) return { ok: false, reason: friendly(error.message) }
   return { ok: true }

@@ -267,3 +267,112 @@ export function looksLikeCode(s: string): boolean {
   const c = normaliseCode(s)
   return c.length === CODE_LENGTH && [...c].every(ch => CODE_ALPHABET.includes(ch))
 }
+
+/* ---------------------------------------------------------------- the desk -- */
+
+/**
+ * An application as the onboarding desk sees it.
+ *
+ * The applicant's own view (`Application`) comes back from a function that
+ * checks their access code and deliberately does not include it. This one comes
+ * from the table, which only the operator can read — and still does not carry
+ * the code, because the desk has no use for it and a screen that displays a
+ * credential is a screen somebody photographs.
+ */
+export interface DeskApplication {
+  id: string
+  email: string
+  phone: string
+  company: string
+  contact_name: string
+  country: string
+  kind: string
+  state: 'draft' | 'submitted' | 'accepted' | 'withdrawn'
+  reached: number
+  started: string
+  last_saved: string
+  submitted_on: string | null
+  partner_id: string | null
+}
+
+/**
+ * The queue, in the order a desk works it.
+ *
+ * Three lists rather than one sorted list. Submitted applications are somebody
+ * else's turn to act and drafts are not — showing them together produces a
+ * queue where most rows are things nobody is waiting on, which is how a desk
+ * learns to ignore its own queue.
+ */
+export function deskQueue(apps: readonly DeskApplication[]): {
+  waiting: DeskApplication[]
+  drafts: DeskApplication[]
+  decided: DeskApplication[]
+} {
+  const by = (k: keyof DeskApplication) =>
+    (a: DeskApplication, b: DeskApplication) => String(a[k] ?? '').localeCompare(String(b[k] ?? ''))
+  return {
+    /* Oldest first: a queue is only useful in the order people have been
+       waiting in. */
+    waiting: apps.filter(a => a.state === 'submitted').sort(by('submitted_on')),
+    drafts: apps.filter(a => a.state === 'draft').sort(by('last_saved')).reverse(),
+    decided: apps.filter(a => a.state === 'accepted' || a.state === 'withdrawn')
+      .sort(by('last_saved')).reverse(),
+  }
+}
+
+/** Whole days since it was submitted, or null for one that has not been. */
+export function waitingDays(app: DeskApplication, now: Date = new Date()): number | null {
+  if (!app.submitted_on) return null
+  const then = new Date(app.submitted_on)
+  if (Number.isNaN(then.getTime())) return null
+  return Math.max(0, Math.floor((now.getTime() - then.getTime()) / 86_400_000))
+}
+
+/**
+ * Whether the desk can accept this one, and if not, why not.
+ *
+ * The completeness half is checked again rather than trusted from the state,
+ * because the desk can add a question to the form after somebody submitted —
+ * and then a submitted application really is missing an answer. The database
+ * refuses the same thing; this is so the button is disabled with a sentence
+ * next to it rather than enabled and failing.
+ */
+export function canAccept(
+  app: DeskApplication, fields: readonly FieldSpec[], answers: Answers,
+): Check {
+  if (app.state === 'accepted') {
+    return { ok: false, reason: `${app.id} is already partner ${app.partner_id}.` }
+  }
+  if (app.state === 'withdrawn') {
+    return { ok: false, reason: `${app.id} was withdrawn. The applicant starts a new one.` }
+  }
+  if (app.state !== 'submitted') {
+    return { ok: false, reason: `${app.id} is still being filled in. There is nothing to accept until it is sent.` }
+  }
+  const left = outstanding(fields, answers)
+  if (left.length > 0) {
+    return {
+      ok: false,
+      reason: left.length === 1
+        ? `${app.id} was sent before "${left[0].label}" was on the form. Ask for it before accepting.`
+        : `${app.id} is missing ${left.length} answers the form now requires, starting with "${left[0].label}".`,
+    }
+  }
+  return { ok: true }
+}
+
+/** What the applicant said, gate by gate, for the desk to read in the order it
+    assesses them. Questions with no answer are kept and marked, because a
+    blank on an optional question is itself worth seeing. */
+export function answerSheet(fields: readonly FieldSpec[], answers: Answers): {
+  gate_id: string
+  rows: { field: FieldSpec; value: string | null }[]
+}[] {
+  return stepsOf(fields, answers).map(s => ({
+    gate_id: s.gate_id,
+    rows: s.fields.map(f => ({
+      field: f,
+      value: answered(answers[f.id]) ? answers[f.id] : null,
+    })),
+  }))
+}

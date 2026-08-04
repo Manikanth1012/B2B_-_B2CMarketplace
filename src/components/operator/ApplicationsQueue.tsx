@@ -1,0 +1,367 @@
+/* What came in through "Apply to sell", and what the desk does about it.
+ *
+ * The screen this sits on already had a queue — of partners part-way through
+ * their gates. That is the step *after* this one: those sellers exist, hold a
+ * partner id, and have a journey to chase. An application has none of that. It
+ * is somebody who filled in a form, and until a person accepts it there is no
+ * partner record at all.
+ *
+ * The two are deliberately not merged into one list. A row you can chase and a
+ * row you have to decide about are different work, and the decision is the one
+ * with nobody else able to do it.
+ *
+ * Accepting is a single call. It creates the partner, seven gates with the
+ * first open, the task ladder, the markets asked for, the contacts and a
+ * lifecycle event — in one transaction, because the desk-created path beside it
+ * does three of those from the browser and can leave a partner with no gates.
+ */
+import { useState, useEffect, useCallback } from 'react'
+import { Check as CheckIcon, Clock, FileText, Inbox, X } from 'lucide-react'
+import {
+  SectionCard, EmptyState, Btn, Modal, FormField, TextArea, StatusPill, toast,
+} from './shared'
+import { Callout } from '../OnboardingJourney'
+import { GATES } from '../../lib/onboarding'
+import {
+  loadDeskApplications, loadFields, acceptApplication, withdrawApplication,
+} from '../../lib/partnerApplicationRepo'
+import {
+  deskQueue, waitingDays, canAccept, answerSheet, progress,
+} from '../../lib/partnerApplication'
+import type { Answers, DeskApplication, FieldSpec } from '../../lib/partnerApplication'
+
+export function ApplicationsQueue({ onAccepted }: {
+  /* The parent owns the partner directory and the journey panel below, so an
+     accept has to tell it rather than reload the world from in here. */
+  onAccepted: (partnerId: string) => void | Promise<void>
+}) {
+  const [apps, setApps] = useState<DeskApplication[]>([])
+  const [answers, setAnswers] = useState<Record<string, Answers>>({})
+  const [fields, setFields] = useState<FieldSpec[]>([])
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [openId, setOpenId] = useState<string | null>(null)
+  const [deciding, setDeciding] = useState<{ app: DeskApplication; accept: boolean } | null>(null)
+
+  const reload = useCallback(async () => {
+    const [desk, f] = await Promise.all([loadDeskApplications(), loadFields()])
+    setApps(desk.applications)
+    setAnswers(desk.answers)
+    setFields(f)
+    setLoadError(desk.loadError ?? null)
+    setLoading(false)
+  }, [])
+
+  useEffect(() => { void reload() }, [reload])
+
+  if (loading) {
+    return (
+      <SectionCard title="Applications" subtitle="What came in through Apply to sell">
+        <div style={{ padding: '28px', textAlign: 'center' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+      </SectionCard>
+    )
+  }
+
+  const q = deskQueue(apps)
+  const open = apps.find(a => a.id === openId) ?? null
+
+  return (
+    <>
+      <SectionCard
+        title="Applications"
+        subtitle={
+          q.waiting.length
+            ? `${q.waiting.length} waiting on the desk · ${q.drafts.length} still being filled in`
+            : q.drafts.length
+              ? `Nothing waiting on the desk · ${q.drafts.length} still being filled in`
+              : 'Nothing has come in through Apply to sell yet'
+        }
+      >
+        {loadError && (
+          <div style={{ padding: '14px 16px' }}>
+            <Callout tone="danger" title="The queue did not load">{loadError}</Callout>
+          </div>
+        )}
+
+        {apps.length === 0 ? (
+          <EmptyState message="No applications. The public form is on the partner page under Apply to sell." />
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 340px) 1fr', gap: '0', alignItems: 'stretch' }}
+               className="onb-split">
+            <div style={{ borderRight: '1px solid var(--border-light)', maxHeight: '520px', overflowY: 'auto' }}>
+              <Group title="Waiting on the desk" icon={<Inbox size={13} />} rows={q.waiting}
+                     openId={openId} onOpen={setOpenId} fields={fields} answers={answers}
+                     empty="Nothing to decide" />
+              <Group title="Still being filled in" icon={<Clock size={13} />} rows={q.drafts}
+                     openId={openId} onOpen={setOpenId} fields={fields} answers={answers}
+                     empty="Nobody part-way through" />
+              <Group title="Decided" icon={<CheckIcon size={13} />} rows={q.decided}
+                     openId={openId} onOpen={setOpenId} fields={fields} answers={answers}
+                     empty="Nothing decided yet" />
+            </div>
+
+            <div style={{ padding: '16px', minWidth: 0 }}>
+              {open
+                ? <Detail app={open} fields={fields} answers={answers[open.id] ?? {}}
+                          onDecide={accept => setDeciding({ app: open, accept })} />
+                : <EmptyState message="Pick an application to read what they sent" />}
+            </div>
+          </div>
+        )}
+      </SectionCard>
+
+      {deciding && (
+        <DecideModal
+          app={deciding.app} accept={deciding.accept}
+          fields={fields} answers={answers[deciding.app.id] ?? {}}
+          onClose={() => setDeciding(null)}
+          onDone={async (partnerId) => {
+            setDeciding(null)
+            await reload()
+            if (partnerId) await onAccepted(partnerId)
+          }}
+        />
+      )}
+    </>
+  )
+}
+
+/* ---------------------------------------------------------------- the list -- */
+
+function Group({ title, icon, rows, openId, onOpen, fields, answers, empty }: {
+  title: string
+  icon: React.ReactNode
+  rows: DeskApplication[]
+  openId: string | null
+  onOpen: (id: string) => void
+  fields: FieldSpec[]
+  answers: Record<string, Answers>
+  empty: string
+}) {
+  return (
+    <div>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '6px',
+        padding: '9px 16px', background: 'var(--bg-alt)',
+        borderBottom: '1px solid var(--border-light)',
+        fontSize: '10px', fontWeight: 800, textTransform: 'uppercase',
+        letterSpacing: '0.06em', color: 'var(--text-tertiary)',
+      }}>
+        {icon} {title} <span style={{ marginLeft: 'auto' }}>{rows.length}</span>
+      </div>
+      {rows.length === 0 ? (
+        <div style={{ padding: '12px 16px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{empty}</div>
+      ) : rows.map(a => {
+        const p = progress(fields, answers[a.id] ?? {})
+        const days = waitingDays(a)
+        return (
+          <button key={a.id} onClick={() => onOpen(a.id)}
+            style={{
+              width: '100%', textAlign: 'left', padding: '11px 16px', cursor: 'pointer',
+              background: a.id === openId ? 'var(--info-bg)' : 'white',
+              border: 'none', borderBottom: '1px solid var(--border-light)',
+              borderLeft: `3px solid ${a.id === openId ? 'var(--brand-navy)' : 'transparent'}`,
+            }}>
+            <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text)' }}>{a.company}</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+              {a.id} · {a.kind} · {a.country}
+            </div>
+            <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '3px' }}>
+              {a.state === 'accepted' ? `Now ${a.partner_id}`
+                : a.state === 'withdrawn' ? 'Withdrawn'
+                /* Days waiting is the number a desk is judged on, so it is the
+                   one on the row. Completeness matters for a draft, where the
+                   question is whether they are nearly there. */
+                : a.state === 'submitted'
+                  ? days === null ? 'Sent' : days === 0 ? 'Sent today' : `Waiting ${days}d`
+                  : `${p.answered} of ${p.required} answered`}
+            </div>
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
+/* -------------------------------------------------------------- one of them -- */
+
+function Detail({ app, fields, answers, onDecide }: {
+  app: DeskApplication
+  fields: FieldSpec[]
+  answers: Answers
+  onDecide: (accept: boolean) => void
+}) {
+  const sheet = answerSheet(fields, answers)
+  const allowed = canAccept(app, fields, answers)
+  const p = progress(fields, answers)
+
+  return (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+        <div>
+          <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 800, color: 'var(--text)' }}>{app.company}</h3>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '3px' }}>
+            {app.id} · {app.contact_name} · {app.email} · {app.phone}
+          </div>
+        </div>
+        <StatusPill status={
+          app.state === 'accepted' ? 'approved'
+            : app.state === 'withdrawn' ? 'rejected'
+            : app.state === 'submitted' ? 'pending' : 'draft'} />
+      </div>
+
+      {app.state === 'accepted' && (
+        <div style={{ marginTop: '12px' }}>
+          <Callout tone="success" title={`Accepted — now ${app.partner_id}`}>
+            The partner exists with its seven gates open at the application gate. Its journey is in
+            the panel below.
+          </Callout>
+        </div>
+      )}
+      {app.state === 'draft' && (
+        <div style={{ marginTop: '12px' }}>
+          <Callout tone="info" title={`${p.answered} of ${p.required} answered, and not sent yet`}>
+            Nothing is owed on this one. It appears here so the desk can see who is part-way
+            through, not so anybody chases it — the applicant comes back with their own reference.
+          </Callout>
+        </div>
+      )}
+
+      <div style={{ marginTop: '16px' }}>
+        {sheet.map(g => {
+          const gate = GATES.find(x => x.id === g.gate_id)
+          return (
+            <div key={g.gate_id} style={{ marginBottom: '18px' }}>
+              <div style={{
+                fontSize: '10px', fontWeight: 800, textTransform: 'uppercase',
+                letterSpacing: '0.06em', color: 'var(--text-tertiary)',
+                borderBottom: '1px solid var(--border-light)', paddingBottom: '5px', marginBottom: '8px',
+              }}>
+                {gate?.name ?? g.gate_id}
+                {gate && <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+                  {' · '}{gate.owner}
+                </span>}
+              </div>
+              {g.rows.map(({ field, value }) => (
+                <div key={field.id} style={{ display: 'flex', gap: '12px', padding: '4px 0', fontSize: 'var(--text-sm)' }}>
+                  <div style={{ flex: '0 0 42%', color: 'var(--text-secondary)' }}>{field.label}</div>
+                  <div style={{ flex: 1, minWidth: 0, color: value ? 'var(--text)' : 'var(--text-tertiary)', whiteSpace: 'pre-wrap' }}>
+                    {/* A required blank is a problem and an optional one is not,
+                        so they do not read the same. */}
+                    {value ?? (field.required ? 'Not answered' : 'Left blank')}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )
+        })}
+      </div>
+
+      {(app.state === 'submitted' || app.state === 'draft') && (
+        <div style={{
+          display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap',
+          paddingTop: '14px', borderTop: '1px solid var(--border-light)',
+        }}>
+          <Btn variant="success" size="sm" disabled={!allowed.ok} onClick={() => onDecide(true)}>
+            <CheckIcon size={13} /> Accept and open the gates
+          </Btn>
+          <Btn variant="danger" size="sm" onClick={() => onDecide(false)}>
+            <X size={13} /> Withdraw
+          </Btn>
+          {!allowed.ok && (
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', flex: 1, minWidth: '200px' }}>
+              {allowed.reason}
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------- the decision -- */
+
+function DecideModal({ app, accept, fields, answers, onClose, onDone }: {
+  app: DeskApplication
+  accept: boolean
+  fields: FieldSpec[]
+  answers: Answers
+  onClose: () => void
+  onDone: (partnerId: string | null) => Promise<void>
+}) {
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const markets = (answers['apply-markets'] ?? '').split(',').map(s => s.trim()).filter(Boolean)
+  const allowed = canAccept(app, fields, answers)
+
+  const go = async () => {
+    setBusy(true)
+    if (accept) {
+      const res = await acceptApplication(app.id, note)
+      setBusy(false)
+      if (!res.ok) { toast(res.reason, 'error'); return }
+      toast(`${app.company} accepted as ${res.value.partner_id}, open at the application gate`)
+      await onDone(res.value.partner_id)
+    } else {
+      const res = await withdrawApplication(app.id, note)
+      setBusy(false)
+      if (!res.ok) { toast(res.reason, 'error'); return }
+      toast(`${app.id} withdrawn`)
+      await onDone(null)
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose}
+      title={accept ? `Accept ${app.company}` : `Withdraw ${app.id}`}
+      footer={<>
+        <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
+        <Btn variant={accept ? 'success' : 'danger'} size="sm" onClick={go}
+             disabled={busy || (accept && !allowed.ok) || (!accept && !note.trim())}>
+          {busy ? 'Saving…' : accept ? 'Accept and open the gates' : 'Withdraw it'}
+        </Btn>
+      </>}>
+      {accept ? (
+        <Callout tone="warning" title="This creates the partner — there is no separate step">
+          <ul style={{ margin: '4px 0 0 16px' }}>
+            <li>{app.company} becomes a seller with status <strong>onboarding</strong>.</li>
+            <li>All seven gates open, with the application gate current and already submitted.</li>
+            <li>The task ladder opens behind them, dated only on the gate that is open.</li>
+            <li>
+              {markets.length
+                ? `${markets.join(', ')} recorded as requested — not approved. That happens at the compliance gate.`
+                : 'No markets were asked for, so none are recorded.'}
+            </li>
+            <li>Their email and number go on the partner record as contacts, unverified.</li>
+          </ul>
+        </Callout>
+      ) : (
+        <Callout tone="info" title="Nothing is created, and the applicant starts again">
+          Withdrawing closes {app.id}. The reference and access code stop working, and the address
+          on it becomes free to apply with again — which is the only route back, because there is
+          no way to reset an access code.
+        </Callout>
+      )}
+
+      <FormField
+        label={accept ? 'Note for the record' : 'Why it is being withdrawn'}
+        required={!accept}
+        hint={accept
+          ? 'Optional. Goes on the application gate and on the partner’s lifecycle history.'
+          : 'Required — an application closed with no reason cannot be explained to the person who filled it in.'}>
+        <TextArea rows={3} value={note} onChange={e => setNote(e.target.value)}
+                  placeholder={accept
+                    ? 'Anything worth recording about why this one was let through'
+                    : 'What was wrong with it'} />
+      </FormField>
+
+      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
+        <FileText size={13} style={{ flexShrink: 0, marginTop: '1px' }} />
+        <span>
+          {app.contact_name} · {app.email} · {app.phone}
+          {app.submitted_on ? ` · sent ${new Date(app.submitted_on).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}` : ''}
+        </span>
+      </div>
+    </Modal>
+  )
+}

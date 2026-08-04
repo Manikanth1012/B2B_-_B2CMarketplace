@@ -4,8 +4,9 @@ import {
   stepsOf, outstanding, canSubmit, progress, resumeAt,
   validateStart, looksLikeReference, looksLikeCode, normaliseCode,
   CODE_ALPHABET, CODE_LENGTH,
+  deskQueue, waitingDays, canAccept, answerSheet,
 } from './partnerApplication'
-import type { FieldSpec, StartDraft, Answers } from './partnerApplication'
+import type { FieldSpec, StartDraft, Answers, DeskApplication } from './partnerApplication'
 
 const MARKETS = [{ code: 'IN' }, { code: 'AE' }, { code: 'KE' }]
 
@@ -223,6 +224,105 @@ describe('starting an application', () => {
        empty list would mean the form rejects a valid country for as long as the
        network takes, and the database still has the last word. */
     expect(validateStart(draft({ country: 'IN' }), []).ok).toBe(true)
+  })
+})
+
+describe('the queue the desk works', () => {
+  const app = (over: Partial<DeskApplication> = {}): DeskApplication => ({
+    id: 'APP-2026-0001', email: 'a@b.test', phone: '+91 80 4000 0000',
+    company: 'Kestrel Devices', contact_name: 'R Menon', country: 'IN', kind: 'Reseller',
+    state: 'submitted', reached: 7,
+    started: '2026-07-01T09:00:00Z', last_saved: '2026-07-02T09:00:00Z',
+    submitted_on: '2026-07-02T09:00:00Z', partner_id: null, ...over,
+  })
+
+  it('separates what is owed from what is not', () => {
+    /* A draft is nobody's turn. Mixing the two makes a queue where most rows
+       are things nobody is waiting on, which is how a desk learns to ignore
+       its own queue. */
+    const q = deskQueue([
+      app({ id: 'A', state: 'submitted' }),
+      app({ id: 'B', state: 'draft', submitted_on: null }),
+      app({ id: 'C', state: 'accepted', partner_id: 'PTR-1016' }),
+      app({ id: 'D', state: 'withdrawn' }),
+    ])
+    expect(q.waiting.map(a => a.id)).toEqual(['A'])
+    expect(q.drafts.map(a => a.id)).toEqual(['B'])
+    expect(q.decided.map(a => a.id).sort()).toEqual(['C', 'D'])
+  })
+
+  it('puts the longest wait at the top', () => {
+    const q = deskQueue([
+      app({ id: 'new', submitted_on: '2026-07-20T09:00:00Z' }),
+      app({ id: 'old', submitted_on: '2026-07-02T09:00:00Z' }),
+    ])
+    expect(q.waiting.map(a => a.id)).toEqual(['old', 'new'])
+  })
+
+  it('counts the days somebody has been waiting', () => {
+    const now = new Date('2026-07-09T09:00:00Z')
+    expect(waitingDays(app({ submitted_on: '2026-07-02T09:00:00Z' }), now)).toBe(7)
+    expect(waitingDays(app({ submitted_on: '2026-07-09T08:00:00Z' }), now)).toBe(0)
+  })
+
+  it('has no waiting time for something that was never sent', () => {
+    expect(waitingDays(app({ state: 'draft', submitted_on: null }))).toBeNull()
+    expect(waitingDays(app({ submitted_on: 'not a date' }))).toBeNull()
+  })
+})
+
+describe('whether the desk can accept one', () => {
+  const complete: Answers = { a1: 'India', a2: '400', k1: 'U1234', k2: 'One owner' }
+  const app = (over: Partial<DeskApplication> = {}): DeskApplication => ({
+    id: 'APP-2026-0001', email: 'a@b.test', phone: '+91 80 4000 0000',
+    company: 'Kestrel Devices', contact_name: 'R Menon', country: 'IN', kind: 'Reseller',
+    state: 'submitted', reached: 7,
+    started: '2026-07-01T09:00:00Z', last_saved: '2026-07-02T09:00:00Z',
+    submitted_on: '2026-07-02T09:00:00Z', partner_id: null, ...over,
+  })
+
+  it('accepts a complete one that has been sent', () => {
+    expect(canAccept(app(), FORM, complete)).toEqual({ ok: true })
+  })
+
+  it('refuses one still being filled in', () => {
+    const out = canAccept(app({ state: 'draft' }), FORM, complete)
+    expect(out.ok).toBe(false)
+    expect(out.ok === false && out.reason).toMatch(/still being filled in/)
+  })
+
+  it('refuses one already accepted, and names the partner it became', () => {
+    const out = canAccept(app({ state: 'accepted', partner_id: 'PTR-1016' }), FORM, complete)
+    expect(out.ok === false && out.reason).toMatch(/already partner PTR-1016/)
+  })
+
+  it('refuses a submitted one that is missing an answer the form now wants', () => {
+    /* The case the state alone cannot tell you about: the desk adds a question
+       after somebody submitted, and a submitted application really is
+       incomplete. Checked against the form as it stands, not as it stood. */
+    const out = canAccept(app(), FORM, { a1: 'India', a2: '400', k1: 'U1234' })
+    expect(out.ok).toBe(false)
+    expect(out.ok === false && out.reason).toMatch(/sent before "Owners over 25%" was on the form/)
+  })
+})
+
+describe('the answer sheet the desk reads', () => {
+  it('is grouped by gate, in the order the gates are assessed', () => {
+    const sheet = answerSheet(FORM, { a1: 'India' })
+    expect(sheet.map(g => g.gate_id)).toEqual(['apply', 'kyc'])
+  })
+
+  it('keeps unanswered questions rather than dropping them', () => {
+    /* A blank the reviewer cannot see is a blank they cannot ask about. */
+    const sheet = answerSheet(FORM, { a1: 'India' })
+    const apply = sheet[0].rows
+    expect(apply.map(r => r.field.id)).toEqual(['a1', 'a2', 'a3'])
+    expect(apply.find(r => r.field.id === 'a2')!.value).toBeNull()
+  })
+
+  it('reports a blank answer as absent, not as an empty string', () => {
+    const sheet = answerSheet(FORM, { a1: '   ' })
+    expect(sheet[0].rows[0].value).toBeNull()
   })
 })
 

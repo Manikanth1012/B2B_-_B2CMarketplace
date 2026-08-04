@@ -15,8 +15,9 @@ import { supabase } from './supabase'
 import { signIn, signOut } from './authRepo'
 import {
   loadFields, loadMarkets, startApplication, resumeApplication, saveAnswer, submitApplication,
+  loadDeskApplications, acceptApplication, withdrawApplication,
 } from './partnerApplicationRepo'
-import { canSubmit, outstanding, stepsOf, looksLikeCode } from './partnerApplication'
+import { canSubmit, outstanding, stepsOf, looksLikeCode, canAccept } from './partnerApplication'
 import type { Answers, FieldSpec } from './partnerApplication'
 
 const OPERATOR = { email: 'anika.sharma@aventa.com', password: 'operator123' }
@@ -292,6 +293,166 @@ describe('what an anonymous applicant cannot reach', () => {
     expect(error ? true : (data ?? []).length === 0,
       'an anonymous visitor read the partner directory').toBe(true)
   })
+})
+
+/* Accepting is eight tables in one transaction. The claim worth testing is not
+ * that it writes them — it is that a seller who comes out the other side is
+ * complete: a partner row, seven gates with the first open, the task ladder
+ * behind them, the markets they asked for, their contacts and a lifecycle
+ * event. A partner with no gates cannot be progressed by anybody, and the
+ * screen that used to make one could not repair it either. */
+describe('the desk accepts an application', () => {
+  let fields: FieldSpec[]
+  let reference: string
+  let code: string
+  let partnerId: string | null = null
+
+  beforeAll(async () => {
+    await signOut()
+    fields = await loadFields()
+
+    const res = await startApplication({
+      email: mail(), phone: '+254 20 111 2222', company: 'Accept Test Sensors',
+      contact_name: 'A Reviewer', country: 'KE', kind: 'IoT hardware',
+    })
+    if (!res.ok) throw new Error(`could not start an application: ${res.reason}`)
+    reference = res.value.reference
+    code = res.value.access_code
+    started.push(reference)
+
+    for (const f of fields.filter(f => f.required)) {
+      const value = f.kind === 'boolean' ? 'No'
+        : f.kind === 'number' ? '250'
+        : f.kind === 'date' ? '2026-10-01'
+        : f.kind === 'email' ? 'signatory@integration.test'
+        : f.id === 'apply-markets' ? 'Kenya, India'
+        : f.kind === 'choice' || f.kind === 'multichoice'
+          ? (f.options ?? '').split(',')[0].trim()
+          : 'Answered by the accept test'
+      const saved = await saveAnswer({ reference, code, field: f.id, value })
+      if (!saved.ok) throw new Error(`${f.id}: ${saved.reason}`)
+    }
+    const sent = await submitApplication(reference, code)
+    if (!sent.ok) throw new Error(`could not submit: ${sent.reason}`)
+  }, 180000)
+
+  afterAll(async () => {
+    await signIn(OPERATOR.email, OPERATOR.password)
+    if (partnerId) {
+      /* Children first — the application references the partner, and the
+         partner is referenced by everything the accept created. */
+      await supabase.from('partner_applications').update({ partner_id: null, state: 'withdrawn' }).eq('id', reference)
+      for (const t of ['onboarding_tasks', 'onboarding_gates', 'partner_markets',
+                       'partner_contacts', 'partner_lifecycle_events']) {
+        await supabase.from(t).delete().eq('partner_id', partnerId)
+      }
+      await supabase.from('partners').delete().eq('id', partnerId)
+    }
+    await supabase.from('partner_applications').delete().eq('id', reference)
+    await signOut()
+  }, 60000)
+
+  it('refuses an applicant trying to accept their own application', async () => {
+    /* Signed out, which is what an applicant is. `accept_application` runs as
+       the definer and so could reach every table — the persona check in its
+       first three lines is the only thing between a stranger and a partner
+       record, so it is asserted before anything else here. */
+    const out = await acceptApplication(reference, 'trying it on')
+    expect(out.ok, 'an anonymous caller accepted an application').toBe(false)
+  })
+
+  it('creates the partner, its gates, its tasks and its markets in one go', async () => {
+    await signIn(OPERATOR.email, OPERATOR.password)
+
+    const desk = await loadDeskApplications()
+    const app = desk.applications.find(a => a.id === reference)!
+    expect(app.state).toBe('submitted')
+    expect(canAccept(app, fields, desk.answers[reference] ?? {})).toEqual({ ok: true })
+
+    const res = await acceptApplication(reference, 'Accepted by the integration test.')
+    expect(res.ok, res.ok ? '' : res.reason).toBe(true)
+    if (!res.ok) return
+    partnerId = res.value.partner_id
+
+    const [p, gates, tasks, markets, contacts, events] = await Promise.all([
+      supabase.from('partners').select('*').eq('id', partnerId).maybeSingle(),
+      supabase.from('onboarding_gates').select('*').eq('partner_id', partnerId).order('gate_order'),
+      supabase.from('onboarding_tasks').select('*').eq('partner_id', partnerId),
+      supabase.from('partner_markets').select('*').eq('partner_id', partnerId),
+      supabase.from('partner_contacts').select('*').eq('partner_id', partnerId),
+      supabase.from('partner_lifecycle_events').select('*').eq('partner_id', partnerId),
+    ])
+
+    const partner = p.data as { name: string; status: string; type: string; country: string } | null
+    expect(partner?.name).toBe('Accept Test Sensors')
+    /* Onboarding, not live. A form is not a vetting. */
+    expect(partner?.status).toBe('onboarding')
+    expect(partner?.country).toBe('Kenya')
+
+    const gateRows = (gates.data ?? []) as { gate_order: number; status: string; submitted_by: string | null }[]
+    expect(gateRows.length, 'the partner was created without its gates').toBe(7)
+    expect(gateRows[0].status).toBe('current')
+    /* The application gate arrives submitted — the applicant did that. */
+    expect(gateRows[0].submitted_by).toBe('A Reviewer')
+    expect(gateRows.slice(1).every(g => g.status === 'pending'), 'a later gate was opened early').toBe(true)
+
+    /* Ranged over the ladder rather than a count written here, so a task added
+       to the marketplace is a task this checks for. */
+    const { data: ladder } = await supabase.from('onboarding_task_ladder').select('id, gate_id')
+    expect((tasks.data ?? []).length).toBe((ladder ?? []).length)
+    expect((ladder ?? []).length, 'the task ladder is empty, so this checked nothing').toBeGreaterThan(10)
+
+    const mkt = (markets.data ?? []) as { market_code: string; state: string }[]
+    expect(mkt.map(m => m.market_code).sort()).toEqual(['IN', 'KE'])
+    /* Requested, never approved. Approving here would hand a stranger two
+       markets on the strength of a form. */
+    expect(mkt.every(m => m.state === 'requested'), 'a market was approved by accepting the application').toBe(true)
+
+    expect((contacts.data ?? []).length).toBe(2)
+    expect((events.data ?? []).length).toBeGreaterThan(0)
+  }, 60000)
+
+  it('marks the application accepted and names the partner it became', async () => {
+    const desk = await loadDeskApplications()
+    const app = desk.applications.find(a => a.id === reference)!
+    expect(app.state).toBe('accepted')
+    expect(app.partner_id).toBe(partnerId)
+    expect(canAccept(app, fields, desk.answers[reference] ?? {}).ok).toBe(false)
+  })
+
+  it('will not accept the same one twice', async () => {
+    const out = await acceptApplication(reference, 'again')
+    expect(out.ok, 'one application produced two partners').toBe(false)
+    if (!out.ok) expect(out.reason).toMatch(/already accepted/i)
+  })
+
+  it('will not withdraw one that has already become a partner', async () => {
+    const out = await withdrawApplication(reference, 'changed our minds')
+    expect(out.ok).toBe(false)
+    if (!out.ok) expect(out.reason).toMatch(/Suspend the partner instead/i)
+  })
+
+  it('refuses to withdraw anything without a reason', async () => {
+    const other = await startApplication({
+      email: mail(), phone: '+91 80 4000 0000', company: 'Withdraw Test Ltd',
+      contact_name: 'W Tester', country: 'IN', kind: 'Reseller',
+    })
+    expect(other.ok).toBe(true)
+    if (!other.ok) return
+    started.push(other.value.reference)
+
+    const bare = await withdrawApplication(other.value.reference, '   ')
+    expect(bare.ok, 'an application was closed with no reason').toBe(false)
+
+    const withReason = await withdrawApplication(other.value.reference, 'Not trading in a market we operate in.')
+    expect(withReason.ok, withReason.ok ? '' : withReason.reason).toBe(true)
+
+    /* And the applicant is told, rather than finding a form that silently
+       stopped working. `resume_application` only opens draft and submitted
+       ones, so a withdrawn one refuses. */
+    const back = await resumeApplication(other.value.reference, other.value.access_code)
+    expect(back.ok, 'a withdrawn application still opened for the applicant').toBe(false)
+  }, 60000)
 })
 
 describe('the operator sees what came in', () => {

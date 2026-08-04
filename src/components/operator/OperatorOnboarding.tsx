@@ -13,6 +13,7 @@ import { canClearGate, gateIdFor, GATES, SLA_DAYS, deriveTaskState, journeyProgr
 import type { JourneyStep } from '../../lib/onboarding'
 import { TechChecklist } from '../TechChecklist'
 import { JourneyRail, GateDetail, Callout } from '../OnboardingJourney'
+import { ApplicationsQueue } from './ApplicationsQueue'
 import type { Viewer } from '../../lib/evidence'
 
 const OPERATOR: Viewer = { persona: 'operator' }
@@ -94,49 +95,32 @@ export function OperatorOnboarding() {
     await reloadJourney(gate.row.partner_id)
   }
 
+  /**
+   * Opening one at the desk, for a seller who arrived some other way.
+   *
+   * One call. This used to write `partners`, then `onboarding_gates`, then
+   * `onboarding_tasks` from here, with a toast per failure — including "the
+   * partner was created but its gates were not", which is an accurate sentence
+   * about a seller that now exists, cannot progress, and cannot be repaired
+   * from this screen. `open_application_by_desk` does all three in one
+   * transaction, off the same gate and task ladders every other seller gets.
+   */
   const handleAddPartner = async () => {
     if (!newPartner.name.trim()) { toast('Partner name is required', 'error'); return }
     if (!newPartner.type) { toast('Partner type is required', 'error'); return }
-    const id = `PTR-${String(Date.now()).slice(-4)}`
-    const { error: pErr } = await supabase.from('partners').insert({
-      id, name: newPartner.name, type: newPartner.type, status: 'onboarding',
-      country: newPartner.country || null, contact: newPartner.contact || null,
-      /* Every seller starts at the entry tier and is promoted from there. The
-         database defaults this too; naming it here keeps the insert readable
-         rather than depending on a default to be correct. */
-      email: newPartner.email || null, joined: '—', tier: 'Bronze', tier_id: 'bronze',
+
+    const { data, error } = await supabase.rpc('open_application_by_desk', {
+      p_name: newPartner.name, p_type: newPartner.type,
+      p_contact: newPartner.contact || null, p_email: newPartner.email || null,
+      p_country: newPartner.country || null,
     })
-    if (pErr) { toast(`Could not create the partner: ${pErr.message}`, 'error'); return }
+    if (error) { toast(`Could not open the application: ${error.message}`, 'error'); return }
 
-    const base = dir.length * 10
-    const { error: gErr } = await supabase.from('onboarding_gates').insert(GATES.map((g, i) => ({
-      id: `og-${id}-${g.id}`, partner_id: id, gate_name: g.name, gate_order: g.order,
-      status: g.order === 1 ? 'current' : 'pending',
-      owner: g.owner, target_days: g.targetDays, dual_control: g.dualControl, waivable: g.waivable,
-      submitted_by: null, submitted_at: null, reviewed_by: null, reviewed_at: null,
-      evidence: [], notes: `Desk-created application for ${newPartner.name}`,
-      sort_order: base + i + 1,
-    })))
-    if (gErr) { toast(`The partner was created but its gates were not: ${gErr.message}`, 'error'); return }
-
-    /* The gate ladder is the same for everybody, so the task ladder is too.
-       Creating one without the other leaves a seller with gates nobody can act
-       on and a desk with nothing to chase. */
-    const { error: tErr } = await supabase.from('onboarding_tasks').insert(
-      TASK_LADDER.map(t => ({
-        id: `OB-${id.slice(4)}-${t.gate}-${t.key}`, partner_id: id, gate_id: t.gate,
-        title: t.title, detail: t.detail, owner: t.owner,
-        due: t.gate === 'apply' ? (t.days <= 1 ? 'Today' : `In ${t.days} days`) : null,
-        closed_by: null, closed_at: null,
-      })),
-    )
-    if (tErr) toast(`The application opened, but its task list did not: ${tErr.message}`, 'error')
-
-    toast(`${newPartner.name} opened at the application gate`)
+    toast(`${newPartner.name} opened at the application gate as ${data}`)
     setNewPartner({ name: '', type: '', contact: '', email: '', country: '' })
     setAddPartnerModal(false)
     await refreshDirectory()
-    setPartnerId(id)
+    setPartnerId(data as string)
   }
 
   return (
@@ -159,6 +143,17 @@ export function OperatorOnboarding() {
       </Callout>
 
       <FunnelSummary rows={dir} />
+
+      {/* What has not become a seller yet. Above the journeys because it is the
+          step before them: nothing in this queue has a partner id, and nothing
+          below it got there without somebody accepting one. */}
+      <ApplicationsQueue onAccepted={async (id) => {
+        await refreshDirectory()
+        /* Land on the seller that was just created, at the gate that is now
+           open. Accepting and then having to find them in the list is how a
+           desk loses track of what it just did. */
+        setPartnerId(id)
+      }} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 300px) 1fr', gap: '20px', alignItems: 'start' }}
            className="onb-split">
@@ -424,25 +419,3 @@ function OpenTasks({ snap }: { snap: OnboardingSnapshot }) {
   )
 }
 
-/* The task ladder a desk-created application opens with. The same list the
-   migration seeds every other seller from — one gate, one set of asks. */
-const TASK_LADDER: { gate: string; key: string; title: string; detail: string; owner: string; days: number }[] = [
-  { gate: 'apply', key: 'form', title: 'Application form submitted', detail: 'Company details, target marketplace categories and expected monthly volume.', owner: 'Partner', days: 14 },
-  { gate: 'apply', key: 'contact', title: 'Primary contact confirmed', detail: 'A named person who can sign, with a working address on the company domain.', owner: 'Partner', days: 14 },
-  { gate: 'kyc', key: 'inc', title: 'Certificate of incorporation', detail: 'Verified against the register in the country of registration.', owner: 'Partner', days: 5 },
-  { gate: 'kyc', key: 'ubo', title: 'Beneficial ownership declaration', detail: 'Everyone holding over 25%, with identification for each.', owner: 'Partner', days: 5 },
-  { gate: 'kyc', key: 'screen', title: 'Sanctions and PEP screening', detail: 'OFAC, EU, UN and HMT lists, plus adverse media.', owner: 'Marketplace', days: 2 },
-  { gate: 'agree', key: 'terms', title: 'Marketplace terms e-signed', detail: 'Version 4.2, signed by someone with authority to bind the company.', owner: 'Partner', days: 5 },
-  { gate: 'agree', key: 'dpa', title: 'Data processing agreement', detail: 'Standard contractual clauses, with sub-processors declared.', owner: 'Partner', days: 5 },
-  { gate: 'agree', key: 'sched', title: 'Commission schedule counter-signed', detail: 'The plan the seller will actually settle on, signed by both sides.', owner: 'Marketplace', days: 3 },
-  { gate: 'finance', key: 'bank', title: 'Settlement bank account verified', detail: 'Two micro-deposits are sent to the nominated account. The amounts have to be confirmed before any money moves in the other direction.', owner: 'Partner', days: 3 },
-  { gate: 'finance', key: 'tax', title: 'Tax residency certificate', detail: 'A valid certificate applies the treaty withholding rate. Without one, the statutory rate is withheld at source.', owner: 'Partner', days: 3 },
-  { gate: 'tech', key: 'feed', title: 'Catalogue method agreed', detail: 'API feed or portal upload, with the update frequency stated.', owner: 'Partner', days: 5 },
-  { gate: 'tech', key: 'hook', title: 'Fulfilment webhook reachable', detail: 'Responds to a signed test call over TLS inside the timeout.', owner: 'Partner', days: 5 },
-  { gate: 'tech', key: 'sbx', title: 'Sandbox order completed end to end', detail: 'One order placed, fulfilled and settled in sandbox before anything is sold for real.', owner: 'Partner', days: 5 },
-  { gate: 'assure', key: 'sec', title: 'Security questionnaire', detail: '52-question baseline covering data handling, retention and sub-processors.', owner: 'Partner', days: 8 },
-  { gate: 'assure', key: 'policy', title: 'Content and listing policy acknowledged', detail: 'Including the category rules that apply to what they intend to sell.', owner: 'Partner', days: 8 },
-  { gate: 'assure', key: 'audit', title: 'Sample listing audit', detail: 'Three listings reviewed against the policy before the storefront opens.', owner: 'Marketplace', days: 4 },
-  { gate: 'golive', key: 'store', title: 'Storefront enabled', detail: 'The seller becomes visible to buyers in the categories they were approved for.', owner: 'Marketplace', days: 1 },
-  { gate: 'golive', key: 'first', title: 'First listings published', detail: 'At least one live listing, so the storefront is not an empty shop.', owner: 'Partner', days: 2 },
-]
