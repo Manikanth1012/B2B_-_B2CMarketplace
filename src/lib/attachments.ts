@@ -138,6 +138,20 @@ export function storagePath(userId: string, ticketId: string, filename: string):
 }
 
 /**
+ * Where a dispute's evidence goes — the dispute id first, not the uploader.
+ *
+ * Deliberately the other way round from a ticket's. A ticket attachment is one
+ * person's file about their own problem, so their folder is the right unit. A
+ * dispute is an argument with at least three interested parties: the seller who
+ * uploaded it, their colleague who picks the thread up on Monday, and the
+ * marketplace deciding it. Filing it under the uploader would mean the
+ * colleague cannot open the photograph their own company sent.
+ */
+export function disputePath(disputeId: string, filename: string): string {
+  return `${disputeId}/${Date.now()}-${safeName(filename)}`
+}
+
+/**
  * Lowercase, no spaces, nothing that changes meaning in a URL or a shell.
  *
  * The directory part goes first, before anything looks for an extension.

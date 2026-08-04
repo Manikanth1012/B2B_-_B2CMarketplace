@@ -2,7 +2,7 @@
    Rules live in attachments.ts so they can be tested without a network. */
 
 import { supabase } from './supabase'
-import { validateFile, guessKind, storagePath, canWithdraw } from './attachments'
+import { validateFile, guessKind, storagePath, disputePath, canWithdraw } from './attachments'
 import type { Attachment, Check } from './attachments'
 
 export type Result = Check
@@ -81,6 +81,98 @@ export async function attachFile(
     note: `${file.name} attached. Support can see it as soon as they open the ticket.`,
     attachment: data as Attachment,
   }
+}
+
+/** Everything attached to a dispute — by either side of it. */
+export async function loadEvidence(disputeId: string): Promise<Attachment[]> {
+  const { data } = await supabase.from('support_attachments')
+    .select('*').eq('dispute_id', disputeId).order('sort_order')
+  return (data ?? []) as Attachment[]
+}
+
+/**
+ * Attaching evidence to a dispute.
+ *
+ * The same validation, the same bucket and the same scan as a ticket
+ * attachment, because they are the same kind of thing — the only difference is
+ * what the file is about, and that is a column.
+ */
+export async function attachEvidence(
+  { disputeId, file, caption }: { disputeId: string; file: File; caption?: string },
+): Promise<Result & { attachment?: Attachment }> {
+  const existing = await loadEvidence(disputeId)
+  const check = validateFile(file, existing)
+  if (!check.ok) return check
+
+  const { data: session } = await supabase.auth.getUser()
+  const uid = session.user?.id
+  if (!uid) return { ok: false, reason: 'Sign in before attaching a file.' }
+
+  const path = disputePath(disputeId, file.name)
+  const up = await supabase.storage.from(BUCKET).upload(path, file, {
+    contentType: file.type || 'application/octet-stream', upsert: false,
+  })
+  if (up.error) return { ok: false, reason: friendly(up.error.message) }
+
+  const { data, error } = await supabase.from('support_attachments').insert({
+    id: `ATT-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    dispute_id: disputeId,
+    ticket_id: null,
+    path,
+    filename: file.name,
+    mime: file.type || 'application/octet-stream',
+    bytes: file.size,
+    kind: guessKind(file),
+    caption: caption?.trim() || null,
+    uploaded_by: session.user?.email ?? 'The seller',
+    user_id: uid,
+    sort_order: existing.length + 1,
+  }).select('*').maybeSingle()
+
+  if (error || !data) {
+    /* The row is the record; a file with no row is a file nobody will ever
+       find. Take it back out rather than leaving it in the bucket. */
+    await supabase.storage.from(BUCKET).remove([path])
+    return { ok: false, reason: error ? friendly(error.message) : REFUSED }
+  }
+
+  return {
+    ok: true,
+    note: `${file.name} attached to the dispute. The marketplace sees it as soon as they open it, and so does anybody at your company.`,
+    attachment: data as Attachment,
+  }
+}
+
+/**
+ * Taking a piece of evidence back off a dispute.
+ *
+ * Separate from `withdrawAttachment` because the rule is different, not because
+ * the code is. A ticket attachment is frozen once support has replied — the
+ * reply may be about the file. A dispute is frozen when the dispute is settled,
+ * because evidence removed after a decision is evidence the decision was made
+ * on. The database enforces both; this is what the screen says first.
+ */
+export async function withdrawEvidence(
+  { attachment, open }: { attachment: Attachment; open: boolean },
+): Promise<Result> {
+  const { data: session } = await supabase.auth.getUser()
+  if (attachment.user_id !== (session.user?.id ?? null)) {
+    return { ok: false, reason: 'You can only remove a file you attached yourself.' }
+  }
+  if (!open) {
+    return {
+      ok: false,
+      reason: 'This dispute has been decided, and what was attached is what it was decided on. It stays.',
+    }
+  }
+
+  const { data, error } = await supabase.from('support_attachments')
+    .delete().eq('id', attachment.id).select('id')
+  if (error) return { ok: false, reason: friendly(error.message) }
+  if (!data?.length) return { ok: false, reason: REFUSED }
+
+  if (attachment.path) await supabase.storage.from(BUCKET).remove([attachment.path])
+  return { ok: true, note: `${attachment.filename} removed and not kept.` }
 }
 
 /**

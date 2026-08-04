@@ -625,6 +625,14 @@ export async function submitForReview(
   }
 
   const id = `SKU-P${Date.now().toString(36).slice(-5).toUpperCase()}`
+
+  /* `products.price` is the figure in the seller's home market, and this is the
+     money it is in. Left unset it took the column default of USD, so a listing
+     priced at 7,499 rupees was stored as $7,499 — every rollup that reads
+     `products` alone then read it as dollars. Found by a bulk upload, but the
+     wizard wrote it the same way. */
+  const homeCurrency = draft.prices[0]?.currency ?? 'USD'
+
   const { error: insErr } = await supabase.from('products').insert({
     id, category_id: draft.categoryId, sub_category: draft.subCategory || 'General',
     name: draft.name, partner_id: draft.partnerId, seller: (partner as { name: string }).name,
@@ -632,6 +640,7 @@ export async function submitForReview(
     floor_price: draft.floorPrice, list_price: draft.listPrice,
     price_includes_tax: draft.priceIncludesTax, tax_rate: draft.taxRate,
     model: draft.model, fulfil: draft.fulfil, billing_period: draft.billingPeriod,
+    currency: homeCurrency,
     rating: 0, reviews: 0, stock: 'in', status: 'pending',
     listed: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
     description: draft.description, tags: draft.tags, comm: 0, badge: null, specs: {}, sort_order: 999,

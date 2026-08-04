@@ -107,7 +107,10 @@ export const CONTACT_PURPOSES: PurposeSpec[] = [
 export const PURPOSE_SPEC: Record<ContactPurpose, PurposeSpec> =
   Object.fromEntries(CONTACT_PURPOSES.map(p => [p.id, p])) as Record<ContactPurpose, PurposeSpec>
 
-export type Check = { ok: true } | { ok: false; reason: string }
+/* `note` is what a caller shows when the answer is yes but there is something
+   worth saying — an invitation to an address the company does not control is
+   allowed and is still worth a sentence. */
+export type Check = { ok: true; note?: string } | { ok: false; reason: string }
 
 /* Deliberately loose on shape. An address is proved by sending to it, not by a
    regular expression, and a phone number's format varies by country far more
@@ -507,7 +510,10 @@ export interface PartnerUser {
   email: string
   job_title: string
   role: 'admin' | 'fulfilment' | 'finance' | 'read_only'
-  status: 'active' | 'invited' | 'suspended'
+  /* 'removed' rather than a deleted row: this is what an audit entry points at
+     when it says who acted, and deleting the person turns their own history
+     into dangling references. */
+  status: 'active' | 'invited' | 'suspended' | 'removed'
   joined: string
   last_active: string | null
   mfa: boolean
@@ -554,6 +560,84 @@ export function validateProfile(name: string, jobTitle: string): Check {
     return { ok: false, reason: 'A job title is required. The marketplace desk uses it to work out who to ask.' }
   }
   return { ok: true }
+}
+
+/* ------------------------------------------------------------ inviting --- */
+
+export interface InviteDraft {
+  name: string
+  email: string
+  jobTitle: string
+  role: PartnerUser['role']
+}
+
+export function blankInvite(): InviteDraft {
+  return { name: '', email: '', jobTitle: '', role: 'fulfilment' }
+}
+
+/**
+ * Whether this invitation can be sent.
+ *
+ * The domain check is the one worth having: an invitation to a personal address
+ * is how somebody who has left keeps their access, and how a supplier ends up
+ * inside a seller's console with nobody quite remembering who added them. It is
+ * a warning rather than a refusal, because a company that genuinely uses a
+ * shared address should not be stopped by a rule about domains.
+ */
+export function validateInvite(
+  draft: InviteDraft, team: readonly PartnerUser[],
+): Check {
+  if (!draft.name.trim()) return { ok: false, reason: 'A name is required — it is what colleagues see against their actions.' }
+  if (!draft.jobTitle.trim()) return { ok: false, reason: 'A job title is required. The marketplace desk uses it to work out who to ask.' }
+
+  const email = draft.email.trim().toLowerCase()
+  if (!email) return { ok: false, reason: 'An email address is required — it is what the invitation goes to.' }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+    return { ok: false, reason: `"${draft.email.trim()}" is not an email address the invitation could reach.` }
+  }
+
+  const already = team.find(u => u.email.toLowerCase() === email)
+  if (already) {
+    return {
+      ok: false,
+      reason: already.status === 'removed'
+        ? `${already.name} was removed from this account. Restore them rather than inviting them again — it keeps their history attached.`
+        : `${already.name} is already on this account as ${ROLE_LABEL[already.role].toLowerCase()}.`,
+    }
+  }
+
+  const theirs = email.split('@')[1]
+  const colleagues = team.filter(u => u.status !== 'removed').map(u => u.email.toLowerCase().split('@')[1])
+  const common = colleagues.find(d => colleagues.filter(x => x === d).length > 1) ?? colleagues[0]
+  if (common && theirs !== common) {
+    return {
+      ok: true,
+      note: `${draft.email.trim()} is not on ${common}. An invitation to an address your company does not control is one you cannot take back when they leave — send it only if you meant to.`,
+    }
+  }
+
+  return { ok: true, note: `They will be sent an invitation and appear here as invited until they accept.` }
+}
+
+/**
+ * Whether this person can be taken off the account.
+ *
+ * A company left with no administrator can publish nothing and act on no
+ * onboarding, and nobody inside it can fix that — they would have to ring the
+ * marketplace to get their own account back.
+ */
+export function canRemove(who: PartnerUser, team: readonly PartnerUser[]): Check {
+  if (who.status === 'removed') return { ok: false, reason: `${who.name} has already been removed.` }
+  if (who.role !== 'admin') return { ok: true, note: `${who.name} loses access. What they did stays on the audit log.` }
+
+  const others = team.filter(u => u.id !== who.id && u.role === 'admin' && u.status === 'active')
+  if (!others.length) {
+    return {
+      ok: false,
+      reason: `${who.name} is the last seller admin here. Make somebody else an admin first, or nobody at this company will be able to publish a listing or act on onboarding.`,
+    }
+  }
+  return { ok: true, note: `${others.length} other admin${others.length === 1 ? '' : 's'} remain.` }
 }
 
 /** What actually happens to your work while you are away. Said in terms of the

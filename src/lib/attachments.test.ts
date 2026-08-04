@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   ACCEPTED, ACCEPT_ATTRIBUTE, MAX_BYTES, MAX_FILES, acceptedLabel,
   validateFile, validateSet, guessKind, storagePath, safeName,
-  scanNote, canOpen, canWithdraw, sizeOf,
+  scanNote, canOpen, canWithdraw, sizeOf, disputePath,
 } from './attachments'
 import type { Attachment } from './attachments'
 
@@ -176,5 +176,28 @@ describe('sizes', () => {
     expect(sizeOf(900)).toBe('900 B')
     expect(sizeOf(0)).toBe('—')
     expect(sizeOf(Number.NaN)).toBe('—')
+  })
+})
+
+describe('where a dispute’s evidence goes', () => {
+  it('files it under the dispute, not the uploader', () => {
+    /* The other way round from a ticket, on purpose: a dispute is an argument
+       with at least three interested parties, and filing it under whoever
+       clicked upload means their colleague cannot open their own company's
+       photograph. */
+    const p = disputePath('DSP-2201', 'Sealed carton.JPEG')
+    expect(p.startsWith('DSP-2201/')).toBe(true)
+    expect(p).toMatch(/sealed-carton\.jpeg$/)
+  })
+
+  it('keeps two uploads of one filename apart', () => {
+    const a = disputePath('DSP-2201', 'photo.jpg')
+    const b = disputePath('DSP-2201', 'photo.jpg')
+    expect(a.split('/')[1]).toMatch(/^\d+-photo\.jpg$/)
+    expect(b.split('/')[1]).toMatch(/^\d+-photo\.jpg$/)
+  })
+
+  it('defeats traversal in an evidence filename too', () => {
+    expect(disputePath('DSP-2201', '../../etc/passwd')).toMatch(/^DSP-2201\/\d+-passwd$/)
   })
 })

@@ -1,7 +1,14 @@
-import { Package, Plus, Download, Search } from 'lucide-react'
+import { Package, Plus, Download, Search, Upload, TriangleAlert } from 'lucide-react'
 import { Pager, usePaging } from '../Pager'
-import { useState, useEffect } from 'react'
-import { SectionCard, Table, Td, fmtMoney, Btn, EmptyState, toast } from '../operator/shared'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { SectionCard, Table, Td, fmtMoney, Btn, EmptyState, toast, FormField, TextArea } from '../operator/shared'
+import { parseFeed, feedTemplate, feedSummary, toSubmission } from '../../lib/bulkListings'
+import type { Feed } from '../../lib/bulkListings'
+import { loadListingContext } from '../../lib/listingDraftRepo'
+import type { ListingContext } from '../../lib/listingDraftRepo'
+import { submitForReview } from '../../lib/catalogueRepo'
+import { toCsv } from '../../lib/ledger'
+import { saveBlob } from '../../lib/billPdf'
 import { Callout } from '../OnboardingJourney'
 import { loadSellerRecord } from '../../lib/partnerRepo'
 import type { SellerRecord } from '../../lib/partnerRepo'
@@ -37,12 +44,29 @@ export function PartnerListings({ partnerId, onNewListing }: {
      note, which is the thing a seller most needs to read, was three lines of
      10px type in a column. */
   const [viewing, setViewing] = useState<ListingRow | null>(null)
+  /* "Bulk upload — CSV or catalogue feed" was a toast. A seller with forty SKUs
+     had the same wizard forty times, and the button that acknowledged that did
+     nothing about it. */
+  const [bulk, setBulk] = useState(false)
+  const [pasted, setPasted] = useState('')
+  const [context, setContext] = useState<ListingContext | null>(null)
+  const [importing, setImporting] = useState(false)
+  const feedFile = useRef<HTMLInputElement>(null)
   const [pricing, setPricing] = useState<{ id: string; name: string; partner_id: string | null; price: number; currency?: string } | null>(null)
 
-  useEffect(() => {
-    Promise.all([loadSellerRecord(partnerId), loadSellerSubmissions(partnerId)])
-      .then(([r, s]) => { setRec(r); setSubs(s.submissions); setQueries(s.queries); setLoading(false) })
+  const reload = useCallback(async () => {
+    const [r, s] = await Promise.all([loadSellerRecord(partnerId), loadSellerSubmissions(partnerId)])
+    setRec(r); setSubs(s.submissions); setQueries(s.queries); setLoading(false)
   }, [partnerId])
+  useEffect(() => { void reload() }, [reload])
+
+  /* The seller's approved markets, their currencies and each market's tax —
+     what a feed has to be read against. Loaded once when the panel is first
+     opened rather than on every visit to the page. */
+  useEffect(() => {
+    if (!bulk || context) return
+    void loadListingContext(partnerId).then(setContext)
+  }, [bulk, context, partnerId])
 
   /* Derived above the loading guard, because `usePaging` is a hook: below an
      early return it runs on some renders and not others. */
@@ -61,6 +85,52 @@ export function PartnerListings({ partnerId, onNewListing }: {
   const breakdown = listingBreakdown(rec.listings)
   const states = ['all', ...new Set(rec.listings.map(l => l.status))]
 
+  /* Parsed on every keystroke rather than on a button, so the refusals appear
+     beside the file while it is still being fixed. */
+  const feed: Feed | null = context && pasted.trim()
+    ? parseFeed(pasted, { markets: context.markets, categories: rec?.categories ?? [] })
+    : null
+
+  const downloadTemplate = () => {
+    if (!context) return
+    saveBlob(
+      new Blob([toCsv(feedTemplate(context.markets, rec?.categories ?? []))], { type: 'text/csv' }),
+      'listing-feed-template.csv',
+    )
+    toast('Template downloaded. Delete the example row before you bring it back.')
+  }
+
+  const readFeed = (f: File) => {
+    const reader = new FileReader()
+    reader.onload = () => setPasted(String(reader.result ?? ''))
+    reader.readAsText(f)
+  }
+
+  /* One at a time through `submitForReview`, rather than a bulk insert. Every
+     rule a single listing meets — the approval, the cost floor, the market
+     grants, the review record — is in that function, and a second write path
+     that skipped any of them would be a way into the catalogue the wizard
+     would have refused. */
+  const runImport = async () => {
+    if (!feed || !context) return
+    setImporting(true)
+    const failures: string[] = []
+    let done = 0
+    for (const r of feed.rows) {
+      const result = await submitForReview({
+        draft: toSubmission(r, partnerId, context.markets),
+        submittedBy: rec?.partner?.name ?? 'The seller',
+      })
+      if (result.ok) done++
+      else failures.push(`${r.name}: ${result.reason}`)
+    }
+    setImporting(false)
+    await reload()
+    if (done) toast(`${done} listing${done === 1 ? '' : 's'} submitted for review.`)
+    if (failures.length) toast(failures.slice(0, 2).join(' '), 'error')
+    if (done && !failures.length) { setBulk(false); setPasted('') }
+  }
+
   /* The rate the seller is actually paid on, read from the plan rather than a
      per-row number nothing agreed to. */
   const rate = rec.plan ? rateAt(rec.plan, 0) : null
@@ -78,7 +148,7 @@ export function PartnerListings({ partnerId, onNewListing }: {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <Btn variant="secondary" onClick={() => toast('Bulk upload — CSV or catalogue feed')}><Download size={14} /> Bulk upload</Btn>
+          <Btn variant="secondary" onClick={() => setBulk(true)}><Upload size={14} /> Bulk upload</Btn>
           <Btn variant="primary" onClick={onNewListing}><Plus size={14} /> New listing</Btn>
         </div>
       </div>
@@ -262,6 +332,89 @@ export function PartnerListings({ partnerId, onNewListing }: {
             onChanged={() => { void loadSellerRecord(partnerId).then(setRec) }}
           />
         )}
+      </Modal>
+
+      {/* ------------------------------------------------------ bulk upload */}
+      <Modal
+        open={bulk}
+        onClose={() => { setBulk(false); setPasted('') }}
+        title="Bulk upload"
+        footer={
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between', width: '100%' }}>
+            <Btn variant="secondary" disabled={!context} onClick={downloadTemplate}>
+              <Download size={14} /> Template
+            </Btn>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <Btn variant="secondary" onClick={() => { setBulk(false); setPasted('') }}>Close</Btn>
+              <Btn variant="primary" disabled={importing || !feed?.rows.length} onClick={() => void runImport()}>
+                {importing ? 'Submitting…' : feed?.rows.length ? `Submit ${feed.rows.length} for review` : 'Submit'}
+              </Btn>
+            </div>
+          </div>
+        }>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <Callout tone="info" title="Every row goes through the same door">
+            A bulk-uploaded listing is checked exactly as a hand-typed one is — your marketplace approval,
+            the cost floor, the markets you hold, the review queue. Nothing here is a shortcut past any of
+            that; it only saves you the wizard forty times.
+          </Callout>
+
+          {!context ? (
+            <div style={{ textAlign: 'center', padding: '20px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+          ) : context.markets.length === 0 ? (
+            <Callout tone="warning" title="You are not approved in any market yet">
+              A listing has to be sold somewhere. Your approvals arrive as your application clears.
+            </Callout>
+          ) : (
+            <>
+              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                Download the template — it carries a price column for each of{' '}
+                <strong>{context.markets.flatMap(m => m.currencies).filter((c, i, a) => a.indexOf(c) === i).join(', ')}</strong>{' '}
+                and one worked example. Separate several markets or tags with <code>|</code>.
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <input ref={feedFile} type="file" accept=".csv,text/csv,text/plain" style={{ display: 'none' }}
+                       onChange={e => { const f = e.target.files?.[0]; if (f) readFeed(f); e.target.value = '' }} />
+                <Btn variant="secondary" size="sm" onClick={() => feedFile.current?.click()}>Choose a file</Btn>
+                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>or paste it below</span>
+              </div>
+
+              <FormField label="The feed">
+                <TextArea rows={8} value={pasted} onChange={e => setPasted(e.target.value)}
+                          style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)' }}
+                          placeholder="kind,name,description,category,…" />
+              </FormField>
+
+              {feed && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {feed.rows.length > 0 && (
+                    <Callout tone="info" title="What this will do">{feedSummary(feed)}</Callout>
+                  )}
+                  {feed.problems.length > 0 && (
+                    <div style={{
+                      padding: '12px 14px', borderRadius: 'var(--radius-md)',
+                      background: 'var(--warning-bg)', border: '1px solid var(--warning)',
+                      fontSize: 'var(--text-sm)', color: 'var(--warning)',
+                    }}>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', fontWeight: 700, marginBottom: '6px' }}>
+                        <TriangleAlert size={15} />
+                        {feed.problems.length} row{feed.problems.length === 1 ? '' : 's'} will not be submitted
+                      </div>
+                      {/* Row by row, because a seller cannot fix "4 rows
+                          failed". The rest of the file still imports. */}
+                      {feed.problems.map((p, i) => (
+                        <div key={i} style={{ marginTop: '2px' }}>
+                          Row {p.line}{p.name ? ` (${p.name})` : ''}: {p.reason}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </Modal>
     </div>
   )

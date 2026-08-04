@@ -1,9 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
-import { Plus, MessageSquare, Clock, CircleCheck as CheckCircle } from 'lucide-react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { Plus, MessageSquare, Clock, CircleCheck as CheckCircle, Paperclip, Trash2 } from 'lucide-react'
 import {
   SectionCard, StatCard, StatusPill, Btn, Modal, FormField, TextInput, TextArea, Select,
   EmptyState, toast, fmtMoney, fmtDate,
 } from '../operator/shared'
+import { loadEvidence, attachEvidence, openLink, withdrawEvidence } from '../../lib/attachmentRepo'
+import { ACCEPT_ATTRIBUTE, acceptedLabel, sizeOf, scanNote, canOpen, validateFile } from '../../lib/attachments'
+import type { Attachment } from '../../lib/attachments'
 import { Callout } from '../OnboardingJourney'
 import {
   loadPartnerSupport, contactMarketplace, disputeSummary, TOPICS, OUTCOME_LABEL,
@@ -158,6 +161,40 @@ export function PartnerSupport({ partnerId }: { partnerId: string }) {
 function DisputeCard({ d, onRespond }: { d: Dispute; onRespond: () => void }) {
   const mine = d.owner === 'seller'
   const overdue = d.due_on ? d.due_on < new Date().toISOString().slice(0, 10) : false
+  /* "Upload evidence" was `toast('Evidence upload opened')`. On a screen whose
+     whole subject is a disagreement about what was delivered, that is the one
+     control that decides the outcome. */
+  const [evidence, setEvidence] = useState<Attachment[]>([])
+  const [showing, setShowing] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const picker = useRef<HTMLInputElement>(null)
+
+  const settled = d.status === 'resolved' || d.status === 'rejected'
+
+  const reload = useCallback(async () => setEvidence(await loadEvidence(d.id)), [d.id])
+  useEffect(() => { void reload() }, [reload])
+
+  const upload = async (f: File) => {
+    const check = validateFile(f, evidence)
+    if (!check.ok) { toast(check.reason, 'error'); return }
+    setBusy(true)
+    const r = await attachEvidence({ disputeId: d.id, file: f })
+    setBusy(false)
+    toast(r.ok ? r.note ?? 'Attached' : r.reason, r.ok ? 'success' : 'error')
+    if (r.ok) await reload()
+  }
+
+  const open = async (a: Attachment) => {
+    const url = await openLink(a)
+    if (!url) { toast('That file cannot be opened.', 'error'); return }
+    window.open(url, '_blank', 'noopener')
+  }
+
+  const withdraw = async (a: Attachment) => {
+    const r = await withdrawEvidence({ attachment: a, open: !settled })
+    toast(r.ok ? r.note ?? 'Removed' : r.reason, r.ok ? 'success' : 'error')
+    if (r.ok) await reload()
+  }
 
   return (
     <SectionCard title={d.reason}
@@ -196,11 +233,75 @@ function DisputeCard({ d, onRespond }: { d: Dispute; onRespond: () => void }) {
               : `With the marketplace${d.due_on ? ` — expect an answer by ${fmtDate(d.due_on)}` : ''}`}
           </span>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <Btn variant="secondary" size="sm" onClick={() => toast('Evidence upload opened')}>Upload evidence</Btn>
+            <input ref={picker} type="file" accept={ACCEPT_ATTRIBUTE} style={{ display: 'none' }}
+                   onChange={e => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = '' }} />
+            <Btn variant="secondary" size="sm" onClick={() => setShowing(true)}>
+              <Paperclip size={13} /> Evidence{evidence.length ? ` (${evidence.length})` : ''}
+            </Btn>
             <Btn variant="primary" size="sm" onClick={onRespond}>Respond</Btn>
           </div>
         </div>
       </div>
+
+      <Modal
+        open={showing}
+        onClose={() => setShowing(false)}
+        title={`Evidence on ${d.id}`}
+        footer={
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between', width: '100%' }}>
+            <Btn variant="secondary" disabled={busy || settled} onClick={() => picker.current?.click()}>
+              <Paperclip size={14} /> {busy ? 'Uploading…' : 'Attach a file'}
+            </Btn>
+            <Btn variant="secondary" onClick={() => setShowing(false)}>Close</Btn>
+          </div>
+        }>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <Callout tone={settled ? 'info' : 'warning'}
+                   title={settled ? 'This dispute is closed' : 'What actually settles this'}>
+            {settled
+              ? 'Nothing more can be attached. What is here was what the decision was made on, and it stays.'
+              : `A photograph of the sealed carton, the courier's proof of delivery, the serial numbers you shipped — whatever shows what left you. ${acceptedLabel()}, up to ${sizeOf(10 * 1024 * 1024)} each. The marketplace and anybody at your company can see these; the buyer cannot.`}
+          </Callout>
+
+          {evidence.length === 0 ? (
+            <EmptyState message="Nothing attached yet. A dispute decided on two accounts and no evidence goes to whoever wrote the better paragraph." />
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {evidence.map(a => {
+                const scan = scanNote(a.scan)
+                return (
+                  <div key={a.id} style={{
+                    display: 'flex', gap: '10px', alignItems: 'center',
+                    border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '10px 12px',
+                  }}>
+                    <Paperclip size={15} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {a.filename}
+                      </div>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                        {sizeOf(a.bytes)} · {a.uploaded_by} · {fmtDate(a.uploaded_at)}
+                      </div>
+                      <div style={{
+                        fontSize: 'var(--text-xs)',
+                        color: scan.tone === 'bad' ? 'var(--danger)' : scan.tone === 'warn' ? 'var(--warning)' : 'var(--success)',
+                      }}>{scan.text}</div>
+                    </div>
+                    {canOpen(a) && (
+                      <Btn variant="secondary" size="sm" onClick={() => void open(a)}>Open</Btn>
+                    )}
+                    {!settled && (
+                      <Btn variant="secondary" size="sm" onClick={() => void withdraw(a)}>
+                        <Trash2 size={13} />
+                      </Btn>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      </Modal>
     </SectionCard>
   )
 }

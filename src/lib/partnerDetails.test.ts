@@ -5,6 +5,7 @@ import {
   bankCodeFor, showLocalCode, validateBankChange, pendingChange, taxPosition, RENEWAL_WINDOW_DAYS,
   goLiveRows, validatePause,
   validateProfile, awayCover, canDelegate, securityGaps,
+  validateInvite, canRemove, blankInvite, type InviteDraft,
 } from './partnerDetails'
 import type { Contact, BankAccount, BankDraft, PartnerUser } from './partnerDetails'
 
@@ -465,5 +466,85 @@ describe('securityGaps', () => {
 
   it('reports nothing when everybody is covered', () => {
     expect(securityGaps([user({ id: 'a' }), user({ id: 'b', sessions: 2 })])).toEqual([])
+  })
+})
+
+describe('inviting a colleague', () => {
+  const person = (over: Partial<PartnerUser>): PartnerUser => ({
+    id: 'PU-1', partner_id: 'PTR-1004', name: 'Rajesh Kumar', email: 'rajesh.kumar@nimbussensors.com',
+    job_title: 'Seller Operations', role: 'admin', status: 'active', joined: '2024-09-27',
+    last_active: null, mfa: true, sessions: 1, pwd_changed: null, pwd_strength: null,
+    must_reset: false, timezone: 'Asia/Kolkata (IST)', date_format: 'DD MMM YYYY',
+    language: 'en', out_of_office: false, delegate_id: null, digest: 'daily', sort_order: 1, ...over,
+  })
+
+  const TEAM = [
+    person({}),
+    person({ id: 'PU-2', name: 'Sana Mirza', email: 'sana.mirza@nimbussensors.com', role: 'fulfilment' }),
+  ]
+
+  const draft = (over: Partial<InviteDraft> = {}): InviteDraft => ({
+    ...blankInvite(), name: 'Devika Rao', email: 'devika.rao@nimbussensors.com',
+    jobTitle: 'Warehouse lead', ...over,
+  })
+
+  it('accepts a colleague on the company domain', () => {
+    const r = validateInvite(draft(), TEAM)
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.note).toMatch(/invited until they accept/)
+  })
+
+  it('needs a name and a job title, because both are read off an audit row', () => {
+    expect(validateInvite(draft({ name: ' ' }), TEAM).ok).toBe(false)
+    expect(validateInvite(draft({ jobTitle: '' }), TEAM).ok).toBe(false)
+  })
+
+  it('refuses something that is not an address, quoting what was typed', () => {
+    const r = validateInvite(draft({ email: 'devika at nimbus' }), TEAM)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toContain('devika at nimbus')
+  })
+
+  it('refuses somebody already on the account, saying what they are', () => {
+    const r = validateInvite(draft({ email: 'SANA.MIRZA@nimbussensors.com' }), TEAM)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toMatch(/already on this account as fulfilment operator/)
+  })
+
+  it('points a removed colleague at being restored rather than re-invited', () => {
+    /* Re-inviting makes a second row, and their history stays on the first. */
+    const r = validateInvite(draft({ email: 'sana.mirza@nimbussensors.com' }),
+      [TEAM[0], person({ ...TEAM[1], status: 'removed' })])
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toMatch(/Restore them/)
+  })
+
+  it('warns about a personal address without refusing it', () => {
+    /* How somebody who has left keeps their access. A warning, because a
+       company that genuinely uses a shared address should not be blocked. */
+    const r = validateInvite(draft({ email: 'devika.rao@gmail.com' }), TEAM)
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.note).toMatch(/cannot take back when they leave/)
+  })
+
+  it('refuses to remove the last admin, and says what would break', () => {
+    const r = canRemove(TEAM[0], TEAM)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toMatch(/last seller admin/)
+  })
+
+  it('allows removing an admin while another remains', () => {
+    const two = [...TEAM, person({ id: 'PU-3', name: 'Arun Pillai', email: 'arun@nimbussensors.com', role: 'admin' })]
+    expect(canRemove(two[0], two).ok).toBe(true)
+  })
+
+  it('allows removing anybody who is not an admin', () => {
+    const r = canRemove(TEAM[1], TEAM)
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.note).toMatch(/stays on the audit log/)
+  })
+
+  it('says so rather than removing somebody twice', () => {
+    expect(canRemove(person({ ...TEAM[1], status: 'removed' }), TEAM).ok).toBe(false)
   })
 })

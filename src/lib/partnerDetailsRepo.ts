@@ -11,10 +11,23 @@ import {
   canDelegate, validatePause,
 } from './partnerDetails'
 import type {
-  Contact, ContactKind, ContactPurpose, BankAccount, BankDraft, PartnerUser,
+  Contact, ContactKind, ContactPurpose, BankAccount, BankDraft, PartnerUser, InviteDraft,
 } from './partnerDetails'
 
 export type Result = { ok: true; note?: string } | { ok: false; reason: string }
+
+/* A database refusal, said in words the person reading it can act on. The
+   guards raise sentences written for exactly that, so those come through
+   whole. */
+function friendly(message: string): string {
+  if (/row-level security/i.test(message)) {
+    return 'Nothing changed — you are not allowed to make that change.'
+  }
+  if (/duplicate key/i.test(message)) {
+    return 'Somebody with that address is already on this account.'
+  }
+  return message.replace(/^(?:ERROR:\s*)?(?:P0001:\s*)?/, '')
+}
 
 export interface GoLive {
   partner_id: string
@@ -79,6 +92,61 @@ export interface PartnerSettlement {
 /** The same three tables from the marketplace's side. Separate from
     loadMyDetails because the operator has no "you" here — they are reading
     somebody else's record, which is exactly why the reveal below is logged. */
+/**
+ * Adding a colleague.
+ *
+ * The row's shape is not this function's to choose — the database pins a new
+ * colleague to invited, no MFA, no sessions, never signed in, whatever is sent.
+ * Sending it anyway would be a second opinion about the same fact, and the one
+ * that drifts is always the one in the client.
+ */
+export async function inviteColleague(partnerId: string, draft: InviteDraft): Promise<Result> {
+  const { error } = await supabase.from('partner_users').insert({
+    id: `PU-${partnerId.replace(/^PTR-/, '')}-${Date.now().toString().slice(-6)}`,
+    partner_id: partnerId,
+    name: draft.name.trim(),
+    email: draft.email.trim().toLowerCase(),
+    job_title: draft.jobTitle.trim(),
+    role: draft.role,
+    status: 'invited',
+    timezone: 'Asia/Kolkata (IST)',
+    date_format: 'DD MMM YYYY',
+    language: 'en',
+    digest: 'daily',
+    sort_order: 99,
+  })
+  if (error) return { ok: false, reason: friendly(error.message) }
+  return {
+    ok: true,
+    note: `${draft.name.trim()} has been invited. They appear here as invited until they set a password and sign in.`,
+  }
+}
+
+/**
+ * Taking somebody off the account.
+ *
+ * A status rather than a delete: `partner_users` is what an audit row points at
+ * when it says who acted, and deleting the person turns their own history into
+ * dangling references. Removed means no access and a record that still reads.
+ */
+export async function removeColleague(who: PartnerUser): Promise<Result> {
+  const { data, error } = await supabase.from('partner_users')
+    .update({ status: 'removed', sessions: 0, out_of_office: false, delegate_id: null })
+    .eq('id', who.id).select('id')
+  if (error) return { ok: false, reason: friendly(error.message) }
+  if (!data?.length) return { ok: false, reason: 'Nothing changed — you are not allowed to make that change.' }
+  return { ok: true, note: `${who.name} has been removed. What they did stays on the audit log against their name.` }
+}
+
+/** Putting somebody back, which is what a re-invitation should have been. */
+export async function restoreColleague(who: PartnerUser): Promise<Result> {
+  const { data, error } = await supabase.from('partner_users')
+    .update({ status: 'invited', must_reset: true }).eq('id', who.id).select('id')
+  if (error) return { ok: false, reason: friendly(error.message) }
+  if (!data?.length) return { ok: false, reason: 'Nothing changed — you are not allowed to make that change.' }
+  return { ok: true, note: `${who.name} has been re-invited, with their history still attached.` }
+}
+
 export async function loadPartnerSettlement(partnerId: string): Promise<PartnerSettlement> {
   const [bankRes, contacts, gl] = await Promise.all([
     supabase.from('partner_bank').select('*').eq('partner_id', partnerId).maybeSingle(),
