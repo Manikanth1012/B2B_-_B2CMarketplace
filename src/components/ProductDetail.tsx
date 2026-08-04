@@ -41,6 +41,15 @@ export function ProductDetail({ product, onAddToCart, onNavigate, compact = fals
   const [quantity, setQuantity] = useState(1)
   const [activeTab, setActiveTab] = useState<'description' | 'specs' | 'reviews'>('description')
   const [reviews, setReviews] = useState<Review[]>([])
+  /* The photographs this product actually has, and which one is showing.
+
+     The strip used to be `[1, 2, 3, 4].map` over one image: four identical
+     thumbnails, the first ringed as selected, none of them clickable. It looked
+     like a gallery and was decoration. `product_media` holds the real rows —
+     every product has two, 38 of the 47 are genuinely different pictures, and
+     each carries its own alt text. */
+  const [media, setMedia] = useState<{ url: string; alt: string }[]>([])
+  const [shown, setShown] = useState(0)
 
   /* Published reviews only — the read policy allows nothing else to anyone but the
      author and the operator, so this is the public view by construction. */
@@ -48,6 +57,30 @@ export function ProductDetail({ product, onAddToCart, onNavigate, compact = fals
     supabase.from('product_reviews').select('*').eq('product_id', product.id)
       .then(({ data }) => setReviews(orderForDisplay((data ?? []) as Review[])))
   }, [product.id])
+
+  useEffect(() => {
+    /* Back to the first shot when the product changes, or the second picture of
+       the last one is still selected on a product that may not have two. */
+    setShown(0)
+    supabase.from('product_media').select('url, alt, sort_order')
+      .eq('product_id', product.id).order('sort_order')
+      .then(({ data }) => setMedia(((data ?? []) as { url: string; alt: string | null }[])
+        .map(r => ({ url: r.url, alt: r.alt ?? '' }))))
+  }, [product.id])
+
+  /* The card's picture first, then anything else this product has.
+
+     Leading with `getProductImage` rather than the media table's own hero keeps
+     the detail opening on the photograph that was clicked — the two sources
+     disagree on about half the catalogue, and a card that shows one picture and
+     opens on another reads as the wrong product. Duplicates are dropped, so a
+     product whose rows are all the same photograph gets one shot and no strip:
+     one picture is not a gallery. */
+  const shots: { url: string; alt: string }[] = []
+  for (const shot of [{ url: getProductImage(product.id), alt: product.name }, ...media]) {
+    if (!shots.some(s => s.url === shot.url)) shots.push(shot)
+  }
+  const active = shots[Math.min(shown, shots.length - 1)]
 
   const agg = aggregate(reviews)
   const color = catColors[product.category_id] || 'var(--brand-accent)'
@@ -105,8 +138,8 @@ export function ProductDetail({ product, onAddToCart, onNavigate, compact = fals
               }}
             >
               <img
-                src={getProductImage(product.id)}
-                alt={product.name}
+                src={active.url}
+                alt={active.alt || product.name}
                 style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
               {product.badge && (
@@ -118,28 +151,38 @@ export function ProductDetail({ product, onAddToCart, onNavigate, compact = fals
                 </span>
               )}
             </div>
-            {/* Thumbnails */}
-            <div style={{ display: 'flex', gap: '12px' }}>
-              {[1, 2, 3, 4].map((n) => (
-                <div
-                  key={n}
-                  style={{
-                    width: '72px',
-                    height: '72px',
-                    borderRadius: 'var(--radius)',
-                    border: n === 1 ? `2px solid ${color}` : '1px solid var(--border)',
-                    cursor: 'pointer',
-                    overflow: 'hidden',
-                  }}
-                >
-                  <img
-                    src={getProductImage(product.id)}
-                    alt={`${product.name} view ${n}`}
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                  />
-                </div>
-              ))}
-            </div>
+            {/* Thumbnails. Only where there is more than one photograph, and
+                each one is a real button: it changes the picture above, says
+                which is showing, and can be reached with a keyboard. */}
+            {shots.length > 1 && (
+              <div style={{ display: 'flex', gap: '12px' }} role="group" aria-label={`${product.name} photographs`}>
+                {shots.map((shot, i) => (
+                  <button
+                    key={shot.url}
+                    type="button"
+                    onClick={() => setShown(i)}
+                    aria-label={shot.alt || `${product.name} photograph ${i + 1}`}
+                    aria-current={i === shown}
+                    style={{
+                      width: '72px',
+                      height: '72px',
+                      padding: 0,
+                      borderRadius: 'var(--radius)',
+                      border: i === shown ? `2px solid ${color}` : '1px solid var(--border)',
+                      cursor: 'pointer',
+                      overflow: 'hidden',
+                      background: 'none',
+                    }}
+                  >
+                    <img
+                      src={shot.url}
+                      alt=""
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                    />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Info */}
