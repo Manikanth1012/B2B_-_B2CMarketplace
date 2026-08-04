@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { PublicProductGrid } from './PublicProductGrid'
-import { PublicProductModal } from './PublicProductModal'
 import { CategoryShowcase } from './CategoryShowcase'
 import { BANNERS } from '../../lib/assets'
 import { loadCatalogue, loadCategories, countByCategory } from '../../lib/storefrontRepo'
@@ -77,10 +76,6 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
   const c = CONFIG[page]
   const [catalogue, setCatalogue] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
-  /* Which product is open. Held here rather than inside the grid because the
-     partner page shows categories instead of a grid, and the modal belongs to
-     the page either way. */
-  const [viewing, setViewing] = useState<Product | null>(null)
 
   useEffect(() => {
     /* Priced for the market too. A shopper who sees $18.00 before signing in
@@ -204,15 +199,8 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
           subtitle={c.rail.subtitle}
           products={products}
           onAdd={onAddToBasket}
-          onOpen={setViewing}
         />
       )}
-
-      <PublicProductModal
-        product={viewing}
-        onClose={() => setViewing(null)}
-        onAddToBasket={onAddToBasket}
-      />
     </>
   )
 }

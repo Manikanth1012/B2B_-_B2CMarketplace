@@ -14,15 +14,11 @@ import { useMarket } from '../../lib/MarketContext'
    ProductCard, ProductDetail and CartDrawer use. A product has one photograph
    wherever it appears; picking a decorative image here instead would put a network
    switch next to a mobile plan. */
-export function PublicProductGrid({ title, subtitle, products, onAdd, onOpen }: {
+export function PublicProductGrid({ title, subtitle, products, onAdd }: {
   title: string
   subtitle?: string
   products: readonly Product[]
   onAdd: (p: Product) => void
-  /* Opening the product itself. The card used to have exactly one action on it
-     — Add to basket — so a visitor could buy something without being able to
-     read what it was, while the signed-in shopper had a full page for it. */
-  onOpen: (p: Product) => void
 }) {
   /* The product carries the currency it was priced in — these pages reprice
      for the market like every other surface. Printing a dollar sign over a
@@ -45,22 +41,7 @@ export function PublicProductGrid({ title, subtitle, products, onAdd, onOpen }: 
         {products.map(p => {
           const available = canAddToBasket(p)
           return (
-            /* The whole card opens it, and it is a real control rather than a
-               div with a handler: `role`, `tabIndex` and the keys, so it can be
-               reached without a mouse. The Add button inside stops the event so
-               that buying does not also open the page you are buying from. */
-            <article
-              key={p.id}
-              className="card"
-              role="button"
-              tabIndex={0}
-              aria-label={`${p.name} — see details`}
-              onClick={() => onOpen(p)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(p) }
-              }}
-              style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', cursor: 'pointer' }}
-            >
+            <article key={p.id} className="card" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
               <div style={{ position: 'relative', height: '150px', background: 'var(--surface-2, #f4f6f8)' }}>
                 <img src={getProductImage(p.id)} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 {p.badge && (
@@ -103,7 +84,7 @@ export function PublicProductGrid({ title, subtitle, products, onAdd, onOpen }: 
                 <button
                   className="btn btn-primary"
                   disabled={!available}
-                  onClick={e => { e.stopPropagation(); onAdd(p) }}
+                  onClick={() => onAdd(p)}
                   style={{ marginTop: '12px', width: '100%', justifyContent: 'center', gap: '8px', opacity: available ? 1 : 0.5, cursor: available ? 'pointer' : 'not-allowed' }}
                 >
                   <ShoppingBag size={15} />
