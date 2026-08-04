@@ -23,7 +23,10 @@ const CONFIG: Record<Aud, {
     title: 'Everything for your everyday connection',
     blurb: 'Plans, phones, entertainment and home devices — bought in one place, billed in one place.',
     points: ['Plans and devices side by side', 'Reward points on every order', 'One bill, one support queue'],
-    cta: 'Start shopping',
+    /* Unused on retail — the hero's one button registers. Kept so the three
+       pages share a shape, and because `cta` is the sign-in label for the other
+       two rather than something invented per page. */
+    cta: 'Sign in to shop',
     banner: BANNERS[1],
     rail: { title: 'Popular with shoppers', subtitle: 'Phones, wearables and entertainment' },
     persona: 'consumer',
@@ -101,25 +104,19 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
               ))}
             </ul>
             <div style={{ display: 'flex', gap: '12px', marginTop: '32px', flexWrap: 'wrap' }}>
-              <button className="btn btn-primary btn-lg" onClick={() => onSignIn(c.persona)}>{c.cta}</button>
-              {page === 'retail' && (
-                <>
-                <button className="btn btn-secondary btn-lg" style={{ background: 'rgba(255,255,255,0.1)', color: 'white', borderColor: 'rgba(255,255,255,0.2)' }} onClick={onRegister}>
+              {/* Retail has one action, and it is registering.
+                  "Start shopping" did not shop — it called `onSignIn`, which is
+                  the same thing the Sign in link beside it did, so the hero
+                  carried two controls for one action with the louder one
+                  mislabelled. A returning customer reaches the same screen from
+                  Demo sign-in in the header, and somebody who lands on Create an
+                  account by mistake is offered Sign in there. */}
+              {page === 'retail' ? (
+                <button className="btn btn-primary btn-lg" onClick={onRegister}>
                   Create an account
                 </button>
-                <button
-                  onClick={() => onSignIn('consumer')}
-                  style={{
-                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-                    color: 'rgba(255,255,255,0.75)', fontSize: 'var(--text-sm)',
-                    textDecoration: 'underline', textUnderlineOffset: '3px', alignSelf: 'center',
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.color = 'white' }}
-                  onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.75)' }}
-                >
-                  Sign in
-                </button>
-                </>
+              ) : (
+                <button className="btn btn-primary btn-lg" onClick={() => onSignIn(c.persona)}>{c.cta}</button>
               )}
               {page === 'enterprise' && (
                 <>
