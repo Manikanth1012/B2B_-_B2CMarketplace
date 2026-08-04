@@ -447,6 +447,12 @@ export async function createBundle(
     name: draft.name, partner_id: null, seller: 'Aventa Telecom',
     price: draft.price, was_price: partsTotal, cost: 0,
     model: draft.model, fulfil: draft.fulfil,
+    /* A first-party bundle that recurs bills monthly, which is what `model =
+       'monthly'` meant before the period was a column of its own. The operator's
+       bundle builder does not ask, so this states the existing meaning rather
+       than inventing an answer — the seller's wizard is where the question is
+       put, because that is where the four periods were asked for. */
+    billing_period: draft.model === 'oneoff' ? null : 'monthly',
     rating: 0, reviews: 0, stock: 'in', status: 'live', listed: todayLabel(),
     description: draft.description || `Sold together: ${products.map(p => p.name).join(', ')}.`,
     tags: ['Bundle'], comm: 0, badge: 'Bundle', specs: {}, sort_order: 900,
@@ -560,6 +566,19 @@ export interface SellerSubmission {
   listPrice: number
   priceIncludesTax: boolean
   taxRate: number
+  /* How often it bills, for a subscription. Null for anything bought once —
+     `products_billing_period_check` refuses the pair the other way round, so
+     this is not a field that can be filled in defensively. */
+  billingPeriod: string | null
+  /* Where it is sold. Checked against `partner_markets` by a trigger, so a
+     market the seller does not hold is refused at the database rather than
+     only in the form. */
+  markets: readonly string[]
+  /* One row per currency the chosen markets take. These are chosen figures,
+     not conversions of each other. */
+  prices: readonly { currency: string; price: number; floor: number; list: number }[]
+  /* What a bundle is made of. Empty for anything else. */
+  components: readonly { product_id: string; quantity: number }[]
 }
 
 /**
@@ -612,7 +631,7 @@ export async function submitForReview(
     price: draft.price, was_price: null, cost: draft.cost,
     floor_price: draft.floorPrice, list_price: draft.listPrice,
     price_includes_tax: draft.priceIncludesTax, tax_rate: draft.taxRate,
-    model: draft.model, fulfil: draft.fulfil,
+    model: draft.model, fulfil: draft.fulfil, billing_period: draft.billingPeriod,
     rating: 0, reviews: 0, stock: 'in', status: 'pending',
     listed: new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
     description: draft.description, tags: draft.tags, comm: 0, badge: null, specs: {}, sort_order: 999,
@@ -631,6 +650,50 @@ export async function submitForReview(
        ever look at. Do not leave one behind. */
     await supabase.from('products').delete().eq('id', id)
     return { ok: false, reason: `The submission could not be queued, so nothing was created: ${recErr.message}` }
+  }
+
+  /* Everything that hangs off the product, written after it exists.
+
+     Each one undoes the product if it fails, for the same reason the review
+     record does: a listing priced in one of its three currencies, or sold in no
+     market, or a bundle with nothing in it, is worse than no listing at all —
+     it reaches the desk looking like a decision somebody made. */
+  const undo = async (why: string): Promise<Result> => {
+    await supabase.from('products').delete().eq('id', id)
+    return { ok: false, reason: why }
+  }
+
+  if (draft.markets.length) {
+    const { error } = await supabase.from('product_markets')
+      .insert(draft.markets.map(market_code => ({ product_id: id, market_code })))
+    if (error) {
+      /* The trigger's own words when a seller reaches for a market they do not
+         hold — worth passing through rather than replacing. */
+      return undo(`The listing was not created: ${error.message}`)
+    }
+  }
+
+  if (draft.prices.length) {
+    const { error } = await supabase.from('product_prices').insert(
+      draft.prices.map(r => ({
+        product_id: id, currency: r.currency, price: r.price,
+        floor_price: r.floor || r.price, list_price: r.list || r.price, was_price: null,
+      })),
+    )
+    if (error) return undo(`The listing's prices were not saved, so nothing was created: ${error.message}`)
+  }
+
+  if (draft.components.length) {
+    const { error } = await supabase.from('product_components').insert(
+      /* `component_id`, not `product_id` — the column names which listing is
+         inside the bundle, and `bundle_id` names the one it is inside. The
+         pair is the key; there is no surrogate id. */
+      draft.components.map((c, n) => ({
+        bundle_id: id, component_id: c.product_id,
+        quantity: c.quantity, note: null, sort_order: n + 1,
+      })),
+    )
+    if (error) return undo(`The bundle's contents were not saved, so nothing was created: ${error.message}`)
   }
 
   return { ok: true, productId: id, note: `${draft.name} is in the marketplace review queue.` }

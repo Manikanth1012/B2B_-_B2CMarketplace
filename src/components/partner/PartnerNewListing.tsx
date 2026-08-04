@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Store, ChevronLeft, ChevronRight, Check } from 'lucide-react'
+import { Store, ChevronLeft, ChevronRight, Check, Trash2 } from 'lucide-react'
 import { SectionCard, FormField, TextInput, TextArea, Select, Btn, toast } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
 import { loadSellerRecord } from '../../lib/partnerRepo'
@@ -11,6 +11,14 @@ import { ListingMediaStep } from './ListingMediaStep'
 import { attachMediaToProduct } from '../../lib/listingMediaRepo'
 import { mediaOutstanding } from '../../lib/listingMedia'
 import type { MediaItem } from '../../lib/listingMedia'
+import {
+  LISTING_KINDS, BILLING_PERIODS, modelFor, periodOf, currenciesFor,
+  validateMarkets, blankPrices, reconcilePrices, validatePrices,
+  validateBundle, componentsTotal, bundleSaving, draftOutstanding,
+} from '../../lib/listingDraft'
+import type { ListingKind, BillingPeriod, PriceRow, BundleComponent } from '../../lib/listingDraft'
+import { loadListingContext } from '../../lib/listingDraftRepo'
+import type { ListingContext } from '../../lib/listingDraftRepo'
 
 const STEPS = ['Marketplace and type', 'Details and media', 'Pricing and commission', 'Fulfilment', 'Compliance', 'Review and submit']
 
@@ -48,6 +56,37 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
      `onChange`, so eight carefully chosen search tags went nowhere and the
      submission below sent `tags: []`. */
   const [tags, setTags] = useState('')
+  /* The kind of listing, at last held rather than displayed. The three radios
+     were `defaultChecked` with no state behind them, which is why a bundle and
+     a single product asked exactly the same questions: the answer was thrown
+     away the moment it was given. */
+  const [kind, setKind] = useState<ListingKind>('single')
+  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly')
+  /* Where it is sold, and what that means it must be priced in. A seller's
+     approved markets come from `partner_markets`; the wizard never showed them
+     and every listing was implicitly sold everywhere they could trade. */
+  const [ctx, setCtx] = useState<ListingContext | null>(null)
+  const [markets, setMarkets] = useState<string[]>([])
+  const [prices, setPrices] = useState<PriceRow[]>([])
+  const [components, setComponents] = useState<BundleComponent[]>([])
+
+  useEffect(() => {
+    loadListingContext(partnerId).then(c => {
+      setCtx(c)
+      /* Opened on everywhere they may trade, because that is what was
+         implicitly true before and is the common case. Unticking is the
+         deliberate act — a listing certified for one market only. */
+      setMarkets(c.markets.map(m => m.code))
+    })
+  }, [partnerId])
+
+  /* The price rows follow the markets. Typed figures survive, because changing
+     one market should not clear the two prices already entered. */
+  useEffect(() => {
+    if (!ctx) return
+    const want = currenciesFor(markets, ctx.markets)
+    setPrices(prev => (prev.length ? reconcilePrices(prev, want) : blankPrices(want)))
+  }, [markets, ctx])
 
   useEffect(() => {
     loadSellerRecord(partnerId).then(r => {
@@ -59,15 +98,20 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
     })
   }, [partnerId])
 
-  const priceNum = parseFloat(price) || 0
+  /* The first currency is the one the commission and tax panels are worked in.
+     They are inherently single-currency — a commission rate applied to three
+     figures in three currencies is three answers — so the primary market's is
+     the one shown, and it is named wherever it appears. */
+  const primary = prices[0]?.currency ?? 'USD'
+  const priceNum = parseFloat(prices[0]?.price ?? price) || 0
   const costNum = parseFloat(cost) || 0
   /* The rate the seller is actually settled at, read from their plan. */
   const rate = rec?.plan ? rateAt(rec.plan, 0) : 0
   const comm = +(priceNum * rate / 100).toFixed(2)
   const fee = +(priceNum * 0.019 + 0.20).toFixed(2)
   const net = +(priceNum - comm - fee).toFixed(2)
-  const floorNum = parseFloat(floor) || 0
-  const listNum = parseFloat(list) || 0
+  const floorNum = parseFloat(prices[0]?.floor ?? floor) || 0
+  const listNum = parseFloat(prices[0]?.list ?? list) || 0
   const rateNum = parseFloat(taxRate) || 0
   const bandProblem = priceNum > 0
     ? validateBand({ price: priceNum, floor: floorNum, list: listNum || priceNum, cost: costNum })
@@ -92,6 +136,24 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
        guidance while there is still work to do; this is the point at which a
        listing with no photograph would otherwise reach the catalogue desk and
        be rejected for it after six steps of work. */
+    const shape = {
+      kind, name, markets, prices, components,
+      billingPeriod: kind === 'subscription' ? billingPeriod : null,
+    }
+    const short = draftOutstanding(shape)
+    if (short.length) {
+      toast(`Still needs ${short.join(', ')}.`, 'error')
+      return
+    }
+    const wheres = validateMarkets(markets, ctx?.markets ?? [])
+    if (!wheres.ok) { toast(wheres.reason, 'error'); return }
+    const priced = validatePrices(prices)
+    if (!priced.ok) { toast(priced.reason, 'error'); setStep(2); return }
+    if (kind === 'bundle' && ctx) {
+      const made = validateBundle(components, priceNum, ctx.rules)
+      if (!made.ok) { toast(made.reason, 'error'); setStep(1); return }
+    }
+
     const missingMedia = mediaOutstanding(media)
     if (missingMedia.length) {
       toast(`The media step still needs ${missingMedia.join(' and ')}.`, 'error')
@@ -114,7 +176,18 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
         listPrice: listNum || priceNum,
         priceIncludesTax: includesTax,
         taxRate: rateNum,
-        model, fulfil: model === 'oneoff' ? 'shipped' : 'provisioned',
+        /* The kind decides whether it recurs; the period says how often. */
+        model: modelFor(kind),
+        fulfil: modelFor(kind) === 'oneoff' ? 'shipped' : 'provisioned',
+        billingPeriod: kind === 'subscription' ? billingPeriod : null,
+        markets,
+        prices: prices.map(r => ({
+          currency: r.currency,
+          price: parseFloat(r.price) || 0,
+          floor: parseFloat(r.floor) || 0,
+          list: parseFloat(r.list) || 0,
+        })),
+        components: components.map(c => ({ product_id: c.product_id, quantity: c.quantity })),
         /* Eight at most, trimmed, blanks dropped — the hint under the field
            says up to eight and this is what makes that true. */
         tags: tags.split(',').map(t => t.trim()).filter(Boolean).slice(0, 8),
@@ -136,6 +209,8 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
     toast(res.note ?? `${name} is in the marketplace review queue`)
     setStep(0); setName(''); setPrice(''); setCost(''); setDesc(''); setSubCategory('')
     setFloor(''); setList(''); setTags(''); setMedia([])
+    setKind('single'); setComponents([])
+    setMarkets(ctx?.markets.map(m => m.code) ?? []); setPrices([])
   }
 
   if (loading) {
@@ -179,20 +254,75 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
       <div>
         <label style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)', marginBottom: '8px', display: 'block' }}>Listing type</label>
         <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          {[
-            ['Single product', 'One SKU, one price'],
-            ['Bundle', 'Several items sold as one'],
-            ['Subscription', 'Recurring, cancellable'],
-          ].map((t, i) => (
-            <label key={t[0]} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: '9px 11px', flex: '1 1 0', cursor: 'pointer' }}>
-              <input type="radio" name="nlType" defaultChecked={i === 0} style={{ marginTop: '2px' }} />
+          {LISTING_KINDS.map(t => (
+            <label key={t.id} style={{
+              display: 'flex', gap: '8px', alignItems: 'flex-start',
+              border: `1px solid ${kind === t.id ? 'var(--brand-accent)' : 'var(--border)'}`,
+              borderRadius: 'var(--radius)', padding: '9px 11px', flex: '1 1 0', cursor: 'pointer',
+            }}>
+              <input type="radio" name="nlType" checked={kind === t.id}
+                onChange={() => setKind(t.id)} style={{ marginTop: '2px' }} />
               <div>
-                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>{t[0]}</div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{t[1]}</div>
+                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>{t.label}</div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{t.blurb}</div>
               </div>
             </label>
           ))}
         </div>
+      </div>
+
+      {/* Asked only where it means something. A one-off purchase has no billing
+          period, and the database refuses the pair the other way round. */}
+      {kind === 'subscription' && (
+        <FormField label="How often it bills"
+          hint="The price on the next step is the price for one of these, not a monthly equivalent.">
+          <Select value={billingPeriod} onChange={e => setBillingPeriod(e.target.value as BillingPeriod)}>
+            {BILLING_PERIODS.map(b => <option key={b.id} value={b.id}>{b.label}</option>)}
+          </Select>
+        </FormField>
+      )}
+
+      {/* Where it may be sold. The list is the seller's own approved markets —
+          it was never shown, so a seller could not tell which countries they
+          were listing into, and every listing went to all of them. */}
+      <div>
+        <label style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)', marginBottom: '4px', display: 'block' }}>
+          Where it is sold
+        </label>
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '8px' }}>
+          The markets you are approved to trade in. Untick anywhere this particular listing is not
+          certified or cannot be delivered — each one you keep asks for its own price.
+        </div>
+        {ctx && ctx.markets.length === 0 ? (
+          <Callout tone="warning" title="You have no approved markets">
+            A listing has to be sold somewhere. The marketplace desk grants markets alongside categories.
+          </Callout>
+        ) : (
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            {(ctx?.markets ?? []).map(m => {
+              const on = markets.includes(m.code)
+              return (
+                <label key={m.code} style={{
+                  display: 'flex', gap: '8px', alignItems: 'flex-start',
+                  border: `1px solid ${on ? 'var(--brand-accent)' : 'var(--border)'}`,
+                  borderRadius: 'var(--radius)', padding: '9px 11px', flex: '1 1 180px', cursor: 'pointer',
+                }}>
+                  <input
+                    type="checkbox" checked={on} style={{ marginTop: '3px' }}
+                    onChange={() => setMarkets(prev =>
+                      on ? prev.filter(c => c !== m.code) : [...prev, m.code])}
+                  />
+                  <div>
+                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>{m.name}</div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                      {m.currencies.join(' · ')}
+                    </div>
+                  </div>
+                </label>
+              )
+            })}
+          </div>
+        )}
       </div>
     </div>,
 
@@ -207,6 +337,86 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
       <FormField label="Search tags" hint="Up to eight, comma separated.">
         <TextInput value={tags} onChange={e => setTags(e.target.value)} placeholder="IP67, 5-year battery, LoRaWAN" />
       </FormField>
+      {/* What a bundle is actually made of. This is the question that made a
+          bundle a bundle and was never asked — the radio button said Bundle and
+          the form then collected a single product. */}
+      {kind === 'bundle' && ctx && (
+        <div>
+          <label style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)', marginBottom: '4px', display: 'block' }}>
+            What is in the bundle
+          </label>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '8px' }}>
+            {ctx.rules.min_components} to {ctx.rules.max_components} of your own live listings, and at most{' '}
+            {ctx.rules.max_discount}% off what they cost bought separately. Somebody else's product is not
+            yours to bundle.
+          </div>
+
+          {ctx.own.length === 0 ? (
+            <Callout tone="warning" title="You have no live listings yet">
+              A bundle is made of listings that already exist. Publish the parts first.
+            </Callout>
+          ) : (
+            <>
+              {components.map(c => (
+                <div key={c.product_id} style={{
+                  display: 'flex', gap: '10px', alignItems: 'center', padding: '8px 10px',
+                  border: '1px solid var(--border)', borderRadius: 'var(--radius)', marginBottom: '8px',
+                }}>
+                  <div style={{ flex: 1, fontSize: 'var(--text-sm)' }}>
+                    {c.name}
+                    <span style={{ color: 'var(--text-tertiary)' }}> · {c.unit_price.toFixed(2)} each</span>
+                  </div>
+                  <input
+                    type="number" min={1} value={c.quantity}
+                    aria-label={`Quantity of ${c.name}`}
+                    onChange={e => setComponents(prev => prev.map(x =>
+                      x.product_id === c.product_id ? { ...x, quantity: Math.max(1, parseInt(e.target.value) || 1) } : x))}
+                    style={{ width: '72px', padding: '6px 8px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', textAlign: 'right' }}
+                  />
+                  <button
+                    onClick={() => setComponents(prev => prev.filter(x => x.product_id !== c.product_id))}
+                    aria-label={`Remove ${c.name}`}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              ))}
+
+              <Select
+                value=""
+                onChange={e => {
+                  const pick = ctx.own.find(o => o.id === e.target.value)
+                  if (!pick) return
+                  if (components.some(c => c.product_id === pick.id)) {
+                    toast(`${pick.name} is already in this bundle — change its quantity instead.`, 'error')
+                    return
+                  }
+                  setComponents(prev => [...prev, {
+                    product_id: pick.id, name: pick.name, quantity: 1, unit_price: pick.price,
+                  }])
+                }}
+              >
+                <option value="">Add one of your listings…</option>
+                {ctx.own.filter(o => !components.some(c => c.product_id === o.id)).map(o => (
+                  <option key={o.id} value={o.id}>{o.name}</option>
+                ))}
+              </Select>
+
+              {components.length > 0 && (
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: '8px' }}>
+                  Bought separately: <strong>{componentsTotal(components).toFixed(2)}</strong>
+                  {priceNum > 0 && (
+                    <> · this bundle at {priceNum.toFixed(2)} is{' '}
+                      <strong>{bundleSaving(priceNum, components)}%</strong> off</>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       <ListingMediaStep
         partnerId={partnerId}
         draftId={draftId}
@@ -217,17 +427,52 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
 
     // Step 2: Pricing
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
-        <FormField label="Cost price (USD)" hint="What it costs you to deliver. Never shown to buyers.">
-          <TextInput type="number" value={cost} onChange={e => setCost(e.target.value)} placeholder="0.00" />
-        </FormField>
-        <FormField label="Asking price (USD)" hint="What a buyer pays today.">
-          <TextInput type="number" value={price} onChange={e => setPrice(e.target.value)} placeholder="0.00" />
-        </FormField>
-        <FormField label="Maximum price (USD)" hint="The most it is ever sold for — a saving is measured against this.">
-          <TextInput type="number" value={list} onChange={e => setList(e.target.value)} placeholder="0.00" />
-        </FormField>
+      {/* A price per currency, because a price is chosen per market and not
+          converted from another. The wizard used to ask for one figure in
+          dollars while the seller traded in three markets taking three
+          currencies — so two of the three were invented later, or never set. */}
+      <div>
+        <label style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)', marginBottom: '4px', display: 'block' }}>
+          Prices{kind === 'subscription' ? ` — per ${periodOf(billingPeriod)?.label.toLowerCase() ?? 'period'} charge` : ''}
+        </label>
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '8px' }}>
+          One row for every currency the markets you chose trade in. Each is a figure you set, not a
+          conversion of another — a buyer in each market is quoted in their own money.
+        </div>
+
+        {prices.length === 0 ? (
+          <Callout tone="warning" title="Nothing to price yet">
+            Choose where this listing is sold on the first step, and its currencies appear here.
+          </Callout>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '70px 1fr 1fr 1fr', gap: '10px', fontSize: '11px', color: 'var(--text-tertiary)', fontWeight: 700, textTransform: 'uppercase' }}>
+              <span>Currency</span><span>Asking price</span><span>Minimum</span><span>Maximum</span>
+            </div>
+            {prices.map((r, i) => (
+              <div key={r.currency} style={{ display: 'grid', gridTemplateColumns: '70px 1fr 1fr 1fr', gap: '10px', alignItems: 'center' }}>
+                <strong style={{ fontSize: 'var(--text-sm)' }}>{r.currency}</strong>
+                {(['price', 'floor', 'list'] as const).map(field => (
+                  <TextInput
+                    key={field} type="number" placeholder="0.00"
+                    aria-label={`${field === 'price' ? 'Asking price' : field === 'floor' ? 'Minimum price' : 'Maximum price'} in ${r.currency}`}
+                    value={r[field]}
+                    onChange={e => setPrices(prev => prev.map((x, n) => n === i ? { ...x, [field]: e.target.value } : x))}
+                  />
+                ))}
+              </div>
+            ))}
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+              Minimum is the least you will accept — it is what lets the marketplace put this in a bundle.
+              Maximum is what a saving is measured against. Leave either blank to use the asking price.
+            </div>
+          </div>
+        )}
       </div>
+
+      <FormField label={`Cost price (${primary})`} hint="What it costs you to deliver. Never shown to buyers.">
+        <TextInput type="number" value={cost} onChange={e => setCost(e.target.value)} placeholder="0.00" />
+      </FormField>
 
       {/* The basis. Getting this wrong misstates the price by the tax rate, so
           the other side is shown rather than left to be worked out. */}
@@ -249,40 +494,30 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
         </div>
       </div>
 
-      {/* The number the operator has never had. */}
+      {/* What the minimum buys the seller, said where the minimum is entered —
+          the input itself is a column in the table above now.
+
+          There used to be a second "Minimum price (USD)" field down here, and a
+          Billing select offering One-off / Monthly / Annual. Both are gone: the
+          floor is per currency because the price is, and the billing question is
+          asked once on the first step, where the four periods live. That select
+          also offered `annual`, which `products.model` has never accepted — it
+          would have been refused on submit if anything had read it. */}
       <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '13px 15px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '16px', alignItems: 'start' }}>
-          <FormField label="Minimum price (USD)" required
-                     hint="The least you will accept.">
-            <TextInput type="number" value={floor} onChange={e => setFloor(e.target.value)} placeholder="0.00" />
-          </FormField>
-          <div style={{ fontSize: '11px', color: 'var(--text-secondary)', paddingTop: '22px' }}>
-            This is what lets the marketplace put your listing in a bundle. It may discount down to this
-            figure and no further — below it is your margin, not theirs to spend. Leave it at your asking
-            price and nothing is ever discounted, which also means the bundles most volume comes from
-            cannot include you.
-            {priceNum > 0 && floorNum > 0 && floorNum < priceNum && (
-              <div style={{ marginTop: '5px', fontWeight: 700, color: 'var(--success)' }}>
-                You are offering up to ${(priceNum - floorNum).toFixed(2)} off —{' '}
-                {Math.round(((priceNum - floorNum) / priceNum) * 100)}% of the asking price.
-              </div>
-            )}
-          </div>
+        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+          The minimum is what lets the marketplace put your listing in a bundle. It may discount down to
+          that figure and no further — below it is your margin, not theirs to spend. Leave it at the
+          asking price and nothing is ever discounted, which also means the bundles most volume comes
+          from cannot include you.
+          {priceNum > 0 && floorNum > 0 && floorNum < priceNum && (
+            <div style={{ marginTop: '5px', fontWeight: 700, color: 'var(--success)' }}>
+              In {primary} you are offering up to {(priceNum - floorNum).toFixed(2)} off —{' '}
+              {Math.round(((priceNum - floorNum) / priceNum) * 100)}% of the asking price.
+            </div>
+          )}
         </div>
         {bandProblem && <Callout tone="danger">{bandProblem}</Callout>}
         {bandNotes.map((w, i) => <Callout key={i} tone="warning">{w}</Callout>)}
-      </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
-        <FormField label="Billing">
-          <Select value={model} onChange={e => setModel(e.target.value)}>
-            <option value="oneoff">One-off purchase</option>
-            <option value="monthly">Monthly subscription</option>
-            <option value="annual">Annual subscription</option>
-          </Select>
-        </FormField>
-        <FormField label="Minimum order quantity">
-          <TextInput type="number" defaultValue="1" style={{ width: '80px' }} />
-        </FormField>
       </div>
       {priceNum > 0 && (
         <div style={{ padding: '16px', borderRadius: 'var(--radius-md)', background: 'var(--bg-alt)', border: '1px solid var(--border)' }}>
