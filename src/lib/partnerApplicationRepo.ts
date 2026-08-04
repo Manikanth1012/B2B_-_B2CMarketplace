@@ -13,9 +13,10 @@
 
 import { supabase } from './supabase'
 import type {
-  Application, Answers, Check, Credentials, DeskApplication, FieldSpec, StartDraft,
+  Application, Answers, Check, Credentials, DeskApplication, DocumentKind,
+  FieldSpec, StartDraft, UploadedDocument,
 } from './partnerApplication'
-import { normaliseCode } from './partnerApplication'
+import { normaliseCode, validateDocument, documentPath } from './partnerApplication'
 
 export type Result<T> = { ok: true; value: T } | { ok: false; reason: string }
 
@@ -112,6 +113,94 @@ export async function submitApplication(reference: string, code: string): Promis
   return { ok: true }
 }
 
+/* ---------------------------------------------------------------- documents -- */
+
+/* The bucket the marketplace's other documents already live in, so an accepted
+   application's pack is opened by `openEvidence` with no second code path. */
+const BUCKET = 'evidence'
+
+/** What the desk asks for. Readable signed out — the checklist is public. */
+export async function loadDocumentKinds(): Promise<DocumentKind[]> {
+  const { data } = await supabase
+    .from('application_document_kinds').select('*').order('sort_order')
+  return (data ?? []) as DocumentKind[]
+}
+
+export async function loadApplicationDocuments(
+  reference: string, code: string,
+): Promise<UploadedDocument[]> {
+  const { data } = await supabase.rpc('application_documents', {
+    p_ref: reference.trim().toUpperCase(), p_code: normaliseCode(code),
+  })
+  return ((data ?? []) as UploadedDocument[]).map(d => ({ ...d, bytes: Number(d.bytes) }))
+}
+
+/**
+ * Put a document up against one of the kinds the desk asks for.
+ *
+ * Bytes first, row second, deliberately. A row pointing at an object that never
+ * arrived is a document the desk believes it has and cannot open; an object
+ * with no row is invisible and harmless. If the row fails the object is removed
+ * again rather than left to fill the bucket.
+ *
+ * `record_application_document` returns the path of whatever it replaced — one
+ * document per kind — so the object behind the old one goes too. Two
+ * certificates of incorporation is a question nobody should have to answer.
+ */
+export async function uploadApplicationDocument(
+  { reference, code, kind, file }: {
+    reference: string; code: string; kind: string; file: File
+  },
+): Promise<Check> {
+  const check = validateDocument(file)
+  if (!check.ok) return check
+
+  const ref = reference.trim().toUpperCase()
+  const c = normaliseCode(code)
+  const path = documentPath(ref, c, kind, file.name)
+
+  const up = await supabase.storage.from(BUCKET).upload(path, file, {
+    contentType: file.type || 'application/octet-stream', upsert: false,
+  })
+  if (up.error) {
+    /* Storage refuses an anonymous write by policy, and the message it gives is
+       about rows rather than about the applicant's situation. */
+    return {
+      ok: false,
+      reason: /policy|denied|unauthor/i.test(up.error.message)
+        ? 'That upload was refused. Check the reference and access code are the ones this application was started with.'
+        : friendly(up.error.message),
+    }
+  }
+
+  const { data, error } = await supabase.rpc('record_application_document', {
+    p_ref: ref, p_code: c, p_kind: kind,
+    p_name: file.name, p_mime: file.type || 'application/octet-stream',
+    p_bytes: file.size, p_path: path,
+  })
+  if (error) {
+    await supabase.storage.from(BUCKET).remove([path])
+    return { ok: false, reason: friendly(error.message) }
+  }
+  const replaced = typeof data === 'string' ? data : ''
+  if (replaced && replaced !== path) await supabase.storage.from(BUCKET).remove([replaced])
+  return { ok: true }
+}
+
+/** Take one back off. The row goes first here — the reverse of uploading, and
+    for the same reason: a row whose object is already gone is the broken half. */
+export async function removeApplicationDocument(
+  reference: string, code: string, kind: string,
+): Promise<Check> {
+  const { data, error } = await supabase.rpc('remove_application_document', {
+    p_ref: reference.trim().toUpperCase(), p_code: normaliseCode(code), p_kind: kind,
+  })
+  if (error) return { ok: false, reason: friendly(error.message) }
+  const path = typeof data === 'string' ? data : ''
+  if (path) await supabase.storage.from(BUCKET).remove([path])
+  return { ok: true }
+}
+
 /* ----------------------------------------------------------------- the desk -- */
 
 /**
@@ -125,23 +214,34 @@ export async function submitApplication(reference: string, code: string): Promis
 export async function loadDeskApplications(): Promise<{
   applications: DeskApplication[]
   answers: Record<string, Answers>
+  documents: Record<string, UploadedDocument[]>
   loadError?: string
 }> {
-  const [apps, rows] = await Promise.all([
+  const [apps, rows, docs] = await Promise.all([
     supabase.from('partner_applications')
       .select('id, email, phone, company, contact_name, country, kind, state, reached, started, last_saved, submitted_on, partner_id')
       .order('started', { ascending: false }),
     supabase.from('partner_application_answers').select('application_id, field_id, value'),
+    supabase.from('partner_application_documents')
+      .select('id, application_id, kind_id, name, mime, bytes, path, uploaded_at'),
   ])
 
   const answers: Record<string, Answers> = {}
   for (const r of (rows.data ?? []) as { application_id: string; field_id: string; value: string }[]) {
     ;(answers[r.application_id] ??= {})[r.field_id] = r.value
   }
-  const failed = apps.error ?? rows.error
+  const documents: Record<string, UploadedDocument[]> = {}
+  for (const d of (docs.data ?? []) as (UploadedDocument & { application_id: string })[]) {
+    /* PostgREST hands a bigint back as a string, and a size that is a string
+       formats as "NaN MB" wherever it is shown. */
+    ;(documents[d.application_id] ??= []).push({ ...d, bytes: Number(d.bytes) })
+  }
+
+  const failed = apps.error ?? rows.error ?? docs.error
   return {
     applications: (apps.data ?? []) as DeskApplication[],
     answers,
+    documents,
     ...(failed ? { loadError: `The application queue did not load (${failed.message}).` } : {}),
   }
 }

@@ -23,12 +23,15 @@ import {
 import { Callout } from '../OnboardingJourney'
 import { GATES } from '../../lib/onboarding'
 import {
-  loadDeskApplications, loadFields, acceptApplication, withdrawApplication,
+  loadDeskApplications, loadFields, loadDocumentKinds, acceptApplication, withdrawApplication,
 } from '../../lib/partnerApplicationRepo'
 import {
-  deskQueue, waitingDays, canAccept, answerSheet, progress,
+  deskQueue, waitingDays, canAccept, answerSheet, progress, sizeOf,
 } from '../../lib/partnerApplication'
-import type { Answers, DeskApplication, FieldSpec } from '../../lib/partnerApplication'
+import type {
+  Answers, DeskApplication, DocumentKind, FieldSpec, UploadedDocument,
+} from '../../lib/partnerApplication'
+import { openEvidence } from '../../lib/evidenceRepo'
 
 export function ApplicationsQueue({ onAccepted }: {
   /* The parent owns the partner directory and the journey panel below, so an
@@ -37,17 +40,23 @@ export function ApplicationsQueue({ onAccepted }: {
 }) {
   const [apps, setApps] = useState<DeskApplication[]>([])
   const [answers, setAnswers] = useState<Record<string, Answers>>({})
+  const [documents, setDocuments] = useState<Record<string, UploadedDocument[]>>({})
   const [fields, setFields] = useState<FieldSpec[]>([])
+  const [kinds, setKinds] = useState<DocumentKind[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [openId, setOpenId] = useState<string | null>(null)
   const [deciding, setDeciding] = useState<{ app: DeskApplication; accept: boolean } | null>(null)
 
   const reload = useCallback(async () => {
-    const [desk, f] = await Promise.all([loadDeskApplications(), loadFields()])
+    const [desk, f, k] = await Promise.all([
+      loadDeskApplications(), loadFields(), loadDocumentKinds(),
+    ])
     setApps(desk.applications)
     setAnswers(desk.answers)
+    setDocuments(desk.documents)
     setFields(f)
+    setKinds(k)
     setLoadError(desk.loadError ?? null)
     setLoading(false)
   }, [])
@@ -91,18 +100,19 @@ export function ApplicationsQueue({ onAccepted }: {
             <div style={{ borderRight: '1px solid var(--border-light)', maxHeight: '520px', overflowY: 'auto' }}>
               <Group title="Waiting on the desk" icon={<Inbox size={13} />} rows={q.waiting}
                      openId={openId} onOpen={setOpenId} fields={fields} answers={answers}
-                     empty="Nothing to decide" />
+                     kinds={kinds} documents={documents} empty="Nothing to decide" />
               <Group title="Still being filled in" icon={<Clock size={13} />} rows={q.drafts}
                      openId={openId} onOpen={setOpenId} fields={fields} answers={answers}
-                     empty="Nobody part-way through" />
+                     kinds={kinds} documents={documents} empty="Nobody part-way through" />
               <Group title="Decided" icon={<CheckIcon size={13} />} rows={q.decided}
                      openId={openId} onOpen={setOpenId} fields={fields} answers={answers}
-                     empty="Nothing decided yet" />
+                     kinds={kinds} documents={documents} empty="Nothing decided yet" />
             </div>
 
             <div style={{ padding: '16px', minWidth: 0 }}>
               {open
                 ? <Detail app={open} fields={fields} answers={answers[open.id] ?? {}}
+                          kinds={kinds} documents={documents[open.id] ?? []}
                           onDecide={accept => setDeciding({ app: open, accept })} />
                 : <EmptyState message="Pick an application to read what they sent" />}
             </div>
@@ -114,6 +124,7 @@ export function ApplicationsQueue({ onAccepted }: {
         <DecideModal
           app={deciding.app} accept={deciding.accept}
           fields={fields} answers={answers[deciding.app.id] ?? {}}
+          kinds={kinds} documents={documents[deciding.app.id] ?? []}
           onClose={() => setDeciding(null)}
           onDone={async (partnerId) => {
             setDeciding(null)
@@ -128,7 +139,7 @@ export function ApplicationsQueue({ onAccepted }: {
 
 /* ---------------------------------------------------------------- the list -- */
 
-function Group({ title, icon, rows, openId, onOpen, fields, answers, empty }: {
+function Group({ title, icon, rows, openId, onOpen, fields, answers, kinds, documents, empty }: {
   title: string
   icon: React.ReactNode
   rows: DeskApplication[]
@@ -136,6 +147,8 @@ function Group({ title, icon, rows, openId, onOpen, fields, answers, empty }: {
   onOpen: (id: string) => void
   fields: FieldSpec[]
   answers: Record<string, Answers>
+  kinds: DocumentKind[]
+  documents: Record<string, UploadedDocument[]>
   empty: string
 }) {
   return (
@@ -152,7 +165,7 @@ function Group({ title, icon, rows, openId, onOpen, fields, answers, empty }: {
       {rows.length === 0 ? (
         <div style={{ padding: '12px 16px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{empty}</div>
       ) : rows.map(a => {
-        const p = progress(fields, answers[a.id] ?? {})
+        const p = progress(fields, answers[a.id] ?? {}, kinds, documents[a.id] ?? [])
         const days = waitingDays(a)
         return (
           <button key={a.id} onClick={() => onOpen(a.id)}
@@ -185,15 +198,26 @@ function Group({ title, icon, rows, openId, onOpen, fields, answers, empty }: {
 
 /* -------------------------------------------------------------- one of them -- */
 
-function Detail({ app, fields, answers, onDecide }: {
+function Detail({ app, fields, answers, kinds, documents, onDecide }: {
   app: DeskApplication
   fields: FieldSpec[]
   answers: Answers
+  kinds: DocumentKind[]
+  documents: UploadedDocument[]
   onDecide: (accept: boolean) => void
 }) {
-  const sheet = answerSheet(fields, answers)
-  const allowed = canAccept(app, fields, answers)
-  const p = progress(fields, answers)
+  const sheet = answerSheet(fields, answers, kinds, documents)
+  const allowed = canAccept(app, fields, answers, kinds, documents)
+  const p = progress(fields, answers, kinds, documents)
+
+  /* Signed, short-lived and served by the same helper every other document on
+     the marketplace goes through — the applicant's files land in the `evidence`
+     bucket precisely so there is one way to open one. */
+  const openDocument = async (file: UploadedDocument) => {
+    const res = await openEvidence({ persona: 'operator' }, { path: file.path, name: file.name, id: file.id })
+    if (!res.url) { toast(res.error ?? 'That file could not be opened.', 'error'); return }
+    window.open(res.url, '_blank', 'noopener')
+  }
 
   return (
     <div>
@@ -252,6 +276,36 @@ function Detail({ app, fields, answers, onDecide }: {
                   </div>
                 </div>
               ))}
+
+              {/* The paperwork this gate is a decision on. Missing ones are
+                  listed rather than omitted — a document that is not there is
+                  the reason to send an application back, and a reviewer cannot
+                  ask for what the screen never mentions. */}
+              {g.documents.map(({ kind, file }) => (
+                <div key={kind.id} style={{ display: 'flex', gap: '12px', padding: '4px 0', fontSize: 'var(--text-sm)', alignItems: 'baseline' }}>
+                  <div style={{ flex: '0 0 42%', color: 'var(--text-secondary)', display: 'flex', gap: '6px', alignItems: 'baseline' }}>
+                    <FileText size={12} style={{ flexShrink: 0, opacity: 0.6 }} />
+                    <span>{kind.label}</span>
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    {file ? (
+                      <button
+                        onClick={() => void openDocument(file)}
+                        style={{
+                          background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                          color: 'var(--brand-accent-dark)', fontWeight: 700,
+                          fontSize: 'var(--text-sm)', textAlign: 'left',
+                        }}>
+                        {file.name} <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}>· {sizeOf(file.bytes)}</span>
+                      </button>
+                    ) : (
+                      <span style={{ color: kind.required ? 'var(--danger)' : 'var(--text-tertiary)' }}>
+                        {kind.required ? 'Not supplied' : 'Not applicable'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           )
         })}
@@ -281,18 +335,20 @@ function Detail({ app, fields, answers, onDecide }: {
 
 /* ------------------------------------------------------------- the decision -- */
 
-function DecideModal({ app, accept, fields, answers, onClose, onDone }: {
+function DecideModal({ app, accept, fields, answers, kinds, documents, onClose, onDone }: {
   app: DeskApplication
   accept: boolean
   fields: FieldSpec[]
   answers: Answers
+  kinds: DocumentKind[]
+  documents: UploadedDocument[]
   onClose: () => void
   onDone: (partnerId: string | null) => Promise<void>
 }) {
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const markets = (answers['apply-markets'] ?? '').split(',').map(s => s.trim()).filter(Boolean)
-  const allowed = canAccept(app, fields, answers)
+  const allowed = canAccept(app, fields, answers, kinds, documents)
 
   const go = async () => {
     setBusy(true)
@@ -333,6 +389,11 @@ function DecideModal({ app, accept, fields, answers, onClose, onDone }: {
                 : 'No markets were asked for, so none are recorded.'}
             </li>
             <li>Their email and number go on the partner record as contacts, unverified.</li>
+            <li>
+              {documents.length
+                ? `${documents.length} uploaded document${documents.length === 1 ? '' : 's'} move onto the partner, filed under the gate that reads each one.`
+                : 'No documents were uploaded, so the gates open with nothing attached.'}
+            </li>
           </ul>
         </Callout>
       ) : (

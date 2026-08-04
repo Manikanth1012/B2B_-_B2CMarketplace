@@ -25,19 +25,22 @@
 import { useState, useEffect, useCallback } from 'react'
 import {
   Check, ChevronLeft, ChevronRight, Copy, KeyRound, Loader, Send, ArrowLeft,
+  Paperclip, Trash2,
 } from 'lucide-react'
 import { Btn, FormField, TextInput, TextArea, Select, toast } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
 import { GATES, SLA_DAYS } from '../../lib/onboarding'
 import {
-  stepsOf, outstanding, canSubmit, progress, resumeAt, validateStart,
+  stepsOf, canSubmit, progress, resumeAt, validateStart,
   optionsOf, splitMulti, toggleMulti, looksLikeReference,
+  sizeOf, docTypesLabel, DOC_ACCEPT, DOC_MAX_BYTES,
 } from '../../lib/partnerApplication'
 import type {
-  Answers, Application, Credentials, FieldSpec, StartDraft,
+  Answers, Application, Credentials, DocumentKind, FieldSpec, StartDraft, UploadedDocument,
 } from '../../lib/partnerApplication'
 import {
   loadFields, loadMarkets, startApplication, resumeApplication, saveAnswer, submitApplication,
+  loadDocumentKinds, loadApplicationDocuments, uploadApplicationDocument, removeApplicationDocument,
 } from '../../lib/partnerApplicationRepo'
 
 const SELLER_KINDS = [
@@ -56,6 +59,8 @@ export function ApplyToSell({ onLeave, onSignIn }: {
 }) {
   const [stage, setStage] = useState<Stage>('start')
   const [fields, setFields] = useState<FieldSpec[]>([])
+  const [kinds, setKinds] = useState<DocumentKind[]>([])
+  const [docs, setDocs] = useState<UploadedDocument[]>([])
   const [markets, setMarkets] = useState<{ code: string; name: string }[]>([])
   const [draft, setDraft] = useState<StartDraft>(BLANK)
   const [creds, setCreds] = useState<Credentials | null>(null)
@@ -70,11 +75,20 @@ export function ApplyToSell({ onLeave, onSignIn }: {
 
   useEffect(() => {
     void loadFields().then(setFields)
+    void loadDocumentKinds().then(setKinds)
     void loadMarkets().then(setMarkets)
   }, [])
 
-  const steps = stepsOf(fields, answers)
-  const done = progress(fields, answers)
+  const steps = stepsOf(fields, answers, kinds, docs)
+  const done = progress(fields, answers, kinds, docs)
+
+  /* Re-read after every upload or removal rather than patching the array here.
+     The database decides one document per kind and which one replaced which;
+     keeping a second opinion in this component is how the two drift. */
+  const refreshDocs = useCallback(async () => {
+    if (!creds) return
+    setDocs(await loadApplicationDocuments(creds.reference, creds.access_code))
+  }, [creds])
 
   const save = useCallback(async (field: string, value: string, reached?: number) => {
     if (!creds) return
@@ -98,6 +112,7 @@ export function ApplyToSell({ onLeave, onSignIn }: {
     setCreds(res.value)
     setApp(null)
     setAnswers({})
+    setDocs([])
     setStep(0)
     setStage('issued')
   }
@@ -111,16 +126,21 @@ export function ApplyToSell({ onLeave, onSignIn }: {
     const res = await resumeApplication(resumeForm.reference, resumeForm.code)
     setBusy(false)
     if (!res.ok) { toast(res.reason, 'error'); return }
-    setCreds({ reference: res.value.application.reference, access_code: resumeForm.code })
+    const back = { reference: res.value.application.reference, access_code: resumeForm.code }
+    setCreds(back)
     setApp(res.value.application)
     setAnswers(res.value.answers)
-    setStep(resumeAt(stepsOf(fields, res.value.answers)))
+    /* The documents come back too, or resuming would land somebody on the first
+       gate whose certificate they already uploaded. */
+    const already = await loadApplicationDocuments(back.reference, back.access_code)
+    setDocs(already)
+    setStep(resumeAt(stepsOf(fields, res.value.answers, kinds, already)))
     setStage(res.value.application.state === 'draft' ? 'form' : 'done')
   }
 
   const submit = async () => {
     if (!creds) return
-    const check = canSubmit(fields, answers)
+    const check = canSubmit(fields, answers, kinds, docs)
     if (!check.ok) { toast(check.reason, 'error'); return }
     setBusy(true)
     const res = await submitApplication(creds.reference, creds.access_code)
@@ -185,8 +205,24 @@ export function ApplyToSell({ onLeave, onSignIn }: {
               onSubmit={submit}
               onLeaveForNow={() => setStage('done')}
               busy={busy}
-              missing={outstanding(fields, answers)}
+              blocked={canSubmit(fields, answers, kinds, docs)}
               creds={creds}
+              onUpload={async (kind, file) => {
+                setSaving(s => new Set(s).add(kind))
+                const res = await uploadApplicationDocument({
+                  reference: creds.reference, code: creds.access_code, kind, file,
+                })
+                setSaving(s => { const n = new Set(s); n.delete(kind); return n })
+                if (!res.ok) { toast(res.reason, 'error'); return }
+                await refreshDocs()
+              }}
+              onRemove={async (kind) => {
+                setSaving(s => new Set(s).add(kind))
+                const res = await removeApplicationDocument(creds.reference, creds.access_code, kind)
+                setSaving(s => { const n = new Set(s); n.delete(kind); return n })
+                if (!res.ok) { toast(res.reason, 'error'); return }
+                await refreshDocs()
+              }}
             />
           </>
         )}
@@ -485,7 +521,7 @@ function GateRail({ steps, at, onGo }: {
 
 function StepCard({
   step, index, total, answers, saving, onSet, onSave,
-  onBack, onNext, onSubmit, onLeaveForNow, busy, missing, creds,
+  onBack, onNext, onSubmit, onLeaveForNow, busy, blocked, creds, onUpload, onRemove,
 }: {
   step: ReturnType<typeof stepsOf>[number] | undefined
   index: number
@@ -499,8 +535,13 @@ function StepCard({
   onSubmit: () => void
   onLeaveForNow: () => void
   busy: boolean
-  missing: FieldSpec[]
+  /* One verdict covering questions and documents, computed by `canSubmit` —
+     the same function the last step's button is disabled from. Two sources for
+     "what is left" is how a form comes to enable a button that then fails. */
+  blocked: ReturnType<typeof canSubmit>
   creds: Credentials
+  onUpload: (kind: string, file: File) => void | Promise<void>
+  onRemove: (kind: string) => void | Promise<void>
 }) {
   if (!step) {
     return <Callout tone="info" title="Loading the form">The questions are on their way.</Callout>
@@ -530,11 +571,31 @@ function StepCard({
         ))}
       </div>
 
-      {last && missing.length > 0 && (
+      {step.documents.length > 0 && (
+        <div style={{ marginTop: '10px' }}>
+          <div style={{
+            fontSize: '10px', fontWeight: 800, textTransform: 'uppercase',
+            letterSpacing: '0.06em', color: 'var(--text-tertiary)',
+            borderTop: '1px solid var(--border-light)', paddingTop: '14px', marginBottom: '4px',
+          }}>
+            Documents this gate reads
+          </div>
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: '0 0 10px', lineHeight: 1.5 }}>
+            {docTypesLabel()}, up to {sizeOf(DOC_MAX_BYTES)} each. One file per item — uploading a
+            second replaces the first, because a gate reading two certificates of incorporation has
+            to work out which one counts.
+          </p>
+          {step.documents.map(({ kind, file }) => (
+            <DocumentRow key={kind.id} kind={kind} file={file} busy={saving.has(kind.id)}
+                         onUpload={f => onUpload(kind.id, f)} onRemove={() => onRemove(kind.id)} />
+          ))}
+        </div>
+      )}
+
+      {last && !blocked.ok && (
         <div style={{ marginTop: '8px' }}>
-          <Callout tone="warning" title={`${missing.length} still outstanding before this can go to the desk`}>
-            {missing.slice(0, 6).map(f => f.label).join('; ')}
-            {missing.length > 6 ? `; and ${missing.length - 6} more.` : '.'}
+          <Callout tone="warning" title="Not ready for the desk yet">
+            {blocked.reason}
           </Callout>
         </div>
       )}
@@ -547,7 +608,7 @@ function StepCard({
           <ChevronLeft size={14} /> Back
         </Btn>
         {last ? (
-          <Btn variant="primary" onClick={onSubmit} disabled={busy || missing.length > 0}>
+          <Btn variant="primary" onClick={onSubmit} disabled={busy || !blocked.ok}>
             <Send size={14} /> {busy ? 'Sending…' : 'Send to the onboarding desk'}
           </Btn>
         ) : (
@@ -631,6 +692,82 @@ function Question({ field, value, saving, onSet, onSave }: {
           />
         )}
       </FormField>
+    </div>
+  )
+}
+
+/* One item on the checklist: what is asked for, and what has come in.
+ *
+ * The file input is hidden behind a label rather than styled, because a styled
+ * `<input type="file">` is the one control that cannot be made to look like the
+ * rest of a form — and a label is what a screen reader and a keyboard both
+ * already know how to use. */
+function DocumentRow({ kind, file, busy, onUpload, onRemove }: {
+  kind: DocumentKind
+  file: UploadedDocument | null
+  busy: boolean
+  onUpload: (file: File) => void | Promise<void>
+  onRemove: () => void | Promise<void>
+}) {
+  return (
+    <div style={{
+      display: 'flex', gap: '12px', alignItems: 'flex-start', flexWrap: 'wrap',
+      padding: '11px 0', borderBottom: '1px solid var(--border-light)',
+    }}>
+      <span style={{ width: '18px', flexShrink: 0, marginTop: '2px', color: file ? 'var(--success)' : 'var(--text-tertiary)' }}>
+        {file ? <Check size={16} /> : <Paperclip size={15} />}
+      </span>
+
+      <span style={{ flex: '1 1 240px', minWidth: 0 }}>
+        <span style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--text)' }}>
+          {kind.label}
+          {!kind.required && (
+            <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}> · only if it applies</span>
+          )}
+        </span>
+        {kind.note && (
+          <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px', lineHeight: 1.45 }}>
+            {kind.note}
+          </span>
+        )}
+        {file && (
+          <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--success)', marginTop: '3px' }}>
+            {file.name} · {sizeOf(file.bytes)}
+          </span>
+        )}
+      </span>
+
+      <span style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0 }}>
+        {busy && <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>working…</span>}
+        <label style={{
+          padding: '5px 12px', borderRadius: 'var(--radius)', cursor: busy ? 'default' : 'pointer',
+          border: '1px solid var(--border)', background: 'white',
+          fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text)',
+          opacity: busy ? 0.5 : 1,
+        }}>
+          {file ? 'Replace' : 'Upload'}
+          <input
+            type="file" accept={DOC_ACCEPT} disabled={busy}
+            style={{ display: 'none' }}
+            onChange={e => {
+              const f = e.target.files?.[0]
+              /* Cleared so choosing the same file twice fires again — after a
+                 refused upload that is exactly what somebody does next. */
+              e.target.value = ''
+              if (f) void onUpload(f)
+            }}
+          />
+        </label>
+        {file && (
+          <button onClick={() => void onRemove()} disabled={busy} title="Remove"
+            style={{
+              padding: '5px 8px', borderRadius: 'var(--radius)', cursor: 'pointer',
+              border: '1px solid var(--border)', background: 'white', color: 'var(--danger)',
+            }}>
+            <Trash2 size={13} />
+          </button>
+        )}
+      </span>
     </div>
   )
 }

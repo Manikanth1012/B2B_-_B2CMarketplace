@@ -5,8 +5,11 @@ import {
   validateStart, looksLikeReference, looksLikeCode, normaliseCode,
   CODE_ALPHABET, CODE_LENGTH,
   deskQueue, waitingDays, canAccept, answerSheet,
+  documentsOutstanding, validateDocument, documentPath, safeDocName, DOC_MAX_BYTES,
 } from './partnerApplication'
-import type { FieldSpec, StartDraft, Answers, DeskApplication } from './partnerApplication'
+import type {
+  FieldSpec, StartDraft, Answers, DeskApplication, DocumentKind, UploadedDocument,
+} from './partnerApplication'
 
 const MARKETS = [{ code: 'IN' }, { code: 'AE' }, { code: 'KE' }]
 
@@ -134,12 +137,15 @@ describe('submitting', () => {
   it('names the first thing outstanding rather than just refusing', () => {
     const out = canSubmit(FORM, { a2: '400' })
     expect(out.ok).toBe(false)
-    expect(out.ok === false && out.reason).toMatch(/3 questions are still outstanding, starting with: Markets/)
+    /* "things" rather than "questions": the outstanding list spans questions
+       and documents, and a message naming only one of the two would send an
+       applicant looking for the wrong thing. */
+    expect(out.ok === false && out.reason).toMatch(/3 things are still outstanding, starting with: Markets/)
   })
 
   it('says "one" rather than "1 questions"', () => {
     const out = canSubmit(FORM, { ...complete, k2: '' })
-    expect(out.ok === false && out.reason).toMatch(/^One question is still outstanding: Owners over 25%/)
+    expect(out.ok === false && out.reason).toMatch(/^One thing is still outstanding: Owners over 25%/)
   })
 
   it('refuses on an empty form rather than calling it complete', () => {
@@ -227,6 +233,144 @@ describe('starting an application', () => {
   })
 })
 
+/* The gates that matter are decisions on paperwork — "Registration, beneficial
+ * ownership over 25%, sanctions and PEP screening" is a file somebody reads,
+ * not a text box. Before this the application collected prose and an accepted
+ * seller arrived at the KYC gate with nothing attached. */
+const KINDS: DocumentKind[] = [
+  { id: 'd-inc', gate_id: 'kyc', label: 'Certificate of incorporation', note: null, required: true, sort_order: 10 },
+  { id: 'd-ubo', gate_id: 'kyc', label: 'Ownership declaration', note: null, required: true, sort_order: 20 },
+  { id: 'd-ins', gate_id: 'kyc', label: 'Insurance certificate', note: null, required: false, sort_order: 30 },
+]
+
+function upload(kind: string, over: Partial<UploadedDocument> = {}): UploadedDocument {
+  return {
+    id: `APD-${kind}`, kind_id: kind, name: 'scan.pdf', mime: 'application/pdf',
+    bytes: 120_000, path: `APP-2026-0001/ABCD/${kind}-1.pdf`,
+    uploaded_at: '2026-08-01T09:00:00Z', ...over,
+  }
+}
+
+describe('the documents a gate reads', () => {
+  const answered4: Answers = { a1: 'India', a2: '400', k1: 'U1234', k2: 'One owner' }
+
+  it('holds a gate open until its required documents are there', () => {
+    /* The bug this exists for: counting only the questions let the KYC gate
+       read "done" with no certificate of incorporation against it. */
+    const withNone = stepsOf(FORM, answered4, KINDS, [])
+    expect(withNone.find(s => s.gate_id === 'kyc')!.done).toBe(false)
+
+    const withBoth = stepsOf(FORM, answered4, KINDS, [upload('d-inc'), upload('d-ubo')])
+    expect(withBoth.find(s => s.gate_id === 'kyc')!.done).toBe(true)
+  })
+
+  it('does not hold a gate open over an optional one', () => {
+    const steps = stepsOf(FORM, answered4, KINDS, [upload('d-inc'), upload('d-ubo')])
+    const kyc = steps.find(s => s.gate_id === 'kyc')!
+    expect(kyc.documents.find(d => d.kind.id === 'd-ins')!.file).toBeNull()
+    expect(kyc.done).toBe(true)
+  })
+
+  it('counts documents alongside questions, so the total is what is actually asked', () => {
+    /* Four required questions plus two required documents. */
+    expect(progress(FORM, answered4, KINDS, [])).toEqual({ required: 6, answered: 4, pct: 67 })
+    expect(progress(FORM, answered4, KINDS, [upload('d-inc'), upload('d-ubo')]).pct).toBe(100)
+  })
+
+  it('lists an outstanding document in the same breath as an outstanding answer', () => {
+    /* One list, because an applicant told about the questions, who fixes them
+       and is then told about the documents, has been made to go round twice. */
+    const out = canSubmit(FORM, { a1: 'India', a2: '400', k1: 'U1234' }, KINDS, [])
+    expect(out.ok).toBe(false)
+    expect(out.ok === false && out.reason).toMatch(/3 things are still outstanding/)
+    expect(out.ok === false && out.reason).toMatch(/Owners over 25%/)
+  })
+
+  it('is complete only when both are', () => {
+    expect(canSubmit(FORM, answered4, KINDS, []).ok).toBe(false)
+    expect(canSubmit(FORM, answered4, KINDS, [upload('d-inc'), upload('d-ubo')])).toEqual({ ok: true })
+  })
+
+  it('lists what is outstanding in the order it is asked for', () => {
+    expect(documentsOutstanding(KINDS, []).map(k => k.id)).toEqual(['d-inc', 'd-ubo'])
+    expect(documentsOutstanding(KINDS, [upload('d-inc')]).map(k => k.id)).toEqual(['d-ubo'])
+  })
+
+  it('keeps a gate that asks only for documents and no questions', () => {
+    /* Otherwise it is dropped from the form entirely and the applicant is
+       never asked for the file at all. */
+    const only: DocumentKind[] = [{ ...KINDS[0], gate_id: 'assure' }]
+    const steps = stepsOf(FORM, answered4, only, [])
+    expect(steps.map(s => s.gate_id)).toContain('assure')
+    expect(steps.find(s => s.gate_id === 'assure')!.done).toBe(false)
+  })
+
+  it('puts somebody coming back in front of the gate missing a document', () => {
+    const steps = stepsOf(FORM, answered4, KINDS, [])
+    expect(steps[resumeAt(steps)].gate_id).toBe('kyc')
+  })
+})
+
+describe('a file the applicant chose', () => {
+  const file = (over: Partial<{ name: string; type: string; size: number }> = {}) =>
+    ({ name: 'incorporation.pdf', type: 'application/pdf', size: 500_000, ...over })
+
+  it('accepts the shapes a certificate actually arrives in', () => {
+    for (const f of [file(), file({ name: 'scan.jpg', type: 'image/jpeg' }),
+                     file({ name: 'photo.png', type: 'image/png' })]) {
+      expect(validateDocument(f).ok, f.name).toBe(true)
+    }
+  })
+
+  it('accepts a PDF a browser reported no type for', () => {
+    /* Dragged from some file managers, `type` arrives empty. Refusing it would
+       refuse the single most common document on the list. */
+    expect(validateDocument(file({ type: '' })).ok).toBe(true)
+  })
+
+  it('refuses what the desk would have to open in something else', () => {
+    expect(validateDocument(file({ name: 'accounts.xlsx', type: 'application/vnd.ms-excel' })).ok).toBe(false)
+    expect(validateDocument(file({ name: 'setup.exe', type: 'application/x-msdownload' })).ok).toBe(false)
+  })
+
+  it('refuses an empty file rather than storing nothing', () => {
+    const out = validateDocument(file({ size: 0 }))
+    expect(out.ok).toBe(false)
+    expect(out.ok === false && out.reason).toMatch(/empty/)
+  })
+
+  it('refuses one over the limit, and says what the limit is', () => {
+    const out = validateDocument(file({ size: DOC_MAX_BYTES + 1 }))
+    expect(out.ok).toBe(false)
+    expect(out.ok === false && out.reason).toMatch(/15\.0 MB/)
+  })
+})
+
+describe('where the bytes go', () => {
+  it('puts the reference and the code in the path, because storage has nothing else to check', () => {
+    const path = documentPath('APP-2026-0007', 'TP4F2PND9HV8', 'd-inc', 'My Cert.PDF')
+    expect(path.startsWith('APP-2026-0007/TP4F2PND9HV8/')).toBe(true)
+    /* The shape `application_upload_open` reads back — the first two segments
+       are the credential, and the policy splits on exactly this. */
+    expect(path.split('/').length).toBe(3)
+  })
+
+  it('cannot be talked out of its own folder by a filename', () => {
+    const path = documentPath('APP-2026-0007', 'CODE12345678', 'd-inc', '../../etc/passwd')
+    expect(path.split('/').length).toBe(3)
+    expect(path).toContain('passwd')
+    expect(path).not.toContain('..')
+  })
+
+  it('lowercases and strips what would change meaning in a URL', () => {
+    expect(safeDocName('My Cert (final).PDF')).toBe('my-cert-final.pdf')
+    /* A leading dot is a name and not an extension, so `.hidden` has no
+       extension at all and the dot is stripped as punctuation like any other. */
+    expect(safeDocName('.hidden')).toBe('hidden')
+    expect(safeDocName('')).toBe('document')
+  })
+})
+
 describe('the queue the desk works', () => {
   const app = (over: Partial<DeskApplication> = {}): DeskApplication => ({
     id: 'APP-2026-0001', email: 'a@b.test', phone: '+91 80 4000 0000',
@@ -302,7 +446,7 @@ describe('whether the desk can accept one', () => {
        incomplete. Checked against the form as it stands, not as it stood. */
     const out = canAccept(app(), FORM, { a1: 'India', a2: '400', k1: 'U1234' })
     expect(out.ok).toBe(false)
-    expect(out.ok === false && out.reason).toMatch(/sent before "Owners over 25%" was on the form/)
+    expect(out.ok === false && out.reason).toMatch(/sent before "Owners over 25%" was asked for/)
   })
 })
 

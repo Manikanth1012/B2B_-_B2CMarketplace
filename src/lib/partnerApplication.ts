@@ -101,15 +101,147 @@ export function toggleMulti(value: string | undefined | null, option: string): s
   return joinMulti(now.includes(option) ? now.filter(o => o !== option) : [...now, option])
 }
 
+/* ----------------------------------------------------------- documents -- */
+
+/**
+ * A document the desk asks for, filed under the gate that reads it.
+ *
+ * The gates that matter are decisions *on* paperwork — "Registration,
+ * beneficial ownership over 25%, sanctions and PEP screening" is not a text
+ * box, it is a file somebody reads. Every seller already on the marketplace has
+ * a shelf of these on `onboarding_documents`; these are what become them.
+ */
+export interface DocumentKind {
+  id: string
+  gate_id: string
+  label: string
+  note: string | null
+  required: boolean
+  sort_order: number
+}
+
+/** One the applicant has actually uploaded. */
+export interface UploadedDocument {
+  id: string
+  kind_id: string
+  name: string
+  mime: string
+  bytes: number
+  path: string
+  uploaded_at: string
+}
+
+/* Deliberately narrower than the ticket attachment list: a scanned certificate
+   is a PDF or a photograph of one, and a spreadsheet is not a certificate of
+   incorporation. Nothing executable, and nothing the desk would have to open in
+   an application it does not have. */
+export const DOC_TYPES: { mime: string; ext: string[]; label: string }[] = [
+  { mime: 'application/pdf', ext: ['.pdf'], label: 'PDF' },
+  { mime: 'image/jpeg', ext: ['.jpg', '.jpeg'], label: 'JPEG' },
+  { mime: 'image/png', ext: ['.png'], label: 'PNG' },
+  { mime: 'image/heic', ext: ['.heic'], label: 'HEIC' },
+]
+
+export const DOC_MAX_BYTES = 15 * 1024 * 1024
+
+export const DOC_ACCEPT = DOC_TYPES.flatMap(t => [t.mime, ...t.ext]).join(',')
+
+export function docTypesLabel(): string {
+  const names = DOC_TYPES.map(t => t.label)
+  return `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`
+}
+
+export function sizeOf(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+/**
+ * Whether this file can go up.
+ *
+ * Extension as well as MIME, because a browser reports an empty type for plenty
+ * of ordinary files — a PDF dragged from some file managers arrives as `''`,
+ * and refusing it would refuse the single most common document on the list.
+ */
+export function validateDocument(file: { name: string; type: string; size: number }): Check {
+  const name = file.name || 'That file'
+  if (file.size === 0) {
+    return { ok: false, reason: `${name} is empty. Check it saved before uploading it.` }
+  }
+  if (file.size > DOC_MAX_BYTES) {
+    return {
+      ok: false,
+      reason: `${name} is ${sizeOf(file.size)} — the limit is ${sizeOf(DOC_MAX_BYTES)}. A scan at 300dpi is usually well under it; try exporting the PDF again rather than photographing every page.`,
+    }
+  }
+  const lower = file.name.toLowerCase()
+  const ok = DOC_TYPES.some(t =>
+    (file.type && file.type === t.mime) || t.ext.some(e => lower.endsWith(e)))
+  if (!ok) {
+    return { ok: false, reason: `${name} is not a ${docTypesLabel()}. Scan or export it as one of those.` }
+  }
+  return { ok: true }
+}
+
+/** Lowercase, no spaces, nothing that changes meaning in a URL. The directory
+    part goes first so `../../etc/passwd` becomes `passwd` rather than nonsense
+    — the same reasoning, and the same shape, as `safeName` in `attachments.ts`. */
+export function safeDocName(filename: string): string {
+  const base = filename.split(/[\\/]/).pop() ?? filename
+  const dot = base.lastIndexOf('.')
+  const hasExt = dot > 0
+  const stem = (hasExt ? base.slice(0, dot) : base)
+    .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60)
+  const ext = (hasExt ? base.slice(dot) : '').toLowerCase().replace(/[^a-z0-9.]/g, '')
+  return `${stem || 'document'}${ext}`
+}
+
+/**
+ * Where the bytes go.
+ *
+ * The access code is in the path because storage decides what an anonymous
+ * request may write from the path alone — there is no session to check it
+ * against. `application_upload_open` is the policy that reads these two
+ * segments back, so the shape here and the shape there are one fact.
+ */
+export function documentPath(reference: string, code: string, kindId: string, filename: string): string {
+  return `${reference}/${code}/${kindId}-${Date.now()}-${safeDocName(filename)}`
+}
+
+/** The checklist for one gate, with what has come in against it. */
+export function documentsFor(
+  gateId: string, kinds: readonly DocumentKind[], have: readonly UploadedDocument[],
+): { kind: DocumentKind; file: UploadedDocument | null }[] {
+  return kinds
+    .filter(k => k.gate_id === gateId)
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map(kind => ({ kind, file: have.find(d => d.kind_id === kind.id) ?? null }))
+}
+
+/** Required documents with nothing against them, in the order they are asked. */
+export function documentsOutstanding(
+  kinds: readonly DocumentKind[], have: readonly UploadedDocument[],
+): DocumentKind[] {
+  const got = new Set(have.map(d => d.kind_id))
+  return [...kinds].filter(k => k.required && !got.has(k.id))
+    .sort((a, b) => a.sort_order - b.sort_order)
+}
+
 /* ------------------------------------------------------------ the form -- */
 
 export interface GateStep {
   gate_id: string
   fields: FieldSpec[]
+  /* What this gate asks for on paper, with whatever has come in against it. */
+  documents: { kind: DocumentKind; file: UploadedDocument | null }[]
+  /* Questions and documents both, because both hold the gate. Counting only
+     the questions is what let a gate read "done" with no certificate of
+     incorporation against it. */
   required: number
   answered: number
-  /* Every required question on this gate has an answer. An optional one left
-     blank does not hold the gate — it was optional. */
+  /* Every required question answered and every required document uploaded. An
+     optional one left blank does not hold the gate — it was optional. */
   done: boolean
 }
 
@@ -122,22 +254,34 @@ export interface GateStep {
  * but a screen that renders a step with nothing on it is a step an applicant
  * clicks Next on twice and reports as broken.
  */
-export function stepsOf(fields: readonly FieldSpec[], answers: Answers): GateStep[] {
+export function stepsOf(
+  fields: readonly FieldSpec[], answers: Answers,
+  kinds: readonly DocumentKind[] = [], have: readonly UploadedDocument[] = [],
+): GateStep[] {
   const order: string[] = []
   const byGate = new Map<string, FieldSpec[]>()
   for (const f of [...fields].sort((a, b) => a.sort_order - b.sort_order)) {
     if (!byGate.has(f.gate_id)) { byGate.set(f.gate_id, []); order.push(f.gate_id) }
     byGate.get(f.gate_id)!.push(f)
   }
+  /* A gate can ask only for documents and no questions. It would otherwise be
+     dropped from the form entirely, and the applicant would never be asked. */
+  for (const k of [...kinds].sort((a, b) => a.sort_order - b.sort_order)) {
+    if (!byGate.has(k.gate_id)) { byGate.set(k.gate_id, []); order.push(k.gate_id) }
+  }
+
   return order.map(gate_id => {
     const list = byGate.get(gate_id)!
-    const required = list.filter(f => f.required)
-    const got = required.filter(f => answered(answers[f.id]))
+    const docs = documentsFor(gate_id, kinds, have)
+    const requiredFields = list.filter(f => f.required)
+    const gotFields = requiredFields.filter(f => answered(answers[f.id]))
+    const requiredDocs = docs.filter(d => d.kind.required)
+    const gotDocs = requiredDocs.filter(d => d.file !== null)
     return {
-      gate_id, fields: list,
-      required: required.length,
-      answered: got.length,
-      done: required.length === got.length,
+      gate_id, fields: list, documents: docs,
+      required: requiredFields.length + requiredDocs.length,
+      answered: gotFields.length + gotDocs.length,
+      done: requiredFields.length === gotFields.length && requiredDocs.length === gotDocs.length,
     }
   })
 }
@@ -151,35 +295,52 @@ export function outstanding(fields: readonly FieldSpec[], answers: Answers): Fie
     .sort((a, b) => a.sort_order - b.sort_order)
 }
 
-export function canSubmit(fields: readonly FieldSpec[], answers: Answers): Check {
+/**
+ * Whether the whole thing can go to the desk.
+ *
+ * Questions and documents together, in one answer. `submit_application` checks
+ * both in one list for the same reason: an applicant told about the questions,
+ * who fixes them and is then told about the documents, has been made to go
+ * round twice.
+ */
+export function canSubmit(
+  fields: readonly FieldSpec[], answers: Answers,
+  kinds: readonly DocumentKind[] = [], have: readonly UploadedDocument[] = [],
+): Check {
   /* An empty field list means the form did not load. Reporting "complete" would
      be the worst of both — it is the one state where nothing outstanding does
      not mean everything answered. */
   if (fields.length === 0) {
     return { ok: false, reason: 'The application form has not loaded, so there is nothing to submit yet.' }
   }
-  const left = outstanding(fields, answers)
+  const left: string[] = [
+    ...outstanding(fields, answers).map(f => f.label),
+    ...documentsOutstanding(kinds, have).map(k => k.label),
+  ]
   if (left.length === 0) return { ok: true }
   return {
     ok: false,
     reason: left.length === 1
-      ? `One question is still outstanding: ${left[0].label}`
-      : `${left.length} questions are still outstanding, starting with: ${left[0].label}`,
+      ? `One thing is still outstanding: ${left[0]}`
+      : `${left.length} things are still outstanding, starting with: ${left[0]}`,
   }
 }
 
-/** How far through, counted in required questions rather than in gates — seven
-    steps of wildly different sizes make a gate count a misleading number. */
-export function progress(fields: readonly FieldSpec[], answers: Answers): {
-  required: number; answered: number; pct: number
-} {
-  const required = fields.filter(f => f.required)
-  const got = required.filter(f => answered(answers[f.id])).length
-  return {
-    required: required.length,
-    answered: got,
-    pct: required.length === 0 ? 0 : Math.round((got / required.length) * 100),
-  }
+/** How far through, counted in required questions and documents rather than in
+    gates — seven steps of wildly different sizes make a gate count a misleading
+    number, and a gate whose only ask is a certificate would not count at all. */
+export function progress(
+  fields: readonly FieldSpec[], answers: Answers,
+  kinds: readonly DocumentKind[] = [], have: readonly UploadedDocument[] = [],
+): { required: number; answered: number; pct: number } {
+  const requiredFields = fields.filter(f => f.required)
+  const gotFields = requiredFields.filter(f => answered(answers[f.id])).length
+  const requiredDocs = kinds.filter(k => k.required)
+  const gotDocs = requiredDocs.filter(k => have.some(d => d.kind_id === k.id)).length
+
+  const required = requiredFields.length + requiredDocs.length
+  const got = gotFields + gotDocs
+  return { required, answered: got, pct: required === 0 ? 0 : Math.round((got / required) * 100) }
 }
 
 /**
@@ -339,6 +500,7 @@ export function waitingDays(app: DeskApplication, now: Date = new Date()): numbe
  */
 export function canAccept(
   app: DeskApplication, fields: readonly FieldSpec[], answers: Answers,
+  kinds: readonly DocumentKind[] = [], have: readonly UploadedDocument[] = [],
 ): Check {
   if (app.state === 'accepted') {
     return { ok: false, reason: `${app.id} is already partner ${app.partner_id}.` }
@@ -349,13 +511,16 @@ export function canAccept(
   if (app.state !== 'submitted') {
     return { ok: false, reason: `${app.id} is still being filled in. There is nothing to accept until it is sent.` }
   }
-  const left = outstanding(fields, answers)
+  const left: string[] = [
+    ...outstanding(fields, answers).map(f => f.label),
+    ...documentsOutstanding(kinds, have).map(k => k.label),
+  ]
   if (left.length > 0) {
     return {
       ok: false,
       reason: left.length === 1
-        ? `${app.id} was sent before "${left[0].label}" was on the form. Ask for it before accepting.`
-        : `${app.id} is missing ${left.length} answers the form now requires, starting with "${left[0].label}".`,
+        ? `${app.id} was sent before "${left[0]}" was asked for. Ask for it before accepting.`
+        : `${app.id} is missing ${left.length} things the form now requires, starting with "${left[0]}".`,
     }
   }
   return { ok: true }
@@ -364,15 +529,22 @@ export function canAccept(
 /** What the applicant said, gate by gate, for the desk to read in the order it
     assesses them. Questions with no answer are kept and marked, because a
     blank on an optional question is itself worth seeing. */
-export function answerSheet(fields: readonly FieldSpec[], answers: Answers): {
+export function answerSheet(
+  fields: readonly FieldSpec[], answers: Answers,
+  kinds: readonly DocumentKind[] = [], have: readonly UploadedDocument[] = [],
+): {
   gate_id: string
   rows: { field: FieldSpec; value: string | null }[]
+  /* What was uploaded against this gate, and what was asked for and is not
+     there. A reviewer needs both — the second is the reason to send it back. */
+  documents: { kind: DocumentKind; file: UploadedDocument | null }[]
 }[] {
-  return stepsOf(fields, answers).map(s => ({
+  return stepsOf(fields, answers, kinds, have).map(s => ({
     gate_id: s.gate_id,
     rows: s.fields.map(f => ({
       field: f,
       value: answered(answers[f.id]) ? answers[f.id] : null,
     })),
+    documents: s.documents,
   }))
 }

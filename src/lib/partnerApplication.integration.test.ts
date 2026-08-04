@@ -16,9 +16,10 @@ import { signIn, signOut } from './authRepo'
 import {
   loadFields, loadMarkets, startApplication, resumeApplication, saveAnswer, submitApplication,
   loadDeskApplications, acceptApplication, withdrawApplication,
+  loadDocumentKinds, loadApplicationDocuments, uploadApplicationDocument, removeApplicationDocument,
 } from './partnerApplicationRepo'
 import { canSubmit, outstanding, stepsOf, looksLikeCode, canAccept } from './partnerApplication'
-import type { Answers, FieldSpec } from './partnerApplication'
+import type { Answers, DocumentKind, FieldSpec } from './partnerApplication'
 
 const OPERATOR = { email: 'anika.sharma@aventa.com', password: 'operator123' }
 
@@ -28,6 +29,18 @@ const stamp = () => Date.now().toString(36).slice(-6)
 const mail = () => `applicant-${stamp()}@integration.test`
 
 const started: string[] = []
+
+/** Every object under one application's folder, removed as the operator. Called
+    from the clean-up hooks so a run does not leave a pile behind. */
+async function removeApplicationFolder(reference: string): Promise<void> {
+  const { data: subs } = await supabase.storage.from('evidence').list(reference, { limit: 1000 })
+  for (const sub of subs ?? []) {
+    const { data: files } = await supabase.storage
+      .from('evidence').list(`${reference}/${sub.name}`, { limit: 1000 })
+    const paths = (files ?? []).map(f => `${reference}/${sub.name}/${f.name}`)
+    if (paths.length) await supabase.storage.from('evidence').remove(paths)
+  }
+}
 
 async function begin(over: Partial<Parameters<typeof startApplication>[0]> = {}) {
   const res = await startApplication({
@@ -54,10 +67,15 @@ describe('a stranger applies to sell', () => {
        below asserting it cannot would be lying. */
     await signIn(OPERATOR.email, OPERATOR.password)
     for (const ref of started) {
+      /* The objects as well as the rows. Deleting the application cascades its
+         document rows and leaves the files behind — storage refuses direct SQL
+         deletes on purpose, so an object nobody removes through the API is an
+         orphan that accumulates one run at a time. */
+      await removeApplicationFolder(ref)
       await supabase.from('partner_applications').delete().eq('id', ref)
     }
     await signOut()
-  }, 30000)
+  }, 120000)
 
   it('can read the questions without an account', () => {
     /* The form is public. If this is empty the screen renders seven empty
@@ -234,12 +252,20 @@ describe('a stranger applies to sell', () => {
       expect(saved.ok, saved.ok ? '' : `${f.id}: ${saved.reason}`).toBe(true)
     }
 
+    const kinds = await loadDocumentKinds()
+    for (const k of kinds.filter(k => k.required)) {
+      const file = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], `${k.id}.pdf`, { type: 'application/pdf' })
+      const up = await uploadApplicationDocument({ reference, code: access_code, kind: k.id, file })
+      expect(up.ok, up.ok ? '' : `${k.id}: ${up.reason}`).toBe(true)
+    }
+    const docs = await loadApplicationDocuments(reference, access_code)
+
     /* The client and the database have to agree about completeness. If they
        disagree the applicant either sees an enabled button that fails, or a
        disabled one on a finished form. */
     expect(outstanding(fields, answers)).toEqual([])
-    expect(canSubmit(fields, answers)).toEqual({ ok: true })
-    expect(stepsOf(fields, answers).every(s => s.done)).toBe(true)
+    expect(canSubmit(fields, answers, kinds, docs)).toEqual({ ok: true })
+    expect(stepsOf(fields, answers, kinds, docs).every(s => s.done)).toBe(true)
 
     const sent = await submitApplication(reference, access_code)
     expect(sent.ok, sent.ok ? '' : sent.reason).toBe(true)
@@ -260,7 +286,7 @@ describe('a stranger applies to sell', () => {
 
     const twice = await submitApplication(reference, access_code)
     expect(twice.ok, 'the same application was submitted twice').toBe(false)
-  }, 120000)
+  }, 240000)
 })
 
 describe('what an anonymous applicant cannot reach', () => {
@@ -293,6 +319,139 @@ describe('what an anonymous applicant cannot reach', () => {
     expect(error ? true : (data ?? []).length === 0,
       'an anonymous visitor read the partner directory').toBe(true)
   })
+})
+
+/* The gates are decisions on paperwork, and until now the applicant was never
+ * asked for any. These touch live storage as well as the database, which is the
+ * only way to check the part that cannot be reasoned about: an anonymous
+ * request has no session, so what it may write is decided entirely by the path
+ * it writes to and the policy reading that path back. */
+describe('an applicant is asked for documents', () => {
+  let kinds: DocumentKind[]
+  let reference: string
+  let code: string
+
+  const pdf = (name = 'certificate.pdf') =>
+    new File([new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x34, 0x0a])],
+      name, { type: 'application/pdf' })
+
+  beforeAll(async () => {
+    await signOut()
+    kinds = await loadDocumentKinds()
+    const res = await startApplication({
+      email: mail(), phone: '+91 80 4000 0000', company: 'Document Test Ltd',
+      contact_name: 'D Tester', country: 'IN', kind: 'Reseller',
+    })
+    if (!res.ok) throw new Error(res.reason)
+    reference = res.value.reference
+    code = res.value.access_code
+    started.push(reference)
+  }, 60000)
+
+  afterAll(async () => {
+    /* This suite cleans up its own row as well as its folder. The shared
+       `started` sweep lives in the first describe's `afterAll`, which has
+       already run by the time this suite adds anything to it — so relying on it
+       leaves an application behind every run. */
+    await signIn(OPERATOR.email, OPERATOR.password)
+    await removeApplicationFolder(reference)
+    await supabase.from('partner_applications').delete().eq('id', reference)
+    await signOut()
+  }, 120000)
+
+  it('asks for the documents the gates actually decide on', () => {
+    expect(kinds.length, 'the checklist is empty').toBeGreaterThan(9)
+    /* The three gates that are a decision on paperwork each ask for some.
+       Ranged over the gates rather than over a list of document names — the
+       names are the desk's to change. */
+    for (const gate of ['kyc', 'agree', 'finance']) {
+      expect(kinds.some(k => k.gate_id === gate && k.required),
+        `the ${gate} gate asks for no document`).toBe(true)
+    }
+    expect(kinds.some(k => !k.required), 'every document is required').toBe(true)
+  })
+
+  it('accepts an upload from somebody with no account at all', async () => {
+    /* The permission half, and the whole feature rests on it. */
+    const kind = kinds.find(k => k.required)!
+    const out = await uploadApplicationDocument({ reference, code, kind: kind.id, file: pdf() })
+    expect(out.ok, out.ok ? '' : out.reason).toBe(true)
+
+    const back = await loadApplicationDocuments(reference, code)
+    const got = back.find(d => d.kind_id === kind.id)
+    expect(got, 'the document did not come back').toBeTruthy()
+    expect(got!.name).toBe('certificate.pdf')
+    expect(got!.bytes).toBeGreaterThan(0)
+    /* The path carries the credential, because storage has nothing else to
+       check an anonymous write against. */
+    expect(got!.path.startsWith(`${reference}/${code}/`)).toBe(true)
+  }, 60000)
+
+  it('replaces rather than accumulating, so one kind means one file', async () => {
+    const kind = kinds.find(k => k.required)!
+    const out = await uploadApplicationDocument({
+      reference, code, kind: kind.id, file: pdf('replacement.pdf'),
+    })
+    expect(out.ok, out.ok ? '' : out.reason).toBe(true)
+
+    const back = await loadApplicationDocuments(reference, code)
+    const mine = back.filter(d => d.kind_id === kind.id)
+    expect(mine.length, 'a gate is now looking at two of the same document').toBe(1)
+    expect(mine[0].name).toBe('replacement.pdf')
+  }, 60000)
+
+  it('refuses a file the desk could not read', async () => {
+    const kind = kinds.find(k => k.required)!
+    const exe = new File([new Uint8Array([0x4d, 0x5a])], 'setup.exe', { type: 'application/x-msdownload' })
+    const out = await uploadApplicationDocument({ reference, code, kind: kind.id, file: exe })
+    expect(out.ok).toBe(false)
+  })
+
+  it('refuses an upload against a wrong access code', async () => {
+    /* The refusal half — and it is the storage policy that has to say no, not
+       the form, because the form is not the only way to reach the bucket. */
+    const kind = kinds.find(k => k.required)!
+    const out = await uploadApplicationDocument({
+      reference, code: 'AAAABBBBCCCC', kind: kind.id, file: pdf(),
+    })
+    expect(out.ok, 'a wrong access code uploaded into an application').toBe(false)
+  }, 60000)
+
+  it('cannot list the folder back, only the rows it wrote', async () => {
+    /* No select policy for anon on purpose: a reference is sequential and
+       guessable, so a readable folder would be an enumerable one. */
+    const { data, error } = await supabase.storage.from('evidence').list(reference)
+    expect(error !== null || (data ?? []).length === 0,
+      'an anonymous visitor listed an application\'s document folder').toBe(true)
+  })
+
+  it('takes one back off when the applicant removes it', async () => {
+    const kind = kinds.find(k => k.required)!
+    const out = await removeApplicationDocument(reference, code, kind.id)
+    expect(out.ok, out.ok ? '' : out.reason).toBe(true)
+    const back = await loadApplicationDocuments(reference, code)
+    expect(back.some(d => d.kind_id === kind.id)).toBe(false)
+  }, 60000)
+
+  it('will not go to the desk with a required document missing', async () => {
+    /* Every question answered and one certificate short. Before this the form
+       would have submitted happily and the KYC gate would have opened with
+       nothing attached. */
+    const fields = await loadFields()
+    for (const f of fields.filter(f => f.required)) {
+      const value = f.kind === 'boolean' ? 'No'
+        : f.kind === 'number' ? '400'
+        : f.kind === 'date' ? '2026-09-01'
+        : f.kind === 'email' ? 'signatory@integration.test'
+        : f.kind === 'choice' || f.kind === 'multichoice'
+          ? (f.options ?? '').split(',')[0].trim()
+          : 'Answered by the document test'
+      await saveAnswer({ reference, code, field: f.id, value })
+    }
+    const out = await submitApplication(reference, code)
+    expect(out.ok, 'an application with no documents went to the desk').toBe(false)
+    if (!out.ok) expect(out.reason).toMatch(/outstanding/i)
+  }, 180000)
 })
 
 /* Accepting is eight tables in one transaction. The claim worth testing is not
@@ -332,9 +491,18 @@ describe('the desk accepts an application', () => {
       const saved = await saveAnswer({ reference, code, field: f.id, value })
       if (!saved.ok) throw new Error(`${f.id}: ${saved.reason}`)
     }
+    /* Required documents as well as required answers, because the gates are
+       decisions on paperwork and `submit_application` now says so. */
+    const kinds = await loadDocumentKinds()
+    for (const k of kinds.filter(k => k.required)) {
+      const file = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], `${k.id}.pdf`, { type: 'application/pdf' })
+      const up = await uploadApplicationDocument({ reference, code, kind: k.id, file })
+      if (!up.ok) throw new Error(`${k.id}: ${up.reason}`)
+    }
+
     const sent = await submitApplication(reference, code)
     if (!sent.ok) throw new Error(`could not submit: ${sent.reason}`)
-  }, 180000)
+  }, 240000)
 
   afterAll(async () => {
     await signIn(OPERATOR.email, OPERATOR.password)
@@ -342,15 +510,16 @@ describe('the desk accepts an application', () => {
       /* Children first — the application references the partner, and the
          partner is referenced by everything the accept created. */
       await supabase.from('partner_applications').update({ partner_id: null, state: 'withdrawn' }).eq('id', reference)
-      for (const t of ['onboarding_tasks', 'onboarding_gates', 'partner_markets',
-                       'partner_contacts', 'partner_lifecycle_events']) {
+      for (const t of ['onboarding_tasks', 'onboarding_gates', 'onboarding_documents',
+                       'partner_markets', 'partner_contacts', 'partner_lifecycle_events']) {
         await supabase.from(t).delete().eq('partner_id', partnerId)
       }
       await supabase.from('partners').delete().eq('id', partnerId)
     }
+    await removeApplicationFolder(reference)
     await supabase.from('partner_applications').delete().eq('id', reference)
     await signOut()
-  }, 60000)
+  }, 120000)
 
   it('refuses an applicant trying to accept their own application', async () => {
     /* Signed out, which is what an applicant is. `accept_application` runs as
@@ -367,7 +536,9 @@ describe('the desk accepts an application', () => {
     const desk = await loadDeskApplications()
     const app = desk.applications.find(a => a.id === reference)!
     expect(app.state).toBe('submitted')
-    expect(canAccept(app, fields, desk.answers[reference] ?? {})).toEqual({ ok: true })
+    const kinds = await loadDocumentKinds()
+    expect(canAccept(app, fields, desk.answers[reference] ?? {}, kinds, desk.documents[reference] ?? []))
+      .toEqual({ ok: true })
 
     const res = await acceptApplication(reference, 'Accepted by the integration test.')
     expect(res.ok, res.ok ? '' : res.reason).toBe(true)
@@ -410,6 +581,34 @@ describe('the desk accepts an application', () => {
 
     expect((contacts.data ?? []).length).toBe(2)
     expect((events.data ?? []).length).toBeGreaterThan(0)
+  }, 60000)
+
+  it('files the uploaded documents onto the partner, under the gate that reads each', async () => {
+    /* The point of asking for them. A seller accepted with an empty document
+       shelf arrives at KYC with nothing attached, which is the state this whole
+       change exists to prevent — and it is what the demo partners show as the
+       finished version. */
+    const kinds = await loadDocumentKinds()
+    const { data } = await supabase.from('onboarding_documents')
+      .select('id, gate_id, name, kind, size, path').eq('partner_id', partnerId)
+    const rows = (data ?? []) as { gate_id: string; name: string; kind: string; size: string; path: string }[]
+
+    const wanted = kinds.filter(k => k.required)
+    expect(rows.length, 'the accepted partner has no documents').toBe(wanted.length)
+    expect(wanted.length, 'nothing is required, so this checked nothing').toBeGreaterThan(0)
+
+    for (const k of wanted) {
+      const row = rows.find(r => r.name === k.label)
+      expect(row, `${k.label} did not come across`).toBeTruthy()
+      /* Filed under the gate that decides on it, using the id the partner's own
+         journey screens build their gate rows from. */
+      expect(row!.gate_id).toBe(`og-${partnerId}-${k.gate_id}`)
+      /* The path still resolves — the object was never copied, only pointed at. */
+      expect(row!.path.startsWith(`${reference}/`)).toBe(true)
+      /* `kind` is the human label the desk shows, not a MIME type. */
+      expect(row!.kind).toBe('PDF')
+      expect(row!.size).toMatch(/KB|MB/)
+    }
   }, 60000)
 
   it('marks the application accepted and names the partner it became', async () => {
