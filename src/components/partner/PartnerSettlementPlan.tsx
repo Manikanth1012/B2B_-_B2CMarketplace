@@ -1,10 +1,16 @@
 import { useState, useEffect } from 'react'
 import { Download } from 'lucide-react'
-import { StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, Btn, EmptyState, toast } from '../operator/shared'
+import {
+  StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, Btn, EmptyState, toast,
+  Modal, FormField, TextArea,
+} from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
 import { loadSellerRecord } from '../../lib/partnerRepo'
 import type { SellerRecord } from '../../lib/partnerRepo'
-import { rateAt, nextTier } from '../../lib/partnerCommerce'
+import { rateAt, nextTier, planSchedule } from '../../lib/partnerCommerce'
+import { toCsv } from '../../lib/ledger'
+import { saveBlob } from '../../lib/billPdf'
+import { loadSupport, raiseTicket } from '../../lib/supportRepo'
 import { PARTNER_ORDERS } from './data'
 
 /* Reads the plan the seller actually settles on. The hard-coded one quoted a
@@ -13,6 +19,9 @@ import { PARTNER_ORDERS } from './data'
 export function PartnerSettlementPlan({ partnerId }: { partnerId: string }) {
   const [rec, setRec] = useState<SellerRecord | null>(null)
   const [loading, setLoading] = useState(true)
+  const [asking, setAsking] = useState(false)
+  const [why, setWhy] = useState('')
+  const [sending, setSending] = useState(false)
 
   useEffect(() => {
     loadSellerRecord(partnerId).then(r => { setRec(r); setLoading(false) })
@@ -45,6 +54,51 @@ export function PartnerSettlementPlan({ partnerId }: { partnerId: string }) {
   const rate = rateAt(plan, gmv)
   const ahead = nextTier(plan, gmv)
 
+  /* The ladder, the terms, and where this seller stands on it — as a file their
+     own finance team can open. "Download schedule" used to raise a toast saying
+     the schedule had been downloaded, which is the one thing it had not done. */
+  const download = () => {
+    saveBlob(
+      new Blob([toCsv(planSchedule(plan, gmv))], { type: 'text/csv' }),
+      `settlement-plan-${plan.id}.csv`,
+    )
+    toast(`${plan.id} downloaded — ${plan.tiers.length} tiers and the terms behind them`)
+  }
+
+  /* What the request says if the seller writes nothing else. A review the desk
+     cannot price is a review that comes back asking for these three numbers. */
+  const defaultCase = ahead
+    ? `Trailing twelve-month gross is $${fmtMoney(gmv)} against ${plan.id}, settling at ${rate}%. `
+      + `The next tier is ${ahead.tier.rate}% at $${fmtMoney(ahead.tier.from)}, which is $${fmtMoney(ahead.toGo)} away. `
+      + `Asking for the ladder to be looked at ahead of that.`
+    : `Trailing twelve-month gross is $${fmtMoney(gmv)} against ${plan.id}, settling at ${rate}% — `
+      + `the top of the published ladder. Asking whether anything sits above it.`
+
+  const ask = async () => {
+    setSending(true)
+    const book = await loadSupport()
+    const r = await raiseTicket({
+      draft: {
+        subject: `Tier review — ${plan.id} at ${rate}%`,
+        category: 'contract',
+        note: why,
+        /* The plan is the reference. A ticket about a commission ladder that
+           does not say which ladder is a ticket somebody has to ask about. */
+        ref: plan.id,
+      },
+      book,
+      persona: 'partner',
+      raisedBy: rec?.partner?.name ?? 'The seller',
+      org: rec?.partner?.name ?? '',
+      partnerId,
+      channel: 'console',
+    })
+    setSending(false)
+    if (!r.ok) { toast(r.reason, 'error'); return }
+    setAsking(false)
+    toast(r.note ?? 'Raised — it is in the marketplace queue with your other requests.')
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
@@ -55,8 +109,8 @@ export function PartnerSettlementPlan({ partnerId }: { partnerId: string }) {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <Btn variant="secondary" onClick={() => toast('Schedule downloaded')}><Download size={14} /> Download schedule</Btn>
-          <Btn variant="primary" onClick={() => toast('Tier review requested — reference TRV-118')}>Request a tier review</Btn>
+          <Btn variant="secondary" onClick={download}><Download size={14} /> Download schedule</Btn>
+          <Btn variant="primary" onClick={() => { setWhy(defaultCase); setAsking(true) }}>Request a tier review</Btn>
         </div>
       </div>
 
@@ -114,6 +168,33 @@ export function PartnerSettlementPlan({ partnerId }: { partnerId: string }) {
           </div>
         </SectionCard>
       </div>
+
+      <Modal
+        open={asking}
+        onClose={() => setAsking(false)}
+        title="Request a tier review"
+        footer={
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Btn variant="secondary" onClick={() => setAsking(false)}>Cancel</Btn>
+            <Btn variant="primary" disabled={sending} onClick={() => void ask()}>
+              {sending ? 'Sending…' : 'Send it'}
+            </Btn>
+          </div>
+        }>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          <Callout tone="info">
+            This goes to the marketplace's contract desk as a ticket under <strong>{plan.id}</strong>, and you
+            will find it in Support alongside everything else you have raised. Tiers are recalculated
+            automatically on the first of each month — a review is for the case where the published ladder is
+            not the right ladder for your business.
+          </Callout>
+
+          <FormField label="Why you are asking" required
+                     hint="Prefilled with your position on the ladder. Add anything the desk would otherwise have to come back for — a contract you are bidding, volume you expect, a competitor's terms.">
+            <TextArea rows={6} value={why} onChange={e => setWhy(e.target.value)} />
+          </FormField>
+        </div>
+      </Modal>
     </div>
   )
 }

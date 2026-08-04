@@ -1,12 +1,29 @@
+import { useState, useEffect } from 'react'
 import { TrendingUp, TrendingDown, TriangleAlert as AlertTriangle, Wallet, Package, ShoppingCart, Star, Clock, ChevronRight } from 'lucide-react'
 import { StatCard, SectionCard, Table, Td, StatusPill, fmtMoney, fmtInt, Btn } from '../operator/shared'
+import { loadSellerRecord } from '../../lib/partnerRepo'
+import type { SellerRecord } from '../../lib/partnerRepo'
+import { moneySplit } from '../../lib/partnerCommerce'
 import { PARTNER_PROFILE, PARTNER_LISTINGS, PARTNER_ORDERS, PARTNER_SETTLEMENTS, PARTNER_PLAN, ONB_TASKS, VERTICAL_NAMES } from './data'
 
-export function PartnerDashboard({ onNavigate }: {
+export function PartnerDashboard({ partnerId, onNavigate }: {
+  partnerId?: string
   /* The console owns navigation. Without this the dashboard can show that six
      orders need action and offer no way to reach any of them. */
-  onNavigate?: (view: 'pt-orders' | 'pt-listings' | 'pt-support') => void
+  onNavigate?: (view: 'pt-orders' | 'pt-listings' | 'pt-support' | 'pt-plan') => void
 }) {
+  /* The plan card was drawn from `PARTNER_PLAN` in data.ts, which quotes a 12%
+     base against a plan that settles at 11%, and split a $1,000 sale with the
+     figures written into the markup. A seller's own commission is not a thing
+     to hard-code. */
+  const [rec, setRec] = useState<SellerRecord | null>(null)
+  useEffect(() => {
+    if (!partnerId) return
+    let live = true
+    loadSellerRecord(partnerId).then(r => { if (live) setRec(r) })
+    return () => { live = false }
+  }, [partnerId])
+
   const liveListings = PARTNER_LISTINGS.filter(l => l.status === 'live')
   const pendingListings = PARTNER_LISTINGS.filter(l => l.status === 'pending')
   const openOrders = PARTNER_ORDERS.filter(o => o.stage < o.stages.length - 1 && !o.failed)
@@ -15,6 +32,20 @@ export function PartnerDashboard({ onNavigate }: {
   const commission = PARTNER_ORDERS.reduce((a, o) => a + o.comm, 0)
   const dueSettlement = PARTNER_SETTLEMENTS.filter(s => s.status !== 'paid').reduce((a, s) => a + s.net, 0)
   const openTasks = ONB_TASKS.filter(t => t.status !== 'done' && t.status !== 'notstarted')
+
+  /* The seller's own plan once it has loaded, and the fallback until then. The
+     fallback is the old constant rather than a blank card, so the panel does not
+     flash empty on every visit — but the moment the record arrives the figures
+     are the ones the seller is actually paid on. */
+  const plan = rec?.plan ?? null
+  const split = plan
+    ? moneySplit(plan, 1000, gmv)
+    : {
+        gross: 1000, commission: PARTNER_PLAN.base * 10, commissionRate: PARTNER_PLAN.base,
+        fees: 21, keep: 1000 - PARTNER_PLAN.base * 10 - 21,
+        commissionShare: PARTNER_PLAN.base, feesShare: 2.1,
+        keepShare: 100 - PARTNER_PLAN.base - 2.1,
+      }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -67,24 +98,29 @@ export function PartnerDashboard({ onNavigate }: {
           </div>
         </SectionCard>
 
-        <SectionCard title="Where Your Money Goes" subtitle={`Illustrated on a $1,000 sale · Plan: ${PARTNER_PLAN.name}`}>
+        <SectionCard title="Where Your Money Goes" subtitle={`Illustrated on a $1,000 sale · Plan: ${plan?.name ?? PARTNER_PLAN.name}`}>
           <div style={{ padding: '20px' }}>
             <div style={{ display: 'flex', height: '28px', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: '16px' }}>
-              <div style={{ width: `${100 - PARTNER_PLAN.base - 2}%`, background: 'var(--brand-navy)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 'var(--text-xs)', fontWeight: 600 }}>
-                You ${fmtMoney(1000 - 120 - 21)}
+              <div style={{ width: `${split.keepShare}%`, background: 'var(--brand-navy)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 'var(--text-xs)', fontWeight: 600 }}>
+                You ${fmtMoney(split.keep)}
               </div>
-              <div style={{ width: `${PARTNER_PLAN.base}%`, background: '#5E4B9B', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 'var(--text-xs)', fontWeight: 600 }}>
+              <div style={{ width: `${split.commissionShare}%`, background: '#5E4B9B', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontSize: 'var(--text-xs)', fontWeight: 600 }}
+                   title={`Commission $${fmtMoney(split.commission)}`}>
                 Commission
               </div>
-              <div style={{ width: '2%', background: '#B8A4E8' }} />
+              <div style={{ width: `${split.feesShare}%`, background: '#B8A4E8' }}
+                   title={`Payment fees $${fmtMoney(split.fees)}`} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <Row label="Your plan" value={PARTNER_PLAN.name} />
-              <Row label="Commission" value={`${PARTNER_PLAN.base}%`} />
-              <Row label="Payout cycle" value={PARTNER_PLAN.cycle} />
-              <Row label="Holdback" value={PARTNER_PLAN.hold} />
+              <Row label="Your plan" value={plan?.name ?? PARTNER_PLAN.name} />
+              <Row label="Commission" value={`${split.commissionRate}% — $${fmtMoney(split.commission)}`} />
+              <Row label="Payment fees" value={plan ? `$${fmtMoney(split.fees)} — ${plan.fees}` : `$${fmtMoney(split.fees)}`} />
+              <Row label="Payout cycle" value={plan?.cycle ?? PARTNER_PLAN.cycle} />
+              <Row label="Holdback" value={plan?.hold ?? PARTNER_PLAN.hold} />
             </div>
-            <Btn variant="secondary" size="sm" style={{ marginTop: '12px' }}>Full settlement plan</Btn>
+            <Btn variant="secondary" size="sm" style={{ marginTop: '12px' }} onClick={() => onNavigate?.('pt-plan')}>
+              Full settlement plan
+            </Btn>
           </div>
         </SectionCard>
       </div>

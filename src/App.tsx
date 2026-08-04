@@ -442,7 +442,7 @@ function AppInner() {
     return (
       <>
       <PartnerShell view={ptView} onNavigate={goPartner} onSignOut={handleSignOut}>
-        {ptView === 'pt-dashboard' && <PartnerDashboard onNavigate={setPtView} />}
+        {ptView === 'pt-dashboard' && <PartnerDashboard partnerId={session!.partnerId!} onNavigate={setPtView} />}
         {ptView === 'pt-onboarding' && <PartnerOnboarding partnerId={session!.partnerId!} />}
         {ptView === 'pt-listings' && <PartnerListings partnerId={session!.partnerId!} onNewListing={() => setPtView('pt-newlisting')} />}
         {ptView === 'pt-newlisting' && <PartnerNewListing partnerId={session!.partnerId!} />}
@@ -450,7 +450,7 @@ function AppInner() {
         {ptView === 'pt-settlement' && <PartnerSettlement partnerId={session!.partnerId!} />}
         {ptView === 'pt-plan' && <PartnerSettlementPlan partnerId={session!.partnerId!} />}
         {ptView === 'pt-performance' && <PartnerPerformance />}
-        {ptView === 'pt-integrations' && <PartnerIntegrations />}
+        {ptView === 'pt-integrations' && <PartnerIntegrations partnerId={session!.partnerId!} />}
         {ptView === 'pt-reviews' && <PartnerReviews partnerId={session?.partnerId ?? ''} />}
         {ptView === 'pt-support' && <PartnerSupport partnerId={session!.partnerId!} />}
         {ptView === 'pt-refunds' && <PartnerRefunds partnerId={session!.partnerId!} />}

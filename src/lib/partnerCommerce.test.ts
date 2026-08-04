@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   canListIn, approvedCategories, rateAt, nextTier, commissionOn, orderedPlans,
   listingState, listingBreakdown,
+  moneySplit, planSchedule,
   type PartnerCategory, type CommissionPlan, type ListingRow,
 } from './partnerCommerce'
 
@@ -24,7 +25,8 @@ const IOT: CommissionPlan = {
   id: 'CP-IOT-STD', name: 'IoT — hardware + connectivity', category_id: 'iot',
   model: 'Split: hardware commission, connectivity wholesale', base_rate: 11,
   tiers: [{ from: 0, rate: 11 }, { from: 200000, rate: 9 }],
-  fees: 'Payment processing 1.9% + $0.20', cycle: 'Monthly, net 30', hold: '14 days', sort_order: 5,
+  fees: 'Payment processing 1.9% + $0.20', payment_fee_pct: 1.9, payment_fee_flat: 0.20,
+  cycle: 'Monthly, net 30', hold: '14 days', sort_order: 5,
 }
 
 /* A reseller's ladder runs the other way — the discount rises with volume. */
@@ -153,5 +155,65 @@ describe('listingBreakdown', () => {
 
   it('is empty rather than a zero row for a seller with no listings', () => {
     expect(listingBreakdown([])).toEqual([])
+  })
+})
+
+describe('where a sale’s money goes', () => {
+  it('splits it on the seller’s own plan, not on a number in the markup', () => {
+    /* The dashboard drew this from `1000 - 120 - 21` — 12% and 2.1% — for every
+       seller. Nimbus settles at 11% on 1.9% + $0.20 and keeps $870.80. */
+    const s = moneySplit(IOT, 1000, 0)
+    expect(s.commissionRate).toBe(11)
+    expect(s.commission).toBe(110)
+    expect(s.fees).toBe(19.2)
+    expect(s.keep).toBe(870.8)
+  })
+
+  it('reads the rate off the ladder, so a bigger seller is drawn differently', () => {
+    const s = moneySplit(IOT, 1000, 250000)
+    expect(s.commissionRate).toBe(9)
+    expect(s.keep).toBe(890.8)
+  })
+
+  it('gives shares that account for the whole sale', () => {
+    const s = moneySplit(IOT, 1000, 0)
+    expect(+(s.commissionShare + s.feesShare + s.keepShare).toFixed(2)).toBe(100)
+  })
+
+  it('keeps the flat fee flat, because it is per order and not per pound', () => {
+    /* At a small sale the 20 cents is 1% of the money and at a large one it is
+       nothing. Folding it into a percentage would be wrong at both ends. */
+    expect(moneySplit(IOT, 20, 0).fees).toBe(0.58)
+    expect(moneySplit(IOT, 20000, 0).fees).toBe(380.2)
+  })
+
+  it('handles a plan that charges no payment fee at all', () => {
+    const free: CommissionPlan = { ...IOT, payment_fee_pct: 0, payment_fee_flat: 0 }
+    expect(moneySplit(free, 1000, 0).fees).toBe(0)
+    expect(moneySplit(free, 1000, 0).keep).toBe(890)
+  })
+
+  it('does not divide by a sale of nothing', () => {
+    expect(moneySplit(IOT, 0, 0).keepShare).toBe(0)
+  })
+})
+
+describe('the schedule a seller can take away', () => {
+  it('carries the terms, the ladder and where they stand on it', () => {
+    const rows = planSchedule(IOT, 120000)
+    const find = (field: string) => rows.find(r => r[1] === field)?.[2]
+    expect(find('id')).toBe('CP-IOT-STD')
+    expect(find('current_rate_pct')).toBe('11')
+    expect(find('gross_to_next_tier')).toBe('80000.00')
+    expect(rows.filter(r => r[0] === 'tier')).toHaveLength(2)
+  })
+
+  it('says so plainly at the top of the ladder rather than leaving a blank', () => {
+    const rows = planSchedule(IOT, 400000)
+    expect(rows.find(r => r[1] === 'next_tier_rate_pct')?.[2]).toMatch(/top tier/)
+  })
+
+  it('opens with a header row, so it is a spreadsheet and not a wall', () => {
+    expect(planSchedule(IOT, 0)[0]).toEqual(['section', 'field', 'value'])
   })
 })

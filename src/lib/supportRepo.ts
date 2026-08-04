@@ -58,13 +58,18 @@ export interface TicketDraft {
  * queue would need a second, secret priority to work from.
  */
 export async function raiseTicket(
-  { draft, book, persona, raisedBy, org, accountId, memberId, channel }: {
+  { draft, book, persona, raisedBy, org, accountId, partnerId, memberId, channel }: {
     draft: TicketDraft
     book: SupportBook
     persona: string
     raisedBy: string
     org: string
     accountId?: string | null
+    /* Set for a seller's ticket. Without it the row is readable by the one
+       person who raised it and by nobody else at that company — which is not
+       what `partner_support_tickets` was written to allow, and meant a
+       colleague picking the thread up could not see it. */
+    partnerId?: string | null
     memberId?: string | null
     channel: string
   },
@@ -96,6 +101,7 @@ export async function raiseTicket(
        downstream then reads its length in characters. */
     messages: [{ who: raisedBy, text: draft.note.trim(), when }],
     account_id: accountId ?? null,
+    partner_id: partnerId ?? null,
     user_id: accountId ? null : session.user?.id ?? null,
     raised_by_member: memberId ?? null,
     ref: draft.ref,
