@@ -1,4 +1,5 @@
-import { format as formatMoney, money as asMoney } from './money'
+import { format as formatMoney, money as asMoney, rateOn } from './money'
+import type { Rate } from './money'
 
 /* The enterprise buyer's account — approvals, refunds and billing.
    No React and no Supabase, so the rules can be tested without a network.
@@ -105,6 +106,11 @@ export interface Requisition {
   vertical: string
   cost_centre: string | null
   amount: number
+  /* What that amount is. Any currency the account's market takes, which is not
+     necessarily the account's primary one — Harbourpoint contracts in Nairobi
+     and may raise a requisition in shillings or in dollars. The threshold it is
+     judged against is in the primary currency, so see `inPolicyMoney`. */
+  currency: string
   model: 'oneoff' | 'monthly'
   reason: string
   need: Need
@@ -209,12 +215,87 @@ export const NEED_LABEL: Record<Need, string> = {
 /* ---------------------------------------------------------------- policy -- */
 
 /**
+ * A requisition's amount in the money the account's limits are set in.
+ *
+ * The threshold, the cost-centre caps and each approver's limit are *chosen*
+ * figures — somebody signed off "anything at or above ₹2,00,000 needs finance"
+ * — so they are stated in the account's primary currency and stay there. A
+ * limit that moved with the currency of the last purchase would not be a limit.
+ *
+ * The requisition is the measured quantity, so the requisition is what gets
+ * converted, at the rate in force on the day it was raised rather than today's:
+ * an approval reopened next year has to read the same as the one the approver
+ * signed.
+ *
+ * Null when there is no rate on file at or before that date. Every caller
+ * refuses on null rather than falling back, because the fallback — comparing
+ * 15,000 shillings against a 130,000 shilling threshold as though the dollars
+ * were shillings — is a decision made on a figure 129 times too small.
+ */
+export interface PolicyMoney {
+  /** The amount, in `currency`. */
+  amount: number
+  /** The account's primary currency — what the limits are stated in. */
+  currency: string
+  /** 1 where nothing was converted, so every reading has the same shape. */
+  rate: number
+  as_of: string
+  /** True where the requisition was already in the primary currency. */
+  native: boolean
+}
+
+export function inPolicyMoney(
+  req: { amount: number; currency: string },
+  primary: string,
+  rates: readonly Rate[],
+  asOf: string,
+): PolicyMoney | null {
+  if (req.currency === primary) {
+    return { amount: req.amount, currency: primary, rate: 1, as_of: asOf, native: true }
+  }
+  const r = rateOn(rates, req.currency, primary, asOf)
+  if (!r) return null
+  return {
+    amount: round2(req.amount * r.rate),
+    currency: primary, rate: r.rate, as_of: r.as_of, native: false,
+  }
+}
+
+/**
+ * The one place a screen gets its converter from.
+ *
+ * Bound to the account and the rate table once, then asked per requisition,
+ * because each one is converted at the fix in force on the day *it* was raised
+ * — not one date for the whole queue. A screen that built its own would be a
+ * second answer to the question `inPolicyMoney` exists to answer once.
+ */
+export function policyMoneyFor(
+  account: Pick<Account, 'currency'>, rates: readonly Rate[],
+): (r: Pick<Requisition, 'amount' | 'currency' | 'raised_on'>) => PolicyMoney | null {
+  return r => inPolicyMoney(r, account.currency, rates, r.raised_on)
+}
+
+/** The clause that says what was converted and at what, appended to any
+    sentence that compares a requisition against a limit. A converted figure
+    shown without its rate and date is a figure nobody can check. */
+export function conversionNote(req: { amount: number; currency: string }, at: PolicyMoney): string {
+  if (at.native) return ''
+  return ` — ${money(req.amount, req.currency)} converted at ${at.rate} ${at.currency}/${req.currency} as of ${at.as_of}`
+}
+
+/**
  * What a purchase needs before it can go ahead.
  *
  * Two independent tests, deliberately not collapsed into one. Value is a
  * finance question and gets a finance answer; connecting something new to the
  * network is a risk question and gets IT's, however little it costs. A £200
  * security tool with a bad agent on it is worse than a £5,000 order of chairs.
+ *
+ * `amount` must already be in the policy's own money — pass
+ * `inPolicyMoney(req, account.currency, rates, req.raised_on)?.amount`. It
+ * takes a number rather than the requisition so that it cannot silently
+ * compare across currencies: a caller holding a requisition has to have done
+ * the conversion, or have refused, before it can call this at all.
  */
 export function needFor(
   { amount, vertical }: { amount: number; vertical: string }, policy: Policy,
@@ -224,43 +305,75 @@ export function needFor(
   return finance && it ? 'both' : finance ? 'finance' : it ? 'it' : 'none'
 }
 
-/** Why it needs what it needs, in the sentence a requester will read. */
-export function policyNoteFor(need: Need, amount: number, policy: Policy, currency: string): string {
+/**
+ * Why it needs what it needs, in the sentence a requester will read.
+ *
+ * `amount` is in the policy's money and `currency` is the policy's currency —
+ * not the requisition's. Formatting a rupee threshold with a shilling mark
+ * because that was the currency to hand is how a sentence comes to state a
+ * limit nobody set, and it is what this signature used to invite.
+ */
+export function policyNoteFor(
+  need: Need, amount: number, policy: Policy, currency: string, at?: PolicyMoney | null,
+): string {
   const t = money(policy.threshold, currency)
+  const from = at && !at.native
+    ? ` (judged on ${money(amount, currency)}, converted at ${at.rate} as of ${at.as_of})`
+    : ''
   switch (need) {
     case 'both':
-      return `At or above the ${t} threshold and a security purchase — finance approval and IT sign-off both required`
+      return `At or above the ${t} threshold and a security purchase — finance approval and IT sign-off both required${from}`
     case 'finance':
-      return `At or above the ${t} threshold — finance approval required`
+      return `At or above the ${t} threshold — finance approval required${from}`
     case 'it':
       return amount >= policy.threshold
         ? 'A security purchase — IT sign-off required'
-        : `Below the ${t} threshold, but a security purchase — IT sign-off required whatever it costs`
+        : `Below the ${t} threshold, but a security purchase — IT sign-off required whatever it costs${from}`
     default:
-      return `Below the ${t} threshold and not a security purchase — no approval needed, recorded for the audit trail`
+      return `Below the ${t} threshold and not a security purchase — no approval needed, recorded for the audit trail${from}`
   }
 }
 
-/** What turning a policy switch on or off actually does, counted against the
-    requisitions on record rather than described in the abstract. */
+/**
+ * What turning a policy switch on or off actually does, counted against the
+ * requisitions on record rather than described in the abstract.
+ *
+ * `judge` says what each requisition is worth in the policy's own money, and
+ * returns null for one that cannot be converted. Counting an unconvertible
+ * requisition either way would be a claim about a figure nobody has, so those
+ * are excluded from the counts and said out loud instead — a "3 of 12" that
+ * quietly ranged over 11 is the failure this parameter exists to prevent.
+ *
+ * It defaults to the raw amount, which is correct exactly when every
+ * requisition is in the account's primary currency.
+ */
 export function policyImpact(
   policy: Policy, next: Partial<Policy>, reqs: Requisition[],
+  judge: (r: Requisition) => number | null = r => r.amount,
 ): string[] {
   const out: string[] = []
   const after = { ...policy, ...next }
 
+  const judged = reqs
+    .map(r => ({ r, amount: judge(r) }))
+    .filter((x): x is { r: Requisition; amount: number } => x.amount !== null)
+  const unjudged = reqs.length - judged.length
+
   if (next.threshold !== undefined && next.threshold !== policy.threshold) {
-    const before = reqs.filter(r => r.amount >= policy.threshold).length
-    const now = reqs.filter(r => r.amount >= after.threshold).length
+    const before = judged.filter(x => x.amount >= policy.threshold).length
+    const now = judged.filter(x => x.amount >= after.threshold).length
     out.push(
       now === before
-        ? `Still ${now} of the ${reqs.length} requisitions on record would have needed finance approval`
-        : `${now} of the ${reqs.length} requisitions on record would have needed finance approval, against ${before} today`,
+        ? `Still ${now} of the ${judged.length} requisitions on record would have needed finance approval`
+        : `${now} of the ${judged.length} requisitions on record would have needed finance approval, against ${before} today`,
     )
   }
   if (next.security_signoff === false && policy.security_signoff) {
-    const n = reqs.filter(r => r.vertical === 'security' && r.amount < policy.threshold).length
+    const n = judged.filter(x => x.r.vertical === 'security' && x.amount < policy.threshold).length
     out.push(`${n} security purchase${n === 1 ? '' : 's'} below the threshold would go through with nobody from IT seeing ${n === 1 ? 'it' : 'them'}`)
+  }
+  if (unjudged > 0 && out.length) {
+    out.push(`${unjudged} requisition${unjudged === 1 ? ' is' : 's are'} in a currency with no rate on file for the day ${unjudged === 1 ? 'it was' : 'they were'} raised, so ${unjudged === 1 ? 'it is' : 'they are'} not in these counts.`)
   }
   if (next.self_approve === true && !policy.self_approve) {
     const approvers = new Set(reqs.filter(r => r.decided_by).map(r => r.decided_by))
@@ -301,8 +414,18 @@ export function decided(reqs: Requisition[]): Requisition[] {
  * inventing one, and inventing one is how every figure in this persona came to
  * wear a dollar sign. Without it the over-limit refusal names no figure at all,
  * which is worse prose and true.
+ *
+ * `at` is the requisition in the money `me.approve_limit` is set in — the
+ * account's primary currency. Passing it changes the verdict, not only the
+ * sentence, which is why it is separate from `currency`: an approver limited to
+ * ₹5,00,000 must not sign a $9,000 requisition because 9,000 is the smaller
+ * number. Omitted, the raw amount is compared, which is right exactly when the
+ * requisition is in the primary currency; passed as null it means the rate was
+ * missing, and the decision is refused rather than guessed.
  */
-export function canDecide(req: Requisition, me: Member, policy: Policy, currency?: string): Check {
+export function canDecide(
+  req: Requisition, me: Member, policy: Policy, currency?: string, at?: PolicyMoney | null,
+): Check {
   if (req.state !== 'pending') {
     return { ok: false, reason: `${req.id} was already ${req.state}. A decision is not re-openable.` }
   }
@@ -329,30 +452,45 @@ export function canDecide(req: Requisition, me: Member, policy: Policy, currency
   if ((req.need === 'it' || req.need === 'both') && !me.approves_it) {
     return { ok: false, reason: `This is a security purchase and needs IT sign-off, which you do not hold.` }
   }
-  if (me.approve_limit !== null && req.amount > me.approve_limit) {
-    return {
-      ok: false,
-      reason: currency
-        ? `${money(req.amount, currency)} is above the ${money(me.approve_limit, currency)} you may approve.`
-        : 'That is above the value you may approve.',
+  if (me.approve_limit !== null) {
+    /* `at === null` is "there is a rate and we could not find it", which is not
+       the same as "no conversion was needed" and must not be treated as it. */
+    if (at === null) {
+      return {
+        ok: false,
+        reason: `${req.id} is in ${req.currency} and the limits on this account are set in ${currency ?? 'another currency'}. There is no rate on file for ${req.raised_on}, so it cannot be judged against them.`,
+      }
+    }
+    const judged = at ? at.amount : req.amount
+    if (judged > me.approve_limit) {
+      return {
+        ok: false,
+        reason: currency
+          ? `${money(judged, currency)}${at ? conversionNote(req, at) : ''} is above the ${money(me.approve_limit, currency)} you may approve.`
+          : 'That is above the value you may approve.',
+      }
     }
   }
   return { ok: true }
 }
 
 /** Who could decide it, so a screen can say who to chase rather than leaving a
-    requester to guess. */
-export function whoCanDecide(req: Requisition, members: Member[], policy: Policy): Member[] {
+    requester to guess. `at` matters here as well as in `canDecide`: an approver
+    whose limit the requisition exceeds once converted is not somebody to chase. */
+export function whoCanDecide(
+  req: Requisition, members: Member[], policy: Policy, at?: PolicyMoney | null,
+): Member[] {
   return members
     .filter(m => m.status === 'active')
-    .filter(m => canDecide(req, m, policy).ok)
+    .filter(m => canDecide(req, m, policy, undefined, at).ok)
     .sort((a, b) => a.sort_order - b.sort_order)
 }
 
 export function validateDecision(
-  req: Requisition, me: Member, policy: Policy, approve: boolean, note: string, currency?: string,
+  req: Requisition, me: Member, policy: Policy, approve: boolean, note: string,
+  currency?: string, at?: PolicyMoney | null,
 ): Check {
-  const allowed = canDecide(req, me, policy, currency)
+  const allowed = canDecide(req, me, policy, currency, at)
   if (!allowed.ok) return allowed
   if (!approve && !note.trim()) {
     return {
@@ -363,10 +501,19 @@ export function validateDecision(
   return { ok: true }
 }
 
-/** What approving actually commits the account to. Approving places the order,
-    so this is the last point at which anybody sees the consequence. */
+/**
+ * What approving actually commits the account to. Approving places the order,
+ * so this is the last point at which anybody sees the consequence.
+ *
+ * The requisition is stated in its own money, because that is what the seller
+ * will be paid; the cap and the budget it moves are in the account's, because
+ * those are the figures somebody signed off. `at` is what bridges the two, and
+ * a null one means the arithmetic is not available — said plainly rather than
+ * done anyway on the wrong number.
+ */
 export function approvalImpact(
   req: Requisition, lines: ReqLine[], account: Account, centres: CostCentre[], spentYear: number,
+  at?: PolicyMoney | null,
 ): string[] {
   const c = account.currency
   const sellers = [...new Set(lines.map(l => l.seller))]
@@ -376,21 +523,32 @@ export function approvalImpact(
       ? `The order goes to ${sellers[0]} immediately — this is not a quote.`
       : `Orders go to ${sellers.join(' and ')} immediately — this is not a quote.`,
   )
+  const asked = money(req.amount, req.currency)
   out.push(
     req.model === 'monthly'
-      ? `${money(req.amount, c)} a month is added to the committed spend and appears on the next invoice.`
-      : `${money(req.amount, c)} is invoiced on ${account.terms}.`,
+      ? `${asked} a month is added to the committed spend and appears on the next invoice.`
+      : `${asked} is invoiced on ${account.terms}.`,
   )
-  const cc = centres.find(c => c.id === req.cost_centre)
+
+  const owed = at === undefined ? req.amount : at === null ? null : at.amount
+  if (owed === null) {
+    out.push(`This is in ${req.currency} and the account's caps and budget are in ${c}. With no rate on file for ${req.raised_on}, what it does to either cannot be shown.`)
+    return out
+  }
+  if (at && !at.native) {
+    out.push(`Against the account's ${c} caps that is ${money(owed, c)}${conversionNote(req, at)}.`)
+  }
+
+  const cc = centres.find(x => x.id === req.cost_centre)
   if (cc) {
-    const after = cc.spent_quarter + (req.model === 'monthly' ? req.amount * 3 : req.amount)
+    const after = cc.spent_quarter + (req.model === 'monthly' ? owed * 3 : owed)
     out.push(
       after > cc.cap_quarter
         ? `${cc.name} goes ${money(after - cc.cap_quarter, c)} over its ${money(cc.cap_quarter, c)} cap for ${cc.quarter}.`
         : `${cc.name} moves to ${money(after, c)} of its ${money(cc.cap_quarter, c)} cap for ${cc.quarter}.`,
     )
   }
-  const left = account.budget_year - spentYear - (req.model === 'monthly' ? req.amount : req.amount)
+  const left = account.budget_year - spentYear - owed
   out.push(`Budget remaining drops to about ${money(Math.max(0, left), c)} for the year.`)
   return out
 }
@@ -433,34 +591,54 @@ export function requisitionTotal(lines: Pick<ReqLine, 'quantity' | 'unit_price'>
   return round2(lines.reduce((s, l) => s + l.quantity * l.unit_price, 0))
 }
 
-export function summariseApprovals(reqs: Requisition[], me: Member, policy: Policy): {
-  waiting: number; mine: number; blocked: number; value: number
+/**
+ * The queue at a glance.
+ *
+ * `value` is a total, so it is a figure in one currency and `judge` is what
+ * puts every requisition into it. Adding `r.amount` across a shilling and a
+ * dollar requisition would produce a number in no currency at all — the mistake
+ * `20260802400000` took out of the operator's rollups — so anything that cannot
+ * be converted is counted in `unpriced` rather than folded into the total.
+ */
+export function summariseApprovals(
+  reqs: Requisition[], me: Member, policy: Policy,
+  judge: (r: Requisition) => number | null = r => r.amount,
+): {
+  waiting: number; mine: number; blocked: number; value: number; unpriced: number
   approved: number; declined: number
 } {
   const w = waiting(reqs)
+  const priced = w.map(judge).filter((n): n is number => n !== null)
   return {
     waiting: w.length,
     mine: w.filter(r => canDecide(r, me, policy).ok).length,
     blocked: w.filter(r => !canDecide(r, me, policy).ok).length,
-    value: round2(w.reduce((s, r) => s + r.amount, 0)),
+    value: round2(priced.reduce((s, n) => s + n, 0)),
+    unpriced: w.length - priced.length,
     approved: reqs.filter(r => r.state === 'approved').length,
     declined: reqs.filter(r => r.state === 'declined').length,
   }
 }
 
 /** Who is asking for what, so a lead can see whether one person is driving all
-    the spend. */
-export function byRequester(reqs: Requisition[], members: Member[]): {
-  member: Member; raised: number; value: number; pending: number
-}[] {
+    the spend. `judge` is a total's requirement, not a nicety — the rows are
+    sorted by `value`, and a sort over a mixed-currency sum ranks by exchange
+    rate as much as by spend. */
+export function byRequester(
+  reqs: Requisition[], members: Member[],
+  judge: (r: Requisition) => number | null = r => r.amount,
+): { member: Member; raised: number; value: number; unpriced: number; pending: number }[] {
   return members
     .filter(m => m.can_raise)
     .map(m => {
       const mine = reqs.filter(r => r.raised_by === m.id)
+      const approved = mine.filter(r => r.state === 'approved')
+      const priced = approved.map(judge).filter((n): n is number => n !== null)
       return {
         member: m,
         raised: mine.length,
-        value: round2(mine.filter(r => r.state === 'approved').reduce((s, r) => s + r.amount, 0)),
+        value: round2(priced.reduce((s, n) => s + n, 0)),
+        unpriced: approved.length - priced.length,
         pending: mine.filter(r => r.state === 'pending').length,
       }
     })

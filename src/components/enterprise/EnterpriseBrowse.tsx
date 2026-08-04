@@ -5,6 +5,7 @@ import { VERTICAL_NAMES } from './data'
 import { loadAccount, loadEnterpriseCatalogue } from '../../lib/enterpriseRepo'
 import type { EnterpriseListing } from '../../lib/enterpriseRepo'
 import { useAccountMoney } from './money'
+import { useMarket } from '../../lib/MarketContext'
 import type { Policy } from '../../lib/enterprise'
 
 export function EnterpriseBrowse() {
@@ -15,10 +16,30 @@ export function EnterpriseBrowse() {
      catalogue that promises a different rule from the one the Approvals screen
      applies is worse than one that promises nothing. */
   const [policy, setPolicy] = useState<Policy | null>(null)
-  /* The account's own currency too, for the same reason: a threshold quoted in
-     dollars to a company invoiced in rupees is a different rule again. */
-  const [currency, setCurrency] = useState<string | null>(null)
-  const { money, money0 } = useAccountMoney(currency)
+  /* What the catalogue is quoted in.
+
+     The choice comes from the header picker rather than a second chooser on
+     this screen. `MarketContext` already pins the market to
+     `enterprise_accounts.market` for a signed-in business and offers exactly
+     the currencies that market takes — the same list
+     `guard_requisition_currency` accepts. A control here as well would be a
+     second answer to one question, which is how the picker and the guard came
+     to disagree in the first place.
+
+     `offered` is that list, kept for the sentence under the banner; an account
+     in India has one entry and there is nothing to say. */
+  const { currency: chosen } = useMarket()
+  const [offered, setOffered] = useState<string[]>([])
+  /* The account's primary currency stays separate from the quote currency,
+     because the approval threshold is set in it and does not move when the
+     shelf does. Quoting a rupee threshold with a shilling mark is the mistake
+     this pair of variables exists to keep apart. */
+  const [primary, setPrimary] = useState<string | null>(null)
+  const currency = primary === null ? null
+    : chosen && offered.includes(chosen.code) ? chosen.code
+    : primary
+  const { money } = useAccountMoney(currency)
+  const { money0 } = useAccountMoney(primary)
   /* The catalogue itself, from `products` rather than from a constant. The
      constant listed twelve items with dollar prices and SKU ids that named
      different products in the real catalogue — `SKU-3001` was an IoT SIM pack
@@ -29,11 +50,22 @@ export function EnterpriseBrowse() {
     void (async () => {
       const book = await loadAccount()
       setPolicy(book.policy)
-      const cur = book.account?.currency ?? 'USD'
-      setCurrency(cur)
-      setListings(await loadEnterpriseCatalogue(cur))
+      setPrimary(book.account?.currency ?? 'USD')
+      setOffered(book.currencies)
     })()
   }, [])
+
+  /* Re-read the shelf when the currency moves rather than converting what is
+     already on it. A price is chosen per market, not derived from another
+     market's — `product_prices` holds a row per currency and that row is the
+     price, so converting the rupee one would show a figure nobody set. */
+  useEffect(() => {
+    if (!currency) return
+    let live = true
+    setListings(null)
+    void loadEnterpriseCatalogue(currency).then(rows => { if (live) setListings(rows) })
+    return () => { live = false }
+  }, [currency])
   const [sort, setSort] = useState('popular')
 
   let results = listings ?? []
@@ -91,6 +123,15 @@ export function EnterpriseBrowse() {
         Everything here is pre-approved for business purchase. {policy
           ? `Anything at or above ${money0(Number(policy.threshold))} needs finance approval before the order is placed${policy.security_signoff ? '; security purchases also need IT sign-off whatever they cost' : ''}.`
           : 'Your account’s approval thresholds are loading.'}
+        {/* Said only where there is a choice to have made. An account in India
+            never sees it, because India trades in rupees alone. */}
+        {offered.length > 1 && (
+          <div style={{ fontSize: 'var(--text-xs)', marginTop: '8px' }}>
+            {currency === primary
+              ? `Priced in ${currency}. This account may also buy in ${offered.filter(c => c !== primary).join(' or ')} — the currency picker in the header changes it.`
+              : `Priced in ${currency}. The ${money0(Number(policy?.threshold ?? 0))} threshold stays in ${primary}, and a requisition raised in ${currency} is converted to it at the rate on the day it is raised.`}
+          </div>
+        )}
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '230px 1fr', gap: '16px' }} className="op-grid-2col">

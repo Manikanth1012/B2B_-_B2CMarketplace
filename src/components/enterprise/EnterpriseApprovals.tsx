@@ -14,9 +14,10 @@ import type { AccountBook } from '../../lib/enterpriseRepo'
 import {
   waiting, decided, canDecide, whoCanDecide, approvalImpact, duplicatesOf,
   summariseApprovals, byRequester, centreUse, centresAtRisk, policyImpact,
-  spentThisYear, day, NEED_LABEL,
+  spentThisYear, day, NEED_LABEL, policyMoneyFor, conversionNote,
 } from '../../lib/enterprise'
-import type { Requisition, Policy, Member } from '../../lib/enterprise'
+import type { Requisition, Policy, Member, PolicyMoney } from '../../lib/enterprise'
+import { useMarket } from '../../lib/MarketContext'
 import { may, roleName } from '../../lib/enterpriseAdmin'
 
 /* Approvals, from the seat of the person who signs them.
@@ -42,6 +43,8 @@ export function EnterpriseApprovals() {
 
   const reload = useCallback(async () => setBook(await loadAccount()), [])
   const { money, money0 } = useAccountMoney(book?.account?.currency)
+  /* For rows that carry their own currency, which a requisition now does. */
+  const { fmtIn } = useMarket()
   useEffect(() => { void reload() }, [reload])
 
   if (!book) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
@@ -53,7 +56,15 @@ export function EnterpriseApprovals() {
 
   const queue = waiting(book.requisitions)
   const history = decided(book.requisitions)
-  const summary = me ? summariseApprovals(book.requisitions, me, policy) : null
+  /* Every figure compared against a limit on this screen — the threshold, each
+     approver's ceiling, the cost-centre caps — is set in the account's own
+     money. A requisition raised in one of the market's other currencies is
+     converted to it here, once, at the fix in force on the day it was raised.
+     Everything that merely *reports* what a requisition is worth stays in the
+     requisition's own currency, because that is what will be paid. */
+  const at = policyMoneyFor(account, book.rates)
+  const judge = (r: Requisition) => at(r)?.amount ?? null
+  const summary = me ? summariseApprovals(book.requisitions, me, policy, judge) : null
   const atRisk = centresAtRisk(book.centres)
 
   return (
@@ -91,8 +102,13 @@ export function EnterpriseApprovals() {
           <StatCard label="Waiting on you" value={fmtInt(summary.mine)}
                     sublabel={summary.blocked ? `${summary.blocked} more need somebody else` : 'Nothing needs another approver'}
                     color={summary.mine ? 'var(--warning)' : 'var(--success)'} />
-          <StatCard label="Value in the queue" value={money(summary.value)}
-                    sublabel={`${summary.waiting} requisitions, oldest first`} />
+          {/* A total, so it says what it was totalled into. `unpriced` is the
+              honest remainder: a queue value quietly computed over four of five
+              requisitions is worse than one that names what it left out. */}
+          <StatCard label={`Value in the queue (${account.currency})`} value={money(summary.value)}
+                    sublabel={summary.unpriced
+                      ? `${summary.waiting} requisitions · ${summary.unpriced} not converted, so not in this`
+                      : `${summary.waiting} requisitions, oldest first`} />
           <StatCard label="Decided" value={fmtInt(summary.approved + summary.declined)}
                     sublabel={`${summary.approved} approved · ${summary.declined} declined`} />
           <StatCard label="Budget used"
@@ -113,13 +129,13 @@ export function EnterpriseApprovals() {
           <EmptyState message="Everything raised on this account has been decided." />
         </SectionCard>
       ) : queue.map(req => (
-        <RequisitionCard key={req.id} req={req} book={book}
+        <RequisitionCard key={req.id} req={req} book={book} at={at(req)}
                          onDecide={approve => setDeciding({ req, approve })} />
       ))}
 
-      <SectionCard title="Who is asking" subtitle="Approved value by requester, so one person driving all the spend is visible">
+      <SectionCard title="Who is asking" subtitle={`Approved value by requester in ${account.currency}, so one person driving all the spend is visible`}>
         <Table headers={['Person', 'Role', 'Cost centre', 'Raised', 'Waiting', 'Approved value']}>
-          {byRequester(book.requisitions, book.members).map(r => (
+          {byRequester(book.requisitions, book.members, judge).map(r => (
             <tr key={r.member.id}>
               <Td><div style={{ fontWeight: 600 }}>{r.member.name}</div>
                   <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{r.member.title}</div></Td>
@@ -129,7 +145,13 @@ export function EnterpriseApprovals() {
               </Td>
               <Td right>{r.raised}</Td>
               <Td right>{r.pending || '—'}</Td>
-              <Td right>{money(r.value)}</Td>
+              <Td right>{money(r.value)}
+                {r.unpriced > 0 && (
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                    +{r.unpriced} not converted
+                  </div>
+                )}
+              </Td>
             </tr>
           ))}
         </Table>
@@ -182,7 +204,10 @@ export function EnterpriseApprovals() {
                   )}
                 </Td>
                 <Td right style={{ fontSize: 'var(--text-xs)' }}>{nameOf(book.members, r.raised_by)}</Td>
-                <Td right>{money(r.amount)}{r.model === 'monthly' ? '/mo' : ''}</Td>
+                {/* What was ordered, in what the seller was paid — not the
+                    account's primary currency, which is only the money the
+                    limits are set in. */}
+                <Td right>{fmtIn(r.amount, r.currency)}{r.model === 'monthly' ? '/mo' : ''}</Td>
                 <Td right style={{ fontSize: 'var(--text-xs)' }}>{NEED_LABEL[r.need]}</Td>
                 <Td right style={{ fontSize: 'var(--text-xs)' }}>
                   {nameOf(book.members, r.decided_by)}
@@ -219,16 +244,23 @@ function nameOf(members: Member[], id: string | null): string {
 
 /* ------------------------------------------------------------ one request -- */
 
-function RequisitionCard({ book, req, onDecide }: {
-  book: AccountBook; req: Requisition; onDecide: (approve: boolean) => void
+function RequisitionCard({ book, req, at, onDecide }: {
+  book: AccountBook; req: Requisition
+  /* The requisition in the account's own money, or null where no rate covers
+     the day it was raised. Computed once on the screen above rather than here,
+     so the card, the queue total and the decision all judge on one figure. */
+  at: PolicyMoney | null
+  onDecide: (approve: boolean) => void
 }) {
-  const { money } = useAccountMoney(book.account?.currency)
+  const { fmtIn } = useMarket()
+  /* The requisition's own money — what the seller is paid. */
+  const money = (n: number) => fmtIn(n, req.currency)
   const { me, policy } = book
   const lines = book.lines.filter(l => l.requisition_id === req.id)
   const allowed = me && policy
-    ? canDecide(req, me, policy, book.account?.currency ?? 'USD')
+    ? canDecide(req, me, policy, book.account?.currency ?? 'USD', at)
     : { ok: false as const, reason: 'Not signed in' }
-  const others = policy ? whoCanDecide(req, book.members, policy) : []
+  const others = policy ? whoCanDecide(req, book.members, policy, at) : []
   const dupes = policy?.duplicate_flag ? duplicatesOf(lines, book.subscriptions) : []
   const centre = book.centres.find(c => c.id === req.cost_centre)
   const Icon = VICON[req.vertical] ?? Cpu
@@ -265,6 +297,20 @@ function RequisitionCard({ book, req, onDecide }: {
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
               {req.model === 'monthly' ? 'per month' : 'one-off'}
             </div>
+            {/* Only where something was converted. Printing "at 1.0" on every
+                same-currency requisition would be noise on nine rows in ten and
+                would train an approver to stop reading it. */}
+            {at && !at.native && (
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                {fmtIn(at.amount, at.currency)} against the account’s limits
+                <div>at {at.rate} {at.currency}/{req.currency} on {day(at.as_of)}</div>
+              </div>
+            )}
+            {at === null && (
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', marginTop: '2px' }}>
+                No {req.currency}→{book.account?.currency} rate for {day(req.raised_on)}
+              </div>
+            )}
           </div>
         </div>
 
@@ -324,17 +370,22 @@ function DecideModal({ book, me, policy, req, approve, onClose, onDone }: {
   book: AccountBook; me: Member; policy: Policy; req: Requisition
   approve: boolean; onClose: () => void; onDone: () => Promise<void>
 }) {
-  const { money } = useAccountMoney(book.account?.currency)
+  const { fmtIn } = useMarket()
+  const money = (n: number) => fmtIn(n, req.currency)
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const lines = book.lines.filter(l => l.requisition_id === req.id)
+  const at = book.account ? policyMoneyFor(book.account, book.rates)(req) : null
   const impact = book.account
-    ? approvalImpact(req, lines, book.account, book.centres, spentThisYear(book.invoices, book.account))
+    ? approvalImpact(req, lines, book.account, book.centres, spentThisYear(book.invoices, book.account), at)
     : []
 
   const submit = async () => {
     setBusy(true)
-    const res = await decideRequisition({ req, me, policy, approve, note, currency: book.account?.currency ?? 'USD' })
+    const res = await decideRequisition({
+      req, me, policy, approve, note,
+      currency: book.account?.currency ?? 'USD', rates: book.rates,
+    })
     setBusy(false)
     toast(res.ok ? res.note ?? 'Saved' : res.reason, res.ok ? 'success' : 'error')
     if (res.ok) await onDone()
@@ -351,6 +402,7 @@ function DecideModal({ book, me, policy, req, approve, onClose, onDone }: {
       </>}>
       <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
         {nameOf(book.members, req.raised_by)} · {money(Number(req.amount))}{req.model === 'monthly' ? ' per month' : ''} · {req.id}
+        {at && !at.native && conversionNote(req, at).replace(/^ — /, ' · ')}
       </div>
 
       <FormField label={`Reason (shared with ${nameOf(book.members, req.raised_by)})`} required={!approve}
@@ -379,7 +431,12 @@ function PolicyModal({ book, me, policy, onClose, onDone }: {
 }) {
   const [form, setForm] = useState<Policy>(policy)
   const [busy, setBusy] = useState(false)
-  const impact = policyImpact(policy, form, book.requisitions)
+  /* The threshold being edited is in the account's own money, so the "how many
+     would have needed approval" counts have to be too. */
+  const judge = book.account
+    ? (r: Requisition) => policyMoneyFor(book.account!, book.rates)(r)?.amount ?? null
+    : undefined
+  const impact = policyImpact(policy, form, book.requisitions, judge)
 
   const submit = async () => {
     setBusy(true)

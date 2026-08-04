@@ -5,10 +5,12 @@ import {
   summariseApprovals, byRequester, centreUse, centresAtRisk, committed, idleSeats,
   renewingWithin, outstanding, spentThisYear, budgetPosition, bySeller, byCostCentre,
   reconcileInvoice, arrears, taxPosition, money, money0, day, NEED_LABEL,
+  inPolicyMoney, policyMoneyFor, conversionNote,
 } from './enterprise'
 import type {
   Account, Member, CostCentre, Policy, Requisition, ReqLine, Subscription, Invoice, InvoiceLine,
 } from './enterprise'
+import type { Rate } from './money'
 
 const policy: Policy = {
   account_id: 'ENT-2007', threshold: 2000, security_signoff: true, duplicate_flag: true,
@@ -35,7 +37,11 @@ function req(over: Partial<Requisition> = {}): Requisition {
   return {
     id: 'REQ-1', account_id: 'ENT-2007', raised_by: 'EU-04', raised_on: '2026-07-31',
     raised_at: 'Today', title: 'Cold-chain starter ×2', vertical: 'iot', cost_centre: 'CC-4100',
-    amount: 4590, model: 'oneoff', reason: 'Two depots open in September.', need: 'finance',
+    /* Matches ACCOUNT.currency below. These fixtures are about who may approve
+       what, not about money, so the requisition is in the account's own
+       currency and nothing here converts — the cross-currency cases have their
+       own describe block. */
+    amount: 4590, currency: 'USD', model: 'oneoff', reason: 'Two depots open in September.', need: 'finance',
     policy_note: '', state: 'pending', decided_by: null, decided_on: null, decision_note: null,
     order_ref: null, po_ref: null, sort_order: 1, ...over,
   }
@@ -122,6 +128,111 @@ describe('policyNoteFor', () => {
 
   it('does not say "below the threshold" about something above it', () => {
     expect(policyNoteFor('it', 5000, { ...policy, threshold: 2000 }, 'USD')).not.toMatch(/Below/)
+  })
+})
+
+/* A business in a two-currency market may raise a requisition in either of them
+ * — Harbourpoint contracts in Nairobi, so shillings or dollars. Everything it
+ * is *judged* against is a chosen figure in the account's primary currency, so
+ * the requisition is what gets converted.
+ *
+ * KES is the account currency here rather than USD, deliberately: converting
+ * into the larger unit hides an error, and converting into the smaller one
+ * makes it a factor of 129. */
+describe('a requisition in a currency the account is not billed in', () => {
+  const KE: Account = { ...ACCOUNT, id: 'ENT-2014', company: 'Harbourpoint Retail', currency: 'KES', market: 'KE', budget_year: 15000000 }
+  const rates: Rate[] = [
+    { base: 'USD', quote: 'KES', rate: 129.4, as_of: '2026-07-01', pegged: false },
+    { base: 'USD', quote: 'KES', rate: 130.1, as_of: '2026-08-01', pegged: false },
+  ] as Rate[]
+  const dollars = req({ amount: 9000, currency: 'USD', raised_on: '2026-07-31' })
+
+  it('is worth what the rate in force on the day it was raised says', () => {
+    const at = inPolicyMoney(dollars, 'KES', rates, dollars.raised_on)
+    /* July's fix, not August's — a requisition reopened later has to read the
+       same as the one the approver signed. */
+    expect(at).toEqual({ amount: 1164600, currency: 'KES', rate: 129.4, as_of: '2026-07-01', native: false })
+  })
+
+  it('converts nothing when it is already in the account\'s money', () => {
+    const at = inPolicyMoney({ amount: 4590, currency: 'KES' }, 'KES', rates, '2026-07-31')
+    expect(at).toMatchObject({ amount: 4590, rate: 1, native: true })
+  })
+
+  it('refuses rather than guessing when no rate covers the day', () => {
+    expect(inPolicyMoney(dollars, 'KES', rates, '2026-06-30')).toBeNull()
+    expect(inPolicyMoney({ amount: 10, currency: 'AED' }, 'KES', rates, '2026-07-31')).toBeNull()
+  })
+
+  it('needs approval on the converted figure, not the smaller number', () => {
+    const at = inPolicyMoney(dollars, 'KES', rates, dollars.raised_on)!
+    const big = { ...policy, threshold: 500000 }
+    /* 9,000 is below a 500,000 threshold and KES 1,164,600 is not. Comparing
+       the raw amount would wave this through unapproved. */
+    expect(needFor({ amount: dollars.amount, vertical: 'iot' }, big)).toBe('none')
+    expect(needFor({ amount: at.amount, vertical: 'iot' }, big)).toBe('finance')
+  })
+
+  it('refuses an approver whose limit the converted figure exceeds', () => {
+    const at = inPolicyMoney(dollars, 'KES', rates, dollars.raised_on)
+    const capped = member({ id: 'EU-09', approve_limit: 1000000, approves_finance: true })
+    const out = canDecide(dollars, capped, policy, 'KES', at)
+    expect(out.ok).toBe(false)
+    expect(out.ok === false && out.reason).toMatch(/KES 1,164,600.00 — USD 9,000.00 converted at 129.4/)
+  })
+
+  it('lets the same approver through on the same figure in their own money', () => {
+    const small = req({ amount: 9000, currency: 'KES' })
+    const capped = member({ id: 'EU-09', approve_limit: 1000000, approves_finance: true })
+    /* The other half of the test above. A guard that refuses everything passes
+       every refusal test ever written for it. */
+    expect(canDecide(small, capped, policy, 'KES', inPolicyMoney(small, 'KES', rates, small.raised_on)).ok).toBe(true)
+  })
+
+  it('refuses to decide at all when the rate is missing', () => {
+    const capped = member({ id: 'EU-09', approve_limit: 1000000, approves_finance: true })
+    const out = canDecide(dollars, capped, policy, 'KES', null)
+    expect(out.ok).toBe(false)
+    expect(out.ok === false && out.reason).toMatch(/no rate on file for 2026-07-31/)
+  })
+
+  it('does not fold an unconvertible requisition into a total', () => {
+    const judge = (r: Requisition) => policyMoneyFor(KE, rates)(r)?.amount ?? null
+    const mixed = [
+      req({ id: 'a', amount: 5000, currency: 'KES' }),
+      dollars,
+      req({ id: 'c', amount: 40, currency: 'AED' }),
+    ]
+    const out = summariseApprovals(mixed, member({ approve_limit: null }), policy, judge)
+    expect(out.value).toBe(1169600)
+    expect(out.unpriced).toBe(1)
+    expect(out.waiting).toBe(3)
+  })
+
+  it('says which figures a policy what-if could not count', () => {
+    const judge = (r: Requisition) => policyMoneyFor(KE, rates)(r)?.amount ?? null
+    const out = policyImpact(policy, { threshold: 900000 }, [dollars, req({ id: 'c', amount: 40, currency: 'AED' })], judge)
+    expect(out[0]).toMatch(/1 of the 1 requisitions/)
+    expect(out.some(s => /1 requisition is in a currency with no rate on file/.test(s))).toBe(true)
+  })
+
+  it('states the order in the seller\'s money and the cap in the account\'s', () => {
+    const at = inPolicyMoney(dollars, 'KES', rates, dollars.raised_on)
+    const out = approvalImpact(dollars, [], KE, [centre({ cap_quarter: 2000000, spent_quarter: 0 })], 0, at)
+    expect(out.some(s => /USD 9,000.00 is invoiced/.test(s))).toBe(true)
+    expect(out.some(s => /KES 1,164,600.00 of its KES 2,000,000.00 cap/.test(s))).toBe(true)
+  })
+
+  it('says the cap arithmetic is unavailable rather than doing it wrong', () => {
+    const out = approvalImpact(dollars, [], KE, [centre()], 0, null)
+    expect(out.some(s => /what it does to either cannot be shown/.test(s))).toBe(true)
+    expect(out.some(s => /cap for/.test(s))).toBe(false)
+  })
+
+  it('says what was converted and at what, and nothing when nothing was', () => {
+    const at = inPolicyMoney(dollars, 'KES', rates, dollars.raised_on)!
+    expect(conversionNote(dollars, at)).toBe(' — USD 9,000.00 converted at 129.4 KES/USD as of 2026-07-01')
+    expect(conversionNote({ amount: 1, currency: 'KES' }, inPolicyMoney({ amount: 1, currency: 'KES' }, 'KES', rates, '2026-07-31')!)).toBe('')
   })
 })
 

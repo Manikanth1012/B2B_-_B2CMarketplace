@@ -9,11 +9,14 @@ import { supabase } from './supabase'
 import { loadPriceBook, loadCopyBook, describeIn } from './moneyRepo'
 import {
   needFor, policyNoteFor, validateDecision, validateRequisition, requisitionTotal, money,
+  inPolicyMoney, policyMoneyFor,
 } from './enterprise'
 import type {
   Account, Member, CostCentre, Policy, Requisition, ReqLine,
   Subscription, Invoice, InvoiceLine, Check,
 } from './enterprise'
+import { currenciesOf } from './money'
+import type { Rate, MarketCurrency } from './money'
 import type { EnterpriseRole } from './enterpriseAdmin'
 
 export type Result = Check
@@ -33,12 +36,22 @@ export interface AccountBook {
   subscriptions: Subscription[]
   invoices: Invoice[]
   invoiceLines: InvoiceLine[]
+  /* What this account may transact in, default first: the currencies its own
+     market takes. One entry for an account in India, two for one in Nairobi or
+     Dubai — the same list `guard_requisition_currency` enforces, so the screen
+     offers exactly what the database will accept. */
+  currencies: string[]
+  /* The rate table, because a requisition raised in a second currency is judged
+     against a threshold set in the account's primary one, at the fix in force
+     on the day it was raised. */
+  rates: Rate[]
   loadError?: string
 }
 
 const EMPTY: AccountBook = {
   account: null, me: null, members: [], roles: [], centres: [], policy: null,
   requisitions: [], lines: [], subscriptions: [], invoices: [], invoiceLines: [],
+  currencies: [], rates: [],
 }
 
 /**
@@ -52,7 +65,7 @@ export async function loadAccount(): Promise<AccountBook> {
   const { data: session } = await supabase.auth.getUser()
   const uid = session.user?.id ?? null
 
-  const [a, u, ro, c, p, r, l, s, i, il] = await Promise.all([
+  const [a, u, ro, c, p, r, l, s, i, il, mc, fx] = await Promise.all([
     supabase.from('enterprise_accounts').select('*').maybeSingle(),
     supabase.from('enterprise_users').select('*').order('sort_order'),
     supabase.from('enterprise_roles').select('*').order('sort_order'),
@@ -63,6 +76,8 @@ export async function loadAccount(): Promise<AccountBook> {
     supabase.from('enterprise_subscriptions').select('*').order('sort_order'),
     supabase.from('enterprise_invoices').select('*').order('sort_order'),
     supabase.from('enterprise_invoice_lines').select('*').order('sort_order'),
+    supabase.from('market_currencies').select('*').order('sort_order'),
+    supabase.from('fx_rates').select('*').order('as_of'),
   ])
 
   const errors: string[] = []
@@ -71,10 +86,11 @@ export async function loadAccount(): Promise<AccountBook> {
     return (res.data ?? []) as T[]
   }
   const members = grab<Member>(u, 'your colleagues')
+  const account = (a.data ?? null) as Account | null
 
   return {
     ...EMPTY,
-    account: (a.data ?? null) as Account | null,
+    account,
     me: members.find(m => m.user_id === uid) ?? null,
     members,
     roles: grab<EnterpriseRole>(ro, 'roles'),
@@ -85,6 +101,15 @@ export async function loadAccount(): Promise<AccountBook> {
     subscriptions: grab<Subscription>(s, 'subscriptions'),
     invoices: grab<Invoice>(i, 'invoices'),
     invoiceLines: grab<InvoiceLine>(il, 'invoice lines'),
+    /* Empty rather than a guess when the account has not loaded. Falling back to
+       its primary currency would be inventing an answer to "what may we pay in",
+       and the screen would then offer a choice the guard has not agreed to. */
+    currencies: account
+      ? currenciesOf(account.market, grab<MarketCurrency>(mc, 'market currencies'))
+      : [],
+    /* PostgREST hands numerics back as strings, and a rate that is a string
+       multiplies to NaN — which converts every figure to nothing at all. */
+    rates: grab<Rate>(fx, 'exchange rates').map(x => ({ ...x, rate: Number(x.rate) })),
     ...(a.error ? { loadError: `Your account did not load (${a.error.message}).` }
       : errors.length ? { loadError: `Some of this did not load (${errors.join('; ')}).` } : {}),
   }
@@ -101,14 +126,20 @@ export async function loadAccount(): Promise<AccountBook> {
  * same update as the decision.
  */
 export async function decideRequisition(
-  { req, me, policy, approve, note, currency }: {
+  { req, me, policy, approve, note, currency, rates = [] }: {
     req: Requisition; me: Member; policy: Policy; approve: boolean; note: string
-    /* The account's, so the note that comes back names the sum in the money the
-       account is actually invoiced in. */
+    /* The account's primary currency — what the approver's limit is set in, and
+       what the requisition is judged against. */
     currency: string
+    rates?: readonly Rate[]
   },
 ): Promise<Result> {
-  const check = validateDecision(req, me, policy, approve, note, currency)
+  /* An approver's limit is a chosen figure in the account's own money, so a
+     requisition raised in another currency is converted at the fix in force
+     when it was raised before being compared against it. `null` means there is
+     no such rate, and `validateDecision` refuses rather than comparing. */
+  const at = inPolicyMoney(req, currency, rates, req.raised_on)
+  const check = validateDecision(req, me, policy, approve, note, currency, at)
   if (!check.ok) return check
 
   const { data, error } = await supabase.from('enterprise_requisitions').update({
@@ -125,7 +156,10 @@ export async function decideRequisition(
   return {
     ok: true,
     note: approve
-      ? `${req.id} approved — the order has gone to the seller and ${money(req.amount, currency)} is committed.`
+      /* Named in the money it will actually be paid in, which is the
+         requisition's own — the conversion was for the limit test, not for the
+         seller. */
+      ? `${req.id} approved — the order has gone to the seller and ${money(req.amount, req.currency)} is committed.`
       : `${req.id} declined. Nothing was ordered and the requester has been told why.`,
   }
 }
@@ -154,6 +188,9 @@ export async function withdrawRequisition(req: Requisition, me: Member): Promise
 export interface Draft {
   title: string
   reason: string
+  /* What the lines are priced in. Any currency the account's market takes —
+     `AccountBook.currencies` is that list, and it is what the form offers. */
+  currency: string
   vertical: string
   cost_centre: string | null
   model: 'oneoff' | 'monthly'
@@ -172,8 +209,13 @@ export interface Draft {
  * asked for on the day.
  */
 export async function raiseRequisition(
-  { draft, me, account, policy }: {
+  { draft, me, account, policy, currencies = [], rates = [] }: {
     draft: Draft; me: Member; account: Account; policy: Policy
+    /* What this account's market takes. Checked here as well as by
+       `guard_requisition_currency`, so the refusal is a sentence rather than a
+       Postgres error string. */
+    currencies?: readonly string[]
+    rates?: readonly Rate[]
   },
 ): Promise<Result> {
   const check = validateRequisition(draft, me)
@@ -183,6 +225,14 @@ export async function raiseRequisition(
   const amount = requisitionTotal(lines)
   if (amount <= 0) return { ok: false, reason: 'That adds up to nothing — check the quantities' }
 
+  const currency = draft.currency || account.currency
+  if (currencies.length && !currencies.includes(currency)) {
+    return {
+      ok: false,
+      reason: `This account contracts in ${account.market}, which does not trade in ${currency}. It takes ${currencies.join(' or ')}.`,
+    }
+  }
+
   if (account.po_required && !draft.po_ref.trim()) {
     return {
       ok: false,
@@ -190,15 +240,29 @@ export async function raiseRequisition(
     }
   }
 
-  const need = needFor({ amount, vertical: draft.vertical }, policy)
-  const id = `REQ-${Math.floor(Date.now() / 1000).toString().slice(-4)}`
   const today = new Date().toISOString().slice(0, 10)
+
+  /* The threshold is set in the account's primary currency, so this is what the
+     requisition is worth in that money. Refused rather than raised when there
+     is no rate: a requisition whose `need` was decided on the wrong number is
+     an approval nobody can rely on, and it would sit in the queue looking
+     settled. */
+  const at = inPolicyMoney({ amount, currency }, account.currency, rates, today)
+  if (!at) {
+    return {
+      ok: false,
+      reason: `There is no exchange rate on file for ${currency} to ${account.currency} on ${today}, so this cannot be checked against the ${money(policy.threshold, account.currency)} approval threshold.`,
+    }
+  }
+
+  const need = needFor({ amount: at.amount, vertical: draft.vertical }, policy)
+  const id = `REQ-${Math.floor(Date.now() / 1000).toString().slice(-4)}`
 
   const { error } = await supabase.from('enterprise_requisitions').insert({
     id, account_id: account.id, raised_by: me.id, raised_on: today, raised_at: 'Just now',
     title: draft.title.trim(), vertical: draft.vertical, cost_centre: draft.cost_centre,
-    amount, model: draft.model, reason: draft.reason.trim(),
-    need, policy_note: policyNoteFor(need, amount, policy, account.currency), state: 'pending',
+    amount, currency, model: draft.model, reason: draft.reason.trim(),
+    need, policy_note: policyNoteFor(need, at.amount, policy, account.currency, at), state: 'pending',
     po_ref: draft.po_ref.trim() || null,
     sort_order: 0,
   })
@@ -222,8 +286,8 @@ export async function raiseRequisition(
   return {
     ok: true,
     note: need === 'none'
-      ? `${id} raised for ${money(amount, account.currency)}. It is within policy, so the order has been placed.`
-      : `${id} raised for ${money(amount, account.currency)}. It needs ${need === 'both' ? 'finance approval and IT sign-off' : need === 'finance' ? 'finance approval' : 'IT sign-off'} before anything is ordered.`,
+      ? `${id} raised for ${money(amount, currency)}. It is within policy, so the order has been placed.`
+      : `${id} raised for ${money(amount, currency)}. It needs ${need === 'both' ? 'finance approval and IT sign-off' : need === 'finance' ? 'finance approval' : 'IT sign-off'} before anything is ordered.`,
   }
 }
 

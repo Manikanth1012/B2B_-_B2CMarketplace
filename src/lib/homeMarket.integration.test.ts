@@ -7,8 +7,10 @@
  *                that market trades in. Priya Raman is Indian, so rupees and
  *                nothing else; a Kenyan customer would have shillings or
  *                dollars.
- *   an account   contracts in one market and is invoiced in one currency. A
- *                business does not get a currency choice — it signed for one.
+ *   an account   contracts in one market and may transact in any currency that
+ *                market takes — the same choice a shopper there has. What it
+ *                does not get to choose is the market, or the primary currency
+ *                its budget and limits are set in.
  *   a seller     prices only in the currencies of markets they are approved in.
  *                Beacon Reseller Co sells in Kenya and the UAE, so KES, AED and
  *                USD, and never INR.
@@ -104,7 +106,7 @@ describe('a customer buys in the market they are registered in', () => {
   })
 })
 
-describe('a business contracts in one market and one currency', () => {
+describe('a business contracts in one market and buys in what that market takes', () => {
   let account: { id: string; market: string; currency: string }
 
   beforeAll(async () => {
@@ -200,6 +202,92 @@ describe('a business contracts in one market and one currency', () => {
       expect(i.market, `${i.id} was raised in ${i.market}`).toBe(account.market)
       expect(takes.has(i.currency), `${i.id} is in ${i.currency}, which ${i.market} does not take`).toBe(true)
     }
+  })
+})
+
+describe('a requisition is raised in money the account\'s market takes', () => {
+  /* Where a business purchase actually begins. The order guard has been right
+     about currency since `20260802470000`, but a requisition had an amount and
+     no currency at all — so a dollar request on a shilling account was
+     indistinguishable from a shilling one, and it was the requisition that got
+     approved. */
+  let account: { id: string; market: string; currency: string }
+  let me: { id: string }
+  let takes: string[]
+  const written: string[] = []
+
+  const raise = (currency: string) => supabase.from('enterprise_requisitions').insert({
+    id: `REQ-HM${Date.now().toString().slice(-5)}`,
+    account_id: account.id, raised_by: me.id,
+    raised_on: new Date().toISOString().slice(0, 10), raised_at: 'Just now',
+    title: 'Integration test — currency guard', vertical: 'iot', cost_centre: null,
+    amount: 1000, currency, model: 'oneoff',
+    reason: 'Written by homeMarket.integration.test.ts and removed again.',
+    need: 'none', policy_note: '', state: 'pending', sort_order: 999,
+  }).select('id').single()
+
+  beforeAll(async () => {
+    await signIn(ENTERPRISE.email, ENTERPRISE.password)
+    const [{ data: a }, { data: u }] = await Promise.all([
+      supabase.from('enterprise_accounts').select('id, market, currency').maybeSingle(),
+      supabase.from('enterprise_users').select('id, user_id'),
+    ])
+    account = a as typeof account
+    const { data: session } = await supabase.auth.getSession()
+    me = (u as { id: string; user_id: string }[]).find(x => x.user_id === session.session?.user.id)!
+    const { data: cur } = await supabase.rpc('currencies_for_market', { market_code: account.market })
+    takes = (cur as { currency: string }[]).map(c => c.currency)
+  }, 30000)
+
+  afterAll(async () => {
+    for (const id of written) await supabase.from('enterprise_requisitions').delete().eq('id', id)
+    await signOut()
+  })
+
+  it('has requisitions on file to check, all in money the market takes', async () => {
+    const { data } = await supabase.from('enterprise_requisitions')
+      .select('id, currency').eq('account_id', account.id)
+    const rows = (data ?? []) as { id: string; currency: string }[]
+    expect(rows.length, 'no requisitions, so this checked nothing').toBeGreaterThan(0)
+    for (const r of rows) {
+      expect(takes, `${r.id} is in ${r.currency}, which ${account.market} does not trade in`).toContain(r.currency)
+    }
+  })
+
+  it('accepts one in the account\'s own currency', async () => {
+    /* The permission half. A guard that refuses everything passes every
+       refusal test written for it, so this comes first. */
+    const { data, error } = await raise(account.currency)
+    expect(error, error ? `the guard refused ${account.currency} on an account billed in it: ${error.message}` : '').toBeNull()
+    if (data) written.push((data as { id: string }).id)
+  })
+
+  it('accepts one in any other currency its market takes', async () => {
+    const second = takes.find(c => c !== account.currency)
+    if (!second) {
+      /* SmartBuild contracts in India, which trades in rupees alone. Said out
+         loud rather than passing on a set of one — this is task #62's shape on
+         the enterprise side: the demo login is in a one-currency market. */
+      expect(takes, `${account.market} trades in one currency, so nothing here was proved about a second`)
+        .toEqual([account.currency])
+      return
+    }
+    const { data, error } = await raise(second)
+    expect(error, `the guard refused ${second}, which ${account.market} trades in`).toBeNull()
+    if (data) written.push((data as { id: string }).id)
+  })
+
+  it('refuses one in a currency its market does not trade in', async () => {
+    /* Ranged over what exists rather than hard-coded: whichever currency the
+       marketplace holds that this market does not take. */
+    const { data: all } = await supabase.from('currencies').select('code')
+    const outside = (all as { code: string }[]).map(c => c.code).find(c => !takes.includes(c))
+    expect(outside, 'every currency is traded in this market, so there is nothing to refuse').toBeTruthy()
+
+    const { data, error } = await raise(outside!)
+    if (data) written.push((data as { id: string }).id)
+    expect(error, `a requisition in ${outside} was accepted on an account contracting in ${account.market}`).not.toBeNull()
+    expect(error?.message).toMatch(/does not trade in/)
   })
 })
 

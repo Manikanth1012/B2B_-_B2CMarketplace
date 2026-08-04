@@ -3,6 +3,7 @@ import { LayoutDashboard, Search, Shield, Cpu, Monitor, ShoppingCart, SquareChec
 import type { EnterpriseView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
 import { AccountMenu } from '../AccountMenu'
+import { MarketPicker } from '../MarketPicker'
 
 interface EnterpriseShellProps {
   view: EnterpriseView
@@ -155,6 +156,15 @@ export function EnterpriseShell({ view, onNavigate, onSignOut, children }: Enter
           <div style={{ flex: 1 }} />
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Where the account contracts, and therefore whose tax its
+                invoices carry. Fixed rather than choosable — `home` comes from
+                `enterprise_accounts.market` and the picker renders it as
+                settled, the same as it does for a signed-in shopper. The
+                currency chips appear underneath wherever that market takes
+                more than one. */}
+            <div style={{ flexShrink: 0 }} className="hide-mobile">
+              <MarketPicker tone="light" />
+            </div>
             <button style={{ padding: '8px', borderRadius: 'var(--radius)', color: 'var(--text-secondary)', position: 'relative' }}>
               <BellIcon size={20} />
               <span style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--danger)' }} />
