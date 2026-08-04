@@ -53,11 +53,16 @@ const BLANK: StartDraft = {
 
 type Stage = 'start' | 'resume' | 'issued' | 'form' | 'done'
 
-export function ApplyToSell({ onLeave, onSignIn }: {
+export function ApplyToSell({ startAt = 'start', onLeave, onSignIn }: {
+  /* Which screen this opens on. "Apply to sell" starts a new one; "Continue an
+     application" opens the reference-and-code form directly, because sending a
+     returning applicant through the start form is how they end up starting a
+     second application by mistake — and the desk then has two. */
+  startAt?: 'start' | 'resume'
   onLeave: () => void
   onSignIn: () => void
 }) {
-  const [stage, setStage] = useState<Stage>('start')
+  const [stage, setStage] = useState<Stage>(startAt)
   const [fields, setFields] = useState<FieldSpec[]>([])
   const [kinds, setKinds] = useState<DocumentKind[]>([])
   const [docs, setDocs] = useState<UploadedDocument[]>([])
@@ -68,6 +73,10 @@ export function ApplyToSell({ onLeave, onSignIn }: {
   const [answers, setAnswers] = useState<Answers>({})
   const [step, setStep] = useState(0)
   const [busy, setBusy] = useState(false)
+  /* Tracked rather than derived. It used to be read as `app?.state !== 'draft'`,
+     which is `undefined !== 'draft'` on a freshly started application — so
+     "Finish later" told a brand-new applicant their form was with the desk. */
+  const [sent, setSent] = useState(false)
   /* Which fields are in flight, so a slow save shows on the field it belongs to
      rather than as one spinner for the whole page. */
   const [saving, setSaving] = useState<Set<string>>(new Set())
@@ -113,6 +122,7 @@ export function ApplyToSell({ onLeave, onSignIn }: {
     setApp(null)
     setAnswers({})
     setDocs([])
+    setSent(false)
     setStep(0)
     setStage('issued')
   }
@@ -134,6 +144,7 @@ export function ApplyToSell({ onLeave, onSignIn }: {
        gate whose certificate they already uploaded. */
     const already = await loadApplicationDocuments(back.reference, back.access_code)
     setDocs(already)
+    setSent(res.value.application.state !== 'draft')
     setStep(resumeAt(stepsOf(fields, res.value.answers, kinds, already)))
     setStage(res.value.application.state === 'draft' ? 'form' : 'done')
   }
@@ -146,6 +157,7 @@ export function ApplyToSell({ onLeave, onSignIn }: {
     const res = await submitApplication(creds.reference, creds.access_code)
     setBusy(false)
     if (!res.ok) { toast(res.reason, 'error'); return }
+    setSent(true)
     setStage('done')
   }
 
@@ -228,7 +240,8 @@ export function ApplyToSell({ onLeave, onSignIn }: {
         )}
 
         {stage === 'done' && creds && (
-          <Finished creds={creds} submitted={app?.state !== 'draft' || done.answered === done.required} />
+          <Finished creds={creds} submitted={sent}
+                    onCarryOn={() => setStage('form')} />
         )}
       </div>
     </div>
@@ -303,7 +316,11 @@ function StartForm({ draft, markets, busy, onChange, onBegin, onResume, onSignIn
           <Btn variant="primary" onClick={onBegin} disabled={busy}>
             {busy ? 'Starting…' : 'Start the application'}
           </Btn>
-          <Btn variant="secondary" onClick={onResume}><KeyRound size={14} /> Resume one</Btn>
+          {/* Named the same as the link on the partner page, so the two routes
+              to this screen do not read as two different things. */}
+          <Btn variant="secondary" onClick={onResume}>
+            <KeyRound size={14} /> Continue an application
+          </Btn>
         </div>
       </div>
 
@@ -394,7 +411,7 @@ function ResumeForm({ form, busy, onChange, onResume, onBack }: {
           <Btn variant="primary" onClick={onResume} disabled={busy}>
             {busy ? 'Looking…' : 'Continue'}
           </Btn>
-          <Btn variant="secondary" onClick={onBack}>Start a new one instead</Btn>
+          <Btn variant="secondary" onClick={onBack}>Start a new application instead</Btn>
         </div>
         <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '14px', lineHeight: 1.5 }}>
           Lost the code? There is no self-service reset — the onboarding desk withdraws the
@@ -784,17 +801,36 @@ function chip(on: boolean): React.CSSProperties {
 
 /* --------------------------------------------------------------- the end -- */
 
-function Finished({ creds, submitted }: { creds: Credentials; submitted: boolean }) {
+function Finished({ creds, submitted, onCarryOn }: {
+  creds: Credentials
+  submitted: boolean
+  /* Absent once it has gone to the desk — there is nothing to carry on with,
+     and offering it would be offering an edit the database refuses. */
+  onCarryOn?: () => void
+}) {
   return (
     <>
       <h1 style={{ fontSize: 'var(--text-3xl)', fontWeight: 800, color: 'var(--text)' }}>
-        {submitted ? 'It is with the onboarding desk' : 'Saved'}
+        {submitted ? 'It is with the onboarding desk' : 'Saved — carry on whenever you like'}
       </h1>
       <p style={{ fontSize: 'var(--text-md)', color: 'var(--text-secondary)', marginTop: '10px', lineHeight: 1.6 }}>
         {submitted
           ? `Reference ${creds.reference}. The desk works to ${SLA_DAYS} working days end to end, and will come back to you on the email and number you gave. KYC starts with a phone call.`
-          : `Reference ${creds.reference}. Everything you have answered is saved. Come back with that reference and your access code whenever you like — nothing expires.`}
+          : `Reference ${creds.reference}. Everything you have answered is saved, documents included. Nothing expires.`}
       </p>
+
+      {/* Without this the screen was a dead end: it showed the reference and the
+          access code and no way back into the form, so carrying on meant leaving
+          the page, returning through Apply to sell, and typing in the two things
+          you were looking at. */}
+      {!submitted && onCarryOn && (
+        <div style={{ marginTop: '18px' }}>
+          <Btn variant="primary" onClick={onCarryOn}>
+            Carry on with this application <ChevronRight size={14} />
+          </Btn>
+        </div>
+      )}
+
       <div style={{
         background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
         padding: '20px', marginTop: '20px', maxWidth: '520px',
@@ -802,6 +838,13 @@ function Finished({ creds, submitted }: { creds: Credentials; submitted: boolean
         <Field label="Reference" value={creds.reference} />
         <Field label="Access code" value={creds.access_code} />
       </div>
+
+      {!submitted && (
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '14px', lineHeight: 1.5, maxWidth: '520px' }}>
+          Coming back another day: the partner page has <strong>Continue an application</strong>{' '}
+          next to Apply to sell. You will need those two things and nothing else.
+        </p>
+      )}
     </>
   )
 }

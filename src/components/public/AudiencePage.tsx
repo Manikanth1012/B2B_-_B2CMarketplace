@@ -48,10 +48,13 @@ const CONFIG: Record<Aud, {
   },
 }
 
-export function AudiencePage({ page, onSignIn, onApply, onAddToBasket }: {
+export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onAddToBasket }: {
   page: Aud
   onSignIn: (p: Persona) => void
   onApply: () => void
+  /* Applying takes several sittings, so coming back needs its own way in
+     rather than being a button inside the one that starts a new one. */
+  onResumeApplication: () => void
   onAddToBasket: (p: Product) => void
 }) {
   const { market, currency } = useMarket()
@@ -92,9 +95,23 @@ export function AudiencePage({ page, onSignIn, onApply, onAddToBasket }: {
             <div style={{ display: 'flex', gap: '12px', marginTop: '32px', flexWrap: 'wrap' }}>
               <button className="btn btn-primary btn-lg" onClick={() => onSignIn(c.persona)}>{c.cta}</button>
               {page === 'partner' && (
+                <>
                 <button className="btn btn-secondary btn-lg" style={{ background: 'rgba(255,255,255,0.1)', color: 'white', borderColor: 'rgba(255,255,255,0.2)' }} onClick={onApply}>
                   Apply to sell
                 </button>
+                <button
+                  onClick={onResumeApplication}
+                  style={{
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    color: 'rgba(255,255,255,0.75)', fontSize: 'var(--text-sm)',
+                    textDecoration: 'underline', textUnderlineOffset: '3px', alignSelf: 'center',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.color = 'white' }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.75)' }}
+                >
+                  Continue an application
+                </button>
+                </>
               )}
             </div>
           </div>

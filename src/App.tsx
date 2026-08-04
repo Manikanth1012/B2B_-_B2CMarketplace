@@ -331,6 +331,11 @@ function AppInner() {
   if (surface.kind === 'apply') {
     return (
       <ApplyToSell
+        /* Somebody arriving from "Continue an application" opens straight on
+           the reference-and-code form. Landing them on the start form and
+           making them find the resume button is how a returning applicant
+           starts a second application by mistake. */
+        startAt={surface.resume ? 'resume' : 'start'}
         onLeave={() => { setSurface({ kind: 'public', page: 'partner' }); window.scrollTo({ top: 0 }) }}
         onSignIn={() => setSurface({ kind: 'login', prefill: 'partner' })}
       />
@@ -350,6 +355,7 @@ function AppInner() {
             page={surface.page}
             onSignIn={(p) => setSurface({ kind: 'login', prefill: p })}
             onApply={() => { setSurface({ kind: 'apply' }); window.scrollTo({ top: 0 }) }}
+            onResumeApplication={() => { setSurface({ kind: 'apply', resume: true }); window.scrollTo({ top: 0 }) }}
             /* Anyone can browse; the basket needs an owner. The first add sends
                the visitor to sign in and is completed for them afterwards. */
             onAddToBasket={(p) => {

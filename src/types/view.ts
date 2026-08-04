@@ -96,5 +96,5 @@ export type Surface =
      applicant is part-way through a form that is being saved as they go — the
      header's marketplace nav would take them out of it with one click, and
      there is no route to come back to. */
-  | { kind: 'apply' }
+  | { kind: 'apply'; resume?: boolean }
   | { kind: 'session'; session: Session }
