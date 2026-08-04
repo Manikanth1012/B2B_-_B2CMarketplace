@@ -1,4 +1,5 @@
 import type { PublicPage } from '../../types/view'
+import { MarketPicker } from '../MarketPicker'
 
 const NAV: { id: PublicPage; label: string }[] = [
   { id: 'partner', label: 'Partners' },
@@ -82,6 +83,15 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, children }: {
               </button>
             ))}
           </nav>
+
+          {/* A visitor has no account and so no home market — this is the one
+              surface where the choice is genuinely free, and it is the surface
+              most people meet first. Without it the storefront quoted every
+              visitor in rupees whatever country they were in, while the shelves
+              behind it were already priced for three markets. */}
+          <div style={{ flexShrink: 0 }}>
+            <MarketPicker />
+          </div>
 
           <button
             onClick={onDemoSignIn}

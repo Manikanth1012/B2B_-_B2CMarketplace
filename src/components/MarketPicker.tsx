@@ -15,7 +15,7 @@ import { useMarket } from '../lib/MarketContext'
 import { currenciesOf } from '../lib/money'
 
 export function MarketPicker({ tone = 'dark' }: { tone?: 'dark' | 'light' }) {
-  const { book, market, currency, choices, setMarket, setCurrency, ready } = useMarket()
+  const { book, market, currency, choices, setMarket, setCurrency, ready, home } = useMarket()
   const [open, setOpen] = useState(false)
   const box = useRef<HTMLDivElement>(null)
 
@@ -68,7 +68,22 @@ export function MarketPicker({ tone = 'dark' }: { tone?: 'dark' | 'light' }) {
             minWidth: '250px', zIndex: 300, overflow: 'hidden',
           }}
         >
-          {book.markets.map(m => {
+          {/* Where the buyer is registered, once they are. A customer in India
+              is billed under Indian GST by an Indian entity and does not become
+              a Kenyan customer by changing a dropdown — `guard_order_currency`
+              refuses the order either way, so offering the switch would be
+              offering something checkout rejects. */}
+          {home && (
+            <div style={{
+              padding: '9px 13px', borderBottom: '1px solid var(--border)',
+              fontSize: '11px', color: 'var(--text-secondary)', lineHeight: 1.5,
+            }}>
+              You are registered in <strong>{market?.name}</strong>, so that is where you buy
+              and whose tax you pay. Your account details are where this changes.
+            </div>
+          )}
+
+          {(home ? book.markets.filter(m => m.code === home) : book.markets).map(m => {
             const cur = book.currencies.find(c => c.code === m.currency)
             const active = m.code === market.code
             return (
@@ -76,12 +91,13 @@ export function MarketPicker({ tone = 'dark' }: { tone?: 'dark' | 'light' }) {
                 key={m.code}
                 role="option"
                 aria-selected={active}
-                onClick={() => { setMarket(m.code); setOpen(false) }}
+                onClick={() => { if (!home) { setMarket(m.code); setOpen(false) } }}
+                disabled={!!home}
                 style={{
                   display: 'flex', alignItems: 'center', gap: '10px', width: '100%',
                   padding: '10px 13px', background: active ? 'var(--bg-alt)' : 'white',
                   border: 'none', borderBottom: '1px solid var(--border-light)',
-                  cursor: 'pointer', textAlign: 'left',
+                  cursor: home ? 'default' : 'pointer', textAlign: 'left',
                 }}
               >
                 <span style={{ width: 14, flexShrink: 0, color: 'var(--brand-navy)' }}>
@@ -137,9 +153,10 @@ export function MarketPicker({ tone = 'dark' }: { tone?: 'dark' | 'light' }) {
             margin: 0, padding: '9px 13px', fontSize: '10px',
             color: 'var(--text-tertiary)', background: 'var(--bg-alt)', lineHeight: 1.45,
           }}>
-            Prices are set for each market, not converted at checkout. Changing market changes
-            what you are charged and the tax you are charged it under; changing currency changes
-            only what you pay in.
+            Prices are set for each market, not converted at checkout.{' '}
+            {home
+              ? `${market?.name} charges ${market?.tax_label} at ${market?.tax_rate}% whichever currency you pay in.`
+              : 'Changing market changes what you are charged and the tax you are charged it under; changing currency changes only what you pay in.'}
           </p>
         </div>
       )}

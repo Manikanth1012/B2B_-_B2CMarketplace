@@ -15,7 +15,8 @@
  */
 import { createContext, useContext, useEffect, useState, useMemo } from 'react'
 import type { ReactNode } from 'react'
-import { loadMoneyBook, EMPTY_BOOK } from './moneyRepo'
+import { loadMoneyBook, loadHomeMarket, EMPTY_BOOK } from './moneyRepo'
+import { supabase } from './supabase'
 import type { MoneyBook } from './moneyRepo'
 import { format as formatMoney, money, currenciesOf } from './money'
 import type { Currency, Market } from './money'
@@ -39,6 +40,18 @@ export interface MarketState {
   fmt: (amount: number, opts?: { decimals?: boolean; code?: boolean }) => string
   /** Format an amount that carries its own currency, whatever that is. */
   fmtIn: (amount: number, currency: string, opts?: { decimals?: boolean; code?: boolean }) => string
+  /**
+   * The market this buyer is registered in, once they have signed in.
+   *
+   * Null for a visitor, who has no account and so no home market — that is the
+   * one case where the choice is genuinely free, and it is what the landing
+   * page offers. For anybody signed in it is fixed: a customer registered in
+   * India is billed under Indian GST by an Indian entity, and does not become a
+   * Kenyan customer by changing a dropdown. `guard_order_currency` refuses the
+   * order either way; this is so the picker stops offering what checkout will
+   * reject.
+   */
+  home: string | null
 }
 
 const FALLBACK: MarketState = {
@@ -47,6 +60,7 @@ const FALLBACK: MarketState = {
   setCurrency: () => {},
   fmt: n => n.toFixed(2),
   fmtIn: (n, c) => `${c} ${n.toFixed(2)}`,
+  home: null,
 }
 
 const Ctx = createContext<MarketState>(FALLBACK)
@@ -60,6 +74,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
     try { return localStorage.getItem(CURRENCY_KEY) } catch { return null }
   })
   const [ready, setReady] = useState(false)
+  const [home, setHome] = useState<string | null>(null)
 
   useEffect(() => {
     let live = true
@@ -69,6 +84,21 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       setReady(true)
     })
     return () => { live = false }
+  }, [])
+
+  /* Where the signed-in buyer is registered, re-read whenever the session
+     changes — signing in pins the market, signing out releases it. A visitor
+     browsing before they log in keeps a free choice, which is the honest state:
+     the marketplace does not know who they are yet. */
+  useEffect(() => {
+    let live = true
+    const read = async () => {
+      const where = await loadHomeMarket()
+      if (live) setHome(where)
+    }
+    void read()
+    const { data } = supabase.auth.onAuthStateChange(() => { void read() })
+    return () => { live = false; data.subscription.unsubscribe() }
   }, [])
 
   const setMarket = (next: string) => {
@@ -89,9 +119,15 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   }
 
   const value = useMemo<MarketState>(() => {
-    /* A stored code that no longer names a market falls back to the default
+    /* A registered buyer's market wins over anything stored. Somebody who
+       browsed as a visitor, chose Kenya, and then signed in as an Indian
+       customer would otherwise be left looking at a shelf they cannot buy from
+       — priced correctly, and refused at checkout.
+
+       A stored code that no longer names a market falls back to the default
        rather than leaving the shopper with no currency at all. */
-    const market = book.markets.find(m => m.code === code)
+    const market = book.markets.find(m => m.code === home)
+      ?? book.markets.find(m => m.code === code)
       ?? book.markets.find(m => m.is_default)
       ?? null
 
@@ -107,14 +143,20 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       formatMoney(money(amount, cur), book.currencies, opts)
 
     return {
-      book, market, currency, choices, ready, setMarket, setCurrency,
+      book, market, currency, choices, ready, home,
+      /* Pinned once the buyer is known. Refusing here rather than letting the
+         call through keeps one answer on the screen: the picker shows the
+         market as settled instead of offering a switch that silently does
+         nothing. */
+      setMarket: home ? () => {} : setMarket,
+      setCurrency,
       /* The chosen currency, not the market's default — that is the whole point
          of letting somebody choose. */
       fmt: (amount, opts) => fmtIn(amount, active ?? 'USD', opts),
       fmtIn,
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [book, code, wanted, ready])
+  }, [book, code, wanted, ready, home])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

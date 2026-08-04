@@ -60,6 +60,31 @@ export async function loadMoneyBook(): Promise<MoneyBook> {
   }
 }
 
+/**
+ * The market the signed-in buyer is registered in, or null for a visitor.
+ *
+ * A consumer's is on their profile, a business buyer's on the account they
+ * belong to; both were derived in `20260802450000` from what the marketplace
+ * already bills them under, because that is the fact that decides it — a
+ * customer invoiced under Indian GST is an Indian customer.
+ *
+ * Both reads are RLS-scoped to the caller, so a signed-out visitor gets nothing
+ * back and keeps a free choice. That is the honest state: the marketplace does
+ * not know who they are yet.
+ */
+export async function loadHomeMarket(): Promise<string | null> {
+  const { data: session } = await supabase.auth.getSession()
+  if (!session.session) return null
+
+  const [me, account] = await Promise.all([
+    supabase.from('consumer_profile').select('market').maybeSingle(),
+    supabase.from('enterprise_accounts').select('market').maybeSingle(),
+  ])
+  return (me.data as { market?: string } | null)?.market
+    ?? (account.data as { market?: string } | null)?.market
+    ?? null
+}
+
 /** The whole price book for one currency. */
 export async function loadPriceBook(currency: string): Promise<Map<string, PriceRow>> {
   const { data } = await supabase

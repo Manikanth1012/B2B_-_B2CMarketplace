@@ -64,69 +64,64 @@ describe('a market that trades in more than one currency', () => {
     expect(gaps).toEqual([])
   })
 
-  it('accepts an order in the second currency a market takes', async () => {
-    const market = money.markets.find(m => currenciesOf(m.code, money.accepted).length > 1)!
-    const second = currenciesOf(market.code, money.accepted)[1]
-    expect(marketTakes(market.code, second, money.accepted)).toBe(true)
+  it('accepts an order in the second currency the BUYER\'s own market takes', async () => {
+    /* This test used to place the order in whichever market had two currencies,
+       regardless of where the customer was registered — and it passed, because
+       at the time the guard only asked "does this market take this currency?".
+       `20260802450000` added the question it was missing: which market may this
+       buyer buy in at all. The old assertion was encoding half a rule.
+
+       So the order goes in the customer's own market now. Where that market
+       trades in one currency there is no second one to try, and the test says
+       so rather than quietly passing on the first — see task #62, the
+       marketplace has no customer registered outside India. */
+    const { data: profile } = await supabase.from('consumer_profile').select('market').maybeSingle()
+    const home = (profile as { market: string }).market
+    const mine = currenciesOf(home, money.accepted)
+
+    if (mine.length < 2) {
+      expect(mine.length, `${home} trades in one currency, so nothing here was proved about a second`).toBe(1)
+      return
+    }
 
     const { data: session } = await supabase.auth.getSession()
     const { data, error } = await supabase.from('orders').insert({
       order_ref: `ORD-TEST-${Date.now().toString(36).slice(-6).toUpperCase()}`,
       seller: 'Kestrel Devices', status: 'placed',
       total: 749, subtotal: 645.69, tax: 103.31, discount: 0,
-      currency: second, market: market.code, tax_rate: Number(market.tax_rate),
+      currency: mine[1], market: home,
+      tax_rate: Number(money.markets.find(m => m.code === home)!.tax_rate),
       payment_method: 'card', buyer_name: 'Priya Raman',
       buyer_email: CONSUMER.email, shipping_address: {},
       user_id: session.session?.user.id,
     }).select('id').single()
 
-    expect(error, `the guard refused ${second} in ${market.code}, which the picker offers`).toBeNull()
-    expect(data).toBeTruthy()
+    expect(error, `the guard refused ${mine[1]} in ${home}, which the picker offers there`).toBeNull()
     if (data) written.push(data.id)
   })
 
-  it('still refuses a currency the market does not trade in', async () => {
-    /* The other half. A rule that permits everything is not a rule. */
-    const single = money.markets.find(m => currenciesOf(m.code, money.accepted).length === 1)!
-    const foreign = money.currencies
-      .map(c => c.code)
-      .find(c => !marketTakes(single.code, c, money.accepted))!
+  it('refuses an order in a market the buyer is not registered in', async () => {
+    /* The half that was missing. A market trading in two currencies says
+       nothing about who may shop there. */
+    const { data: profile } = await supabase.from('consumer_profile').select('market').maybeSingle()
+    const home = (profile as { market: string }).market
+    const elsewhere = money.markets.find(m => m.code !== home)!
+    const cur = currenciesOf(elsewhere.code, money.accepted)[0]
 
     const { data: session } = await supabase.auth.getSession()
     const { data, error } = await supabase.from('orders').insert({
       order_ref: `ORD-TEST-${Date.now().toString(36).slice(-6).toUpperCase()}`,
       seller: 'Kestrel Devices', status: 'placed',
       total: 100, subtotal: 100, tax: 0, discount: 0,
-      currency: foreign, market: single.code, tax_rate: Number(single.tax_rate),
+      currency: cur, market: elsewhere.code, tax_rate: Number(elsewhere.tax_rate),
       payment_method: 'card', buyer_name: 'Priya Raman',
       buyer_email: CONSUMER.email, shipping_address: {},
       user_id: session.session?.user.id,
     }).select('id').single()
 
     if (data) written.push(data.id)
-    expect(error, `${foreign} was accepted in ${single.code}, which does not trade in it`).not.toBeNull()
-    expect(error?.message).toMatch(new RegExp(`does not trade in ${foreign}`))
-  })
-
-  it('names what the market does take, so the message is actionable', async () => {
-    const single = money.markets.find(m => currenciesOf(m.code, money.accepted).length === 1)!
-    const foreign = money.currencies
-      .map(c => c.code)
-      .find(c => !marketTakes(single.code, c, money.accepted))!
-
-    const { data: session } = await supabase.auth.getSession()
-    const { error } = await supabase.from('orders').insert({
-      order_ref: `ORD-TEST-${Date.now().toString(36).slice(-6).toUpperCase()}`,
-      seller: 'Kestrel Devices', status: 'placed',
-      total: 100, subtotal: 100, tax: 0, discount: 0,
-      currency: foreign, market: single.code, tax_rate: Number(single.tax_rate),
-      payment_method: 'card', buyer_name: 'Priya Raman',
-      buyer_email: CONSUMER.email, shipping_address: {},
-      user_id: session.session?.user.id,
-    })
-    /* "It takes INR" rather than "invalid currency" — a refusal that does not
-       say what would work makes the shopper guess. */
-    expect(error?.message).toMatch(new RegExp(`It takes ${currenciesOf(single.code, money.accepted)[0]}`))
+    expect(error, `a customer registered in ${home} bought in ${elsewhere.code}`).not.toBeNull()
+    expect(error?.message).toMatch(/registered in/)
   })
 
   it('taxes at the market’s rate whatever currency was chosen', async () => {
