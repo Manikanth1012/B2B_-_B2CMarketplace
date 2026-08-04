@@ -24,7 +24,8 @@ import { loadAccount, loadEnterpriseCatalogue } from '../../lib/enterpriseRepo'
 import type { EnterpriseListing } from '../../lib/enterpriseRepo'
 import { useAccountMoney } from './money'
 import { useMarket } from '../../lib/MarketContext'
-import type { Policy } from '../../lib/enterprise'
+import type { Policy, Subscription } from '../../lib/enterprise'
+import { EnterpriseListingModal } from './EnterpriseListingModal'
 
 export function EnterpriseBrowse() {
   const [vertical, setVertical] = useState<string | null>(null)
@@ -64,12 +65,20 @@ export function EnterpriseBrowse() {
      here and StreamNova Premium 4K in the table — so a requisition raised from
      this screen would have referred to a consumer streaming subscription. */
   const [listings, setListings] = useState<EnterpriseListing[] | null>(null)
+  /* The listing a buyer clicked. Clicking a card used to be
+     `toast(`Listing detail: ${p.name}`)` — the card's own title, in a bubble
+     that vanished. */
+  const [viewing, setViewing] = useState<EnterpriseListing | null>(null)
+  /* What the account already holds, so the detail can say "you are paying for
+     twelve of these and four are idle" before somebody orders more. */
+  const [subs, setSubs] = useState<Subscription[]>([])
   useEffect(() => {
     void (async () => {
       const book = await loadAccount()
       setPolicy(book.policy)
       setPrimary(book.account?.currency ?? 'USD')
       setOffered(book.currencies)
+      setSubs(book.subscriptions)
     })()
   }, [])
 
@@ -222,7 +231,8 @@ export function EnterpriseBrowse() {
                 <div key={p.id} style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden', display: 'flex', flexDirection: 'column', cursor: 'pointer', transition: 'border-color 150ms ease' }}
                   onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--brand-accent)'}
                   onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
-                  onClick={() => toast(`Listing detail: ${p.name}`)}
+                  onClick={() => setViewing(p)}
+                  title="Open this listing"
                 >
                   <div style={{ height: '120px', background: 'var(--bg-alt)' }}>
                     <img src={getProductImage(p.id)} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
@@ -258,6 +268,14 @@ export function EnterpriseBrowse() {
           )}
         </div>
       </div>
+
+      <EnterpriseListingModal
+        listing={viewing}
+        held={viewing ? subs.filter(x => x.product_id === viewing.id) : []}
+        money={money}
+        onClose={() => setViewing(null)}
+        onAdd={addToRequisition}
+      />
     </div>
   )
 }

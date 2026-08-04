@@ -8,6 +8,7 @@ import {
   FormField, TextArea, TextInput, EmptyState,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
+import { Pager, usePaging } from '../Pager'
 import { useAccountMoney } from './money'
 import { loadAccount, decideRequisition, savePolicy } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
@@ -46,6 +47,10 @@ export function EnterpriseApprovals() {
   /* For rows that carry their own currency, which a requisition now does. */
   const { fmtIn } = useMarket()
   useEffect(() => { void reload() }, [reload])
+
+  /* Above the loading guard: `usePaging` is a hook, and a hook after an early
+     return runs on some renders and not others. */
+  const historyPage = usePaging(decided(book?.requisitions ?? []))
 
   if (!book) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
@@ -190,8 +195,8 @@ export function EnterpriseApprovals() {
 
       <SectionCard title="Decision history" subtitle={`${history.length} decided — approvals and declines are both kept`}>
         {history.length === 0 ? <EmptyState message="Nothing has been decided yet" /> : (
-          <Table headers={['Request', 'Item', 'Requester', 'Value', 'Needed', 'Decided by', 'Outcome']}>
-            {history.map(r => (
+          <><Table headers={['Request', 'Item', 'Requester', 'Value', 'Needed', 'Decided by', 'Outcome']}>
+            {historyPage.rows.map(r => (
               <tr key={r.id}>
                 <Td><div style={{ fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{r.id}</div>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{day(r.raised_on)}</div></Td>
@@ -220,6 +225,7 @@ export function EnterpriseApprovals() {
               </tr>
             ))}
           </Table>
+          <div style={{ padding: '0 18px 12px' }}><Pager page={historyPage} noun="decisions" /></div></>
         )}
       </SectionCard>
 

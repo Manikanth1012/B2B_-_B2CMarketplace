@@ -359,6 +359,27 @@ export async function disputeInvoice(invoice: Invoice, why: string): Promise<Res
   }
 }
 
+/**
+ * Stopping — or restarting — a subscription's automatic renewal.
+ *
+ * The only part of a subscription a buyer manages between renewals. Seats,
+ * price, term and the contract reference are the record of what was agreed, and
+ * the database refuses a write from an account that touches any of them, so
+ * this cannot quietly become "edit your own contract" later.
+ */
+export async function setAutoRenew(sub: { id: string; name: string; renews: string }, on: boolean): Promise<Result> {
+  const { data, error } = await supabase.from('enterprise_subscriptions')
+    .update({ auto_renew: on }).eq('id', sub.id).select('id')
+  if (error) return { ok: false, reason: friendly(error.message) }
+  if (!data?.length) return { ok: false, reason: REFUSED }
+  return {
+    ok: true,
+    note: on
+      ? `${sub.name} will renew on ${sub.renews} as before.`
+      : `${sub.name} will not renew. It runs to ${sub.renews} and then stops — nothing is switched off before then.`,
+  }
+}
+
 /** The invoice as a document, because finance pays from a document. */
 export function invoiceCsv(invoice: Invoice, lines: InvoiceLine[]): string {
   const head = ['Line', 'Kind', 'Description', 'Seller', 'Cost centre', 'Quantity', 'Unit price', 'Amount']

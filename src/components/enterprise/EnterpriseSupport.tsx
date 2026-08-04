@@ -5,6 +5,7 @@ import {
   FormField, TextArea, TextInput, Select, EmptyState,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
+import { Pager, usePaging } from '../Pager'
 import { loadAccount } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
 import { loadSupport, raiseTicket, replyToTicket, closeTicket } from '../../lib/supportRepo'
@@ -41,9 +42,14 @@ export function EnterpriseSupport() {
   }, [])
   useEffect(() => { void reload() }, [reload])
 
+  /* Derived above the loading guard, because `usePaging` is a hook: below an
+     early return it runs on some renders and not others, and React blanks the
+     screen the moment `book` arrives. */
+  const rows = queue(book?.tickets ?? [], NOW)
+  const page = usePaging(rows)
+
   if (!book || !account) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
-  const rows = queue(book.tickets, NOW)
   const s = summarise(book.tickets, NOW)
   const late = book.tickets.filter(t => pastTarget(t, NOW))
   const waiting = book.tickets.filter(t => t.waiting_on_customer && isOpen(t))
@@ -97,8 +103,8 @@ export function EnterpriseSupport() {
       <SectionCard title="Your tickets"
                    subtitle="Worked first, then closest to target. Click a row to read the thread.">
         {rows.length === 0 ? <EmptyState message="Nothing raised on this account yet" /> : (
-          <Table headers={['Ticket', 'Subject', 'Raised by', 'Priority', 'With', 'Against target', 'State']}>
-            {rows.map(t => {
+          <><Table headers={['Ticket', 'Subject', 'Raised by', 'Priority', 'With', 'Against target', 'State']}>
+            {page.rows.map(t => {
               const st = standing(t, NOW)
               return (
                 <>
@@ -146,6 +152,7 @@ export function EnterpriseSupport() {
               )
             })}
           </Table>
+          <div style={{ padding: '0 18px 12px' }}><Pager page={page} noun="tickets" /></div></>
         )}
       </SectionCard>
 

@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { SquareCheck as CheckSquare, X, Shield, Cpu } from 'lucide-react'
 import { StatCard, SectionCard, Table, Td, StatusPill, fmtInt, Btn, toast, Modal } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
 import { VERTICAL_NAMES } from './data'
-import { loadAccount, loadEnterpriseCatalogue } from '../../lib/enterpriseRepo'
+import { loadAccount, loadEnterpriseCatalogue, setAutoRenew } from '../../lib/enterpriseRepo'
 import type { AccountBook, EnterpriseListing } from '../../lib/enterpriseRepo'
+import type { Subscription } from '../../lib/enterprise'
+import { Pager, usePaging } from '../Pager'
 import { idleSeats, renewingWithin, day } from '../../lib/enterprise'
 import { useAccountMoney } from './money'
 /* Same rows, same photos as the Business Catalogue and the storefront — the
@@ -12,6 +14,7 @@ import { useAccountMoney } from './money'
 import { getProductImage } from '../../lib/images'
 import { useRequisition } from '../../lib/RequisitionContext'
 import { lineFor } from './EnterpriseBrowse'
+import { EnterpriseListingModal } from './EnterpriseListingModal'
 import { useMarket } from '../../lib/MarketContext'
 
 /* EnterpriseApprovals moved to EnterpriseApprovals.tsx when requisitions
@@ -38,12 +41,30 @@ import { useMarket } from '../../lib/MarketContext'
  */
 export function EnterpriseSubs() {
   const [book, setBook] = useState<AccountBook | null>(null)
-  useEffect(() => { void loadAccount().then(setBook) }, [])
+  /* The subscription a buyer asked to manage. "Manage" was a toast printing the
+     contract reference into a bubble that vanished after four seconds. */
+  const [managing, setManaging] = useState<Subscription | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const reload = useCallback(async () => { setBook(await loadAccount()) }, [])
+  useEffect(() => { void reload() }, [reload])
 
   const { money, money0 } = useAccountMoney(book?.account?.currency)
 
+  /* Above the loading guard: `usePaging` is a hook, and a hook after an early
+     return runs on some renders and not others. */
+  const page = usePaging(book?.subscriptions ?? [])
+
   if (!book) {
     return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+  }
+
+  const renew = async (sub: Subscription, on: boolean) => {
+    setSaving(true)
+    const r = await setAutoRenew(sub, on)
+    setSaving(false)
+    toast(r.ok ? r.note ?? 'Saved' : r.reason, r.ok ? 'success' : 'error')
+    if (r.ok) { setManaging(null); await reload() }
   }
 
   const subs = book.subscriptions
@@ -100,8 +121,8 @@ export function EnterpriseSubs() {
       </div>
 
       <SectionCard title="What the account holds" subtitle={`${subs.length} subscriptions, active and suspended`}>
-        <Table headers={['Service', 'Seller', 'Licensed', 'Assigned', 'Each', 'Monthly', 'Renews', 'State', '']}>
-          {subs.map(s => (
+        <><Table headers={['Service', 'Seller', 'Licensed', 'Assigned', 'Each', 'Monthly', 'Renews', 'State', '']}>
+          {page.rows.map(s => (
             <tr key={s.id}>
               <Td>
                 <div style={{ fontWeight: 600 }}>{s.name}</div>
@@ -123,13 +144,84 @@ export function EnterpriseSubs() {
               </Td>
               <Td right>{money(Number(s.unit_price))}</Td>
               <Td right>{money0(Number(s.monthly))}</Td>
-              <Td>{day(s.renews)}</Td>
+              <Td>
+                {day(s.renews)}
+                {!s.auto_renew && (
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--warning)' }}>then stops</div>
+                )}
+              </Td>
               <Td right><StatusPill status={s.status} /></Td>
-              <Td right><Btn variant="secondary" size="sm" onClick={() => toast(`${s.name} · ${s.contract_ref ?? 'no contract reference'}`)}>Manage</Btn></Td>
+              <Td right><Btn variant="secondary" size="sm" onClick={() => setManaging(s)}>Manage</Btn></Td>
             </tr>
           ))}
         </Table>
+        <div style={{ padding: '0 18px 12px' }}><Pager page={page} noun="subscriptions" /></div></>
       </SectionCard>
+
+      <Modal
+        open={!!managing}
+        onClose={() => setManaging(null)}
+        title={managing ? managing.name : ''}
+        footer={
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <Btn variant="secondary" onClick={() => setManaging(null)}>Close</Btn>
+            {managing && (
+              <Btn variant={managing.auto_renew ? 'secondary' : 'primary'} disabled={saving}
+                   onClick={() => void renew(managing, !managing.auto_renew)}>
+                {saving ? 'Saving…' : managing.auto_renew ? 'Stop it renewing' : 'Let it renew'}
+              </Btn>
+            )}
+          </div>
+        }>
+        {managing && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 20px' }}>
+              <SubFact label="Seller" value={managing.seller} />
+              <SubFact label="Contract" value={managing.contract_ref ?? 'No contract reference on this one'} />
+              <SubFact label="Cost centre" value={managing.cost_centre ?? 'Not allocated'} />
+              <SubFact label="Started" value={day(managing.started)} />
+              <SubFact label="Licensed" value={`${fmtInt(managing.quantity)} ${managing.unit}`} />
+              <SubFact label="Assigned"
+                       value={managing.status === 'suspended'
+                         ? 'Not assignable while suspended'
+                         : `${managing.seats_used} of ${managing.quantity}${
+                             managing.seats_used < managing.quantity
+                               ? ` — ${managing.quantity - managing.seats_used} sitting idle`
+                               : ''}`} />
+              <SubFact label="Each" value={money(Number(managing.unit_price))} />
+              <SubFact label="Monthly" value={money0(Number(managing.monthly))} />
+            </div>
+
+            {managing.status === 'suspended' && (
+              <Callout tone="danger" title="This is suspended">
+                {managing.why_suspended ?? 'The marketplace has suspended it.'} It cannot be set to renew
+                until that is cleared, because the renewal would be refused.
+              </Callout>
+            )}
+
+            <Callout tone={managing.auto_renew ? 'info' : 'warning'}
+                     title={managing.auto_renew ? `Renews on ${day(managing.renews)}` : `Runs to ${day(managing.renews)} and stops`}>
+              {managing.auto_renew
+                ? 'Stopping the renewal changes nothing today — the term runs to its end date either way, and nothing is switched off before then.'
+                : 'Nothing is switched off before the end date. After it, seats stop being assignable and the service ends.'}
+            </Callout>
+
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
+              Seats, price and term are what was agreed with {managing.seller} and are changed by them, not here.
+              Ask through Support if any of them is wrong.
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  )
+}
+
+function SubFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)' }}>{label}</div>
+      <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text)', marginTop: '2px' }}>{value}</div>
     </div>
   )
 }
@@ -146,6 +238,7 @@ export function EnterpriseSubs() {
 export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
   const [book, setBook] = useState<AccountBook | null>(null)
   const [listings, setListings] = useState<EnterpriseListing[] | null>(null)
+  const [viewing, setViewing] = useState<EnterpriseListing | null>(null)
   const req = useRequisition()
 
   useEffect(() => {
@@ -201,6 +294,12 @@ export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
   const mine = book.subscriptions.filter(s => s.vertical === vertical)
   const policy = book.policy
 
+  const addOne = (p: EnterpriseListing) => {
+    if (!currency) return
+    const r = req.add(lineFor(p), currency)
+    toast(r.ok ? (r.note ?? `${p.name} added`) : r.reason, r.ok ? 'success' : 'error')
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div>
@@ -246,7 +345,11 @@ export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
         <SectionCard key={cat} title={cat} subtitle={`${items.length} listings`}>
           <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '14px' }}>
             {items.map(p => (
-              <div key={p.id} style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              /* Clickable for the same reason the Browse cards are: a buyer
+                 signing off spend against a name and a price has read neither
+                 the specification nor whether the account already holds it. */
+              <div key={p.id} onClick={() => setViewing(p)} title="Open this listing"
+                   style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden', display: 'flex', flexDirection: 'column', cursor: 'pointer' }}>
                 <div style={{ height: '100px', background: 'var(--bg-alt)' }}>
                   <img src={getProductImage(p.id)} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 </div>
@@ -257,17 +360,21 @@ export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
                 </div>
                 <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border-light)', background: 'var(--bg-alt)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontWeight: 700 }}>{money(p.price)}{p.model === 'monthly' ? (p.unit ? ` ${p.unit}/mo` : '/mo') : ''}</span>
-                  <Btn variant="primary" size="sm" onClick={() => {
-                    if (!currency) return
-                    const r = req.add(lineFor(p), currency)
-                    toast(r.ok ? (r.note ?? `${p.name} added`) : r.reason, r.ok ? 'success' : 'error')
-                  }}>Add</Btn>
+                  <Btn variant="primary" size="sm" onClick={e => { e.stopPropagation(); addOne(p) }}>Add</Btn>
                 </div>
               </div>
             ))}
           </div>
         </SectionCard>
       ))}
+
+      <EnterpriseListingModal
+        listing={viewing}
+        held={viewing ? book.subscriptions.filter(x => x.product_id === viewing.id) : []}
+        money={money}
+        onClose={() => setViewing(null)}
+        onAdd={addOne}
+      />
     </div>
   )
 }

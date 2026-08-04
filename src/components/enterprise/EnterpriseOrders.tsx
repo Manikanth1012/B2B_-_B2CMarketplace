@@ -5,6 +5,7 @@ import {
   StatCard, SectionCard, Table, Td, StatusPill, fmtInt, Btn, EmptyState,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
+import { Pager, usePaging } from '../Pager'
 import { useAccountMoney } from './money'
 import { loadAccount } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
@@ -89,6 +90,10 @@ export function EnterpriseOrders() {
   }, [])
   useEffect(() => { void reload() }, [reload])
 
+  /* Above the loading guard: `usePaging` is a hook, and a hook after an early
+     return runs on some renders and not others. */
+  const page = usePaging(orders ?? [])
+
   if (!orders || !account) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
   const done = (o: Order) => !o.failed && o.stage >= o.stages.length - 1
@@ -141,8 +146,8 @@ export function EnterpriseOrders() {
 
       <SectionCard title="Your orders" subtitle="Newest first. Click a row for the items and what is attached to it.">
         {orders.length === 0 ? <EmptyState message="Nothing has been ordered on this account yet" /> : (
-          <Table headers={['Order', 'What', 'Seller', 'Ordered by', 'Value', 'Where it is', 'State']}>
-            {orders.map(o => {
+          <><Table headers={['Order', 'What', 'Seller', 'Ordered by', 'Value', 'Where it is', 'State']}>
+            {page.rows.map(o => {
               const mine = items.filter(i => i.order_id === o.id)
               return (
                 <>
@@ -189,6 +194,7 @@ export function EnterpriseOrders() {
               )
             })}
           </Table>
+          <div style={{ padding: '0 18px 12px' }}><Pager page={page} noun="orders" /></div></>
         )}
       </SectionCard>
     </div>

@@ -7,6 +7,7 @@ import {
   TextInput, TextArea, Select,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
+import { Pager, usePaging } from '../Pager'
 import { useAccountMoney } from './money'
 import { loadAdmin, inviteMember, changeRole, changeStatus, saveRole, deleteRole } from '../../lib/enterpriseAdminRepo'
 import type { AdminBook } from '../../lib/enterpriseAdminRepo'
@@ -58,6 +59,11 @@ export function EnterpriseTeam() {
     return a
   }, [])
   useEffect(() => { void reload() }, [reload])
+
+  /* Above the loading guard: `usePaging` is a hook, and a hook after an early
+     return runs on some renders and not others. */
+  const peoplePage = usePaging((book?.people ?? []).filter(p => p.status !== 'removed'))
+  const rolesPage = usePaging(book?.roles ?? [])
 
   if (!book) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
@@ -148,8 +154,8 @@ export function EnterpriseTeam() {
 
       <SectionCard title={`People at ${account?.account?.company ?? 'this account'}`}
                    subtitle={`${active.length} active · ${invited.length} invited${suspended.length ? ` · ${suspended.length} suspended` : ''}`}>
-        <Table headers={['Name', 'Role', 'What they may do', 'Cost centre', 'Last signed in', 'MFA', 'State', '']}>
-          {here.map(p => {
+        <><Table headers={['Name', 'Role', 'What they may do', 'Cost centre', 'Last signed in', 'MFA', 'State', '']}>
+          {peoplePage.rows.map(p => {
             const r = roleOf(p, roles)
             return (
               <tr key={p.id}>
@@ -196,14 +202,15 @@ export function EnterpriseTeam() {
             )
           })}
         </Table>
+        <div style={{ padding: '0 18px 12px' }}><Pager page={peoplePage} noun="people" /></div></>
       </SectionCard>
 
       <SectionCard
         title="Roles"
         subtitle="A role is a bundle of permissions with a name the approval policy can refer to. Built-in roles can be edited but not deleted, because work is routed to them by name."
       >
-        <Table headers={['Role', 'What it is for', 'Approves up to', 'People', '']}>
-          {roles.map(r => {
+        <><Table headers={['Role', 'What it is for', 'Approves up to', 'People', '']}>
+          {rolesPage.rows.map(r => {
             const held = holders(r.id, people)
             return (
               <tr key={r.id}>
@@ -235,6 +242,7 @@ export function EnterpriseTeam() {
             )
           })}
         </Table>
+        <div style={{ padding: '0 18px 12px' }}><Pager page={rolesPage} noun="roles" /></div></>
       </SectionCard>
 
       <SectionCard title="What each role may do"

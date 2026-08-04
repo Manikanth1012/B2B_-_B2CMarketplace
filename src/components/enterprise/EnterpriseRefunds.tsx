@@ -6,6 +6,7 @@ import {
   FormField, TextArea, TextInput, Select, EmptyState,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
+import { Pager, usePaging } from '../Pager'
 import { loadAccountRefunds, requestRefund } from '../../lib/refundRepo'
 import type { RefundBook } from '../../lib/refundRepo'
 import { loadAccount } from '../../lib/enterpriseRepo'
@@ -48,6 +49,10 @@ export function EnterpriseRefunds() {
   useEffect(() => { void reload() }, [reload])
 
   const { money } = useAccountMoney(account?.currency)
+
+  /* Above the loading guard: `usePaging` is a hook, and a hook after an early
+     return runs on some renders and not others. */
+  const page = usePaging(book?.refunds ?? [])
 
   if (!book) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
@@ -103,8 +108,8 @@ export function EnterpriseRefunds() {
         {book.refunds.length === 0 ? (
           <EmptyState message="Nothing has been asked for on this account yet" />
         ) : (
-          <Table headers={['Raised', 'Item', 'Seller', 'Order', 'Amount', 'Reason', 'Who decides', 'State']}>
-            {book.refunds.map(r => {
+          <><Table headers={['Raised', 'Item', 'Seller', 'Order', 'Amount', 'Reason', 'Who decides', 'State']}>
+            {page.rows.map(r => {
               const clock = policy ? sla(r, policy, NOW) : null
               return (
                 <>
@@ -151,6 +156,7 @@ export function EnterpriseRefunds() {
               )
             })}
           </Table>
+          <div style={{ padding: '0 18px 12px' }}><Pager page={page} noun="requests" /></div></>
         )}
       </SectionCard>
 
