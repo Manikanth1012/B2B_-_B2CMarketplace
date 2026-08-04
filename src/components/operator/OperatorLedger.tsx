@@ -7,6 +7,7 @@ import {
   Table, Td, toast, fmtMoney, fmtInt,
 } from './shared'
 import { Callout } from '../OnboardingJourney'
+import { Pager, usePaging } from '../Pager'
 import {
   loadLedger, saveMapping, postJournal, closePeriod, openNextPeriod, addAccount,
 } from '../../lib/ledgerRepo'
@@ -44,16 +45,32 @@ export function OperatorLedger() {
   const reload = useCallback(async () => setBook(await loadLedger()), [])
   useEffect(() => { void reload() }, [reload])
 
-  if (!book) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+  /* Worked out above the loading guard, because the five tables below are
+     paged and `usePaging` is a hook — a hook after an early return runs on some
+     renders and not others, which React refuses. Everything here tolerates a
+     null `book`; the guard is immediately after. */
+  const open = book ? openPeriod(book.periods) : null
+  const viewing = period ?? open?.id ?? book?.periods[book.periods.length - 1]?.id ?? null
+  const current = book?.periods.find(p => p.id === viewing) ?? null
+  const tb = book ? trialBalance(book.postings, book.accounts, viewing) : null
+  const money = book ? earned(book.postings, book.accounts, viewing) : null
+  const rows = book ? postingsIn(book.postings, viewing) : []
+  const unmapped = book ? unmappedCharges(book.charges, book.mapping) : []
+  const idle = book ? idleAccounts(book.accounts, book.mapping) : []
 
-  const open = openPeriod(book.periods)
-  const viewing = period ?? open?.id ?? book.periods[book.periods.length - 1]?.id ?? null
-  const current = book.periods.find(p => p.id === viewing) ?? null
-  const tb = trialBalance(book.postings, book.accounts, viewing)
-  const money = earned(book.postings, book.accounts, viewing)
-  const rows = postingsIn(book.postings, viewing)
-  const unmapped = unmappedCharges(book.charges, book.mapping)
-  const idle = idleAccounts(book.accounts, book.mapping)
+  /* One pager per tab rather than one shared: they are different lists of
+     different lengths, and coming back to Postings on page 7 having left
+     Periods on page 1 is what a reader expects. `resetKey` is the period,
+     because changing it changes what every one of these lists contains. */
+  const balancePage = usePaging(tb?.rows ?? [], { resetKey: viewing ?? '' })
+  const mappingPage = usePaging(book?.charges ?? [], { resetKey: viewing ?? '' })
+  const postingsPage = usePaging(rows, { resetKey: viewing ?? '' })
+  const chartPage = usePaging(book?.accounts ?? [], { resetKey: viewing ?? '' })
+  const periodsPage = usePaging(book?.periods ?? [], { resetKey: viewing ?? '' })
+
+  if (!book || !tb || !money) {
+    return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+  }
   const checks = current
     ? reconciliations({ postings: book.postings, accounts: book.accounts,
                         statements: book.statements, lines: book.lines, period: current })
@@ -156,7 +173,7 @@ export function OperatorLedger() {
         <SectionCard title={`Trial balance — ${current?.label ?? ''}`}
                      subtitle={`${tb.rows.length} accounts with movement`}>
           <Table headers={['Account', 'Type', 'Debit', 'Credit', 'Movement']}>
-            {tb.rows.map(r => (
+            {balancePage.rows.map(r => (
               <tr key={r.code}>
                 <Td>
                   <div style={{ fontWeight: 600 }}>{r.code}</div>
@@ -178,6 +195,7 @@ export function OperatorLedger() {
               <Td right><strong>${fmtMoney(tb.difference)}</strong></Td>
             </tr>
           </Table>
+          <Pager page={balancePage} noun="accounts" />
         </SectionCard>
       )}
 
@@ -185,7 +203,7 @@ export function OperatorLedger() {
         <SectionCard title="Charge mapping"
                      subtitle="One row per thing that can happen commercially, and where it posts">
           <Table headers={['Charge', 'Debit', 'Credit', 'Entries', 'Value', '']}>
-            {book.charges.map(c => {
+            {mappingPage.rows.map(c => {
               const m = book.mapping.find(x => x.charge_id === c.id)
               const ps = rows.filter(p => p.charge_id === c.id)
               const value = ps.reduce((a, p) => a + Number(p.amount), 0)
@@ -212,6 +230,7 @@ export function OperatorLedger() {
               )
             })}
           </Table>
+          <Pager page={mappingPage} noun="charges" />
         </SectionCard>
       )}
 
@@ -219,7 +238,7 @@ export function OperatorLedger() {
         <SectionCard title="Postings"
                      subtitle="Generated from the settlement register and the order lines, so the ledger reconciles to them rather than being computed beside them">
           <Table headers={['Entry', 'Charge', 'Reference', 'Debit', 'Credit', 'Amount']}>
-            {rows.slice(0, 200).map(p => (
+            {postingsPage.rows.map(p => (
               <tr key={p.id}>
                 <Td>
                   <div style={{ fontWeight: 600, fontSize: 'var(--text-xs)' }}>{p.id}</div>
@@ -241,6 +260,7 @@ export function OperatorLedger() {
               </tr>
             ))}
           </Table>
+          <Pager page={postingsPage} noun="postings" />
           {rows.length > 200 && (
             <div style={{ padding: '12px 20px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
               Showing the first 200 of {fmtInt(rows.length)}. Export the journal for the whole period.
@@ -263,7 +283,7 @@ export function OperatorLedger() {
                          <Plus size={12} /> Add an account
                        </Btn>}>
             <Table headers={['Code', 'Account', 'Type', 'Charges', 'Entries', 'What lands here']}>
-              {book.accounts.map(a => {
+              {chartPage.rows.map(a => {
                 const use = accountUse(a.code, book.mapping, book.postings)
                 return (
                   <tr key={a.code}>
@@ -277,6 +297,7 @@ export function OperatorLedger() {
                 )
               })}
             </Table>
+            <Pager page={chartPage} noun="accounts" />
           </SectionCard>
         </>
       )}
@@ -290,7 +311,7 @@ export function OperatorLedger() {
                          </Btn>
                        )}>
             <Table headers={['Period', 'Entries', 'Value', 'Closed', 'State']}>
-              {book.periods.map(p => {
+              {periodsPage.rows.map(p => {
                 const ps = book.postings.filter(x => x.period === p.id)
                 return (
                   <tr key={p.id}>
@@ -312,6 +333,7 @@ export function OperatorLedger() {
                 )
               })}
             </Table>
+            <Pager page={periodsPage} noun="periods" />
           </SectionCard>
           <Callout tone="info" title="A correction after close is a journal in the next period, never an edit to a closed one">
             Restating a closed period breaks every report already issued from it.
