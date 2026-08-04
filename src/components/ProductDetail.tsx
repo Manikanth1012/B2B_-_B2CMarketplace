@@ -11,7 +11,15 @@ import type { View } from '../types/view'
 interface ProductDetailProps {
   product: Product
   onAddToCart: (product: Product, quantity?: number) => void
-  onNavigate: (view: View, opts?: { category?: string; product?: Product }) => void
+  /* Optional, because this page is shown on the public storefront too, where
+     there is no consumer router to navigate — the public surface is its own
+     state machine and knows nothing about `View`. Everything else this page
+     renders comes from the product row and published reviews, both of which
+     `anon` may read, so the same component serves signed-in and signed-out
+     rather than there being a second one to keep in step. */
+  onNavigate?: (view: View, opts?: { category?: string; product?: Product }) => void
+  /* Trims the page chrome for the modal the public pages open it in. */
+  compact?: boolean
 }
 
 const catColors: Record<string, string> = {
@@ -23,7 +31,7 @@ const catColors: Record<string, string> = {
   content: '#E63946',
 }
 
-export function ProductDetail({ product, onAddToCart, onNavigate }: ProductDetailProps) {
+export function ProductDetail({ product, onAddToCart, onNavigate, compact = false }: ProductDetailProps) {
   /* The product arrived already priced in the market's currency — `repriceAll`
      did that at load, and it stamped the currency on the row. So this page
      formats what it was given rather than converting anything, the same way the
@@ -57,15 +65,23 @@ export function ProductDetail({ product, onAddToCart, onNavigate }: ProductDetai
   const fulfilInfo = fulfilLabels[product.fulfil] || fulfilLabels.instant
 
   return (
-    <section style={{ padding: '32px 0 64px' }}>
-      <div className="container">
-        {/* Breadcrumb */}
+    <section style={{ padding: compact ? '0' : '32px 0 64px' }}>
+      <div className={compact ? undefined : 'container'}>
+        {/* Breadcrumb. Plain text where there is nowhere to navigate to — a
+            crumb that looks like a link and does nothing is worse than one that
+            does not look like a link. */}
         <div style={{ display: 'flex', gap: '8px', fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginBottom: '24px' }}>
-          <button onClick={() => onNavigate('home')} style={{ color: 'inherit' }}>Home</button>
-          <span>/</span>
-          <button onClick={() => onNavigate('category', { category: product.category_id })} style={{ color: 'inherit', textTransform: 'capitalize' }}>
-            {product.category_id}
-          </button>
+          {onNavigate ? (
+            <>
+              <button onClick={() => onNavigate('home')} style={{ color: 'inherit' }}>Home</button>
+              <span>/</span>
+              <button onClick={() => onNavigate('category', { category: product.category_id })} style={{ color: 'inherit', textTransform: 'capitalize' }}>
+                {product.category_id}
+              </button>
+            </>
+          ) : (
+            <span style={{ textTransform: 'capitalize' }}>{product.category_id}</span>
+          )}
           <span>/</span>
           <span style={{ color: 'var(--text-secondary)' }}>{product.name}</span>
         </div>
