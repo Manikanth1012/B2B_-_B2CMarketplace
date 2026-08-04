@@ -97,4 +97,8 @@ export type Surface =
      header's marketplace nav would take them out of it with one click, and
      there is no route to come back to. */
   | { kind: 'apply'; resume?: boolean }
+  /* Registering as a shopper. Its own surface for the same reason as `apply`:
+     it is a form somebody is part-way through, and the header's marketplace nav
+     would take them out of it with one click. */
+  | { kind: 'register' }
   | { kind: 'session'; session: Session }

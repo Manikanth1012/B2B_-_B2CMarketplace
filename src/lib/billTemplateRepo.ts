@@ -79,6 +79,11 @@ async function loadSamples(
       supabase.from('enterprise_invoice_lines').select('*').order('sort_order'),
       supabase.from('settlement_statements').select('*').order('sort_order', { ascending: false }),
       supabase.from('operator_banners').select('*').eq('status', 'live'),
+      /* Deliberately the demo customer. This runs as the operator designing a
+         bill template, and the preview needs one specimen customer to render
+         against — not whoever happens to be signed in, which for an operator is
+         nobody. The other call sites of this table are the shopper's own row
+         and do not filter. */
       supabase.from('consumer_profile').select('*').eq('id', 'me').maybeSingle(),
       supabase.from('consumer_addresses').select('*').eq('is_default', true).maybeSingle(),
       supabase.from('enterprise_accounts').select('*').eq('id', 'ENT-2007').maybeSingle(),

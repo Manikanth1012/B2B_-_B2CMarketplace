@@ -26,7 +26,10 @@ export async function loadBillBook(): Promise<BillBook> {
       supabase.from('invoice_template_sections').select('*'),
       supabase.from('invoice_template_assignments').select('*'),
       supabase.from('invoice_issuer').select('*').eq('id', 'default').maybeSingle(),
-      supabase.from('consumer_profile').select('*').eq('id', 'me').maybeSingle(),
+      /* Their own profile, whoever they are — RLS narrows it. The demo row's
+         id was hard-coded here, so a registered shopper's bill carried Priya
+         Raman's name and address. */
+      supabase.from('consumer_profile').select('*').maybeSingle(),
       supabase.from('consumer_addresses').select('*').eq('is_default', true).maybeSingle(),
       supabase.from('loyalty_members').select('*').eq('kind', 'consumer'),
       supabase.from('loyalty_ledger').select('*'),

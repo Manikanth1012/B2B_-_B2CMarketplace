@@ -88,7 +88,9 @@ export function AccountView({ initialTab, onWatchesChanged }: {
 
   const loadData = useCallback(async () => {
     const [pRes, aRes, hRes, bRes, tRes, refunds] = await Promise.all([
-      supabase.from('consumer_profile').select('*').eq('id', 'me').maybeSingle(),
+      /* RLS scopes this to the signed-in shopper. Filtering on the demo row's
+         id meant a registered customer opened an empty account screen. */
+      supabase.from('consumer_profile').select('*').maybeSingle(),
       supabase.from('consumer_audit_log').select('*').order('when_date', { ascending: false }),
       supabase.from('consumer_household').select('*').order('joined'),
       supabase.from('consumer_bills').select('*').order('id', { ascending: false }),
@@ -252,7 +254,7 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
     setSaving(true)
     await supabase.from('consumer_profile').update({
       name, email, msisdn: phone, city,
-    }).eq('id', 'me')
+    }).eq('user_id', profile.user_id)
     setSaving(false)
     showToast('Your details have been saved')
   }
@@ -265,7 +267,7 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
     label: string,
   ) => {
     const column = field === 'language' ? 'preferred_language' : field === 'timeZone' ? 'time_zone' : 'data_units'
-    await supabase.from('consumer_profile').update({ [column]: value }).eq('id', 'me')
+    await supabase.from('consumer_profile').update({ [column]: value }).eq('user_id', profile.user_id)
 
     /* Language and time zone change what the customer is sent and when, so an agent
        looking at a "why did I get this in English" complaint needs the date. Data
@@ -515,7 +517,7 @@ function PasswordModal({ profile, onClose, showToast }: { profile: ConsumerProfi
     }
 
     const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
-    await supabase.from('consumer_profile').update({ pwd_changed: today }).eq('id', 'me')
+    await supabase.from('consumer_profile').update({ pwd_changed: today }).eq('user_id', profile.user_id)
     await supabase.from('consumer_audit_log').insert({
       id: 'AUD-CU-' + Date.now(), when_date: today + ' ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
       action: 'password.changed', label: 'Password changed', category: 'Security', severity: 'warning',
@@ -584,7 +586,7 @@ function MfaModal({ profile, onClose, showToast }: { profile: ConsumerProfile; o
   const toggle = async () => {
     setSaving(true)
     const newState = !enabled
-    await supabase.from('consumer_profile').update({ mfa_enabled: newState }).eq('id', 'me')
+    await supabase.from('consumer_profile').update({ mfa_enabled: newState }).eq('user_id', profile.user_id)
     const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     await supabase.from('consumer_audit_log').insert({
       id: 'AUD-CU-' + Date.now(), when_date: today + ' ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),
@@ -766,7 +768,7 @@ function SessionsModal({ profile, onClose, showToast }: { profile: ConsumerProfi
 
   const signOutAll = async () => {
     setSaving(true)
-    await supabase.from('consumer_profile').update({ active_sessions: 0 }).eq('id', 'me')
+    await supabase.from('consumer_profile').update({ active_sessions: 0 }).eq('user_id', profile.user_id)
     const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
     await supabase.from('consumer_audit_log').insert({
       id: 'AUD-CU-' + Date.now(), when_date: today + ' ' + new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }),

@@ -48,13 +48,17 @@ const CONFIG: Record<Aud, {
   },
 }
 
-export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onAddToBasket }: {
+export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onRegister, onAddToBasket }: {
   page: Aud
   onSignIn: (p: Persona) => void
   onApply: () => void
   /* Applying takes several sittings, so coming back needs its own way in
      rather than being a button inside the one that starts a new one. */
   onResumeApplication: () => void
+  /* A shopper has to be able to become one. "Start shopping" reaches the
+     catalogue and stops at the first basket, which is a sign-in screen with
+     four demo accounts on it. */
+  onRegister: () => void
   onAddToBasket: (p: Product) => void
 }) {
   const { market, currency } = useMarket()
@@ -94,6 +98,25 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onA
             </ul>
             <div style={{ display: 'flex', gap: '12px', marginTop: '32px', flexWrap: 'wrap' }}>
               <button className="btn btn-primary btn-lg" onClick={() => onSignIn(c.persona)}>{c.cta}</button>
+              {page === 'retail' && (
+                <>
+                <button className="btn btn-secondary btn-lg" style={{ background: 'rgba(255,255,255,0.1)', color: 'white', borderColor: 'rgba(255,255,255,0.2)' }} onClick={onRegister}>
+                  Create an account
+                </button>
+                <button
+                  onClick={() => onSignIn('consumer')}
+                  style={{
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    color: 'rgba(255,255,255,0.75)', fontSize: 'var(--text-sm)',
+                    textDecoration: 'underline', textUnderlineOffset: '3px', alignSelf: 'center',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.color = 'white' }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.75)' }}
+                >
+                  Sign in
+                </button>
+                </>
+              )}
               {page === 'partner' && (
                 <>
                 <button className="btn btn-secondary btn-lg" style={{ background: 'rgba(255,255,255,0.1)', color: 'white', borderColor: 'rgba(255,255,255,0.2)' }} onClick={onApply}>

@@ -15,6 +15,7 @@ import { PublicShell } from './components/public/PublicShell'
 import { LandingPage } from './components/public/LandingPage'
 import { AudiencePage } from './components/public/AudiencePage'
 import { ApplyToSell } from './components/public/ApplyToSell'
+import { RegisterShopper } from './components/public/RegisterShopper'
 import { Header } from './components/Header'
 import { Hero } from './components/Hero'
 import { CategoryStrip } from './components/CategoryStrip'
@@ -342,6 +343,19 @@ function AppInner() {
     )
   }
 
+  /* Registering as a shopper. `handleLogin` is the same one sign-in uses, so a
+     new customer lands where a returning one does and the basket, watches and
+     profile are loaded for them on the way. */
+  if (surface.kind === 'register') {
+    return (
+      <RegisterShopper
+        onLeave={() => { setSurface({ kind: 'public', page: 'retail' }); window.scrollTo({ top: 0 }) }}
+        onSignIn={() => setSurface({ kind: 'login', prefill: 'consumer' })}
+        onRegistered={(session) => handleLogin(session)}
+      />
+    )
+  }
+
   if (surface.kind === 'public') {
     return (
       <PublicShell
@@ -356,6 +370,7 @@ function AppInner() {
             onSignIn={(p) => setSurface({ kind: 'login', prefill: p })}
             onApply={() => { setSurface({ kind: 'apply' }); window.scrollTo({ top: 0 }) }}
             onResumeApplication={() => { setSurface({ kind: 'apply', resume: true }); window.scrollTo({ top: 0 }) }}
+            onRegister={() => { setSurface({ kind: 'register' }); window.scrollTo({ top: 0 }) }}
             /* Anyone can browse; the basket needs an owner. The first add sends
                the visitor to sign in and is completed for them afterwards. */
             onAddToBasket={(p) => {

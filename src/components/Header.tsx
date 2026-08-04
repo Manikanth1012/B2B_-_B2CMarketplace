@@ -35,7 +35,11 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut, currentV
     supabase.from('categories').select('*').order('sort_order').then(({ data }) => {
       if (data) setCategories(categoriesFor(data as Category[], 'consumer'))
     })
-    supabase.from('consumer_profile').select('name,tier,points').eq('id', 'me').maybeSingle()
+    /* No `.eq('id', 'me')`. That id belongs to the demo customer's row, and RLS
+       on this table is already `user_id = auth.uid()` — so the filter was both
+       redundant for her and wrong for everybody else. A registered shopper got
+       no row at all and the avatar read "MA", for "My account". */
+    supabase.from('consumer_profile').select('name,tier,points').maybeSingle()
       .then(({ data }) => { if (data) setMe({ ...data, points: Number(data.points) } as typeof me) })
     const onScroll = () => setScrolled(window.scrollY > 10)
     window.addEventListener('scroll', onScroll)

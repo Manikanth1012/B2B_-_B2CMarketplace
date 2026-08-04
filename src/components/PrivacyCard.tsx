@@ -96,7 +96,7 @@ export function PrivacyCard({ profile, showToast }: {
     const effective = toIsoDate(closureEffective(requested))
     await supabase.from('consumer_profile').update({
       closure_requested_at: toIsoDate(requested), closure_effective: effective, closure_reason: reason,
-    }).eq('id', 'me')
+    }).eq('user_id', profile.user_id)
     /* The wallet is frozen and the return is registered now, but no money moves
        until the closure actually completes — they can still change their mind. */
     const { data: w } = await supabase.from('wallets').select('id, currency').maybeSingle()
@@ -126,7 +126,7 @@ export function PrivacyCard({ profile, showToast }: {
   const cancelClosure = async () => {
     await supabase.from('consumer_profile').update({
       closure_requested_at: null, closure_effective: null, closure_reason: null,
-    }).eq('id', 'me')
+    }).eq('user_id', profile.user_id)
     const { data: w } = await supabase.from('wallets').select('id, currency').maybeSingle()
     if (w) await cancelWalletReturn(w.id)
     await audit('account.closure_cancelled', 'Account closure withdrawn', 'Account stays open')

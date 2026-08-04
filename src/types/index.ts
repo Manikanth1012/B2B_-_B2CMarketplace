@@ -242,6 +242,11 @@ export interface LoyaltyLedgerEntry {
 
 export interface ConsumerProfile {
   id: string
+  /* Whose row this is. `id` is not that — the demo customer's is the literal
+     'me' — and RLS scopes this table by `user_id`, so this is what an update
+     filters on. Nullable because the column is, though a signed-in shopper's
+     row always has it. */
+  user_id: string | null
   name: string
   customer_id: string
   msisdn: string
