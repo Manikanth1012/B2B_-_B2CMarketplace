@@ -92,4 +92,9 @@ export type Surface =
   /* `prefill` preselects a persona card. It chooses which credentials are
      filled in, never which console opens — that comes back from the server. */
   | { kind: 'login'; prefill?: Persona }
+  /* Applying to sell. Its own surface rather than a public page, because the
+     applicant is part-way through a form that is being saved as they go — the
+     header's marketplace nav would take them out of it with one click, and
+     there is no route to come back to. */
+  | { kind: 'apply' }
   | { kind: 'session'; session: Session }

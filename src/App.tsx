@@ -14,6 +14,7 @@ import { LoginScreen } from './components/LoginScreen'
 import { PublicShell } from './components/public/PublicShell'
 import { LandingPage } from './components/public/LandingPage'
 import { AudiencePage } from './components/public/AudiencePage'
+import { ApplyToSell } from './components/public/ApplyToSell'
 import { Header } from './components/Header'
 import { Hero } from './components/Hero'
 import { CategoryStrip } from './components/CategoryStrip'
@@ -141,7 +142,6 @@ function AppInner() {
   const [cartCount, setCartCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [accountTab, setAccountTab] = useState<string | undefined>(undefined)
-  const [applyIntent, setApplyIntent] = useState(false)
   /* Held across the sign-in round trip: a visitor can browse the public catalogue
      without a session, but the basket is owner-scoped, so the first add has to
      become a sign-in and then finish itself. */
@@ -256,12 +256,13 @@ function AppInner() {
   const handleLogin = (s: Session) => {
     setSurface({ kind: 'session', session: s })
     if (s.persona === 'operator') setOpView('op-dashboard')
-    /* "Apply to sell" now goes via the login screen, so the intent has to
-       outlive the round trip to land on Onboarding rather than the dashboard. */
-    else if (s.persona === 'partner') setPtView(applyIntent ? 'pt-onboarding' : 'pt-dashboard')
+    /* Every persona lands on its dashboard. "Apply to sell" used to route a
+       partner to Onboarding instead, carrying an intent flag across the sign-in
+       round trip — it does not go through sign-in any more, because an
+       applicant has no credentials to sign in with. */
+    else if (s.persona === 'partner') setPtView('pt-dashboard')
     else if (s.persona === 'enterprise') setEnView('en-dashboard')
     else setView('home')
-    setApplyIntent(false)
 
     /* The product the visitor picked before they had a session. `cart_items` is
        owner-scoped, so there was nowhere to put it until now — this is the add
@@ -311,16 +312,27 @@ function AppInner() {
       <LoginScreen
         prefill={surface.prefill}
         onLogin={handleLogin}
-        /* Both notices exist for the same reason: the visitor arrives here as
-           the consequence of a click somewhere else, and a sign-in screen that
-           does not say why it appeared reads as having lost their place. */
+        /* The notice exists because the visitor arrives here as the consequence
+           of a click somewhere else, and a sign-in screen that does not say why
+           it appeared reads as having lost their place. */
         notice={
           pendingProduct
             ? `Sign in to add "${pendingProduct.name}" to your basket.`
-            : applyIntent
-            ? 'Applying to sell starts in the seller console. Sign in as a partner and you will land on the onboarding journey — seven gates, five working days once we have what each one asks for.'
             : undefined
         }
+      />
+    )
+  }
+
+  /* Applying to sell, which is where "Apply to sell" now goes. It used to open
+     the sign-in screen with a notice explaining that the journey started in the
+     seller console — true, and no use at all to somebody who has never been a
+     seller and so has no credentials to get into it. */
+  if (surface.kind === 'apply') {
+    return (
+      <ApplyToSell
+        onLeave={() => { setSurface({ kind: 'public', page: 'partner' }); window.scrollTo({ top: 0 }) }}
+        onSignIn={() => setSurface({ kind: 'login', prefill: 'partner' })}
       />
     )
   }
@@ -337,7 +349,7 @@ function AppInner() {
           <AudiencePage
             page={surface.page}
             onSignIn={(p) => setSurface({ kind: 'login', prefill: p })}
-            onApply={() => { setApplyIntent(true); setSurface({ kind: 'login', prefill: 'partner' }) }}
+            onApply={() => { setSurface({ kind: 'apply' }); window.scrollTo({ top: 0 }) }}
             /* Anyone can browse; the basket needs an owner. The first add sends
                the visitor to sign in and is completed for them afterwards. */
             onAddToBasket={(p) => {
