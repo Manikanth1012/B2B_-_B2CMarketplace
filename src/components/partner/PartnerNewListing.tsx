@@ -14,7 +14,7 @@ import type { MediaItem } from '../../lib/listingMedia'
 import {
   LISTING_KINDS, BILLING_PERIODS, modelFor, periodOf, currenciesFor,
   validateMarkets, blankPrices, reconcilePrices, validatePrices,
-  validateBundle, componentsTotal, bundleSaving, draftOutstanding,
+  validateBundle, componentsTotal, bundleSaving, draftOutstanding, taxPerMarket,
 } from '../../lib/listingDraft'
 import type { ListingKind, BillingPeriod, PriceRow, BundleComponent } from '../../lib/listingDraft'
 import { loadListingContext } from '../../lib/listingDraftRepo'
@@ -43,7 +43,6 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
   const [floor, setFloor] = useState('')
   const [list, setList] = useState('')
   const [includesTax, setIncludesTax] = useState(true)
-  const [taxRate, setTaxRate] = useState('18')
   const [cost, setCost] = useState('')
   const [model, setModel] = useState('oneoff')
   /* The listing's photographs, uploaded as they are picked and attached to the
@@ -112,7 +111,11 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
   const net = +(priceNum - comm - fee).toFixed(2)
   const floorNum = parseFloat(prices[0]?.floor ?? floor) || 0
   const listNum = parseFloat(prices[0]?.list ?? list) || 0
-  const rateNum = parseFloat(taxRate) || 0
+  /* The primary market's rate. It was a piece of state initialised to '18' and
+     bound to a text box — so every commission and margin figure on this step
+     was worked out at India's GST whoever the seller was and wherever they
+     sold. There is nothing to type: the rate belongs to the market. */
+  const rateNum = ctx?.markets.find(m => m.code === markets[0])?.taxRate ?? 0
   const bandProblem = priceNum > 0
     ? validateBand({ price: priceNum, floor: floorNum, list: listNum || priceNum, cost: costNum })
     : null
@@ -120,6 +123,9 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
     ? bandWarnings({ price: priceNum, floor: floorNum, list: listNum || priceNum, cost: costNum })
     : []
   const split = bases({ price: priceNum, price_includes_tax: includesTax, tax_rate: rateNum })
+  /* One row per market, each with its own rate — worked out from `markets`
+     rather than from anything the seller typed. */
+  const taxRows = ctx ? taxPerMarket(markets, ctx.markets, prices, includesTax) : []
   const margin = costNum > 0 ? +(net - costNum).toFixed(2) : net
 
   /* This used to end in a toast and write nothing, so a seller could submit all
@@ -175,6 +181,10 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
         floorPrice: floorNum || priceNum,
         listPrice: listNum || priceNum,
         priceIncludesTax: includesTax,
+        /* The primary market's rate, because `products.tax_rate` is one column
+           and this listing may be sold under three. It records what the seller
+           quoted against; what a buyer is actually charged comes from their own
+           market, which is why the wizard no longer asks for a figure. */
         taxRate: rateNum,
         /* The kind decides whether it recurs; the period says how often. */
         model: modelFor(kind),
@@ -474,22 +484,48 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
         <TextInput type="number" value={cost} onChange={e => setCost(e.target.value)} placeholder="0.00" />
       </FormField>
 
-      {/* The basis. Getting this wrong misstates the price by the tax rate, so
-          the other side is shown rather than left to be worked out. */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', alignItems: 'end' }}>
-        <FormField label="Your price is quoted">
+      {/* The basis is the seller's to declare. The rate is not.
+
+          This used to be a "Tax rate (%)" text box defaulting to 18 — India's
+          GST — on a listing sold in three markets charging three different
+          taxes. A seller cannot answer that question with one number, and the
+          number is not theirs anyway: `markets` records that India charges 18%
+          GST, Kenya 16% VAT and the UAE 5% VAT, and whichever applies is
+          decided by where the buyer is, not by where the seller typed. */}
+      <div style={{ display: 'grid', gridTemplateColumns: '340px 1fr', gap: '16px', alignItems: 'start' }}>
+        <FormField label="Your price is quoted"
+          hint="The one thing about tax that is yours to say.">
           <Select value={includesTax ? 'inc' : 'ex'} onChange={e => setIncludesTax(e.target.value === 'inc')}>
             <option value="inc">Including tax — what the buyer pays</option>
             <option value="ex">Excluding tax — the buyer adds it</option>
           </Select>
         </FormField>
-        <FormField label="Tax rate (%)">
-          <TextInput type="number" value={taxRate} onChange={e => setTaxRate(e.target.value)} />
-        </FormField>
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', paddingBottom: '8px' }}>
-          {priceNum > 0 && (
-            <>Buyer pays <strong>${split.gross.toFixed(2)}</strong>, you book{' '}
-              <strong>${split.net.toFixed(2)}</strong>, tax ${split.tax.toFixed(2)}.</>
+
+        <div>
+          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: '6px' }}>
+            What each market charges
+          </div>
+          {taxRows.length === 0 ? (
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+              Choose where this is sold and each market's own tax appears here.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+              {taxRows.map(t => (
+                <div key={t.code} style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '10px', fontSize: 'var(--text-sm)', alignItems: 'baseline' }}>
+                  <span>
+                    <strong>{t.name}</strong>
+                    <span style={{ color: 'var(--text-tertiary)' }}> · {t.label} {t.rate}%</span>
+                  </span>
+                  <span style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-xs)' }}>
+                    {t.gross > 0
+                      ? <>buyer pays <strong>{t.currency} {t.gross.toFixed(2)}</strong>, you book{' '}
+                          <strong>{t.net.toFixed(2)}</strong>, {t.label} {t.tax.toFixed(2)}</>
+                      : <>no {t.currency} price yet</>}
+                  </span>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>

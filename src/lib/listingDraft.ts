@@ -59,6 +59,47 @@ export interface MarketOption {
   /* Every currency that market takes, its default first. A seller pricing for
      the UAE has to give a dirham figure and may give a dollar one. */
   currencies: string[]
+  /* The market's own tax, which is the market's fact and not the seller's.
+     India charges 18% GST, Kenya 16% VAT, the UAE 5% VAT — the wizard used to
+     ask a seller to type one number for a listing sold in all three, and it
+     defaulted to 18. */
+  taxRate: number
+  taxLabel: string
+}
+
+/**
+ * What each market this listing is sold in charges, and what that means for the
+ * price given in that market's currency.
+ *
+ * One row per market rather than one rate for the listing: the seller declares
+ * a basis — whether their figure includes tax or not — and the rate that then
+ * applies is the buyer's market's. Those are different kinds of fact and only
+ * one of them is the seller's to state.
+ */
+export function taxPerMarket(
+  chosen: readonly string[],
+  markets: readonly MarketOption[],
+  prices: readonly PriceRow[],
+  includesTax: boolean,
+): { code: string; name: string; label: string; rate: number; currency: string; gross: number; net: number; tax: number }[] {
+  return chosen.flatMap(code => {
+    const m = markets.find(x => x.code === code)
+    if (!m) return []
+    /* The market's own currency — its first — is what a buyer there is quoted
+       in, so that is the row whose figure this splits. */
+    const currency = m.currencies[0]
+    const row = prices.find(r => r.currency === currency)
+    const price = parseFloat(row?.price ?? '') || 0
+    const rate = m.taxRate / 100
+    const net = includesTax ? (rate === 0 ? price : price / (1 + rate)) : price
+    const gross = includesTax ? price : price * (1 + rate)
+    return [{
+      code, name: m.name, label: m.taxLabel, rate: m.taxRate, currency,
+      gross: Math.round(gross * 100) / 100,
+      net: Math.round(net * 100) / 100,
+      tax: Math.round((gross - net) * 100) / 100,
+    }]
+  })
 }
 
 /**

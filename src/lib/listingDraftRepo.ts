@@ -32,7 +32,9 @@ export async function loadListingContext(partnerId: string): Promise<ListingCont
        wanted for the names and the join is cheaper than a fourth round trip. */
   ])
 
-  const { data: names } = await supabase.from('markets').select('code, name')
+  /* `tax_rate` and `tax_label` come with the name — they are the market's own
+     facts and the wizard shows them rather than asking a seller to type one. */
+  const { data: names } = await supabase.from('markets').select('code, name, tax_rate, tax_label')
 
   const errors = [mk.error, mc.error, mine.error, br.error].filter(Boolean).map(e => e!.message)
 
@@ -41,13 +43,18 @@ export async function loadListingContext(partnerId: string): Promise<ListingCont
     .map(r => r.market_code)
 
   const currencies = (mc.data ?? []) as { market_code: string; currency: string }[]
-  const named = (names ?? []) as { code: string; name: string }[]
+  const named = (names ?? []) as { code: string; name: string; tax_rate: number; tax_label: string }[]
 
-  const markets: MarketOption[] = approved.map(code => ({
-    code,
-    name: named.find(n => n.code === code)?.name ?? code,
-    currencies: currencies.filter(c => c.market_code === code).map(c => c.currency),
-  }))
+  const markets: MarketOption[] = approved.map(code => {
+    const m = named.find(n => n.code === code)
+    return {
+      code,
+      name: m?.name ?? code,
+      currencies: currencies.filter(c => c.market_code === code).map(c => c.currency),
+      taxRate: Number(m?.tax_rate ?? 0),
+      taxLabel: m?.tax_label ?? 'Tax',
+    }
+  })
 
   const rules = (br.data as BundleRules | null) ?? FALLBACK_RULES
 

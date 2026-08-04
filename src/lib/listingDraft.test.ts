@@ -2,16 +2,16 @@
    not have got right, because it never asked. */
 import { describe, it, expect } from 'vitest'
 import {
-  BILLING_PERIODS, periodOf, monthlyEquivalent, modelFor,
+  BILLING_PERIODS, periodOf, monthlyEquivalent, modelFor, taxPerMarket,
   currenciesFor, validateMarkets, blankPrices, reconcilePrices, validatePrices,
   componentsTotal, bundleSaving, validateBundle, draftOutstanding,
 } from './listingDraft'
 import type { MarketOption, PriceRow, BundleComponent, BundleRules } from './listingDraft'
 
 const MARKETS: MarketOption[] = [
-  { code: 'IN', name: 'India', currencies: ['INR'] },
-  { code: 'KE', name: 'Kenya', currencies: ['KES', 'USD'] },
-  { code: 'AE', name: 'United Arab Emirates', currencies: ['AED', 'USD'] },
+  { code: 'IN', name: 'India', currencies: ['INR'], taxRate: 18, taxLabel: 'GST' },
+  { code: 'KE', name: 'Kenya', currencies: ['KES', 'USD'], taxRate: 16, taxLabel: 'VAT' },
+  { code: 'AE', name: 'United Arab Emirates', currencies: ['AED', 'USD'], taxRate: 5, taxLabel: 'VAT' },
 ]
 
 const priced = (over: Partial<PriceRow> & { currency: string }): PriceRow =>
@@ -80,6 +80,56 @@ describe('where it is sold, and therefore what it is priced in', () => {
     const r = validateMarkets(['IN', 'GB'], MARKETS)
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.reason).toContain('GB')
+  })
+})
+
+describe('the tax each market charges', () => {
+  const rows = [
+    priced({ currency: 'INR', price: '11800' }),
+    priced({ currency: 'AED', price: '105' }),
+    priced({ currency: 'USD', price: '100' }),
+  ]
+
+  it('uses each market\'s own rate and its own name for it', () => {
+    /* The whole point: one listing, three markets, three different taxes. The
+       wizard used to ask a seller to type one number, defaulted to 18. */
+    const out = taxPerMarket(['IN', 'KE', 'AE'], MARKETS, rows, true)
+    expect(out.map(r => `${r.label} ${r.rate}%`)).toEqual(['GST 18%', 'VAT 16%', 'VAT 5%'])
+  })
+
+  it('splits the price of the market\'s own currency, not a shared one', () => {
+    /* India is quoted in rupees and the UAE in dirhams — splitting both from
+       one figure is the mistake the per-currency table exists to prevent. */
+    const out = taxPerMarket(['IN', 'AE'], MARKETS, rows, true)
+    expect(out[0].currency).toBe('INR')
+    expect(out[1].currency).toBe('AED')
+    expect(out[0].gross).toBe(11800)
+    expect(out[1].gross).toBe(105)
+  })
+
+  it('works out tax from an inclusive price', () => {
+    const [india] = taxPerMarket(['IN'], MARKETS, rows, true)
+    expect(india.gross).toBe(11800)
+    expect(india.net).toBe(10000)
+    expect(india.tax).toBe(1800)
+  })
+
+  it('adds tax to an exclusive one', () => {
+    const [india] = taxPerMarket(['IN'], MARKETS, [priced({ currency: 'INR', price: '10000' })], false)
+    expect(india.net).toBe(10000)
+    expect(india.gross).toBe(11800)
+    expect(india.tax).toBe(1800)
+  })
+
+  it('says nothing about a market that is not chosen', () => {
+    expect(taxPerMarket(['IN'], MARKETS, rows, true).map(r => r.code)).toEqual(['IN'])
+    expect(taxPerMarket([], MARKETS, rows, true)).toEqual([])
+  })
+
+  it('is quiet rather than wrong when the price has not been typed yet', () => {
+    const [india] = taxPerMarket(['IN'], MARKETS, [], true)
+    expect(india.gross).toBe(0)
+    expect(india.tax).toBe(0)
   })
 })
 
