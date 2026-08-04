@@ -10,6 +10,9 @@ import { useAccountMoney } from './money'
 /* Same rows, same photos as the Business Catalogue and the storefront — the
    vertical screens are a filtered view of the one shelf, not a second one. */
 import { getProductImage } from '../../lib/images'
+import { useRequisition } from '../../lib/RequisitionContext'
+import { lineFor } from './EnterpriseBrowse'
+import { useMarket } from '../../lib/MarketContext'
 
 /* EnterpriseApprovals moved to EnterpriseApprovals.tsx when requisitions
    became rows rather than a constant. Deciding one here filtered a React array,
@@ -143,16 +146,49 @@ export function EnterpriseSubs() {
 export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
   const [book, setBook] = useState<AccountBook | null>(null)
   const [listings, setListings] = useState<EnterpriseListing[] | null>(null)
+  const req = useRequisition()
 
   useEffect(() => {
-    void (async () => {
-      const b = await loadAccount()
-      setBook(b)
-      setListings(await loadEnterpriseCatalogue(b.account?.currency ?? 'USD'))
-    })()
+    void loadAccount().then(setBook)
   }, [])
 
-  const { money, money0 } = useAccountMoney(book?.account?.currency)
+  /* The currency the header picker is on, exactly as Browse Catalogue reads it.
+
+     This screen used to price at the account's primary currency and ignore the
+     picker, so a Nairobi account switching to dollars saw dollars on Browse and
+     shillings here — and a requisition filled from both would have been holding
+     two currencies, which the basket has to refuse. One shelf, one answer. */
+  const { currency: chosen } = useMarket()
+  const primary = book?.account?.currency ?? null
+  const offered = book?.currencies ?? []
+  const currency = primary === null ? null
+    : chosen && offered.includes(chosen.code) ? chosen.code
+    : primary
+
+  useEffect(() => {
+    if (!currency) return
+    let live = true
+    setListings(null)
+    void loadEnterpriseCatalogue(currency).then(rows => { if (live) setListings(rows) })
+    return () => { live = false }
+  }, [currency])
+
+  /* Same re-pricing rule as Browse: the basket follows the shelf rather than
+     being multiplied by a rate. */
+  useEffect(() => {
+    if (!currency || !listings || !req.basket.lines.length) return
+    if (req.basket.currency === currency) return
+    const dropped = req.reprice(currency, listings)
+    if (dropped.length) {
+      toast(`${dropped.join(' and ')} ${dropped.length === 1 ? 'is' : 'are'} not sold in ${currency}, so ${dropped.length === 1 ? 'it was' : 'they were'} taken out of your requisition.`, 'error')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currency, listings])
+
+  /* The shelf's currency for prices; the account's own for the threshold, which
+     is a chosen figure and does not move when the shelf does. */
+  const { money } = useAccountMoney(currency)
+  const { money0 } = useAccountMoney(primary)
 
   if (!book || !listings) {
     return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
@@ -221,7 +257,11 @@ export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
                 </div>
                 <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border-light)', background: 'var(--bg-alt)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontWeight: 700 }}>{money(p.price)}{p.model === 'monthly' ? (p.unit ? ` ${p.unit}/mo` : '/mo') : ''}</span>
-                  <Btn variant="primary" size="sm" onClick={() => toast(`${p.name} added to requisition`)}>Add</Btn>
+                  <Btn variant="primary" size="sm" onClick={() => {
+                    if (!currency) return
+                    const r = req.add(lineFor(p), currency)
+                    toast(r.ok ? (r.note ?? `${p.name} added`) : r.reason, r.ok ? 'success' : 'error')
+                  }}>Add</Btn>
                 </div>
               </div>
             ))}

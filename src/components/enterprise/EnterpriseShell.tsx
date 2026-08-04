@@ -4,6 +4,31 @@ import type { EnterpriseView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
 import { AccountMenu } from '../AccountMenu'
 import { MarketPicker } from '../MarketPicker'
+import { useRequisition } from '../../lib/RequisitionContext'
+
+/** The basket, with what is in it. Hidden while empty rather than showing a
+    zero — a control that does nothing is one a buyer learns to ignore. */
+function RequisitionButton() {
+  const { count, setOpen } = useRequisition()
+  if (count === 0) return null
+  return (
+    <button
+      onClick={() => setOpen(true)}
+      aria-label={`Requisition — ${count} ${count === 1 ? 'unit' : 'units'}`}
+      style={{ padding: '8px', borderRadius: 'var(--radius)', color: 'var(--text-secondary)', position: 'relative' }}
+    >
+      <ShoppingCart size={20} />
+      <span style={{
+        position: 'absolute', top: '0', right: '0', minWidth: '17px', height: '17px',
+        padding: '0 4px', borderRadius: '9px', background: 'var(--brand-accent-dark, #006B6B)',
+        color: 'white', fontSize: '10px', fontWeight: 700,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        {count > 99 ? '99+' : count}
+      </span>
+    </button>
+  )
+}
 
 interface EnterpriseShellProps {
   view: EnterpriseView
@@ -165,6 +190,11 @@ export function EnterpriseShell({ view, onNavigate, onSignOut, children }: Enter
             <div style={{ flexShrink: 0 }} className="hide-mobile">
               <MarketPicker tone="light" />
             </div>
+            {/* The requisition being built. It has to be reachable from every
+                screen, not only from the catalogue that filled it — a buyer who
+                wanders off to check a budget and comes back otherwise has no
+                way to find what they had collected. */}
+            <RequisitionButton />
             <button style={{ padding: '8px', borderRadius: 'var(--radius)', color: 'var(--text-secondary)', position: 'relative' }}>
               <BellIcon size={20} />
               <span style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--danger)' }} />

@@ -1,0 +1,274 @@
+/* Reviewing what has been collected, and asking to spend it.
+ *
+ * The button that opens this used to be a toast reading "added to requisition",
+ * with no requisition behind it. `raiseRequisition` existed and had never been
+ * called from anywhere, so this is the screen that connects the shelf to it.
+ *
+ * The order of the panel is the order of the decision: what is in it, what it
+ * comes to, what that will require, and only then the fields an approver needs.
+ * A buyer should learn that ₹2,40,000 of sensors needs finance approval before
+ * they have written a justification, not after.
+ */
+import { useState, useEffect } from 'react'
+import { X, Trash2, TriangleAlert as AlertTriangle, Check } from 'lucide-react'
+import { Btn, toast } from '../operator/shared'
+import { useRequisition } from '../../lib/RequisitionContext'
+import { verdict, whatIsMissing, missingNote, verticalOf, modelOf } from '../../lib/requisitionBasket'
+import { raiseRequisition, loadAccount } from '../../lib/enterpriseRepo'
+import type { AccountBook } from '../../lib/enterpriseRepo'
+import { money } from '../../lib/enterprise'
+import { VERTICAL_NAMES } from './data'
+import { getProductImage } from '../../lib/images'
+
+const BLANK = { title: '', reason: '', cost_centre: null as string | null, po_ref: '' }
+
+export function RequisitionPanel({ onRaised }: {
+  /* The console is told afterwards, because the queue the buyer is about to be
+     sent to is one of the things that just changed. */
+  onRaised: () => void
+}) {
+  const { basket, open, setOpen, setQuantity, remove, empty, total, count } = useRequisition()
+  const [draft, setDraft] = useState(BLANK)
+  const [busy, setBusy] = useState(false)
+  /* The account's own copy, read when the panel opens rather than passed down.
+     The policy, the cost centres and the rate table are all things that can
+     have moved since the console loaded, and every one of them changes what
+     this panel is allowed to say. */
+  const [book, setBook] = useState<AccountBook | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    let live = true
+    void loadAccount().then(b => { if (live) setBook(b) })
+    return () => { live = false }
+  }, [open])
+
+  /* Cleared once it has actually been raised, not on every close — a buyer who
+     shuts the panel to go and check a budget should not lose their reasoning. */
+  useEffect(() => { if (!basket.lines.length) setDraft(BLANK) }, [basket.lines.length])
+
+  if (!open) return null
+
+  const account = book?.account ?? null
+  const me = book?.me ?? null
+  const policy = book?.policy ?? null
+  const centres = book?.centres ?? []
+  const currencies = book?.currencies ?? []
+  const rates = book?.rates ?? []
+  const today = new Date().toISOString().slice(0, 10)
+  const v = account && policy
+    ? verdict(basket, account, policy, rates, today)
+    : null
+  const missing = account ? whatIsMissing(basket, draft, account)
+    : [book ? 'your account, which did not load' : 'your account to finish loading']
+  const stopper = missingNote(missing)
+
+  const canRaise = !!(account && me && policy && me.can_raise && basket.lines.length
+    && !missing.length && !v?.blocked && !busy)
+
+  const raise = async () => {
+    if (!account || !me || !policy) return
+    setBusy(true)
+    const res = await raiseRequisition({
+      draft: {
+        title: draft.title, reason: draft.reason, currency: basket.currency,
+        vertical: verticalOf(basket.lines), cost_centre: draft.cost_centre,
+        model: modelOf(basket.lines), po_ref: draft.po_ref,
+        lines: basket.lines.map(l => ({
+          product_id: l.product_id, name: l.name, seller: l.seller,
+          partner_id: l.partner_id, quantity: l.quantity, unit_price: l.unit_price,
+        })),
+      },
+      me, account, policy, currencies, rates,
+    })
+    setBusy(false)
+    if (!res.ok) { toast(res.reason, 'error'); return }
+    toast(res.note ?? 'Raised', 'success')
+    empty()
+    setDraft(BLANK)
+    setOpen(false)
+    onRaised()
+  }
+
+  const field = {
+    width: '100%', padding: '8px 10px', borderRadius: 'var(--radius)',
+    border: '1px solid var(--border)', fontSize: 'var(--text-sm)',
+    outline: 'none', color: 'var(--text)', background: 'white',
+  } as const
+  const label = {
+    display: 'block', fontSize: 'var(--text-xs)', fontWeight: 600,
+    color: 'var(--text-secondary)', marginBottom: '4px',
+  } as const
+
+  return (
+    <div
+      onClick={() => setOpen(false)}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.4)', display: 'flex', justifyContent: 'flex-end' }}
+    >
+      <div
+        role="dialog" aria-modal="true" aria-label="Requisition"
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: 'min(560px, 100%)', background: 'var(--bg-alt)', height: '100%',
+          display: 'flex', flexDirection: 'column', boxShadow: 'var(--shadow-lg)',
+        }}
+      >
+        <header style={{ padding: '16px 20px', background: 'white', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <strong style={{ fontSize: 'var(--text-base)' }}>Requisition</strong>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+              {count === 0 ? 'Nothing in it yet'
+                : `${count} ${count === 1 ? 'unit' : 'units'} across ${basket.lines.length} ${basket.lines.length === 1 ? 'line' : 'lines'}`}
+            </div>
+          </div>
+          <button onClick={() => setOpen(false)} aria-label="Close" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}>
+            <X size={20} />
+          </button>
+        </header>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+          {basket.lines.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>
+              <p>Nothing here yet.</p>
+              <p style={{ marginTop: '8px' }}>Add from the catalogue and it collects here until you raise it.</p>
+            </div>
+          ) : (
+            <>
+              {/* What is in it */}
+              <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
+                {basket.lines.map((l, i) => (
+                  <div key={l.product_id} style={{ display: 'flex', gap: '12px', padding: '12px', borderTop: i ? '1px solid var(--border-light)' : 'none', alignItems: 'center' }}>
+                    <div style={{ width: 48, height: 48, borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--bg-alt)', flexShrink: 0 }}>
+                      <img src={getProductImage(l.product_id)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    </div>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{l.name}</div>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                        {l.seller} · {money(l.unit_price, basket.currency)}{l.model === 'monthly' ? `${l.unit ? ` ${l.unit}` : ''}/mo` : ' each'}
+                      </div>
+                    </div>
+                    <input
+                      type="number" min={0} value={l.quantity} aria-label={`Quantity of ${l.name}`}
+                      onChange={e => {
+                        const n = Number(e.target.value)
+                        if (!Number.isInteger(n)) return
+                        const r = setQuantity(l.product_id, n)
+                        if (!r.ok) toast(r.reason, 'error')
+                      }}
+                      style={{ ...field, width: '72px', textAlign: 'right' }}
+                    />
+                    <div style={{ width: 96, textAlign: 'right', fontWeight: 700, fontSize: 'var(--text-sm)' }}>
+                      {money(Math.round(l.quantity * l.unit_price * 100) / 100, basket.currency)}
+                    </div>
+                    <button onClick={() => remove(l.product_id)} aria-label={`Remove ${l.name}`} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}>
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+                <div style={{ padding: '12px', borderTop: '1px solid var(--border)', background: 'var(--bg-alt)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                    Total{modelOf(basket.lines) === 'monthly' ? ' per month' : ''}
+                  </span>
+                  <strong style={{ fontSize: 'var(--text-lg)' }}>{money(total, basket.currency)}</strong>
+                </div>
+              </div>
+
+              {/* What it will require, before anything is typed */}
+              {v?.blocked ? (
+                <Callout kind="warning" icon={<AlertTriangle size={16} />}>{v.blocked}</Callout>
+              ) : v?.note ? (
+                <Callout kind={v.need === 'none' ? 'ok' : 'info'} icon={v.need === 'none' ? <Check size={16} /> : <AlertTriangle size={16} />}>
+                  {v.note}
+                </Callout>
+              ) : null}
+
+              {/* Said out loud because `verticalOf` made a choice with a
+                  consequence: one firewall among ninety sensors files the whole
+                  requisition under security, and that is what puts IT on it. */}
+              {v && new Set(basket.lines.map(l => l.vertical)).size > 1 && (
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                  Filed under {VERTICAL_NAMES[v.vertical] ?? v.vertical}
+                  {v.vertical === 'security' ? ', because it contains a security purchase — that is what asks for IT sign-off.' : ', which is where most of its value sits.'}
+                </div>
+              )}
+
+              {/* What an approver needs */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div>
+                  <label style={label} htmlFor="req-title">What is it for</label>
+                  <input id="req-title" style={field} value={draft.title} placeholder="Cold-chain rollout, depot 4"
+                    onChange={e => setDraft(d => ({ ...d, title: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={label} htmlFor="req-reason">Why it is needed</label>
+                  <textarea id="req-reason" style={{ ...field, minHeight: '70px', resize: 'vertical' }} value={draft.reason}
+                    placeholder="An approver deciding without this is guessing."
+                    onChange={e => setDraft(d => ({ ...d, reason: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={label} htmlFor="req-cc">Cost centre</label>
+                  <select id="req-cc" style={field} value={draft.cost_centre ?? ''}
+                    onChange={e => setDraft(d => ({ ...d, cost_centre: e.target.value || null }))}>
+                    <option value="">Pick one</option>
+                    {centres.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                {account?.po_required && (
+                  <div>
+                    <label style={label} htmlFor="req-po">Purchase order</label>
+                    <input id="req-po" style={field} value={draft.po_ref} placeholder="PO-8891"
+                      onChange={e => setDraft(d => ({ ...d, po_ref: e.target.value }))} />
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+                      This account requires one on every invoice.
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+
+        {basket.lines.length > 0 && (
+          <footer style={{ padding: '14px 20px', background: 'white', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {/* The reason the button is off, rather than a button that is off
+                and says nothing. */}
+            {me && !me.can_raise ? (
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--warning)' }}>
+                Your role on this account cannot raise a requisition. Ask a colleague who can, or an administrator to move you to a role that raises.
+              </div>
+            ) : stopper && (
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{stopper}</div>
+            )}
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between' }}>
+              <Btn variant="secondary" size="sm" onClick={() => { empty(); toast('Emptied', 'info') }}>Empty it</Btn>
+              <Btn variant="primary" onClick={raise} disabled={!canRaise}>
+                {/* Never "Raise and order": raising writes a pending
+                    requisition and nothing else. Confirming it on Approvals is
+                    what places the order, even when nobody else has to sign. */}
+                {busy ? 'Raising…'
+                  : v?.need === 'none' ? `Raise — ${money(total, basket.currency)}`
+                  : `Raise for approval — ${money(total, basket.currency)}`}
+              </Btn>
+            </div>
+          </footer>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function Callout({ kind, icon, children }: { kind: 'ok' | 'info' | 'warning'; icon: React.ReactNode; children: React.ReactNode }) {
+  const tone = kind === 'ok' ? { bg: 'var(--success-bg)', fg: 'var(--success)' }
+    : kind === 'warning' ? { bg: 'var(--warning-bg)', fg: 'var(--warning)' }
+    : { bg: 'var(--info-bg)', fg: 'var(--info)' }
+  return (
+    <div style={{
+      padding: '12px 14px', borderRadius: 'var(--radius-md)', background: tone.bg,
+      border: `1px solid ${tone.fg}`, color: tone.fg, fontSize: 'var(--text-sm)',
+      display: 'flex', gap: '8px', alignItems: 'flex-start',
+    }}>
+      <span style={{ flexShrink: 0, marginTop: '2px' }}>{icon}</span>
+      <span>{children}</span>
+    </div>
+  )
+}

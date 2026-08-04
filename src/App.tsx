@@ -73,6 +73,8 @@ import { OperatorNotifications } from './components/operator/OperatorNotificatio
 import { PartnerRewards } from './components/partner/PartnerRewards'
 import { PartnerReviews } from './components/partner/PartnerReviews'
 import { EnterpriseShell } from './components/enterprise/EnterpriseShell'
+import { RequisitionProvider } from './lib/RequisitionContext'
+import { RequisitionPanel } from './components/enterprise/RequisitionPanel'
 import { EnterpriseDashboard } from './components/enterprise/EnterpriseDashboard'
 import { EnterpriseBrowse } from './components/enterprise/EnterpriseBrowse'
 import { EnterpriseSubs, EnterpriseMarketplace } from './components/enterprise/EnterpriseViews'
@@ -393,6 +395,7 @@ function AppInner() {
   // ---------- Operator persona ----------
   if (persona === 'operator') {
     return (
+      <>
       <OperatorShell view={opView} onNavigate={(v, anchor) => goOperator(v, anchor ? { focus: anchor } : undefined)} onSignOut={handleSignOut}>
         {opView === 'op-dashboard' && <OperatorDashboard onNavigate={goOperator} />}
         {opView === 'op-onboarding' && <OperatorOnboarding />}
@@ -422,12 +425,22 @@ function AppInner() {
         {opView === 'op-kb' && <OperatorKnowledge />}
         {/* No feedbackAs: the operator is the queue. */}
       </OperatorShell>
+      {/* Mounted in every persona, not only the shopper's.
+
+          It lived in the consumer branch alone, and the three consoles return
+          before ever reaching it — so every toast the operator, seller and
+          business screens raised went to a host that was not on the page. A
+          refusal that renders nowhere is indistinguishable from a button that
+          does nothing, which is what the catalogue's Add appeared to be. */}
+      <ToastHost />
+      </>
     )
   }
 
   // ---------- Partner persona ----------
   if (persona === 'partner') {
     return (
+      <>
       <PartnerShell view={ptView} onNavigate={goPartner} onSignOut={handleSignOut}>
         {ptView === 'pt-dashboard' && <PartnerDashboard onNavigate={setPtView} />}
         {ptView === 'pt-onboarding' && <PartnerOnboarding partnerId={session!.partnerId!} />}
@@ -448,13 +461,30 @@ function AppInner() {
         {ptView === 'pt-profile' && <PartnerDetails partnerId={session!.partnerId!} anchor={ptAnchor} />}
         {ptView === 'pt-kb' && <KnowledgeBase persona="partner" title="Knowledge base" feedbackAs={{ actor: 'Rajesh Kumar', org: 'Nimbus Sensors' }} />}
       </PartnerShell>
+      {/* Mounted in every persona, not only the shopper's.
+
+          It lived in the consumer branch alone, and the three consoles return
+          before ever reaching it — so every toast the operator, seller and
+          business screens raised went to a host that was not on the page. A
+          refusal that renders nowhere is indistinguishable from a button that
+          does nothing, which is what the catalogue's Add appeared to be. */}
+      <ToastHost />
+      </>
     )
   }
 
   // ---------- Enterprise persona ----------
   if (persona === 'enterprise') {
     return (
+      /* The requisition being built wraps the whole console rather than sitting
+         inside the catalogue, because a buyer fills it on one screen and raises
+         it from wherever they happen to be. */
+      <RequisitionProvider>
       <EnterpriseShell view={enView} onNavigate={goEnterprise} onSignOut={handleSignOut}>
+        {/* Raising sends them to the queue their requisition just joined —
+            within policy or not, it is waiting for a decision there and that is
+            where the order gets placed. */}
+        <RequisitionPanel onRaised={() => setEnView('en-approvals')} />
         {enView === 'en-dashboard' && <EnterpriseDashboard onNavigate={setEnView} />}
         {enView === 'en-browse' && <EnterpriseBrowse />}
         {enView === 'en-iot' && <EnterpriseMarketplace vertical="iot" />}
@@ -474,6 +504,15 @@ function AppInner() {
         {enView === 'en-wallet' && <EnterpriseWallet />}
         {enView === 'en-kb' && <KnowledgeBase persona="enterprise" title="Knowledge base" feedbackAs={{ actor: 'Vikram Shah', org: 'SmartBuild Ltd' }} />}
       </EnterpriseShell>
+      {/* Mounted in every persona, not only the shopper's.
+
+          It lived in the consumer branch alone, and the three consoles return
+          before ever reaching it — so every toast the operator, seller and
+          business screens raised went to a host that was not on the page. A
+          refusal that renders nowhere is indistinguishable from a button that
+          does nothing, which is what the catalogue's Add appeared to be. */}
+      <ToastHost />
+      </RequisitionProvider>
     )
   }
 

@@ -285,8 +285,14 @@ export async function raiseRequisition(
 
   return {
     ok: true,
+    /* Nothing is ordered here, by either branch. This function writes a
+       requisition in `pending`; `decideRequisition` is what stamps an
+       `order_ref`, and `canDecide` lets the raiser themselves confirm a
+       within-policy one because there is no approver to separate them from.
+       The old wording said the order "has been placed", which would have sent
+       a buyer to look for it in Orders and find nothing. */
     note: need === 'none'
-      ? `${id} raised for ${money(amount, currency)}. It is within policy, so the order has been placed.`
+      ? `${id} raised for ${money(amount, currency)}. It is within policy, so nobody else has to sign it — confirm it on Approvals and the order goes.`
       : `${id} raised for ${money(amount, currency)}. It needs ${need === 'both' ? 'finance approval and IT sign-off' : need === 'finance' ? 'finance approval' : 'IT sign-off'} before anything is ordered.`,
   }
 }

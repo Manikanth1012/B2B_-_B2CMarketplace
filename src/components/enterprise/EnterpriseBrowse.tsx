@@ -6,6 +6,19 @@ import { SectionCard, Btn, toast } from '../operator/shared'
    both shelves — so the photo has to come from one place or the two screens
    quietly disagree about what is being sold. */
 import { getProductImage } from '../../lib/images'
+import { useRequisition } from '../../lib/RequisitionContext'
+import type { EnterpriseListing as Listing } from '../../lib/enterpriseRepo'
+
+/* One shape of line from one shape of row, used by both catalogue screens, so
+   a requisition raised from the vertical view and one raised from Browse
+   describe the same purchase. */
+export function lineFor(p: Listing) {
+  return {
+    product_id: p.id, name: p.name, seller: p.seller, partner_id: p.partner_id,
+    unit_price: p.price, model: p.model === 'monthly' ? 'monthly' as const : 'oneoff' as const,
+    vertical: p.category_id, unit: p.unit,
+  }
+}
 import { VERTICAL_NAMES } from './data'
 import { loadAccount, loadEnterpriseCatalogue } from '../../lib/enterpriseRepo'
 import type { EnterpriseListing } from '../../lib/enterpriseRepo'
@@ -72,6 +85,34 @@ export function EnterpriseBrowse() {
     return () => { live = false }
   }, [currency])
   const [sort, setSort] = useState('popular')
+
+  /* Adding says what happened either way. The refusals are real ones — a second
+     currency, a monthly line joining a one-off requisition — and a silent
+     no-op is what this button used to be. */
+  const req = useRequisition()
+  const addToRequisition = (p: EnterpriseListing) => {
+    if (!currency) return
+    const r = req.add(lineFor(p), currency)
+    if (!r.ok) { toast(r.reason, 'error'); return }
+    toast(r.note ?? `${p.name} added`, 'success')
+  }
+
+  /* The basket follows the shelf. Prices are chosen per currency rather than
+     converted, so when the header picker moves, the lines are re-read at the
+     new shelf's figures instead of being multiplied by a rate. */
+  useEffect(() => {
+    if (!currency || !listings || !req.basket.lines.length) return
+    if (req.basket.currency === currency) return
+    const dropped = req.reprice(currency, listings)
+    if (dropped.length) {
+      toast(`${dropped.join(' and ')} ${dropped.length === 1 ? 'is' : 'are'} not sold in ${currency}, so ${dropped.length === 1 ? 'it was' : 'they were'} taken out of your requisition.`, 'error')
+    } else {
+      toast(`Your requisition is now priced in ${currency}.`, 'info')
+    }
+    /* `req` identity changes on every basket edit; depending on it would
+       reprice in a loop. The currency and the shelf are what this reacts to. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currency, listings])
 
   let results = listings ?? []
   if (vertical) results = results.filter(p => p.category_id === vertical)
@@ -202,7 +243,7 @@ export function EnterpriseBrowse() {
                       <span style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>{money(p.price)}</span>
                       {p.model === 'monthly' && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{p.unit ? ` ${p.unit}/mo` : '/mo'}</span>}
                     </div>
-                    <Btn variant="primary" size="sm" onClick={(e) => { e.stopPropagation(); toast(`${p.name} added to requisition`) }}>Add</Btn>
+                    <Btn variant="primary" size="sm" onClick={(e) => { e.stopPropagation(); addToRequisition(p) }}>Add</Btn>
                   </div>
                 </div>
               ))}
