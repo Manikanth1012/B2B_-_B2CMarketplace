@@ -7,6 +7,10 @@ import type { SellerRecord } from '../../lib/partnerRepo'
 import { canListIn, rateAt, approvedCategories } from '../../lib/partnerCommerce'
 import { submitForReview } from '../../lib/catalogueRepo'
 import { validateBand, bandWarnings, bases } from '../../lib/pricing'
+import { ListingMediaStep } from './ListingMediaStep'
+import { attachMediaToProduct } from '../../lib/listingMediaRepo'
+import { mediaOutstanding } from '../../lib/listingMedia'
+import type { MediaItem } from '../../lib/listingMedia'
 
 const STEPS = ['Marketplace and type', 'Details and media', 'Pricing and commission', 'Fulfilment', 'Compliance', 'Review and submit']
 
@@ -34,6 +38,16 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
   const [taxRate, setTaxRate] = useState('18')
   const [cost, setCost] = useState('')
   const [model, setModel] = useState('oneoff')
+  /* The listing's photographs, uploaded as they are picked and attached to the
+     product once submitting has created one. `draftId` groups this wizard
+     session's files in the bucket; it is minted once rather than per render, or
+     every upload would land in a folder of its own. */
+  const [media, setMedia] = useState<MediaItem[]>([])
+  const [draftId] = useState(() => `LST-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`)
+  /* Bound at last. It was an input with a placeholder and no `value` or
+     `onChange`, so eight carefully chosen search tags went nowhere and the
+     submission below sent `tags: []`. */
+  const [tags, setTags] = useState('')
 
   useEffect(() => {
     loadSellerRecord(partnerId).then(r => {
@@ -74,6 +88,16 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
       toast('A listing needs a name and a price before it can be submitted', 'error')
       return
     }
+    /* Checked here as well as shown on the media step. The step's sentence is
+       guidance while there is still work to do; this is the point at which a
+       listing with no photograph would otherwise reach the catalogue desk and
+       be rejected for it after six steps of work. */
+    const missingMedia = mediaOutstanding(media)
+    if (missingMedia.length) {
+      toast(`The media step still needs ${missingMedia.join(' and ')}.`, 'error')
+      setStep(1)
+      return
+    }
     if (rec) {
       /* Checked again at submit, not only when the picker was built: the
          approval can be withdrawn between opening this wizard and finishing it. */
@@ -91,16 +115,27 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
         priceIncludesTax: includesTax,
         taxRate: rateNum,
         model, fulfil: model === 'oneoff' ? 'shipped' : 'provisioned',
-        tags: [],
+        /* Eight at most, trimmed, blanks dropped — the hint under the field
+           says up to eight and this is what makes that true. */
+        tags: tags.split(',').map(t => t.trim()).filter(Boolean).slice(0, 8),
       },
       submittedBy: rec?.partner?.contact ?? 'Seller operations',
     })
     setSaving(false)
     if (!res.ok) { toast(res.reason, 'error'); return }
 
+    /* The photographs are already in storage; this is what points the product
+       at them. Reported rather than swallowed if it fails — a listing in the
+       queue with no pictures is a rejection waiting to happen, and the seller
+       needs to know it is that rather than something they did. */
+    if (res.productId) {
+      const attached = await attachMediaToProduct(res.productId, media)
+      if (!attached.ok) toast(attached.reason, 'error')
+    }
+
     toast(res.note ?? `${name} is in the marketplace review queue`)
     setStep(0); setName(''); setPrice(''); setCost(''); setDesc(''); setSubCategory('')
-    setFloor(''); setList('')
+    setFloor(''); setList(''); setTags(''); setMedia([])
   }
 
   if (loading) {
@@ -170,22 +205,14 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
         <TextArea value={desc} onChange={e => setDesc(e.target.value)} placeholder="What it does, what is in the box, what it needs to work" />
       </FormField>
       <FormField label="Search tags" hint="Up to eight, comma separated.">
-        <TextInput placeholder="IP67, 5-year battery, LoRaWAN" />
+        <TextInput value={tags} onChange={e => setTags(e.target.value)} placeholder="IP67, 5-year battery, LoRaWAN" />
       </FormField>
-      <div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-          <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>Media</span>
-          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>1 to 6 images · 800px minimum · up to 5 MB each</span>
-        </div>
-        <div style={{ border: '2px dashed var(--border)', borderRadius: 'var(--radius-md)', padding: '24px', textAlign: 'center', background: 'var(--bg-alt)' }}>
-          <Store size={24} style={{ color: 'var(--text-tertiary)', margin: '0 auto' }} />
-          <div style={{ fontSize: 'var(--text-sm)', marginTop: '8px', color: 'var(--text-secondary)' }}>Drop files here, or add one:</div>
-          <div style={{ display: 'flex', gap: '7px', justifyContent: 'center', marginTop: '10px' }}>
-            <Btn variant="secondary" size="sm" onClick={() => toast('Image added — describe it before you submit')}>Add image</Btn>
-            <Btn variant="secondary" size="sm" onClick={() => toast('Video added')}>Add video</Btn>
-          </div>
-        </div>
-      </div>
+      <ListingMediaStep
+        partnerId={partnerId}
+        draftId={draftId}
+        media={media}
+        onChange={setMedia}
+      />
     </div>,
 
     // Step 2: Pricing
