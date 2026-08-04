@@ -15,3 +15,8 @@ node_modules/
 
 .superpowers/
 images/
+
+# Vite writes these beside the config when it has to transpile it — one per
+# run, named with a timestamp. Build artefacts of the build tool itself, and
+# they appear on any machine that runs the dev server.
+vite.config.ts.timestamp-*
