@@ -30,6 +30,35 @@ const mail = () => `applicant-${stamp()}@integration.test`
 
 const started: string[] = []
 
+/* Swept once, after every suite in this file.
+ *
+ * Each `describe` used to rely on the first one's `afterAll` to clear
+ * `started`. That hook runs when its own suite finishes — long before the later
+ * suites have pushed anything into the array — so every application a later
+ * suite created stayed on file. Five "Withdraw Test Ltd" rows had accumulated
+ * in the operator's Applications queue, one per run of the withdraw test.
+ *
+ * A file-level hook runs after all of them, which is the only place this can
+ * correctly live. It asserts rather than hoping: a sweep whose delete silently
+ * matched nothing is what let this go unnoticed in the first place. */
+afterAll(async () => {
+  await signOut()
+  await signIn(OPERATOR.email, OPERATOR.password)
+
+  for (const ref of started) {
+    await removeApplicationFolder(ref)
+    await supabase.from('applications').delete().eq('id', ref)
+  }
+
+  const { data } = await supabase.from('applications')
+    .select('id, company').like('email', '%@integration.test')
+  const strays = ((data ?? []) as { id: string; company: string }[])
+    .map(r => `${r.id} ${r.company}`)
+
+  await signOut()
+  expect(strays, 'these test applications are still in the operator queue').toEqual([])
+}, 180000)
+
 /** Every object under one application's folder, removed as the operator. Called
     from the clean-up hooks so a run does not leave a pile behind. */
 async function removeApplicationFolder(reference: string): Promise<void> {

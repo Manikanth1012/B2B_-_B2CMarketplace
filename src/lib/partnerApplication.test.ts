@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  applicationStages, stageSummary,
   answered, optionsOf, splitMulti, joinMulti, toggleMulti,
   stepsOf, outstanding, canSubmit, progress, resumeAt,
   validateStart, looksLikeReference, looksLikeCode, normaliseCode,
@@ -504,5 +505,70 @@ describe('the reference and the code', () => {
     for (const ch of '01OIL') expect(CODE_ALPHABET.includes(ch), ch).toBe(false)
     expect(CODE_LENGTH).toBe(12)
     expect(CODE_ALPHABET.length).toBe(31)
+  })
+})
+
+describe('the stages the desk reads', () => {
+  const at = (state: string, over: Record<string, unknown> = {}) => ({
+    state, submitted_on: null, partner_id: null, ...over,
+  } as Parameters<typeof applicationStages>[0])
+
+  it('shows a draft part-way through, with nothing decided', () => {
+    const st = applicationStages(at('draft'), { answered: 4, required: 9 }, null)
+    expect(st.map(s => s.tone)).toEqual(['cleared', 'current', 'pending', 'pending'])
+    expect(st[1].note).toBe('4 of 9 answered')
+  })
+
+  it('counts a finished draft as filled in without pretending it was sent', () => {
+    const st = applicationStages(at('draft'), { answered: 9, required: 9 }, null)
+    expect(st[1].tone).toBe('cleared')
+    expect(st[2].tone).toBe('pending')
+  })
+
+  it('puts a submitted one in front of the desk, and says how long', () => {
+    const st = applicationStages(at('submitted', { submitted_on: '2026-08-01' }), { answered: 9, required: 9 }, 3)
+    expect(st.map(s => s.tone)).toEqual(['cleared', 'cleared', 'cleared', 'current'])
+    expect(st[3].note).toMatch(/3d/)
+  })
+
+  it('shows the day it was sent, not the timestamp it was stored as', () => {
+    /* `submitted_on` is a timestamptz and rendered raw it reads
+       "2026-08-02T18:59:31.483347+00:00" on a tile four words wide. */
+    const st = applicationStages(
+      at('submitted', { submitted_on: '2026-08-02T18:59:31.483347+00:00' }),
+      { answered: 9, required: 9 }, 2,
+    )
+    expect(st[2].note).toBe('02 Aug 2026')
+  })
+
+  it('says today rather than 0d', () => {
+    const st = applicationStages(at('submitted'), { answered: 9, required: 9 }, 0)
+    expect(st[3].note).toMatch(/today/)
+  })
+
+  it('clears every stage once accepted, and names what it became', () => {
+    const st = applicationStages(at('accepted', { partner_id: 'PTR-1020' }), { answered: 9, required: 9 }, null)
+    expect(st.every(s => s.tone === 'cleared')).toBe(true)
+    expect(st[3].note).toContain('PTR-1020')
+  })
+
+  it('stops at the decision when withdrawn, rather than showing it cleared', () => {
+    const st = applicationStages(at('withdrawn'), { answered: 2, required: 9 }, null)
+    expect(st[3].tone).toBe('failed')
+    /* And does not claim the form was finished on the way out. */
+    expect(st[1].tone).not.toBe('cleared')
+  })
+
+  it('summarises in the shape the gate rail uses', () => {
+    const draft = stageSummary(applicationStages(at('draft'), { answered: 1, required: 9 }, null))
+    expect(draft.cleared).toBe(1)
+    expect(draft.total).toBe(4)
+    expect(draft.says).toMatch(/Waiting on filled in/)
+
+    const gone = stageSummary(applicationStages(at('withdrawn'), { answered: 1, required: 9 }, null))
+    expect(gone.says).toMatch(/^Stopped at Decided/)
+
+    const done = stageSummary(applicationStages(at('accepted'), { answered: 9, required: 9 }, null))
+    expect(done.says).toMatch(/Through every stage/)
   })
 })

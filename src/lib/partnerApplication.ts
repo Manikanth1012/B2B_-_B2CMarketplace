@@ -569,3 +569,97 @@ export function answerSheet(
     documents: s.documents,
   }))
 }
+
+/* ------------------------------------------------------- the desk's rail -- */
+
+export type StageTone = 'cleared' | 'current' | 'failed' | 'pending'
+
+export interface ApplicationStage {
+  id: string
+  name: string
+  tone: StageTone
+  /* What actually happened at this stage, or what is waited on. Never a
+     restatement of the name. */
+  note: string
+}
+
+/**
+ * An application's journey, in the same four tones the onboarding gates use.
+ *
+ * The desk already reads a rail for a seller who has been accepted — seven
+ * gates, cleared or current or not reached. Before acceptance it had a list and
+ * a form dump, so the same reader had to hold two different pictures of one
+ * pipeline. These are the stages an application passes through, shaped so the
+ * two can be drawn by the same eye.
+ *
+ * Four rather than one per question: a rail with twenty tiles is a progress bar
+ * with extra steps, and the desk's question is only ever which of these four
+ * places somebody is stuck in.
+ */
+/* `submitted_on` is a timestamp, and a tile is not the place for
+   "2026-08-02T18:59:31.483347+00:00". Formatted here rather than at the tile so
+   the note reads the same wherever it is shown. */
+function asDay(value: string | null): string | null {
+  if (!value) return null
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+export function applicationStages(
+  app: Pick<DeskApplication, 'state' | 'submitted_on' | 'partner_id'>,
+  filled: { answered: number; required: number },
+  waiting: number | null,
+): ApplicationStage[] {
+  const done = filled.required > 0 && filled.answered >= filled.required
+  const sent = app.state === 'submitted' || app.state === 'accepted'
+  const decided = app.state === 'accepted' || app.state === 'withdrawn'
+
+  return [
+    {
+      id: 'started',
+      name: 'Started',
+      tone: 'cleared',
+      note: 'The applicant opened the form and has a reference',
+    },
+    {
+      id: 'filled',
+      name: 'Filled in',
+      tone: sent || done ? 'cleared' : app.state === 'withdrawn' ? 'pending' : 'current',
+      note: sent || done
+        ? `All ${filled.required} answered`
+        : `${filled.answered} of ${filled.required} answered`,
+    },
+    {
+      id: 'sent',
+      name: 'Submitted',
+      tone: sent ? 'cleared' : 'pending',
+      note: sent ? (asDay(app.submitted_on) ?? 'Sent') : 'Not sent yet',
+    },
+    {
+      id: 'decided',
+      name: 'Decided',
+      tone: app.state === 'accepted' ? 'cleared'
+        : app.state === 'withdrawn' ? 'failed'
+        : sent ? 'current' : 'pending',
+      note: app.state === 'accepted' ? `Accepted — now ${app.partner_id ?? 'a seller'}`
+        : app.state === 'withdrawn' ? 'Closed without becoming a seller'
+        : sent ? (waiting === null ? 'With the desk' : waiting === 0 ? 'With the desk since today' : `With the desk ${waiting}d`)
+        : 'Nothing to decide yet',
+    },
+  ].map(st => st) as ApplicationStage[]
+}
+
+/** The line above the rail, in the shape the gate rail uses. */
+export function stageSummary(stages: readonly ApplicationStage[]): { cleared: number; total: number; says: string } {
+  const cleared = stages.filter(s => s.tone === 'cleared').length
+  const failed = stages.find(s => s.tone === 'failed')
+  const current = stages.find(s => s.tone === 'current')
+  return {
+    cleared,
+    total: stages.length,
+    says: failed ? `Stopped at ${failed.name}. ${failed.note}.`
+      : current ? `Waiting on ${current.name.toLowerCase()} — ${current.note.toLowerCase()}.`
+      : 'Through every stage.',
+  }
+}

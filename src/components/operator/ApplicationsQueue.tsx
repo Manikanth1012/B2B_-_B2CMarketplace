@@ -16,7 +16,7 @@
  * does three of those from the browser and can leave a partner with no gates.
  */
 import { useState, useEffect, useCallback } from 'react'
-import { Check as CheckIcon, Clock, FileText, Inbox, X } from 'lucide-react'
+import { Check as CheckIcon, Clock, FileText, Inbox, X, CircleAlert as AlertIcon } from 'lucide-react'
 import {
   SectionCard, EmptyState, Btn, Modal, FormField, TextArea, StatusPill, toast,
 } from './shared'
@@ -27,6 +27,7 @@ import {
 } from '../../lib/partnerApplicationRepo'
 import {
   deskQueue, waitingDays, canAccept, answerSheet, progress, sizeOf,
+  applicationStages, stageSummary,
 } from '../../lib/partnerApplication'
 import type {
   Answers, DeskApplication, DocumentKind, FieldSpec, UploadedDocument,
@@ -85,12 +86,17 @@ export function ApplicationsQueue({ onAccepted }: {
     <>
       <SectionCard
         title="Applications"
+        /* Counts all three groups. It used to read the first two only, so a
+           queue holding five decided applications and nothing live announced
+           "Nothing has come in through Apply to sell yet" directly above them. */
         subtitle={
-          q.waiting.length
-            ? `${q.waiting.length} waiting on the desk · ${q.drafts.length} still being filled in`
-            : q.drafts.length
-              ? `Nothing waiting on the desk · ${q.drafts.length} still being filled in`
-              : 'Nothing has come in through Apply to sell yet'
+          apps.length === 0
+            ? 'Nothing has come in through Apply to sell yet'
+            : [
+                q.waiting.length ? `${q.waiting.length} waiting on the desk` : 'Nothing waiting on the desk',
+                q.drafts.length ? `${q.drafts.length} still being filled in` : null,
+                q.decided.length ? `${q.decided.length} decided` : null,
+              ].filter(Boolean).join(' · ')
         }
       >
         {loadError && (
@@ -246,6 +252,11 @@ function Detail({ app, fields, answers, kinds, documents, onDecide }: {
             : app.state === 'withdrawn' ? 'rejected'
             : app.state === 'submitted' ? 'pending' : 'draft'} />
       </div>
+
+      {/* The same rail the seller journeys use, so one reader holds one picture
+          of the pipeline. Before this the desk had a gate rail after acceptance
+          and a form dump before it, and had to translate between them. */}
+      <ApplicationRail app={app} filled={p} />
 
       {app.state === 'accepted' && (
         <div style={{ marginTop: '12px' }}>
@@ -455,5 +466,64 @@ function DecideModal({ app, accept, fields, answers, kinds, documents, onClose, 
         </span>
       </div>
     </Modal>
+  )
+}
+
+/* ------------------------------------------------------------ the rail -- */
+
+const RAIL_TONE: Record<string, { ring: string; fill: string; ink: string; label: string }> = {
+  cleared: { ring: 'var(--success)', fill: 'var(--success-bg)', ink: 'var(--success)', label: 'Cleared' },
+  current: { ring: 'var(--info)', fill: 'var(--info-bg)', ink: 'var(--info)', label: 'Waiting' },
+  failed: { ring: 'var(--danger)', fill: 'var(--danger-bg)', ink: 'var(--danger)', label: 'Stopped' },
+  pending: { ring: 'var(--border)', fill: 'var(--bg-alt)', ink: 'var(--text-tertiary)', label: 'Not reached' },
+}
+
+function ApplicationRail({ app, filled }: {
+  app: DeskApplication
+  filled: { answered: number; required: number }
+}) {
+  const stages = applicationStages(app, filled, waitingDays(app))
+  const summary = stageSummary(stages)
+
+  return (
+    <div style={{ margin: '16px 0 4px' }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'baseline', marginBottom: '10px' }}>
+        <strong style={{ fontSize: 'var(--text-sm)', color: 'var(--text)' }}>
+          {summary.cleared} of {summary.total} stages cleared
+        </strong>
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{summary.says}</span>
+      </div>
+
+      <ol style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
+        {stages.map((st, i) => {
+          const t = RAIL_TONE[st.tone]
+          return (
+            <li key={st.id} style={{ flex: '1 1 130px', minWidth: '130px' }}>
+              <div style={{
+                height: '100%', padding: '11px 12px', borderRadius: 'var(--radius-md)',
+                border: `1px solid ${t.ring}`, background: t.fill,
+              }}>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: '6px', color: t.ink,
+                  fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em',
+                }}>
+                  {st.tone === 'cleared' ? <CheckIcon size={14} />
+                    : st.tone === 'current' ? <Clock size={14} />
+                    : st.tone === 'failed' ? <AlertIcon size={14} />
+                    : <span style={{ fontSize: '11px', fontWeight: 800 }}>{i + 1}</span>}
+                  {t.label}
+                </div>
+                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--text)', marginTop: '4px' }}>
+                  {st.name}
+                </div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                  {st.note}
+                </div>
+              </div>
+            </li>
+          )
+        })}
+      </ol>
+    </div>
   )
 }
