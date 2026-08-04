@@ -8,6 +8,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { supabase } from './supabase'
 import { signIn, signOut } from './authRepo'
+import { PRODUCT_IMAGES } from './images'
 
 const CONSUMER = { email: 'priya.raman@example.com', password: 'demo1234' }
 
@@ -119,6 +120,46 @@ describe('everything that references the catalogue', () => {
     const { data: shelf } = await supabase.from('products').select('id,name,status').in('status', ['live', 'pending'])
     for (const p of (shelf ?? []) as { id: string; name: string }[]) {
       expect(reviewed.has(p.id), `${p.name} is on the shelf with no review record`).toBe(true)
+    }
+  })
+
+  it('gives every product on the shelf its own photo, not the generic one', async () => {
+    /* Ranged over `products` rather than a list written here, because the miss
+       was exactly a product nobody remembered to add: `PRODUCT_IMAGES` predates
+       the federated packs, so all five resolved through `getProductImage`'s
+       fallback and five different things wore one stock handset — three of them
+       on the retail storefront.
+
+       Checked as a key rather than by comparing URLs: the fallback is
+       SKU-4003's photo, so a URL comparison would call a real entry a miss. */
+    await signIn('anika.sharma@aventa.com', 'operator123')
+    const { data } = await supabase.from('products').select('id, name').eq('status', 'live')
+    const shelf = (data ?? []) as { id: string; name: string }[]
+    expect(shelf.length, 'nothing is live, so this checked nothing').toBeGreaterThan(20)
+
+    for (const p of shelf) {
+      expect(Object.prototype.hasOwnProperty.call(PRODUCT_IMAGES, p.id),
+        `${p.name} (${p.id}) has no photo of its own and shows the generic one`).toBe(true)
+    }
+  })
+
+  it('shows the buyer the same photo the operator sees', async () => {
+    /* Two sources exist — this map, which every buyer-facing screen reads, and
+       `product_media`, which the operator's catalogue reads and a seller can
+       write to. They are allowed to differ today on older SKUs; what they must
+       not do is differ on a product whose photo was chosen deliberately, which
+       is what the federated packs' alt text records.
+
+       This is the reconciliation for those five. If the two sources are ever
+       merged, widen it to the whole shelf. */
+    const { data } = await supabase.from('product_media')
+      .select('product_id, url').eq('role', 'hero').like('product_id', 'SKU-FP%')
+    const heroes = (data ?? []) as { product_id: string; url: string }[]
+    expect(heroes.length, 'no federated pack has a hero, so this checked nothing').toBe(5)
+
+    for (const h of heroes) {
+      expect(PRODUCT_IMAGES[h.product_id],
+        `${h.product_id}: the storefront and the operator show different photos`).toBe(h.url)
     }
   })
 

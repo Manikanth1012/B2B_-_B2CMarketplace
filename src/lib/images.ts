@@ -70,6 +70,17 @@ export const PRODUCT_IMAGES: Record<string, string> = {
   // Bundles
   'SKU-6006': `${PEXELS}/4226140/pexels-photo-4226140.jpeg${Q}`,
 
+  // Federated packs. This map was written before they existed and never grew,
+  // so all five fell through to the generic handset — including the three on
+  // the retail storefront. The URLs are not invented: they are the `hero` rows
+  // `product_media` already holds for these SKUs, which is what the operator's
+  // catalogue screen shows. The alt text there says what each one is.
+  'SKU-FP9501': `${PEXELS}/3184465/pexels-photo-3184465.jpeg${Q}`,   // a family, three phones
+  'SKU-FP9502': `${PEXELS}/4226140/pexels-photo-4226140.jpeg${Q}`,   // full signal on 5G
+  'SKU-FP9503': `${PEXELS}/5763034/pexels-photo-5763034.jpeg${Q}`,   // a traveller at a gate
+  'SKU-FP9504': `${PEXELS}/7994435/pexels-photo-7994435.jpeg${Q}`,   // a sensor gateway on a wall
+  'SKU-FP9505': `${PEXELS}/3183197/pexels-photo-3183197.jpeg${Q}`,   // provisioning lines on a laptop
+
   // Partner
   'SKU-7001': `${PEXELS}/5380642/pexels-photo-5380642.jpeg${Q}`,
   'SKU-7002': `${PEXELS}/7988099/pexels-photo-7988099.jpeg${Q}`,

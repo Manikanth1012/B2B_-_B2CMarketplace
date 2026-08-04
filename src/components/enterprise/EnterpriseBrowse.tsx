@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react'
-import { Search, Package, Star } from 'lucide-react'
+import { Search, Star } from 'lucide-react'
 import { SectionCard, Btn, toast } from '../operator/shared'
+/* The same resolver the storefront and the basket use. A business buyer and a
+   shopper are looking at one `products` row — SKU-4001 is the same handset on
+   both shelves — so the photo has to come from one place or the two screens
+   quietly disagree about what is being sold. */
+import { getProductImage } from '../../lib/images'
 import { VERTICAL_NAMES } from './data'
 import { loadAccount, loadEnterpriseCatalogue } from '../../lib/enterpriseRepo'
 import type { EnterpriseListing } from '../../lib/enterpriseRepo'
@@ -178,8 +183,8 @@ export function EnterpriseBrowse() {
                   onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
                   onClick={() => toast(`Listing detail: ${p.name}`)}
                 >
-                  <div style={{ height: '120px', background: 'var(--bg-alt)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Package size={32} style={{ color: 'var(--text-tertiary)' }} />
+                  <div style={{ height: '120px', background: 'var(--bg-alt)' }}>
+                    <img src={getProductImage(p.id)} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                   </div>
                   <div style={{ padding: '12px', flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{p.name}</div>

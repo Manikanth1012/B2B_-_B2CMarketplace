@@ -112,9 +112,26 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
                   Demo sign-in in the header, and somebody who lands on Create an
                   account by mistake is offered Sign in there. */}
               {page === 'retail' ? (
+                <>
                 <button className="btn btn-primary btn-lg" onClick={onRegister}>
                   Create an account
                 </button>
+                {/* Sign in stays. What went was "Start shopping", which called
+                    `onSignIn` and so was this link wearing a label that
+                    described something else. */}
+                <button
+                  onClick={() => onSignIn('consumer')}
+                  style={{
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    color: 'rgba(255,255,255,0.75)', fontSize: 'var(--text-sm)',
+                    textDecoration: 'underline', textUnderlineOffset: '3px', alignSelf: 'center',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.color = 'white' }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.75)' }}
+                >
+                  Sign in
+                </button>
+                </>
               ) : (
                 <button className="btn btn-primary btn-lg" onClick={() => onSignIn(c.persona)}>{c.cta}</button>
               )}

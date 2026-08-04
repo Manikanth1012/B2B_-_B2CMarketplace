@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { SquareCheck as CheckSquare, X, Shield, Cpu, Package } from 'lucide-react'
+import { SquareCheck as CheckSquare, X, Shield, Cpu } from 'lucide-react'
 import { StatCard, SectionCard, Table, Td, StatusPill, fmtInt, Btn, toast, Modal } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
 import { VERTICAL_NAMES } from './data'
@@ -7,6 +7,9 @@ import { loadAccount, loadEnterpriseCatalogue } from '../../lib/enterpriseRepo'
 import type { AccountBook, EnterpriseListing } from '../../lib/enterpriseRepo'
 import { idleSeats, renewingWithin, day } from '../../lib/enterprise'
 import { useAccountMoney } from './money'
+/* Same rows, same photos as the Business Catalogue and the storefront — the
+   vertical screens are a filtered view of the one shelf, not a second one. */
+import { getProductImage } from '../../lib/images'
 
 /* EnterpriseApprovals moved to EnterpriseApprovals.tsx when requisitions
    became rows rather than a constant. Deciding one here filtered a React array,
@@ -208,8 +211,8 @@ export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
           <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '14px' }}>
             {items.map(p => (
               <div key={p.id} style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                <div style={{ height: '100px', background: 'var(--bg-alt)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <Package size={28} style={{ color: 'var(--text-tertiary)' }} />
+                <div style={{ height: '100px', background: 'var(--bg-alt)' }}>
+                  <img src={getProductImage(p.id)} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                 </div>
                 <div style={{ padding: '12px', flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{p.name}</div>

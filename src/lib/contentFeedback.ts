@@ -132,10 +132,17 @@ export interface SurfaceRow {
  * complaints is what makes something worth an afternoon.
  */
 export function bySurface(items: readonly Feedback[]): SurfaceRow[] {
-  const keys = [...new Set(items.map(f => `${f.surface}${f.ref}`))]
+  /* Written as an escape rather than as the character itself. The separator
+     has to be one no surface or ref can contain, which is why it is NUL — but
+     a literal NUL byte does not survive being opened and saved again, and when
+     it was stripped `split('')` quietly became a split into single characters,
+     so every row came back as surface 'k', ref 'b'. Five tests caught it; the
+     escape is what stops it happening a second time. */
+  const SEP = '\u0000'
+  const keys = [...new Set(items.map(f => `${f.surface}${SEP}${f.ref}`))]
   return keys
     .map(k => {
-      const [surface, ref] = k.split('') as [Surface, string]
+      const [surface, ref] = k.split(SEP) as [Surface, string]
       const mine = items.filter(f => f.surface === surface && f.ref === ref)
       const unhelpful = mine.filter(f => !f.helpful)
 
