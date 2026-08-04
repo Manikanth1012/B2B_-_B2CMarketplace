@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest'
 import {
   EMPTY_BASKET, MAX_QUANTITY, addToBasket, setQuantity, removeLine,
   basketTotal, basketCount, verticalOf, modelOf, repriceTo, verdict,
-  whatIsMissing, missingNote,
+  whatIsMissing, missingFields, missingNote,
 } from './requisitionBasket'
 import type { Basket, BasketLine } from './requisitionBasket'
 import type { Policy, Account } from './enterprise'
@@ -278,5 +278,26 @@ describe('what is still missing', () => {
   it('reads as a sentence rather than a list', () => {
     expect(missingNote(['a', 'b', 'c'])).toBe('Still needs a, b and c.')
     expect(missingNote(['a'])).toBe('Still needs a.')
+  })
+
+  it('names the field, so the screen can take somebody to it', () => {
+    /* The prose alone is what a disabled button had, and it was not enough —
+       the fields it described were below the fold. */
+    const m = missingFields(build({ line: item() }), { title: '', reason: '', cost_centre: null, po_ref: '' }, ACCOUNT)
+    expect(m.map(x => x.field)).toEqual(['title', 'reason', 'cost_centre'])
+  })
+
+  it('names them in the order they appear on the form', () => {
+    /* Because the screen focuses the first, and focusing the cost centre while
+       the title above it is also empty sends somebody to the wrong place. */
+    const strict = { ...ACCOUNT, po_required: true } as Account
+    const m = missingFields(EMPTY_BASKET, { title: '', reason: '', cost_centre: null, po_ref: '' }, strict)
+    expect(m.map(x => x.field)).toEqual(['lines', 'title', 'reason', 'cost_centre', 'po_ref'])
+  })
+
+  it('says the same thing both ways round', () => {
+    const draft = { title: '', reason: 'why', cost_centre: null, po_ref: '' }
+    const b = build({ line: item() })
+    expect(whatIsMissing(b, draft, ACCOUNT)).toEqual(missingFields(b, draft, ACCOUNT).map(m => m.says))
   })
 })

@@ -14,16 +14,19 @@ const OPERATOR = { email: 'anika.sharma@aventa.com', password: 'operator123' }
 const AID = 'KB-TEST-1'
 const ORG = 'KB Test Co'
 
-/* pt-team is a real partner view (see PartnerView in src/types/view.ts) that no seeded
-   article binds to. pt-listings is already bound by KB-P07 at a lower sort_order, so a
-   test article seeded there would lose the "first bound article" race to real data and
-   the id assertion below would silently check the wrong row. */
+/* pt-team is a real partner view. It used to be one no seeded article bound to, which
+   is no longer true of any view — every screen in every persona now carries a help
+   article, and pt-team carries KB-P20.
+
+   So the fixture wins the race explicitly instead of by absence: `articleForView` orders
+   by sort_order and takes the first, and -1 is below anything real. Relying on there
+   being no competition is what broke when the gap was filled. */
 const testArticle: KbArticle = {
   id: AID, persona: 'partner', personas: ['partner'], audience_ids: [], audience_note: '',
   kind: 'howto', title: 'Test article', mins: 1,
   updated: '29 Jul 2026', view: 'pt-team', roles: [], tags: ['test'],
   summary: 'Seeded by the integration test', body: [['Heading', 'Prose']],
-  status: 'published', sort_order: 999,
+  status: 'published', sort_order: -1,
 }
 
 async function teardown() {
@@ -55,7 +58,7 @@ describe('knowledge base round trip', () => {
     expect(snap.articles.map(a => a.id)).not.toContain(AID)
   })
 
-  it('resolves contextual help by view, and returns null for a screen with no article', async () => {
+  it('resolves contextual help by view, and returns null for a view that does not exist', async () => {
     const hit = await articleForView('partner', 'pt-team')
     expect(hit.ok).toBe(true)
     // A bare non-null check would pass even if this test's own insert silently failed.

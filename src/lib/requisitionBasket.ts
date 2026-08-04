@@ -248,20 +248,42 @@ export function verdict(
  * covers the basket's own conditions too — the ones a draft form knows nothing
  * about.
  */
+export type MissingField = 'lines' | 'title' | 'reason' | 'cost_centre' | 'po_ref'
+
+/**
+ * The same answer, but addressable.
+ *
+ * `whatIsMissing` returns prose, which is what the sentence under the button
+ * needs and all a disabled button ever did with it. Naming the field as well is
+ * what lets the screen take somebody to it — the first report of this panel was
+ * that the requisition could not be raised, from a buyer looking at a greyed
+ * button with the fields it wanted below the fold.
+ */
+export function missingFields(
+  basket: Basket,
+  draft: { title: string; reason: string; cost_centre: string | null; po_ref: string },
+  account: Account,
+): { field: MissingField; says: string }[] {
+  const missing: { field: MissingField; says: string }[] = []
+  if (!basket.lines.length) missing.push({ field: 'lines', says: 'at least one line' })
+  if (!draft.title.trim()) missing.push({ field: 'title', says: 'a name an approver will recognise' })
+  if (!draft.reason.trim()) missing.push({ field: 'reason', says: 'why it is needed' })
+  if (!draft.cost_centre) missing.push({ field: 'cost_centre', says: 'the cost centre it comes out of' })
+  if (account.po_required && !draft.po_ref.trim()) {
+    missing.push({
+      field: 'po_ref',
+      says: 'a purchase order reference, which this account requires on every invoice',
+    })
+  }
+  return missing
+}
+
 export function whatIsMissing(
   basket: Basket,
   draft: { title: string; reason: string; cost_centre: string | null; po_ref: string },
   account: Account,
 ): string[] {
-  const missing: string[] = []
-  if (!basket.lines.length) missing.push('at least one line')
-  if (!draft.title.trim()) missing.push('a name an approver will recognise')
-  if (!draft.reason.trim()) missing.push('why it is needed')
-  if (!draft.cost_centre) missing.push('the cost centre it comes out of')
-  if (account.po_required && !draft.po_ref.trim()) {
-    missing.push('a purchase order reference, which this account requires on every invoice')
-  }
-  return missing
+  return missingFields(basket, draft, account).map(m => m.says)
 }
 
 /** For the sentence under the button. Reads as prose, not as a list. */

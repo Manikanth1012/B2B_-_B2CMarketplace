@@ -59,9 +59,19 @@ export function RequisitionProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const add: RequisitionState['add'] = useCallback((line, currency, quantity = 1) => {
+    const wasEmpty = live.current.lines.length === 0
     const r = addToBasket(live.current, line, currency, quantity)
     if (!r.ok) return { ok: false, reason: r.reason }
     commit(r.basket)
+    /* The panel opens on the first thing put in it, and not again after that.
+
+       A toast at the bottom-right for three and a half seconds was the only
+       acknowledgement, and the report was that nothing happened when a SKU was
+       added — from somebody looking at the card they had just clicked, three
+       hundred pixels away. Opening once shows what the button did and where the
+       requisition lives; opening on every add would fight anybody filling a
+       basket of six. */
+    if (wasEmpty) setOpen(true)
     return { ok: true, note: r.note }
   }, [commit])
 

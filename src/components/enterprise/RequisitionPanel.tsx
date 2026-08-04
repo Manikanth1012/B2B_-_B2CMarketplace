@@ -13,7 +13,8 @@ import { useState, useEffect } from 'react'
 import { X, Trash2, TriangleAlert as AlertTriangle, Check } from 'lucide-react'
 import { Btn, toast } from '../operator/shared'
 import { useRequisition } from '../../lib/RequisitionContext'
-import { verdict, whatIsMissing, missingNote, verticalOf, modelOf } from '../../lib/requisitionBasket'
+import { verdict, missingFields, missingNote, verticalOf, modelOf } from '../../lib/requisitionBasket'
+import type { MissingField } from '../../lib/requisitionBasket'
 import { raiseRequisition, loadAccount } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
 import { money } from '../../lib/enterprise'
@@ -21,6 +22,15 @@ import { VERTICAL_NAMES } from './data'
 import { getProductImage } from '../../lib/images'
 
 const BLANK = { title: '', reason: '', cost_centre: null as string | null, po_ref: '' }
+
+/* Which control each missing thing is, so pressing Raise can go to it. `lines`
+   maps to the title field because an empty requisition has no line to focus —
+   the panel says "Nothing here yet" in that state and the footer is not
+   rendered at all, so it is unreachable in practice. */
+const FIELD_ID: Record<MissingField, string> = {
+  lines: 'req-title', title: 'req-title', reason: 'req-reason',
+  cost_centre: 'req-cc', po_ref: 'req-po',
+}
 
 export function RequisitionPanel({ onRaised }: {
   /* The console is told afterwards, because the queue the buyer is about to be
@@ -30,6 +40,9 @@ export function RequisitionPanel({ onRaised }: {
   const { basket, open, setOpen, setQuantity, remove, empty, total, count } = useRequisition()
   const [draft, setDraft] = useState(BLANK)
   const [busy, setBusy] = useState(false)
+  /* Nothing is marked red until somebody has actually tried. A form that scolds
+     you for not yet having filled it in is a form that is wrong on open. */
+  const [attempted, setAttempted] = useState(false)
   /* The account's own copy, read when the panel opens rather than passed down.
      The policy, the cost centres and the rate table are all things that can
      have moved since the console loaded, and every one of them changes what
@@ -45,7 +58,7 @@ export function RequisitionPanel({ onRaised }: {
 
   /* Cleared once it has actually been raised, not on every close — a buyer who
      shuts the panel to go and check a budget should not lose their reasoning. */
-  useEffect(() => { if (!basket.lines.length) setDraft(BLANK) }, [basket.lines.length])
+  useEffect(() => { if (!basket.lines.length) { setDraft(BLANK); setAttempted(false) } }, [basket.lines.length])
 
   if (!open) return null
 
@@ -59,15 +72,35 @@ export function RequisitionPanel({ onRaised }: {
   const v = account && policy
     ? verdict(basket, account, policy, rates, today)
     : null
-  const missing = account ? whatIsMissing(basket, draft, account)
-    : [book ? 'your account, which did not load' : 'your account to finish loading']
-  const stopper = missingNote(missing)
+  const missing = account ? missingFields(basket, draft, account)
+    : [{ field: 'lines' as MissingField, says: book ? 'your account, which did not load' : 'your account to finish loading' }]
+  const stopper = missingNote(missing.map(m => m.says))
+  const short = (f: MissingField) => attempted && missing.some(m => m.field === f)
 
-  const canRaise = !!(account && me && policy && me.can_raise && basket.lines.length
-    && !missing.length && !v?.blocked && !busy)
+  /* Deliberately not disabled while something is missing.
+
+     It was, and the first thing anybody said about this panel was that the
+     requisition could not be raised — from a buyer looking at a greyed-out
+     button with the fields it wanted scrolled below the fold and the reason in
+     small grey type beside it. A control that refuses without saying so, to
+     somebody who cannot see the thing it is refusing over, is indistinguishable
+     from one that is broken. It stays live, and pressing it takes you to the
+     first thing it needs. */
+  const blocked = !!(v?.blocked) || !!(me && !me.can_raise) || !account || !policy
 
   const raise = async () => {
     if (!account || !me || !policy) return
+    if (missing.length) {
+      setAttempted(true)
+      const first = missing[0].field
+      const el = document.getElementById(FIELD_ID[first])
+      if (el) {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        ;(el as HTMLElement).focus({ preventScroll: true })
+      }
+      toast(missingNote(missing.map(m => m.says)) ?? 'Something is missing', 'error')
+      return
+    }
     setBusy(true)
     const res = await raiseRequisition({
       draft: {
@@ -95,6 +128,9 @@ export function RequisitionPanel({ onRaised }: {
     border: '1px solid var(--border)', fontSize: 'var(--text-sm)',
     outline: 'none', color: 'var(--text)', background: 'white',
   } as const
+  /* Only after a press. Red on open would be the form telling somebody off for
+     not having filled in a form they have just been shown. */
+  const wanting = { ...field, border: '1px solid var(--danger)', background: 'var(--danger-bg, #fff5f5)' } as const
   const label = {
     display: 'block', fontSize: 'var(--text-xs)', fontWeight: 600,
     color: 'var(--text-secondary)', marginBottom: '4px',
@@ -196,18 +232,21 @@ export function RequisitionPanel({ onRaised }: {
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div>
                   <label style={label} htmlFor="req-title">What is it for</label>
-                  <input id="req-title" style={field} value={draft.title} placeholder="Cold-chain rollout, depot 4"
+                  <input id="req-title" style={short('title') ? wanting : field} value={draft.title} placeholder="Cold-chain rollout, depot 4"
+                    aria-invalid={short('title')}
                     onChange={e => setDraft(d => ({ ...d, title: e.target.value }))} />
                 </div>
                 <div>
                   <label style={label} htmlFor="req-reason">Why it is needed</label>
-                  <textarea id="req-reason" style={{ ...field, minHeight: '70px', resize: 'vertical' }} value={draft.reason}
+                  <textarea id="req-reason" style={{ ...(short('reason') ? wanting : field), minHeight: '70px', resize: 'vertical' }} value={draft.reason}
                     placeholder="An approver deciding without this is guessing."
+                    aria-invalid={short('reason')}
                     onChange={e => setDraft(d => ({ ...d, reason: e.target.value }))} />
                 </div>
                 <div>
                   <label style={label} htmlFor="req-cc">Cost centre</label>
-                  <select id="req-cc" style={field} value={draft.cost_centre ?? ''}
+                  <select id="req-cc" style={short('cost_centre') ? wanting : field} value={draft.cost_centre ?? ''}
+                    aria-invalid={short('cost_centre')}
                     onChange={e => setDraft(d => ({ ...d, cost_centre: e.target.value || null }))}>
                     <option value="">Pick one</option>
                     {centres.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -216,7 +255,8 @@ export function RequisitionPanel({ onRaised }: {
                 {account?.po_required && (
                   <div>
                     <label style={label} htmlFor="req-po">Purchase order</label>
-                    <input id="req-po" style={field} value={draft.po_ref} placeholder="PO-8891"
+                    <input id="req-po" style={short('po_ref') ? wanting : field} value={draft.po_ref} placeholder="PO-8891"
+                      aria-invalid={short('po_ref')}
                       onChange={e => setDraft(d => ({ ...d, po_ref: e.target.value }))} />
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
                       This account requires one on every invoice.
@@ -237,11 +277,13 @@ export function RequisitionPanel({ onRaised }: {
                 Your role on this account cannot raise a requisition. Ask a colleague who can, or an administrator to move you to a role that raises.
               </div>
             ) : stopper && (
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{stopper}</div>
+              <div style={{ fontSize: 'var(--text-xs)', color: attempted ? 'var(--danger)' : 'var(--text-tertiary)', fontWeight: attempted ? 600 : 400 }}>
+                {stopper}
+              </div>
             )}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between' }}>
               <Btn variant="secondary" size="sm" onClick={() => { empty(); toast('Emptied', 'info') }}>Empty it</Btn>
-              <Btn variant="primary" onClick={raise} disabled={!canRaise}>
+              <Btn variant="primary" onClick={raise} disabled={blocked || busy}>
                 {/* Never "Raise and order": raising writes a pending
                     requisition and nothing else. Confirming it on Approvals is
                     what places the order, even when nobody else has to sign. */}

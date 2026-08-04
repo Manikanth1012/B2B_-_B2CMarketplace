@@ -195,9 +195,22 @@ export function EnterpriseShell({ view, onNavigate, onSignOut, children }: Enter
                 wanders off to check a budget and comes back otherwise has no
                 way to find what they had collected. */}
             <RequisitionButton />
-            <button style={{ padding: '8px', borderRadius: 'var(--radius)', color: 'var(--text-secondary)', position: 'relative' }}>
+            {/* It goes to Notifications. It had no onClick at all, so the one
+                control in the header that looks like it leads somewhere led
+                nowhere on every screen of this console.
+
+                The red dot went with the fix. There is no read/unread state on
+                a notification anywhere in the schema, so a permanently lit dot
+                announced something new forever — which teaches people to
+                ignore the one indicator that would matter if it were ever
+                real. */}
+            <button
+              onClick={() => onNavigate('en-notifications')}
+              aria-label="Notifications"
+              title="Notifications"
+              style={{ padding: '8px', borderRadius: 'var(--radius)', color: 'var(--text-secondary)', position: 'relative', background: 'none', border: 'none', cursor: 'pointer' }}
+            >
               <BellIcon size={20} />
-              <span style={{ position: 'absolute', top: '4px', right: '4px', width: '8px', height: '8px', borderRadius: '50%', background: 'var(--danger)' }} />
             </button>
             <ContextualHelp persona="enterprise" view={view} onOpenCatalogue={() => onNavigate('en-kb')} />
             <AccountMenu

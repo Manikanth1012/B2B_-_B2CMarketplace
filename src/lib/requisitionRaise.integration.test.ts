@@ -31,9 +31,17 @@ async function sweep() {
   const { data } = await supabase.from('enterprise_requisitions')
     .select('id, title').like('title', `%${MARKER}%`)
   for (const r of (data ?? []) as { id: string }[]) {
-    /* Lines go with it — the foreign key cascades, and a cascade is not
-       subject to the child's policies. */
-    await supabase.from('enterprise_requisitions').delete().eq('id', r.id)
+    /* Lines go with it — the foreign key cascades.
+
+       The result is checked. It was not, and that hid a real bug for a whole
+       run: `guard_requisition_line` was refusing the cascade, so every delete
+       here removed nothing and reported nothing, the rows accumulated, and the
+       failure surfaced two files away as a count that was one too high. A sweep
+       that cannot fail is not a sweep. */
+    const { data: gone, error } = await supabase.from('enterprise_requisitions')
+      .delete().eq('id', r.id).select('id')
+    if (error) throw new Error(`could not sweep ${r.id}: ${error.message}`)
+    if (!gone?.length) throw new Error(`sweeping ${r.id} removed nothing — it is still there`)
   }
 }
 
@@ -196,15 +204,20 @@ describe('a business buyer raises a requisition', () => {
     if (!res.ok) expect(res.reason).toMatch(/GBP/)
   }, 60000)
 
-  it('leaves nothing behind that it did not mean to', async () => {
-    /* Every requisition this file made carries the marker; anything without one
-       raised today would be a row written under a title the sweep will not
-       find, which is how test data becomes permanent. */
+  it('leaves nothing behind that no sweep will find', async () => {
+    /* Anything raised today has to carry a marker of some kind, because a row
+       written under a plain title is one no sweep looks for and it becomes
+       permanent seeded data by accident.
+
+       Deliberately not "carries *this* file's marker": `requisitionScope`
+       raises its own against the same account on the same day, and a check that
+       insisted on `[integration]` would fail on a sibling doing exactly the
+       right thing. */
     const today = new Date().toISOString().slice(0, 10)
     const { data } = await supabase.from('enterprise_requisitions')
       .select('id, title').eq('raised_on', today)
     const strays = ((data ?? []) as { id: string; title: string }[])
-      .filter(r => !r.title.includes(MARKER))
-    expect(strays.map(r => `${r.id} ${r.title}`), 'a requisition was raised outside the marker').toEqual([])
+      .filter(r => !/\[[a-z]+\]/.test(r.title))
+    expect(strays.map(r => `${r.id} ${r.title}`), 'a requisition was raised with no test marker on it').toEqual([])
   }, 30000)
 })
