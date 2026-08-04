@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Pager, usePaging } from '../Pager'
 import {
   User, Shield, Lock, Wallet, TrendingUp as ChartIcon, Building2, FileText, ClipboardCheck,
   Monitor, Eye, KeyRound, CircleCheck as CheckCircle, CircleAlert as AlertCircle,
@@ -73,6 +74,10 @@ export function EnterpriseProfile({ anchor }: { anchor?: string }) {
   const { money0 } = useAccountMoney(cur)
 
   useAnchor(anchor, book !== null && account !== null)
+
+  /* Above the loading guard: `usePaging` is a hook, and a hook after an
+     early return runs on some renders and not others. */
+  const sessionsPage = usePaging((book?.sessions ?? []).filter(s => s.member_id === book?.me?.id), { initialSize: 5 })
 
   if (!book || !account) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
@@ -262,8 +267,8 @@ export function EnterpriseProfile({ anchor }: { anchor?: string }) {
         </div>
 
         {sessions.length > 0 && (
-          <Table headers={['Device', 'Where', 'Started', 'Last seen', '']}>
-            {sessions.map(s => (
+          <><Table headers={['Device', 'Where', 'Started', 'Last seen', '']}>
+            {sessionsPage.rows.map(s => (
               <tr key={s.id}>
                 <Td>
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -291,6 +296,7 @@ export function EnterpriseProfile({ anchor }: { anchor?: string }) {
               </tr>
             ))}
           </Table>
+          <div style={{ padding: '0 18px 12px' }}><Pager page={sessionsPage} noun="sessions" /></div></>
         )}
       </SectionCard>
 

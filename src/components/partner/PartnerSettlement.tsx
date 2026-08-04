@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Pager, usePaging } from '../Pager'
 import { Wallet, Download, FileText, TriangleAlert as AlertTriangle } from 'lucide-react'
 import {
   StatCard, SectionCard, Table, Td, StatusPill, fmtInt, Btn, toast,
@@ -50,6 +51,10 @@ export function PartnerSettlement({ partnerId }: { partnerId: string }) {
     setSnap(s); setRecord(r)
   }, [partnerId])
   useEffect(() => { void reload() }, [reload])
+
+  /* Above the loading guard: `usePaging` is a hook, and a hook after an
+     early return runs on some renders and not others. */
+  const stmtPage = usePaging(snap?.statements ?? [])
 
   if (!snap || !record) {
     return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
@@ -214,8 +219,8 @@ export function PartnerSettlement({ partnerId }: { partnerId: string }) {
           </SectionCard>
 
           <SectionCard title="Statement history" subtitle="Every statement you have been paid against">
-            <Table headers={['Period', 'Orders', 'Gross', 'Commission', 'Fees', 'Refunds', 'Net payout', 'State', '']}>
-              {statements.map(s => {
+            <><Table headers={['Period', 'Orders', 'Gross', 'Commission', 'Fees', 'Refunds', 'Net payout', 'State', '']}>
+              {stmtPage.rows.map(s => {
                 const ok = reconcileStatement(s, snap.lines.filter(l => l.statement_id === s.id)).ok
                 return (
                   <tr key={s.id}>
@@ -253,6 +258,7 @@ export function PartnerSettlement({ partnerId }: { partnerId: string }) {
                 )
               })}
             </Table>
+            <div style={{ padding: '0 18px 12px' }}><Pager page={stmtPage} noun="statements" /></div></>
           </SectionCard>
         </>
       )}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Pager, usePaging } from '../Pager'
 import { Gift, Clock, TriangleAlert as AlertTriangle, Check, Pause } from 'lucide-react'
 import {
   SectionCard, StatCard, Btn, Modal, FormField, TextInput, TextArea, Select,
@@ -49,6 +50,11 @@ export function OperatorRewards() {
     setNames(Object.fromEntries(((p.data ?? []) as { id: string; name: string }[]).map(x => [x.id, x.name])))
   }, [])
   useEffect(() => { void reload() }, [reload])
+
+  /* Above the loading guard: `usePaging` is a hook, and a hook after an
+     early return runs on some renders and not others. */
+  const rulesPage = usePaging((book?.rules ?? []).filter(r => r.status === 'active' || r.status === 'scheduled'))
+  const sellersPage = usePaging(book ? costBySeller(book.movements, book.rules) : [])
 
   if (!book) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
@@ -190,8 +196,8 @@ export function OperatorRewards() {
 
       {tab === 'rules' && (
         <SectionCard title="Rules issuing points right now" subtitle="Who funds each, and what it is for">
-          <Table headers={['Rule', 'Applies to', 'Rate', 'Funded by', 'Runs', '']}>
-            {live.map(r => (
+          <><Table headers={['Rule', 'Applies to', 'Rate', 'Funded by', 'Runs', '']}>
+            {rulesPage.rows.map(r => (
               <tr key={r.id}>
                 <Td>
                   <div style={{ fontWeight: 600 }}>{r.name}</div>
@@ -219,6 +225,7 @@ export function OperatorRewards() {
               </tr>
             ))}
           </Table>
+          <div style={{ padding: '0 18px 12px' }}><Pager page={rulesPage} noun="rules" /></div></>
         </SectionCard>
       )}
 
@@ -230,9 +237,9 @@ export function OperatorRewards() {
         ) : (
           <SectionCard title="What the programme costs each seller"
                        subtitle={`Recovered on their settlement, itemised by rule on the statement · the ${home} column converts at ${AS_OF} rates`}>
-            <Table headers={['Seller', 'Points issued', 'Movements', 'Recovered from them',
+            <><Table headers={['Seller', 'Points issued', 'Movements', 'Recovered from them',
                              { label: `In ${home}`, align: 'right' }]}>
-              {sellers.map(s => {
+              {sellersPage.rows.map(s => {
                 const inHome = reported(s.cost)
                 return (
                   <tr key={s.partner_id}>
@@ -256,6 +263,7 @@ export function OperatorRewards() {
                 )
               })}
             </Table>
+            <div style={{ padding: '0 18px 12px' }}><Pager page={sellersPage} noun="sellers" /></div></>
           </SectionCard>
         )
       )}

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Pager, usePaging } from '../Pager'
 import { supabase } from '../../lib/supabase'
 import type { OperatorApi, OperatorApiSubscription } from '../../types'
 import { SectionCard, Table, Td, StatusPill, EmptyState, fmtInt, Btn, Modal, FormField, TextInput, Select, TextArea, toast, ConfirmDialog } from './shared'
@@ -22,6 +23,11 @@ export function OperatorDeveloper() {
       setLoading(false)
     })
   }, [])
+
+  /* Above the loading guard: `usePaging` is a hook, and a hook after an
+     early return runs on some renders and not others. */
+  const apisPage = usePaging(apis)
+  const subsPage = usePaging(subs)
 
   if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
@@ -91,9 +97,9 @@ export function OperatorDeveloper() {
       {tab === 'apis' && (
         <SectionCard title="Published APIs" subtitle="Each declares the TMF standard it implements and its lifecycle state">
           {apis.length === 0 ? <EmptyState message="No APIs published" /> : (
-            <Table headers={['Name', 'Standard', 'Audience', 'Version', 'Subscribers', 'Lifecycle',
+            <><Table headers={['Name', 'Standard', 'Audience', 'Version', 'Subscribers', 'Lifecycle',
                              { label: 'Why', align: 'left' }, 'Actions']}>
-              {apis.map(a => (
+              {apisPage.rows.map(a => (
                 <tr key={a.id}>
                   <Td>{a.name}</Td>
                   <Td right>{a.standard}</Td>
@@ -114,6 +120,7 @@ export function OperatorDeveloper() {
                 </tr>
               ))}
             </Table>
+            <div style={{ padding: '0 18px 12px' }}><Pager page={apisPage} noun="APIs" /></div></>
           )}
         </SectionCard>
       )}
@@ -121,8 +128,8 @@ export function OperatorDeveloper() {
       {tab === 'subscriptions' && (
         <SectionCard title="Subscription Matrix" subtitle="APIs down, consumers across">
           {subs.length === 0 ? <EmptyState message="No subscriptions" /> : (
-            <Table headers={['Consumer', 'API', 'Version', 'Environment', 'Volume', 'Status', 'Actions']}>
-              {subs.map(s => {
+            <><Table headers={['Consumer', 'API', 'Version', 'Environment', 'Volume', 'Status', 'Actions']}>
+              {subsPage.rows.map(s => {
                 const api = apis.find(a => a.id === s.api_id)
                 return (
                   <tr key={s.id}>
@@ -137,6 +144,7 @@ export function OperatorDeveloper() {
                 )
               })}
             </Table>
+            <div style={{ padding: '0 18px 12px' }}><Pager page={subsPage} noun="subscriptions" /></div></>
           )}
         </SectionCard>
       )}

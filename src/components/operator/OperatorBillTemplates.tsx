@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Pager, usePaging } from '../Pager'
 import { Plus, Copy, Trash2, Pencil, Lock, ArrowLeft } from 'lucide-react'
 import {
   SectionCard, EmptyState, Btn, FormField, TextInput, TextArea, Select,
@@ -105,6 +106,7 @@ function TemplateList(
   },
 ) {
   const [confirming, setConfirming] = useState<Template | null>(null)
+  const templatesPage = usePaging(book.templates)
 
   const act = async (fn: () => Promise<{ ok: boolean; reason?: string; note?: string }>) => {
     const res = await fn()
@@ -123,8 +125,8 @@ function TemplateList(
       </Callout>
 
       <SectionCard title="Templates" subtitle={`${book.templates.length} on file`}>
-        <Table headers={['Template', 'Audience', 'Document title', 'Sections', 'Next reference', 'In use', '']}>
-          {book.templates.map(t => {
+        <><Table headers={['Template', 'Audience', 'Document title', 'Sections', 'Next reference', 'In use', '']}>
+          {templatesPage.rows.map(t => {
             const ids = sectionsOn(t, book.sections, book.chosen).map(s => s.id)
             const used = usedBy(t.id, book.assignments)
             const del = canDelete(t, book.assignments)
@@ -172,6 +174,7 @@ function TemplateList(
             )
           })}
         </Table>
+        <div style={{ padding: '0 18px 12px' }}><Pager page={templatesPage} noun="templates" /></div></>
         {!book.templates.length && <EmptyState message="No templates on file." />}
       </SectionCard>
 

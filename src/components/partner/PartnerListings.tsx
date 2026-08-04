@@ -1,4 +1,5 @@
 import { Package, Plus, Download, Search } from 'lucide-react'
+import { Pager, usePaging } from '../Pager'
 import { useState, useEffect } from 'react'
 import { SectionCard, Table, Td, fmtMoney, Btn, EmptyState, toast } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
@@ -43,6 +44,15 @@ export function PartnerListings({ partnerId, onNewListing }: {
       .then(([r, s]) => { setRec(r); setSubs(s.submissions); setQueries(s.queries); setLoading(false) })
   }, [partnerId])
 
+  /* Derived above the loading guard, because `usePaging` is a hook: below an
+     early return it runs on some renders and not others. */
+  const filtered = (rec?.listings ?? []).filter(l => {
+    if (filter !== 'all' && l.status !== filter) return false
+    if (search && !l.name.toLowerCase().includes(search.toLowerCase()) && !l.id.toLowerCase().includes(search.toLowerCase())) return false
+    return true
+  })
+  const page = usePaging(filtered, { resetKey: `${filter}:${search}` })
+
   if (loading || !rec) {
     return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
   }
@@ -50,12 +60,6 @@ export function PartnerListings({ partnerId, onNewListing }: {
   const catName = (id: string) => rec.categories.find(c => c.id === id)?.name ?? id
   const breakdown = listingBreakdown(rec.listings)
   const states = ['all', ...new Set(rec.listings.map(l => l.status))]
-
-  const filtered = rec.listings.filter(l => {
-    if (filter !== 'all' && l.status !== filter) return false
-    if (search && !l.name.toLowerCase().includes(search.toLowerCase()) && !l.id.toLowerCase().includes(search.toLowerCase())) return false
-    return true
-  })
 
   /* The rate the seller is actually paid on, read from the plan rather than a
      per-row number nothing agreed to. */
@@ -171,8 +175,8 @@ export function PartnerListings({ partnerId, onNewListing }: {
             ? 'Nothing listed yet. Your storefront opens at the last onboarding gate.'
             : 'No listing matches that'} />
         ) : (
-          <Table headers={['Listing', 'Marketplace', 'Price', 'Commission', 'Availability', 'State', 'Review', 'Markets']}>
-            {filtered.map(l => {
+          <><Table headers={['Listing', 'Marketplace', 'Price', 'Commission', 'Availability', 'State', 'Review', 'Markets']}>
+            {page.rows.map(l => {
               const state = listingState(l.status)
               return (
                 <tr key={l.id}
@@ -241,6 +245,7 @@ export function PartnerListings({ partnerId, onNewListing }: {
               )
             })}
           </Table>
+          <div style={{ padding: '0 18px 12px' }}><Pager page={page} noun="listings" /></div></>
         )}
       </SectionCard>
 

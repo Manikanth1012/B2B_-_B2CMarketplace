@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Pager, usePaging } from '../Pager'
 import { supabase } from '../../lib/supabase'
 import type { OperatorInventory, OperatorWarehouse, Product } from '../../types'
 import { demandByProduct, type Watch } from '../../lib/stockWatch'
@@ -74,6 +75,12 @@ export function OperatorInventory() {
       setDemand(counts.filter(c => byId[c.productId]).map(c => ({ product: byId[c.productId], waiting: c.waiting })))
     })
   }, [refreshInv, refreshWh])
+
+  /* Above the loading guard: `usePaging` is a hook, and a hook after an
+     early return runs on some renders and not others. */
+  const stockPage = usePaging(inventory)
+  const whPage = usePaging(warehouses)
+  const demandPage = usePaging(demand, { initialSize: 5 })
 
   if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
@@ -173,8 +180,8 @@ export function OperatorInventory() {
           for should not look the same when deciding what to reorder. */}
       {tab === 'stock' && demand.length > 0 && (
         <SectionCard title="Waiting for stock" subtitle="Shoppers who asked to be told when these come back">
-          <Table headers={['Product', 'Seller', 'Stock', 'Waiting']}>
-            {demand.map(d => {
+          <><Table headers={['Product', 'Seller', 'Stock', 'Waiting']}>
+            {demandPage.rows.map(d => {
               const badge = d.product.stock as 'in' | 'low' | 'out'
               return (
                 <tr key={d.product.id}>
@@ -195,6 +202,7 @@ export function OperatorInventory() {
               )
             })}
           </Table>
+          <div style={{ padding: '0 18px 12px' }}><Pager page={demandPage} noun="products" /></div></>
         </SectionCard>
       )}
 
@@ -204,8 +212,8 @@ export function OperatorInventory() {
           subtitle="Available is on hand minus reserved, computed by the database rather than stored beside them"
         >
           {inventory.length === 0 ? <EmptyState message="No stock lines" /> : (
-            <Table headers={['Product', 'Seller', 'Warehouse', 'On hand', 'Reserved', 'Available', 'Reorder', 'Inbound', 'Unit cost', 'Value', '']}>
-              {inventory.map(i => {
+            <><Table headers={['Product', 'Seller', 'Warehouse', 'On hand', 'Reserved', 'Available', 'Reorder', 'Inbound', 'Unit cost', 'Value', '']}>
+              {stockPage.rows.map(i => {
                 const badge = stockBadge(i.available, i.reorder_point)
                 return (
                   <tr key={i.id}>
@@ -232,6 +240,7 @@ export function OperatorInventory() {
                 )
               })}
             </Table>
+            <div style={{ padding: '0 18px 12px' }}><Pager page={stockPage} noun="stock lines" /></div></>
           )}
           <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border-light)' }}>
             <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: 0 }}>
@@ -246,8 +255,8 @@ export function OperatorInventory() {
       {tab === 'warehouses' && (
         <SectionCard title="Warehouse configuration" subtitle="Type · address · capacity · system link">
           {warehouses.length === 0 ? <EmptyState message="No warehouses configured" /> : (
-            <Table headers={['Name', 'Type', 'Address', 'Capacity', 'Utilisation', 'Marketplaces served', 'System', 'Sync', 'State', '']}>
-              {warehouses.map(w => (
+            <><Table headers={['Name', 'Type', 'Address', 'Capacity', 'Utilisation', 'Marketplaces served', 'System', 'Sync', 'State', '']}>
+              {whPage.rows.map(w => (
                 <tr key={w.id}>
                   <Td>{w.name}</Td>
                   <Td>{w.type}</Td>
@@ -269,6 +278,7 @@ export function OperatorInventory() {
                 </tr>
               ))}
             </Table>
+            <div style={{ padding: '0 18px 12px' }}><Pager page={whPage} noun="warehouses" /></div></>
           )}
           <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border-light)' }}>
             <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: 0 }}>

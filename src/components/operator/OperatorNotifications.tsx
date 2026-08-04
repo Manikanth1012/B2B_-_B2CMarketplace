@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
+import { Pager, usePaging } from '../Pager'
 import {
   Bell, Plus, Pencil, Eye, TriangleAlert as AlertTriangle, Lock, Search,
 } from 'lucide-react'
@@ -165,6 +166,8 @@ function RulesTab({ book, persona, onPersona, onEdit, onReload, silent }: {
   silent: Rule[]
 }) {
   const rules = book.rules.filter(r => r.persona === persona).sort((a, b) => a.sort_order - b.sort_order)
+  /* Reset to page 1 when the persona changes — the list is a different list. */
+  const rulesPage = usePaging(rules, { resetKey: persona })
   const events = new Map(book.events.map(e => [e.id, e]))
 
   const toggle = async (r: Rule) => {
@@ -198,8 +201,8 @@ function RulesTab({ book, persona, onPersona, onEdit, onReload, silent }: {
       <SectionCard title={`What ${PERSONA_LABEL[persona].toLowerCase()} are told`}
                    subtitle="Every line is something the platform will interrupt somebody for. The reason column is why that is justified.">
         {rules.length === 0 ? <EmptyState message="No rules for this persona yet" /> : (
-          <Table headers={['Rule', 'Event', 'Audience', 'Channels', 'How often', 'Priority', 'Last sent', 'Status', 'Actions']}>
-            {rules.map(r => {
+          <><Table headers={['Rule', 'Event', 'Audience', 'Channels', 'How often', 'Priority', 'Last sent', 'Status', 'Actions']}>
+            {rulesPage.rows.map(r => {
               const gaps = r.kinds.filter(k => !book.templates.some(t => t.rule_id === r.id && t.kind_id === k))
               return (
                 <tr key={r.id}>
@@ -245,6 +248,7 @@ function RulesTab({ book, persona, onPersona, onEdit, onReload, silent }: {
               )
             })}
           </Table>
+          <div style={{ padding: '0 18px 12px' }}><Pager page={rulesPage} noun="rules" /></div></>
         )}
       </SectionCard>
 
@@ -427,6 +431,7 @@ function WordingTab({ book, onEdit }: { book: NotificationBook; onEdit: (t: Temp
     .filter((x): x is { t: Template; r: Rule } => !!x.r)
     .filter(x => persona === 'all' || x.r.persona === persona)
     .sort((a, b) => a.r.sort_order - b.r.sort_order || KIND_ORDER.indexOf(a.t.kind_id) - KIND_ORDER.indexOf(b.t.kind_id))
+  const wordingPage = usePaging(rows, { resetKey: persona })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -449,8 +454,8 @@ function WordingTab({ book, onEdit }: { book: NotificationBook; onEdit: (t: Temp
       </div>
 
       <SectionCard title={`${rows.length} messages`} subtitle="What actually arrives, per rule per channel.">
-        <Table headers={['Rule', 'Who', 'Channel', 'Subject', 'Length', 'Last edited', '']}>
-          {rows.map(({ t, r }) => {
+        <><Table headers={['Rule', 'Who', 'Channel', 'Subject', 'Length', 'Last edited', '']}>
+          {wordingPage.rows.map(({ t, r }) => {
             const k = kinds.get(t.kind_id)
             const over = k?.max_chars != null && t.body.length > k.max_chars
             return (
@@ -470,6 +475,7 @@ function WordingTab({ book, onEdit }: { book: NotificationBook; onEdit: (t: Temp
             )
           })}
         </Table>
+        <div style={{ padding: '0 18px 12px' }}><Pager page={wordingPage} noun="templates" /></div></>
       </SectionCard>
     </div>
   )
@@ -723,6 +729,9 @@ function HistoryTab({ book }: { book: NotificationBook }) {
   const [open, setOpen] = useState<string | null>(null)
 
   const rows = filterLog(book.log, { persona, kind, state, search })
+  /* The log is the longest table in the console and had no paging at all.
+     Any change of filter is a different list, so it goes back to page 1. */
+  const logPage = usePaging(rows, { resetKey: `${persona}:${kind}:${state}:${search}` })
   const problems = notDelivered(book.log)
   const rules = new Map(book.rules.map(r => [r.id, r]))
 
@@ -762,8 +771,8 @@ function HistoryTab({ book }: { book: NotificationBook }) {
       <SectionCard title={`${rows.length} of ${book.log.length} messages`}
                    subtitle="Nobody edits what was sent. Click a row to read what actually went out.">
         {rows.length === 0 ? <EmptyState message="Nothing matches those filters" /> : (
-          <Table headers={['When', 'Who', 'Recipient', 'Channel', 'Subject', 'Rule', 'Outcome', 'Cost']}>
-            {rows.map(e => (
+          <><Table headers={['When', 'Who', 'Recipient', 'Channel', 'Subject', 'Rule', 'Outcome', 'Cost']}>
+            {logPage.rows.map(e => (
               <>
                 <tr key={e.id} onClick={() => setOpen(open === e.id ? null : e.id)} style={{ cursor: 'pointer' }}>
                   <Td style={{ fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>{when(e.sent_at)}</Td>
@@ -789,6 +798,7 @@ function HistoryTab({ book }: { book: NotificationBook }) {
               </>
             ))}
           </Table>
+          <div style={{ padding: '0 18px 12px' }}><Pager page={logPage} noun="messages" /></div></>
         )}
       </SectionCard>
     </div>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Pager, usePaging } from '../Pager'
 import { CircleCheck as CheckCircle, TriangleAlert as AlertTriangle, Download } from 'lucide-react'
 import { SectionCard, Table, Td, Btn, toast, fmtMoney, fmtInt } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
@@ -23,6 +24,15 @@ export function PartnerStatementLines({ partnerId }: { partnerId: string }) {
 
   const reload = useCallback(async () => setSnap(await loadSellerStatements(partnerId)), [partnerId])
   useEffect(() => { void reload() }, [reload])
+
+  /* Above the loading guard, and above the "no statements yet" one: `usePaging`
+     is a hook, and a hook after an early return runs on some renders and not
+     others. */
+  const showingId = openId ?? snap?.statements[0]?.id ?? null
+  const linesPage = usePaging(
+    (snap?.lines ?? []).filter(l => l.statement_id === showingId),
+    { resetKey: showingId ?? '' },
+  )
 
   if (!snap) return <div style={{ textAlign: 'center', padding: '30px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
@@ -122,8 +132,8 @@ export function PartnerStatementLines({ partnerId }: { partnerId: string }) {
           </div>
         </div>
 
-        <Table headers={['Order', 'Product', 'Qty', 'Gross', 'Tax', 'Commission', 'Fees', 'Refunds', 'Yours']}>
-          {lines.map(l => (
+        <><Table headers={['Order', 'Product', 'Qty', 'Gross', 'Tax', 'Commission', 'Fees', 'Refunds', 'Yours']}>
+          {linesPage.rows.map(l => (
             <tr key={l.id}>
               <Td style={{ fontSize: 'var(--text-xs)' }}>{l.order_ref}</Td>
               <Td style={{ fontSize: 'var(--text-xs)' }}>
@@ -154,6 +164,7 @@ export function PartnerStatementLines({ partnerId }: { partnerId: string }) {
             <Td right><strong>${fmtMoney(Number(statement.net))}</strong></Td>
           </tr>
         </Table>
+        <div style={{ padding: '0 18px 12px' }}><Pager page={linesPage} noun="lines" /></div></>
 
         <div style={{ padding: '14px 20px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.7 }}>
           Tax is shown so you can see what of the gross was never yours or ours — it is collected on the

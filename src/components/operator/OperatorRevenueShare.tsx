@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Pager, usePaging } from '../Pager'
 import { CircleCheck as CheckCircle, TriangleAlert as AlertTriangle, Download } from 'lucide-react'
 import {
   SectionCard, StatCard, Btn, Select, Table, Td, toast, fmtMoney, fmtInt,
@@ -32,15 +33,22 @@ export function OperatorRevenueShare() {
   const reload = useCallback(async () => setBook(await loadLedger()), [])
   useEffect(() => { void reload() }, [reload])
 
-  if (!book) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+  /* The period being read has to be worked out above the loading guard, because
+     what is on the page depends on it and `usePaging` is a hook — below an early
+     return it runs on some renders and not others. */
+  const open = book ? openPeriod(book.periods) : null
+  const viewing = period ?? open?.id ?? book?.periods[book.periods.length - 1]?.id ?? null
+  const current = book?.periods.find(p => p.id === viewing) ?? null
 
-  const open = openPeriod(book.periods)
-  const viewing = period ?? open?.id ?? book.periods[book.periods.length - 1]?.id ?? null
-  const current = book.periods.find(p => p.id === viewing) ?? null
-
-  const statements = book.statements.filter(s => periodIdOf(s.period) === viewing)
+  const statements = (book?.statements ?? []).filter(s => periodIdOf(s.period) === viewing)
   const ids = new Set(statements.map(s => s.id))
-  const lines = book.lines.filter(l => ids.has(l.statement_id))
+  const lines = (book?.lines ?? []).filter(l => ids.has(l.statement_id))
+
+  /* Reset to page 1 when the period changes: leaving somebody on page 4 of a
+     period with two sellers shows them an empty table and no reason for it. */
+  const sellersPage = usePaging(shareBySeller(lines, statements), { resetKey: viewing ?? '' })
+
+  if (!book) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
   const split = revenueSplit(lines, statements)
   const sellers = shareBySeller(lines, statements)
   const checks = current
@@ -138,9 +146,9 @@ export function OperatorRevenueShare() {
 
       <SectionCard title="Share by seller"
                    subtitle="Commission charged beside the rate their plan carries — a gap between those two is the commonest settlement dispute. Fees sit in their own column because they are a separate charge.">
-        <Table headers={['Seller', 'Orders', 'Gross', 'Commission', 'Fees',
+        <><Table headers={['Seller', 'Orders', 'Gross', 'Commission', 'Fees',
                        'Commission %', 'Plan %', 'With fees', 'They keep', '']}>
-          {sellers.map(s => {
+          {sellersPage.rows.map(s => {
             const key = s.partner_id ?? 'first-party'
             /* Commission against the plan rate, like for like. Fees are shown
                in their own column and always push the total take above the
@@ -190,6 +198,7 @@ export function OperatorRevenueShare() {
             )
           })}
         </Table>
+        <div style={{ padding: '0 18px 12px' }}><Pager page={sellersPage} noun="sellers" /></div></>
       </SectionCard>
     </div>
   )

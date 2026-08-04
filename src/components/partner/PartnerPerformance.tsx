@@ -1,9 +1,11 @@
 import { PieChart, BarChart3, Eye, ShoppingCart, Wallet, Undo, Star } from 'lucide-react'
+import { Pager, usePaging } from '../Pager'
 import { StatCard, SectionCard, Table, Td, fmtMoney, fmtInt, Btn } from '../operator/shared'
 import { PARTNER_LISTINGS, PARTNER_ORDERS, PARTNER_PLAN, PARTNER_PROFILE } from './data'
 
 export function PartnerPerformance() {
   const live = PARTNER_LISTINGS.filter(l => l.status === 'live')
+  const page = usePaging(live)
   const totalOrders = PARTNER_ORDERS.length
   const totalGmv = PARTNER_ORDERS.reduce((a, o) => a + o.gross, 0)
   const views = 18402
@@ -67,8 +69,8 @@ export function PartnerPerformance() {
       </div>
 
       <SectionCard title="Listing Detail" subtitle="Conversion and value per listing">
-        <Table headers={['Listing', 'Views', 'Orders', 'Conversion', 'Gross', 'Commission', 'Net to you']}>
-          {live.map((l, i) => {
+        <><Table headers={['Listing', 'Views', 'Orders', 'Conversion', 'Gross', 'Commission', 'Net to you']}>
+          {page.rows.map((l, i) => {
             const os = PARTNER_ORDERS.filter(o => o.name === l.name)
             const g = os.reduce((a, o) => a + o.gross, 0)
             const c = os.reduce((a, o) => a + o.comm, 0)
@@ -89,6 +91,7 @@ export function PartnerPerformance() {
             )
           })}
         </Table>
+        <div style={{ padding: '0 18px 12px' }}><Pager page={page} noun="listings" /></div></>
       </SectionCard>
 
       <SectionCard title="Reviews" subtitle="Verified purchases only">

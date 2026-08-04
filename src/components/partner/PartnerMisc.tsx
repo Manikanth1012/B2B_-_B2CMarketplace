@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Pager, usePaging } from '../Pager'
 import { SectionCard, Table, Td, StatusPill, Btn, toast, fmtDate } from '../operator/shared'
 import { PARTNER_PROFILE } from './data'
 import { loadMyDetails } from '../../lib/partnerDetailsRepo'
@@ -18,6 +19,10 @@ export function PartnerTeam({ partnerId }: { partnerId: string }) {
       setTeam(d.me ? [d.me, ...d.colleagues] : d.colleagues)
     })
   }, [partnerId])
+
+  /* Above the loading guard: `usePaging` is a hook, and a hook after an
+     early return runs on some renders and not others. */
+  const teamPage = usePaging(team ?? [])
 
   if (!team) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
@@ -61,8 +66,8 @@ export function PartnerTeam({ partnerId }: { partnerId: string }) {
       )}
 
       <SectionCard title="Your Team" subtitle={`${team.length} ${team.length === 1 ? 'person' : 'people'}`}>
-        <Table headers={['Name', 'Email', 'Role', 'MFA', 'Last active', 'Status', '']}>
-          {team.map(m => (
+        <><Table headers={['Name', 'Email', 'Role', 'MFA', 'Last active', 'Status', '']}>
+          {teamPage.rows.map(m => (
             <tr key={m.email}>
               <Td>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
@@ -94,6 +99,7 @@ export function PartnerTeam({ partnerId }: { partnerId: string }) {
             </tr>
           ))}
         </Table>
+        <div style={{ padding: '0 18px 12px' }}><Pager page={teamPage} noun="people" /></div></>
       </SectionCard>
     </div>
   )

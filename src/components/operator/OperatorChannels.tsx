@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Pager, usePaging } from '../Pager'
 import { supabase } from '../../lib/supabase'
 import type { OperatorChannel } from '../../types'
 import { SectionCard, Table, Td, StatusPill, EmptyState, Btn, Modal, FormField, TextInput, Select, TextArea, toast, ConfirmDialog } from './shared'
@@ -24,6 +25,10 @@ export function OperatorChannels() {
       setLoading(false)
     })
   }, [])
+
+  /* Above the loading guard: `usePaging` is a hook, and a hook after an
+     early return runs on some renders and not others. */
+  const page = usePaging(channels)
 
   if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
@@ -75,8 +80,8 @@ export function OperatorChannels() {
           primary is part of its status rather than a column of dashes beside it. */}
       <SectionCard title="Channel Master" subtitle="A channel is what the customer experiences; a provider is what carries it.">
         {channels.length === 0 ? <EmptyState message="No channels configured" /> : (
-          <Table headers={['Name', 'Type', 'Transport', 'Sender', 'Throughput', 'Cost', 'Success', 'Receipt', 'Status', 'Actions']}>
-            {channels.map(c => (
+          <><Table headers={['Name', 'Type', 'Transport', 'Sender', 'Throughput', 'Cost', 'Success', 'Receipt', 'Status', 'Actions']}>
+            {page.rows.map(c => (
               <tr key={c.id}>
                 <Td>{c.name}</Td>
                 <Td right>{c.type}</Td>
@@ -105,6 +110,7 @@ export function OperatorChannels() {
               </tr>
             ))}
           </Table>
+          <div style={{ padding: '0 18px 12px' }}><Pager page={page} noun="channels" /></div></>
         )}
       </SectionCard>
 

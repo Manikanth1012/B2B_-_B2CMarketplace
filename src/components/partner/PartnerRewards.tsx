@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Pager, usePaging } from '../Pager'
 import {
   Gift, Plus, TriangleAlert as AlertTriangle, Award, Undo2, Trash2,
 } from 'lucide-react'
@@ -83,6 +84,10 @@ export function PartnerRewards({ partnerId }: { partnerId: string }) {
     setSnap(s); setRecord(r); setTiers((t.data ?? []) as Tier[])
   }, [partnerId])
   useEffect(() => { void reload() }, [reload])
+
+  /* Above the loading guard: `usePaging` is a hook, and a hook after an
+     early return runs on some renders and not others. */
+  const movesPage = usePaging(newestFirst(snap?.movements ?? []))
 
   if (!snap || !record) {
     return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
@@ -211,9 +216,10 @@ export function PartnerRewards({ partnerId }: { partnerId: string }) {
                 appears here with the order behind it.
               </div>
             ) : (
-              <Table headers={['When', 'What', 'Against', 'Points', 'Costs you']}>
-                {newestFirst(snap.movements).map(m => <MovementRow key={m.id} m={m} snap={snap} fmt={fmtIn} />)}
+              <><Table headers={['When', 'What', 'Against', 'Points', 'Costs you']}>
+                {movesPage.rows.map(m => <MovementRow key={m.id} m={m} snap={snap} fmt={fmtIn} />)}
               </Table>
+              <div style={{ padding: '0 18px 12px' }}><Pager page={movesPage} noun="movements" /></div></>
             )}
           </SectionCard>
         </>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Pager, usePaging } from '../Pager'
 import { supabase } from '../../lib/supabase'
 import type { OperatorPromotion } from '../../types'
 import { SectionCard, Table, Td, StatusPill, EmptyState, fmtDate, Btn, Modal, FormField, TextInput, Select, TextArea, toast, ConfirmDialog } from './shared'
@@ -18,6 +19,10 @@ export function OperatorPromotions() {
       setLoading(false)
     })
   }, [])
+
+  /* Above the loading guard: `usePaging` is a hook, and a hook after an
+     early return runs on some renders and not others. */
+  const page = usePaging(promos)
 
   if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
@@ -77,8 +82,8 @@ export function OperatorPromotions() {
 
       <SectionCard title="Conditional Discount Rules" subtitle="Conditions + effect + budget. Cost floor enforced in the pricing engine.">
         {promos.length === 0 ? <EmptyState message="No promotions configured" /> : (
-          <Table headers={['Name', 'Description', 'Effect', 'Value', 'Stacking', 'Priority', 'Budget', 'Spent', 'Status', 'Actions']}>
-            {promos.map(p => {
+          <><Table headers={['Name', 'Description', 'Effect', 'Value', 'Stacking', 'Priority', 'Budget', 'Spent', 'Status', 'Actions']}>
+            {page.rows.map(p => {
               const pct = p.budget > 0 ? (p.spent / p.budget * 100).toFixed(0) : '0'
               return (
                 <tr key={p.id}>
@@ -102,6 +107,7 @@ export function OperatorPromotions() {
               )
             })}
           </Table>
+          <div style={{ padding: '0 18px 12px' }}><Pager page={page} noun="promotions" /></div></>
         )}
       </SectionCard>
 

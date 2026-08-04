@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Pager, usePaging } from '../Pager'
 import { Wallet as WalletIcon, Lock, Zap, Clock, TriangleAlert } from 'lucide-react'
 import {
   SectionCard, EmptyState, Btn, Table, Td, toast, fmtInt, fmtDate, StatCard,
@@ -35,6 +36,10 @@ export function OperatorWallets() {
 
   const reload = useCallback(async () => setSnap(await loadWalletBook()), [])
   useEffect(() => { void reload() }, [reload])
+
+  /* Above the loading guard: `usePaging` is a hook, and a hook after an
+     early return runs on some renders and not others. */
+  const walletsPage = usePaging(snap?.wallets ?? [])
 
   if (!snap) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
@@ -205,8 +210,8 @@ export function OperatorWallets() {
       <SectionCard title={`Accounts (${snap.wallets.length})`}
                    subtitle="Consumers and businesses alike. Open one to see how its balance was reached.">
         {snap.wallets.length === 0 ? <EmptyState message="No wallets" /> : (
-          <Table headers={['Holder', 'Type', 'Their money', 'Our credit', 'Balance', 'Opened', 'Last movement', 'State']}>
-            {snap.wallets.map(w => (
+          <><Table headers={['Holder', 'Type', 'Their money', 'Our credit', 'Balance', 'Opened', 'Last movement', 'State']}>
+            {walletsPage.rows.map(w => (
               <tr key={w.id} style={{ cursor: 'pointer' }} onClick={() => setOpen(w.id)}>
                 <Td>
                   <div style={{ fontWeight: 700, fontSize: 'var(--text-xs)', color: 'var(--brand-navy)' }}>{w.name}</div>
@@ -224,6 +229,7 @@ export function OperatorWallets() {
               </tr>
             ))}
           </Table>
+          <div style={{ padding: '0 18px 12px' }}><Pager page={walletsPage} noun="wallets" /></div></>
         )}
       </SectionCard>
 

@@ -14,6 +14,7 @@
  * click rather than as a Postgres exception after it.
  */
 import { useState, useEffect, useCallback } from 'react'
+import { Pager, usePaging } from '../Pager'
 import { Globe, Check, Ban, Clock, Plus, Trash2, Star } from 'lucide-react'
 import { useMarket } from '../../lib/MarketContext'
 import {
@@ -147,6 +148,10 @@ export function OperatorMarkets() {
     if (!res.ok) { toast(res.reason ?? 'Nothing was changed', 'error'); return }
     setGrants(await loadPartnerMarkets())
   }
+
+  /* Above the loading guard: `usePaging` is a hook, and a hook after an
+     early return runs on some renders and not others. */
+  const sellersPage = usePaging(sellers)
 
   if (loading) {
     return <p style={{ padding: '24px', color: 'var(--text-tertiary)' }}>Loading markets…</p>
@@ -350,8 +355,8 @@ export function OperatorMarkets() {
           <EmptyState message="No sellers on record" />
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <Table headers={['Seller', ...markets.map(m => m.name)]}>
-              {sellers.map(s => (
+            <><Table headers={['Seller', ...markets.map(m => m.name)]}>
+              {sellersPage.rows.map(s => (
                 <tr key={s.id}>
                   <Td>
                     <div style={{ fontWeight: 700, fontSize: 'var(--text-xs)' }}>{s.name}</div>
@@ -389,6 +394,7 @@ export function OperatorMarkets() {
                 </tr>
               ))}
             </Table>
+            <div style={{ padding: '0 18px 12px' }}><Pager page={sellersPage} noun="sellers" /></div></>
           </div>
         )}
 

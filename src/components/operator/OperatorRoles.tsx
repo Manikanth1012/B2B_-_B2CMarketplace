@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Pager, usePaging } from '../Pager'
 import { supabase } from '../../lib/supabase'
 import type { OperatorRole, OperatorUser } from '../../types'
 import { SectionCard, Table, Td, StatusPill, EmptyState, fmtDateTime, Btn, Modal, FormField, TextInput, Select, TextArea, toast, ConfirmDialog } from './shared'
@@ -23,6 +24,11 @@ export function OperatorRoles() {
       setLoading(false)
     })
   }, [])
+
+  /* Above the loading guard: `usePaging` is a hook, and a hook after an
+     early return runs on some renders and not others. */
+  const rolesPage = usePaging(roles)
+  const usersPage = usePaging(users)
 
   if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
@@ -99,8 +105,8 @@ export function OperatorRoles() {
       {tab === 'roles' && (
         <SectionCard title="Role Matrix" subtitle="13 roles · Built-ins can be edited but not deleted">
           {roles.length === 0 ? <EmptyState message="No roles defined" /> : (
-            <Table headers={['Role', 'Description', 'Assigned', 'Audit Scope', 'Capabilities', 'Actions']}>
-              {roles.map(r => {
+            <><Table headers={['Role', 'Description', 'Assigned', 'Audit Scope', 'Capabilities', 'Actions']}>
+              {rolesPage.rows.map(r => {
                 const caps = Object.entries(r.capabilities)
                 const fullCount = caps.filter(([, v]) => v === 'full').length
                 const scopedCount = caps.filter(([, v]) => v === 'scoped').length
@@ -121,6 +127,7 @@ export function OperatorRoles() {
                 )
               })}
             </Table>
+            <div style={{ padding: '0 18px 12px' }}><Pager page={rolesPage} noun="roles" /></div></>
           )}
         </SectionCard>
       )}
@@ -128,8 +135,8 @@ export function OperatorRoles() {
       {tab === 'users' && (
         <SectionCard title="User Directory" subtitle="All operator staff">
           {users.length === 0 ? <EmptyState message="No users" /> : (
-            <Table headers={['Name', 'Email', 'Role', 'MFA', 'Status', 'Last Active', 'Actions']}>
-              {users.map(u => (
+            <><Table headers={['Name', 'Email', 'Role', 'MFA', 'Status', 'Last Active', 'Actions']}>
+              {usersPage.rows.map(u => (
                 <tr key={u.id}>
                   <Td>{u.name}</Td>
                   <Td right style={{ fontSize: 'var(--text-xs)' }}>{u.email}</Td>
@@ -146,6 +153,7 @@ export function OperatorRoles() {
                 </tr>
               ))}
             </Table>
+            <div style={{ padding: '0 18px 12px' }}><Pager page={usersPage} noun="users" /></div></>
           )}
         </SectionCard>
       )}

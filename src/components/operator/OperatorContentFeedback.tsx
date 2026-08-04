@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { Pager, usePaging } from '../Pager'
 import { MessageSquareWarning, ThumbsUp, ThumbsDown, FileText } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import {
@@ -48,6 +49,10 @@ export function OperatorContentFeedback() {
   }, [])
 
   useEffect(() => { void reload() }, [reload])
+
+  /* Above the loading guard: `usePaging` is a hook, and a hook after an
+     early return runs on some renders and not others. */
+  const page = usePaging(bySurface(items ?? []))
 
   if (!items) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
@@ -133,8 +138,11 @@ export function OperatorContentFeedback() {
 
       <SectionCard title="Which content is failing"
                    subtitle="Ranked by readers let down, not by percentage — one unhappy reader out of one is 0% and is not the problem">
-        <Table headers={['Content', 'Type', 'Responses', 'Complaints', 'Helpful', 'Read by', 'Commonest complaint', 'Open']}>
-          {surfaces.slice(0, 12).map(s => (
+        {/* Paged rather than `.slice(0, 12)`, which dropped the thirteenth
+            worst-performing piece of content off the end of a table headed
+            "which content is failing" and said nothing about having done it. */}
+        <><Table headers={['Content', 'Type', 'Responses', 'Complaints', 'Helpful', 'Read by', 'Commonest complaint', 'Open']}>
+          {page.rows.map(s => (
             <tr key={`${s.surface}-${s.ref}`}>
               <Td>
                 <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>{nameOf(s.ref)}</div>
@@ -156,6 +164,7 @@ export function OperatorContentFeedback() {
             </tr>
           ))}
         </Table>
+        <div style={{ padding: '0 18px 12px' }}><Pager page={page} noun="pieces of content" /></div></>
       </SectionCard>
 
       <SectionCard
