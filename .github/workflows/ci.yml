@@ -30,7 +30,9 @@ jobs:
       # Vite inlines import.meta.env.VITE_* at build time, so this job's
       # output is deliberately not a deployable bundle — it has no credentials
       # and would throw on boot. It is here to prove the build compiles.
-      # The servable bundle is the tracked dist/, built with the variables set
-      # and committed alongside the source it was built from.
+      #
+      # There is no longer a bundle in the repository to serve: dist/ is
+      # ignored. Whoever serves the app builds it where it is served, with the
+      # variables set.
       - name: Build
         run: npm run build

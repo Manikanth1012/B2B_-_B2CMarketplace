@@ -1,17 +1,27 @@
 node_modules/
 .env
 
-# dist/ is tracked on purpose so main can be served directly. It is build
-# output, so it is only correct as of the commit that carries it — regenerate
-# with `npm run build` and commit it alongside any source change, or what is
-# served stops matching what is in src/.
+# Build output. Not tracked.
 #
-# The bundle carries VITE_SUPABASE_URL and the anon key, inlined by Vite at
-# build time. (The CI workflow's comment claiming these are read at runtime is
-# wrong: a build made without them produces an app that throws on boot.) That
-# is what an anon key is for — it ships in client JavaScript in every
-# deployment, and RLS is what actually guards the data. The service role key
-# must never reach a build.
+# It was tracked, so that main could be served straight from a checkout. What
+# that cost: every commit made from a stale or partial checkout silently
+# rewrote it, and the resulting diff — one line, a hashed filename changing —
+# reads as routine. `ed4bf1a` looked exactly like that and was a complete
+# revert of the commit before it.
+#
+# To be clear about what this does and does not fix: that commit removed source
+# files too, and ignoring dist/ would not have stopped it. Pulling before
+# committing is what stops that. This only removes the misleading signal.
+#
+# The consequence, which is real: main is no longer servable as-is. Whoever
+# serves it runs `npm run build` first, with the environment variables set.
+#
+# They have to be set at build time, not run time: Vite inlines
+# import.meta.env.VITE_* into the bundle, so a build made without them produces
+# an app that throws on boot. VITE_SUPABASE_ANON_KEY belongs in client
+# JavaScript — that is what an anon key is for, and RLS is what guards the data.
+# The service role key must never reach a build.
+dist/
 
 .superpowers/
 images/

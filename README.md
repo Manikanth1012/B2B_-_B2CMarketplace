@@ -71,13 +71,26 @@ Supabase environment variables"* in the console means this file.
 | Command | What it does |
 |---|---|
 | `npm run dev` | Dev server on :5173 |
-| `npm run build` | Type-check and build to `dist/` |
+| `npm run build` | Type-check and build to `dist/` (untracked — build where you serve) |
 | `npm test` | Unit tests — no network |
 | `npm run test:integration` | Integration tests **against the live project** |
 
 `npm run test:integration` signs in as the seeded demo personas and writes to the
 real database. It cleans up after itself, but do not point it at anything you would
 mind it touching.
+
+### Serving it
+
+`dist/` is build output and is not in the repository, so a checkout is not
+servable on its own — build it first, on the machine that serves it:
+
+```
+npm ci && npm run build     # with the VITE_* variables set
+```
+
+They are needed at build time rather than run time: Vite inlines
+`import.meta.env.VITE_*` into the bundle, so a build made without them produces
+an app that throws on boot.
 
 ---
 
