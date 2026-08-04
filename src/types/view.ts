@@ -96,7 +96,7 @@ export type Surface =
      applicant is part-way through a form that is being saved as they go — the
      header's marketplace nav would take them out of it with one click, and
      there is no route to come back to. */
-  | { kind: 'apply'; resume?: boolean }
+  | { kind: 'apply'; resume?: boolean; kindOf?: 'seller' | 'business' }
   /* Registering as a shopper. Its own surface for the same reason as `apply`:
      it is a form somebody is part-way through, and the header's marketplace nav
      would take them out of it with one click. */

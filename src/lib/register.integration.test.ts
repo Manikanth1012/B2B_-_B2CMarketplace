@@ -85,7 +85,7 @@ describe('a shopper registers', () => {
     expect(error ? true : (partners ?? []).length === 0,
       'a shopper read the seller directory').toBe(true)
 
-    const { data: apps } = await supabase.from('partner_applications').select('id')
+    const { data: apps } = await supabase.from('applications').select('id')
     expect((apps ?? []).length, 'a shopper read the application queue').toBe(0)
   }, 30000)
 

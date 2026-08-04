@@ -49,9 +49,16 @@ export function ApplicationsQueue({ onAccepted }: {
   const [deciding, setDeciding] = useState<{ app: DeskApplication; accept: boolean } | null>(null)
 
   const reload = useCallback(async () => {
-    const [desk, f, k] = await Promise.all([
-      loadDeskApplications(), loadFields(), loadDocumentKinds(),
+    /* Both kinds, because the queue holds both. Filtering per row rather than
+       loading one set and rendering the other kind against it — a business
+       application read through the seller form reports every question missing. */
+    const [desk, sellerF, bizF, sellerK, bizK] = await Promise.all([
+      loadDeskApplications(),
+      loadFields('seller'), loadFields('business'),
+      loadDocumentKinds('seller'), loadDocumentKinds('business'),
     ])
+    const f = [...sellerF, ...bizF]
+    const k = [...sellerK, ...bizK]
     setApps(desk.applications)
     setAnswers(desk.answers)
     setDocuments(desk.documents)
@@ -165,7 +172,9 @@ function Group({ title, icon, rows, openId, onOpen, fields, answers, kinds, docu
       {rows.length === 0 ? (
         <div style={{ padding: '12px 16px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{empty}</div>
       ) : rows.map(a => {
-        const p = progress(fields, answers[a.id] ?? {}, kinds, documents[a.id] ?? [])
+        const mine = fields.filter(f => f.kind_of === a.kind_of)
+        const myKinds = kinds.filter(k => k.kind_of === a.kind_of)
+        const p = progress(mine, answers[a.id] ?? {}, myKinds, documents[a.id] ?? [])
         const days = waitingDays(a)
         return (
           <button key={a.id} onClick={() => onOpen(a.id)}
@@ -177,7 +186,7 @@ function Group({ title, icon, rows, openId, onOpen, fields, answers, kinds, docu
             }}>
             <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--text)' }}>{a.company}</div>
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
-              {a.id} · {a.kind} · {a.country}
+              {a.id} · {a.kind_of === 'business' ? 'business' : 'seller'} · {a.kind} · {a.country}
             </div>
             <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '3px' }}>
               {a.state === 'accepted' ? `Now ${a.partner_id}`
@@ -206,9 +215,13 @@ function Detail({ app, fields, answers, kinds, documents, onDecide }: {
   documents: UploadedDocument[]
   onDecide: (accept: boolean) => void
 }) {
-  const sheet = answerSheet(fields, answers, kinds, documents)
-  const allowed = canAccept(app, fields, answers, kinds, documents)
-  const p = progress(fields, answers, kinds, documents)
+  /* This application's own questions and documents. The queue holds both kinds
+     and reading one through the other's form reports everything missing. */
+  const mine = fields.filter(f => f.kind_of === app.kind_of)
+  const myKinds = kinds.filter(k => k.kind_of === app.kind_of)
+  const sheet = answerSheet(mine, answers, myKinds, documents)
+  const allowed = canAccept(app, mine, answers, myKinds, documents)
+  const p = progress(mine, answers, myKinds, documents)
 
   /* Signed, short-lived and served by the same helper every other document on
      the marketplace goes through — the applicant's files land in the `evidence`
@@ -236,9 +249,10 @@ function Detail({ app, fields, answers, kinds, documents, onDecide }: {
 
       {app.state === 'accepted' && (
         <div style={{ marginTop: '12px' }}>
-          <Callout tone="success" title={`Accepted — now ${app.partner_id}`}>
-            The partner exists with its seven gates open at the application gate. Its journey is in
-            the panel below.
+          <Callout tone="success" title={`Accepted — now ${app.partner_id ?? app.account_id}`}>
+            {app.kind_of === 'business'
+              ? 'The account exists with its six onboarding steps open at company verification, and no credit limit until the credit assessment clears.'
+              : 'The partner exists with its seven gates open at the application gate. Its journey is in the panel below.'}
           </Callout>
         </div>
       )}
@@ -348,7 +362,9 @@ function DecideModal({ app, accept, fields, answers, kinds, documents, onClose, 
   const [note, setNote] = useState('')
   const [busy, setBusy] = useState(false)
   const markets = (answers['apply-markets'] ?? '').split(',').map(s => s.trim()).filter(Boolean)
-  const allowed = canAccept(app, fields, answers, kinds, documents)
+  const mine = fields.filter(f => f.kind_of === app.kind_of)
+  const myKinds = kinds.filter(k => k.kind_of === app.kind_of)
+  const allowed = canAccept(app, mine, answers, myKinds, documents)
 
   const go = async () => {
     setBusy(true)
@@ -356,8 +372,10 @@ function DecideModal({ app, accept, fields, answers, kinds, documents, onClose, 
       const res = await acceptApplication(app.id, note)
       setBusy(false)
       if (!res.ok) { toast(res.reason, 'error'); return }
-      toast(`${app.company} accepted as ${res.value.partner_id}, open at the application gate`)
-      await onDone(res.value.partner_id)
+      toast(`${app.company} accepted as ${res.value.partner_id}`)
+      /* Only a seller has a journey in the panel below. Handing an account id
+         to the partner directory would select a row that is not in it. */
+      await onDone(app.kind_of === 'business' ? null : res.value.partner_id)
     } else {
       const res = await withdrawApplication(app.id, note)
       setBusy(false)
@@ -378,17 +396,30 @@ function DecideModal({ app, accept, fields, answers, kinds, documents, onClose, 
         </Btn>
       </>}>
       {accept ? (
-        <Callout tone="warning" title="This creates the partner — there is no separate step">
+        <Callout tone="warning" title={app.kind_of === 'business'
+          ? 'This creates the account — there is no separate step'
+          : 'This creates the partner — there is no separate step'}>
           <ul style={{ margin: '4px 0 0 16px' }}>
-            <li>{app.company} becomes a seller with status <strong>onboarding</strong>.</li>
-            <li>All seven gates open, with the application gate current and already submitted.</li>
-            <li>The task ladder opens behind them, dated only on the gate that is open.</li>
-            <li>
-              {markets.length
-                ? `${markets.join(', ')} recorded as requested — not approved. That happens at the compliance gate.`
-                : 'No markets were asked for, so none are recorded.'}
-            </li>
-            <li>Their email and number go on the partner record as contacts, unverified.</li>
+            {app.kind_of === 'business' ? (<>
+              <li>{app.company} becomes an account with status <strong>onboarding</strong>, so it cannot buy yet.</li>
+              <li>All six onboarding steps open, with company verification current.</li>
+              <li>
+                No credit limit and no budget. Both are set at the credit assessment — accepting
+                is not agreeing what they asked for.
+              </li>
+              <li>Terms open at Net 30 whatever they asked for, and move after the assessment.</li>
+              <li>An approval policy opens on the threshold they asked for, unreviewed.</li>
+            </>) : (<>
+              <li>{app.company} becomes a seller with status <strong>onboarding</strong>.</li>
+              <li>All seven gates open, with the application gate current and already submitted.</li>
+              <li>The task ladder opens behind them, dated only on the gate that is open.</li>
+              <li>
+                {markets.length
+                  ? `${markets.join(', ')} recorded as requested — not approved. That happens at the compliance gate.`
+                  : 'No markets were asked for, so none are recorded.'}
+              </li>
+              <li>Their email and number go on the partner record as contacts, unverified.</li>
+            </>)}
             <li>
               {documents.length
                 ? `${documents.length} uploaded document${documents.length === 1 ? '' : 's'} move onto the partner, filed under the gate that reads each one.`

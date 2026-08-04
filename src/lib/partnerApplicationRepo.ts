@@ -13,8 +13,8 @@
 
 import { supabase } from './supabase'
 import type {
-  Application, Answers, Check, Credentials, DeskApplication, DocumentKind,
-  FieldSpec, StartDraft, UploadedDocument,
+  Application, ApplicationKind, Answers, Check, Credentials, DeskApplication,
+  DocumentKind, FieldSpec, StartDraft, UploadedDocument,
 } from './partnerApplication'
 import { normaliseCode, validateDocument, documentPath } from './partnerApplication'
 
@@ -28,10 +28,17 @@ function friendly(message: string): string {
   return (m?.[1] ?? message).replace(/^ERROR:\s*/, '').trim()
 }
 
-/** The questions the desk asks. Readable signed out — the form is public. */
-export async function loadFields(): Promise<FieldSpec[]> {
+/**
+ * The questions the desk asks, for one kind of applicant. Readable signed out —
+ * the form is public.
+ *
+ * Filtered rather than fetched whole and split in the caller: a screen that
+ * received both sets and picked one would be a second place the kind is
+ * decided, and the one nobody looked at would be the one that drifted.
+ */
+export async function loadFields(kind: ApplicationKind = 'seller'): Promise<FieldSpec[]> {
   const { data } = await supabase
-    .from('partner_application_fields').select('*').order('sort_order')
+    .from('application_fields').select('*').eq('kind_of', kind).order('sort_order')
   return (data ?? []) as FieldSpec[]
 }
 
@@ -45,6 +52,7 @@ export async function startApplication(draft: StartDraft): Promise<Result<Creden
   const { data, error } = await supabase.rpc('start_application', {
     p_email: draft.email, p_phone: draft.phone, p_company: draft.company,
     p_contact_name: draft.contact_name, p_country: draft.country, p_kind: draft.kind,
+    p_kind_of: draft.kind_of,
   })
   if (error) return { ok: false, reason: friendly(error.message) }
   /* The function returns a table, so one row rather than a scalar. An empty
@@ -70,7 +78,7 @@ export async function resumeApplication(
   if (!app) return { ok: false, reason: 'No open application matches that reference and access code.' }
 
   const { data: rows, error: answerError } = await supabase
-    .rpc('application_answers', { p_ref, p_code })
+    .rpc('answers_for_application', { p_ref, p_code })
   if (answerError) return { ok: false, reason: friendly(answerError.message) }
 
   const answers: Answers = {}
@@ -119,17 +127,17 @@ export async function submitApplication(reference: string, code: string): Promis
    application's pack is opened by `openEvidence` with no second code path. */
 const BUCKET = 'evidence'
 
-/** What the desk asks for. Readable signed out — the checklist is public. */
-export async function loadDocumentKinds(): Promise<DocumentKind[]> {
+/** What the desk asks for, for one kind of applicant. Public, like the form. */
+export async function loadDocumentKinds(kind: ApplicationKind = 'seller'): Promise<DocumentKind[]> {
   const { data } = await supabase
-    .from('application_document_kinds').select('*').order('sort_order')
+    .from('application_document_kinds').select('*').eq('kind_of', kind).order('sort_order')
   return (data ?? []) as DocumentKind[]
 }
 
 export async function loadApplicationDocuments(
   reference: string, code: string,
 ): Promise<UploadedDocument[]> {
-  const { data } = await supabase.rpc('application_documents', {
+  const { data } = await supabase.rpc('documents_for_application', {
     p_ref: reference.trim().toUpperCase(), p_code: normaliseCode(code),
   })
   return ((data ?? []) as UploadedDocument[]).map(d => ({ ...d, bytes: Number(d.bytes) }))
@@ -218,11 +226,11 @@ export async function loadDeskApplications(): Promise<{
   loadError?: string
 }> {
   const [apps, rows, docs] = await Promise.all([
-    supabase.from('partner_applications')
-      .select('id, email, phone, company, contact_name, country, kind, state, reached, started, last_saved, submitted_on, partner_id')
+    supabase.from('applications')
+      .select('id, email, phone, company, contact_name, country, kind, kind_of, state, reached, started, last_saved, submitted_on, partner_id, account_id')
       .order('started', { ascending: false }),
-    supabase.from('partner_application_answers').select('application_id, field_id, value'),
-    supabase.from('partner_application_documents')
+    supabase.from('application_answers').select('application_id, field_id, value'),
+    supabase.from('application_documents')
       .select('id, application_id, kind_id, name, mime, bytes, path, uploaded_at'),
   ])
 

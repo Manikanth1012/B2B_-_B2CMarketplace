@@ -24,6 +24,7 @@ export type FieldKind =
 
 export interface FieldSpec {
   id: string
+  kind_of: ApplicationKind
   gate_id: string
   label: string
   hint: string | null
@@ -45,6 +46,7 @@ export interface Application {
   country: string
   kind: string
   state: 'draft' | 'submitted' | 'accepted' | 'withdrawn'
+  kind_of: ApplicationKind
   reached: number
   started: string
   last_saved: string
@@ -58,10 +60,24 @@ export interface StartDraft {
   company: string
   contact_name: string
   country: string
+  /* The seller's trade or the company's industry — not the same thing as
+     `kind_of`, which is whether this is a seller or a business applying. */
   kind: string
+  kind_of: ApplicationKind
 }
 
 export type Check = { ok: true } | { ok: false; reason: string }
+
+/**
+ * What somebody is applying to become.
+ *
+ * A seller becomes a partner with seven gates; a business becomes an account
+ * with a credit limit and a six-step ladder. Everything up to the moment of
+ * acceptance is the same for both, which is why one set of tables and one set
+ * of screens serve them — the kind decides which questions and which documents
+ * are asked for, and nothing else until the desk says yes.
+ */
+export type ApplicationKind = 'seller' | 'business'
 
 /** The credentials the applicant is given back, and has to keep. */
 export interface Credentials {
@@ -113,6 +129,7 @@ export function toggleMulti(value: string | undefined | null, option: string): s
  */
 export interface DocumentKind {
   id: string
+  kind_of: ApplicationKind
   gate_id: string
   label: string
   note: string | null
@@ -449,11 +466,15 @@ export interface DeskApplication {
   country: string
   kind: string
   state: 'draft' | 'submitted' | 'accepted' | 'withdrawn'
+  kind_of: ApplicationKind
   reached: number
   started: string
   last_saved: string
   submitted_on: string | null
+  /* One or the other, never both — an accepted application becomes a partner
+     or an account, and the migration asserts no row carries two. */
   partner_id: string | null
+  account_id: string | null
 }
 
 /**

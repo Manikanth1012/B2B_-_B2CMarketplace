@@ -15,7 +15,7 @@ const MARKETS = [{ code: 'IN' }, { code: 'AE' }, { code: 'KE' }]
 
 function field(over: Partial<FieldSpec> = {}): FieldSpec {
   return {
-    id: 'apply-volume', gate_id: 'apply', label: 'Expected orders per month',
+    id: 'apply-volume', kind_of: 'seller', gate_id: 'apply', label: 'Expected orders per month',
     hint: null, kind: 'number', options: null, required: true, sort_order: 30, ...over,
   }
 }
@@ -34,7 +34,7 @@ const FORM: FieldSpec[] = [
 function draft(over: Partial<StartDraft> = {}): StartDraft {
   return {
     email: 'ops@kestrel.example', phone: '+91 80 4000 0000', company: 'Kestrel Devices',
-    contact_name: 'R Menon', country: 'IN', kind: 'Reseller', ...over,
+    contact_name: 'R Menon', country: 'IN', kind: 'Reseller', kind_of: 'seller', ...over,
   }
 }
 
@@ -238,9 +238,9 @@ describe('starting an application', () => {
  * not a text box. Before this the application collected prose and an accepted
  * seller arrived at the KYC gate with nothing attached. */
 const KINDS: DocumentKind[] = [
-  { id: 'd-inc', gate_id: 'kyc', label: 'Certificate of incorporation', note: null, required: true, sort_order: 10 },
-  { id: 'd-ubo', gate_id: 'kyc', label: 'Ownership declaration', note: null, required: true, sort_order: 20 },
-  { id: 'd-ins', gate_id: 'kyc', label: 'Insurance certificate', note: null, required: false, sort_order: 30 },
+  { id: 'd-inc', kind_of: 'seller', gate_id: 'kyc', label: 'Certificate of incorporation', note: null, required: true, sort_order: 10 },
+  { id: 'd-ubo', kind_of: 'seller', gate_id: 'kyc', label: 'Ownership declaration', note: null, required: true, sort_order: 20 },
+  { id: 'd-ins', kind_of: 'seller', gate_id: 'kyc', label: 'Insurance certificate', note: null, required: false, sort_order: 30 },
 ]
 
 function upload(kind: string, over: Partial<UploadedDocument> = {}): UploadedDocument {
@@ -375,9 +375,9 @@ describe('the queue the desk works', () => {
   const app = (over: Partial<DeskApplication> = {}): DeskApplication => ({
     id: 'APP-2026-0001', email: 'a@b.test', phone: '+91 80 4000 0000',
     company: 'Kestrel Devices', contact_name: 'R Menon', country: 'IN', kind: 'Reseller',
-    state: 'submitted', reached: 7,
+    state: 'submitted', kind_of: 'seller', reached: 7,
     started: '2026-07-01T09:00:00Z', last_saved: '2026-07-02T09:00:00Z',
-    submitted_on: '2026-07-02T09:00:00Z', partner_id: null, ...over,
+    submitted_on: '2026-07-02T09:00:00Z', partner_id: null, account_id: null, ...over,
   })
 
   it('separates what is owed from what is not', () => {
@@ -420,9 +420,9 @@ describe('whether the desk can accept one', () => {
   const app = (over: Partial<DeskApplication> = {}): DeskApplication => ({
     id: 'APP-2026-0001', email: 'a@b.test', phone: '+91 80 4000 0000',
     company: 'Kestrel Devices', contact_name: 'R Menon', country: 'IN', kind: 'Reseller',
-    state: 'submitted', reached: 7,
+    state: 'submitted', kind_of: 'seller', reached: 7,
     started: '2026-07-01T09:00:00Z', last_saved: '2026-07-02T09:00:00Z',
-    submitted_on: '2026-07-02T09:00:00Z', partner_id: null, ...over,
+    submitted_on: '2026-07-02T09:00:00Z', partner_id: null, account_id: null, ...over,
   })
 
   it('accepts a complete one that has been sent', () => {

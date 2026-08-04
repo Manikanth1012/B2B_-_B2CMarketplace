@@ -48,7 +48,7 @@ const CONFIG: Record<Aud, {
   },
 }
 
-export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onRegister, onAddToBasket }: {
+export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onRegister, onApplyBusiness, onResumeBusiness, onAddToBasket }: {
   page: Aud
   onSignIn: (p: Persona) => void
   onApply: () => void
@@ -59,6 +59,10 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
      catalogue and stops at the first basket, which is a sign-in screen with
      four demo accounts on it. */
   onRegister: () => void
+  /* A business applies rather than registers: an account carries a credit
+     limit, terms and approval thresholds, which somebody agrees. */
+  onApplyBusiness: () => void
+  onResumeBusiness: () => void
   onAddToBasket: (p: Product) => void
 }) {
   const { market, currency } = useMarket()
@@ -114,6 +118,25 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
                   onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.75)' }}
                 >
                   Sign in
+                </button>
+                </>
+              )}
+              {page === 'enterprise' && (
+                <>
+                <button className="btn btn-secondary btn-lg" style={{ background: 'rgba(255,255,255,0.1)', color: 'white', borderColor: 'rgba(255,255,255,0.2)' }} onClick={onApplyBusiness}>
+                  Apply for an account
+                </button>
+                <button
+                  onClick={onResumeBusiness}
+                  style={{
+                    background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                    color: 'rgba(255,255,255,0.75)', fontSize: 'var(--text-sm)',
+                    textDecoration: 'underline', textUnderlineOffset: '3px', alignSelf: 'center',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.color = 'white' }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.75)' }}
+                >
+                  Continue an application
                 </button>
                 </>
               )}

@@ -36,24 +36,71 @@ import {
   sizeOf, docTypesLabel, DOC_ACCEPT, DOC_MAX_BYTES,
 } from '../../lib/partnerApplication'
 import type {
-  Answers, Application, Credentials, DocumentKind, FieldSpec, StartDraft, UploadedDocument,
+  Answers, Application, ApplicationKind, Credentials, DocumentKind, FieldSpec,
+  StartDraft, UploadedDocument,
 } from '../../lib/partnerApplication'
 import {
   loadFields, loadMarkets, startApplication, resumeApplication, saveAnswer, submitApplication,
   loadDocumentKinds, loadApplicationDocuments, uploadApplicationDocument, removeApplicationDocument,
 } from '../../lib/partnerApplicationRepo'
 
-const SELLER_KINDS = [
-  'Reseller', 'IoT hardware', 'Device OEM', 'Security ISV', 'Content provider', 'Insurance',
-]
-
 const BLANK: StartDraft = {
   email: '', phone: '', company: '', contact_name: '', country: '', kind: '',
+  kind_of: 'seller',
+}
+
+/* What each kind of applicant is called on screen. One component serves both —
+   the questions, the documents and the steps all come from the database keyed
+   by the kind, so the only thing that has to differ here is the words. */
+const COPY: Record<ApplicationKind, {
+  title: string; blurb: string; back: string
+  what: string; kindLabel: string; kinds: string[]
+}> = {
+  seller: {
+    title: 'Apply to sell on the marketplace',
+    blurb: 'You need an email address and a contact number to begin — everything else can be filled in over as many sittings as you like.',
+    back: 'Back to the partner page',
+    what: 'What you sell',
+    kindLabel: 'What you sell',
+    kinds: ['Reseller', 'IoT hardware', 'Device OEM', 'Security ISV', 'Content provider', 'Insurance'],
+  },
+  business: {
+    title: 'Apply for a business account',
+    blurb: 'A business account carries a credit limit, payment terms and approval thresholds, so it is agreed rather than opened. You need an email address and a contact number to begin.',
+    back: 'Back to the enterprise page',
+    what: 'Your industry',
+    kindLabel: 'Your industry',
+    kinds: ['Construction', 'Retail', 'Logistics', 'Manufacturing', 'Healthcare',
+            'Financial services', 'Hospitality', 'Education', 'Public sector', 'Other'],
+  },
 }
 
 type Stage = 'start' | 'resume' | 'issued' | 'form' | 'done'
 
-export function ApplyToSell({ startAt = 'start', onLeave, onSignIn }: {
+/* The six steps `business_onboarding_ladder` holds, named here for the start
+   screen only. The form itself is grouped by whatever the database says, so a
+   step added there appears in the form whether or not this paragraph mentions
+   it — this is the sales pitch, not the source of truth. */
+const BUSINESS_STEPS = [
+  { n: 1, name: 'Company verification', owner: 'Marketplace onboarding desk', days: '3d',
+    what: 'Registered name, registration number and address, checked against the register.' },
+  { n: 2, name: 'Tax registration', owner: 'Finance', days: '3d',
+    what: 'Your tax number and place of supply, which decides the rate on every invoice.' },
+  { n: 3, name: 'Credit assessment', owner: 'Finance', days: '7d',
+    what: 'Filed accounts and two trade references. Sets your credit limit and terms.' },
+  { n: 4, name: 'Direct debit mandate', owner: 'Finance', days: '5d',
+    what: 'Signed by somebody with authority to bind the company.' },
+  { n: 5, name: 'Purchase order policy', owner: 'Marketplace onboarding desk', days: '5d',
+    what: 'Whether a PO is required on every invoice, and your approval threshold.' },
+  { n: 6, name: 'Annual credit review', owner: 'Finance', days: 'yearly',
+    what: 'Opened as a diary entry. Nothing to do now.' },
+]
+
+export function ApplyToSell({ kindOf = 'seller', startAt = 'start', onLeave, onSignIn }: {
+  /* Which application this is. Everything downstream — the questions, the
+     documents, the steps and what it becomes when the desk accepts it — follows
+     from this one value. */
+  kindOf?: ApplicationKind
   /* Which screen this opens on. "Apply to sell" starts a new one; "Continue an
      application" opens the reference-and-code form directly, because sending a
      returning applicant through the start form is how they end up starting a
@@ -63,11 +110,12 @@ export function ApplyToSell({ startAt = 'start', onLeave, onSignIn }: {
   onSignIn: () => void
 }) {
   const [stage, setStage] = useState<Stage>(startAt)
+  const copy = COPY[kindOf]
   const [fields, setFields] = useState<FieldSpec[]>([])
   const [kinds, setKinds] = useState<DocumentKind[]>([])
   const [docs, setDocs] = useState<UploadedDocument[]>([])
   const [markets, setMarkets] = useState<{ code: string; name: string }[]>([])
-  const [draft, setDraft] = useState<StartDraft>(BLANK)
+  const [draft, setDraft] = useState<StartDraft>({ ...BLANK, kind_of: kindOf })
   const [creds, setCreds] = useState<Credentials | null>(null)
   const [app, setApp] = useState<Application | null>(null)
   const [answers, setAnswers] = useState<Answers>({})
@@ -83,10 +131,10 @@ export function ApplyToSell({ startAt = 'start', onLeave, onSignIn }: {
   const [resumeForm, setResumeForm] = useState({ reference: '', code: '' })
 
   useEffect(() => {
-    void loadFields().then(setFields)
-    void loadDocumentKinds().then(setKinds)
+    void loadFields(kindOf).then(setFields)
+    void loadDocumentKinds(kindOf).then(setKinds)
     void loadMarkets().then(setMarkets)
-  }, [])
+  }, [kindOf])
 
   const steps = stepsOf(fields, answers, kinds, docs)
   const done = progress(fields, answers, kinds, docs)
@@ -172,12 +220,12 @@ export function ApplyToSell({ startAt = 'start', onLeave, onSignIn }: {
           display: 'inline-flex', alignItems: 'center', gap: '6px',
           fontSize: 'var(--text-sm)', color: 'var(--text-secondary)',
         }}>
-          <ArrowLeft size={15} /> Back to the partner page
+          <ArrowLeft size={15} /> {copy.back}
         </button>
 
         {stage === 'start' && (
           <StartForm
-            draft={draft} markets={markets} busy={busy}
+            copy={copy} draft={draft} markets={markets} busy={busy}
             onChange={setDraft} onBegin={begin}
             onResume={() => setStage('resume')} onSignIn={onSignIn}
           />
@@ -250,7 +298,8 @@ export function ApplyToSell({ startAt = 'start', onLeave, onSignIn }: {
 
 /* ------------------------------------------------------------- starting -- */
 
-function StartForm({ draft, markets, busy, onChange, onBegin, onResume, onSignIn }: {
+function StartForm({ copy, draft, markets, busy, onChange, onBegin, onResume, onSignIn }: {
+  copy: (typeof COPY)[ApplicationKind]
   draft: StartDraft
   markets: { code: string; name: string }[]
   busy: boolean
@@ -263,12 +312,10 @@ function StartForm({ draft, markets, busy, onChange, onBegin, onResume, onSignIn
   return (
     <>
       <h1 style={{ fontSize: 'var(--text-3xl)', fontWeight: 800, color: 'var(--text)' }}>
-        Apply to sell on the marketplace
+        {copy.title}
       </h1>
       <p style={{ fontSize: 'var(--text-md)', color: 'var(--text-secondary)', marginTop: '10px', lineHeight: 1.6 }}>
-        Seven gates, {SLA_DAYS} working days end to end. You need an email address and a
-        contact number to begin — everything else can be filled in over as many sittings as
-        you like.
+        {copy.blurb}
       </p>
 
       <div style={{
@@ -280,10 +327,11 @@ function StartForm({ draft, markets, busy, onChange, onBegin, onResume, onSignIn
             <TextInput value={draft.company} onChange={e => set({ company: e.target.value })}
                        placeholder="As it appears on the certificate of incorporation" />
           </FormField>
-          <FormField label="What you sell" required hint="Decides which evidence the KYC gate asks for">
+          <FormField label={copy.kindLabel} required
+                     hint="Decides which evidence the desk asks for">
             <Select value={draft.kind} onChange={e => set({ kind: e.target.value })}>
               <option value="">Choose one</option>
-              {SELLER_KINDS.map(k => <option key={k} value={k}>{k}</option>)}
+              {copy.kinds.map(k => <option key={k} value={k}>{k}</option>)}
             </Select>
           </FormField>
           <FormField label="Your name" required>
@@ -324,7 +372,7 @@ function StartForm({ draft, markets, busy, onChange, onBegin, onResume, onSignIn
         </div>
       </div>
 
-      <GateExplainer />
+      <GateExplainer kindOf={draft.kind_of} />
 
       <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '20px' }}>
         Already selling here?{' '}
@@ -341,15 +389,27 @@ function StartForm({ draft, markets, busy, onChange, onBegin, onResume, onSignIn
    Read straight off `GATES` — the same constant the operator's rail, the SLA
    and the onboarding screens are built on, so this cannot describe a process
    the marketplace does not run. */
-function GateExplainer() {
+function GateExplainer({ kindOf }: { kindOf: ApplicationKind }) {
+  /* A seller's seven gates are a published constant with an SLA behind them. A
+     business is assessed on a shorter ladder that lives in the database, and
+     rather than fetch it for a paragraph on the start screen the steps are
+     named from the same list the form is grouped by — see `BUSINESS_STEPS`. */
+  const steps = kindOf === 'seller'
+    ? GATES.map((g, i) => ({ n: i + 1, name: g.name, owner: g.owner, days: `${g.targetDays}d`, what: g.what }))
+    : BUSINESS_STEPS
   return (
     <div style={{ marginTop: '28px' }}>
       <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 800, color: 'var(--text)' }}>
         What you will be asked for
       </h2>
+      {kindOf === 'seller' && (
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '6px' }}>
+          Seven gates, {SLA_DAYS} working days end to end.
+        </p>
+      )}
       <ol style={{ listStyle: 'none', margin: '14px 0 0', padding: 0, display: 'grid', gap: '8px' }}>
-        {GATES.map((g, i) => (
-          <li key={g.id} style={{
+        {steps.map((g, i) => (
+          <li key={g.name} style={{
             background: 'white', border: '1px solid var(--border)',
             borderRadius: 'var(--radius-md)', padding: '12px 14px',
             display: 'flex', gap: '12px', alignItems: 'flex-start',
@@ -364,7 +424,7 @@ function GateExplainer() {
               <span style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--text)' }}>
                 {g.name}
                 <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}>
-                  {' · '}{g.owner}{g.targetDays === 0 ? ' · same day' : ` · ${g.targetDays}d`}
+                  {' · '}{g.owner}{g.days === '0d' ? ' · same day' : ` · ${g.days}`}
                 </span>
               </span>
               <span style={{ display: 'block', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginTop: '2px', lineHeight: 1.5 }}>
@@ -499,6 +559,7 @@ function GateRail({ steps, at, onGo }: {
     <ol style={{ listStyle: 'none', margin: '0 0 18px', padding: 0, display: 'flex', flexWrap: 'wrap', gap: '2px' }}>
       {steps.map((s, i) => {
         const gate = GATES.find(g => g.id === s.gate_id)
+        const label = gate?.name ?? BUSINESS_STEPS.find((_, n) => n === i)?.name ?? s.gate_id
         const active = i === at
         return (
           <li key={s.gate_id} style={{ flex: '1 1 118px', minWidth: '118px' }}>
@@ -524,7 +585,7 @@ function GateRail({ steps, at, onGo }: {
                 </span>
               </span>
               <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text)', lineHeight: 1.3 }}>
-                {gate?.name ?? s.gate_id}
+                {label}
               </span>
             </button>
           </li>
@@ -564,6 +625,10 @@ function StepCard({
     return <Callout tone="info" title="Loading the form">The questions are on their way.</Callout>
   }
   const gate = GATES.find(g => g.id === step.gate_id)
+  const business = BUSINESS_STEPS[index]
+  const name = gate?.name ?? business?.name ?? step.gate_id
+  const what = gate?.what ?? business?.what
+  const owner = gate?.owner ?? business?.owner
   const last = index === total - 1
 
   return (
@@ -572,11 +637,11 @@ function StepCard({
       borderRadius: 'var(--radius-md)', padding: '22px',
     }}>
       <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 800, color: 'var(--text)' }}>
-        {index + 1}. {gate?.name ?? step.gate_id}
+        {index + 1}. {name}
       </h2>
-      {gate && (
+      {what && (
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginTop: '4px', lineHeight: 1.5 }}>
-          {gate.what} <span style={{ color: 'var(--text-tertiary)' }}>Assessed by {gate.owner}.</span>
+          {what} <span style={{ color: 'var(--text-tertiary)' }}>Assessed by {owner}.</span>
         </p>
       )}
 

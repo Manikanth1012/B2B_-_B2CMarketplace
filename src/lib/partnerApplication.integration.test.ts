@@ -45,7 +45,7 @@ async function removeApplicationFolder(reference: string): Promise<void> {
 async function begin(over: Partial<Parameters<typeof startApplication>[0]> = {}) {
   const res = await startApplication({
     email: mail(), phone: '+91 80 4000 0000', company: 'Integration Test Devices',
-    contact_name: 'A Tester', country: 'IN', kind: 'Reseller', ...over,
+    contact_name: 'A Tester', country: 'IN', kind: 'Reseller', kind_of: 'seller', ...over,
   })
   if (res.ok) started.push(res.value.reference)
   return res
@@ -72,7 +72,7 @@ describe('a stranger applies to sell', () => {
          deletes on purpose, so an object nobody removes through the API is an
          orphan that accumulates one run at a time. */
       await removeApplicationFolder(ref)
-      await supabase.from('partner_applications').delete().eq('id', ref)
+      await supabase.from('applications').delete().eq('id', ref)
     }
     await signOut()
   }, 120000)
@@ -289,11 +289,154 @@ describe('a stranger applies to sell', () => {
   }, 240000)
 })
 
+/* The other kind. A business becomes an account with a credit limit and a
+ * six-step ladder rather than a partner with seven gates — and the whole point
+ * of one set of tables is that everything before that moment is identical, so
+ * what is worth testing is the part that differs. */
+describe('a business applies for an account', () => {
+  let reference: string
+  let code: string
+  let accountId: string | null = null
+
+  beforeAll(async () => {
+    await signOut()
+    const res = await startApplication({
+      email: mail(), phone: '+91 80 4000 0000', company: 'Ledgerline Foods',
+      contact_name: 'B Tester', country: 'IN', kind: 'Retail', kind_of: 'business',
+    })
+    if (!res.ok) throw new Error(res.reason)
+    reference = res.value.reference
+    code = res.value.access_code
+    started.push(reference)
+
+    const fields = await loadFields('business')
+    for (const f of fields.filter(f => f.required)) {
+      const value = f.kind === 'boolean' ? 'Yes'
+        : f.kind === 'number' ? (f.id === 'biz-staff' ? '250' : f.id === 'biz-threshold' ? '75000' : '4')
+        : f.kind === 'date' ? '2026-04-01'
+        : f.kind === 'email' ? 'signatory@integration.test'
+        : f.kind === 'choice' ? (f.options ?? '').split(',')[0].trim()
+        : f.id === 'biz-supply' ? 'Karnataka, India'
+        : 'Answered by the business test'
+      const saved = await saveAnswer({ reference, code, field: f.id, value })
+      if (!saved.ok) throw new Error(`${f.id}: ${saved.reason}`)
+    }
+    const kinds = await loadDocumentKinds('business')
+    for (const k of kinds.filter(k => k.required)) {
+      const file = new File([new Uint8Array([0x25, 0x50, 0x44, 0x46])], `${k.id}.pdf`, { type: 'application/pdf' })
+      const up = await uploadApplicationDocument({ reference, code, kind: k.id, file })
+      if (!up.ok) throw new Error(`${k.id}: ${up.reason}`)
+    }
+    const sent = await submitApplication(reference, code)
+    if (!sent.ok) throw new Error(sent.reason)
+  }, 240000)
+
+  afterAll(async () => {
+    await signIn(OPERATOR.email, OPERATOR.password)
+    await removeApplicationFolder(reference)
+    if (accountId) {
+      await supabase.from('applications').update({ account_id: null }).eq('id', reference)
+      await supabase.from('enterprise_onboarding').delete().eq('account_id', accountId)
+      await supabase.from('enterprise_approval_policy').delete().eq('account_id', accountId)
+      await supabase.from('enterprise_accounts').delete().eq('id', accountId)
+    }
+    await supabase.from('applications').delete().eq('id', reference)
+    await signOut()
+  }, 120000)
+
+  it('is asked a different set of questions from a seller', async () => {
+    const [seller, business] = await Promise.all([loadFields('seller'), loadFields('business')])
+    expect(business.length, 'a business is asked nothing').toBeGreaterThan(10)
+    /* Disjoint, not merely different lengths — a question on both forms would
+       be one the desk has to reconcile two answers for. */
+    const overlap = business.filter(b => seller.some(s => s.id === b.id))
+    expect(overlap.map(f => f.id)).toEqual([])
+    expect(business.every(f => f.kind_of === 'business')).toBe(true)
+  }, 30000)
+
+  it('refuses an answer to a question on the other form', async () => {
+    /* `apply-volume` is a seller's. Accepting it here would store an answer
+       nobody reads and that no completeness check ever asks for. */
+    const out = await saveAnswer({ reference, code, field: 'apply-volume', value: '400' })
+    expect(out.ok, 'a business answered a seller question').toBe(false)
+  }, 30000)
+
+  it('becomes an account with its ladder open and no credit limit', async () => {
+    await signIn(OPERATOR.email, OPERATOR.password)
+    const res = await acceptApplication(reference, 'Accepted by the business test.')
+    expect(res.ok, res.ok ? '' : res.reason).toBe(true)
+    if (!res.ok) return
+    accountId = res.value.partner_id
+    expect(accountId).toMatch(/^ENT-\d+$/)
+
+    const { data } = await supabase.from('enterprise_accounts')
+      .select('company, status, segment, market, currency, terms, budget_year, po_required, place_of_supply')
+      .eq('id', accountId).maybeSingle()
+    const a = data as {
+      company: string; status: string; segment: string; market: string
+      currency: string; terms: string; budget_year: number; po_required: boolean
+      place_of_supply: string
+    } | null
+
+    expect(a?.company).toBe('Ledgerline Foods')
+    /* `on-hold`, the only value the status constraint allows that means
+       "exists and cannot trade". An account that could buy before its credit
+       assessment is an account with no limit. */
+    expect(a?.status).toBe('on-hold')
+    expect(a?.market).toBe('IN')
+    expect(a?.currency).toBe('INR')
+    /* 250 staff is mid, derived from the headcount rather than asked — a
+       company that picks its own segment picks the one with the best terms. */
+    expect(a?.segment).toBe('mid')
+    /* No budget and the shortest terms, whatever they asked for. Accepting is
+       not agreeing what they requested. */
+    expect(Number(a?.budget_year)).toBe(0)
+    expect(a?.terms).toBe('Net 30')
+    expect(a?.place_of_supply).toBe('Karnataka, India')
+
+    const { data: steps } = await supabase.from('enterprise_onboarding')
+      .select('name, state, sort_order, documents, document_paths')
+      .eq('account_id', accountId).order('sort_order')
+    const rows = (steps ?? []) as { name: string; state: string; documents: unknown[]; document_paths: string[] }[]
+    expect(rows.length, 'the account opened with no onboarding steps').toBe(6)
+    /* All due, and none done — `enterprise_onboarding` has no "in progress"
+       state, and a step marked done needs a date and a name on it, which
+       nothing here has yet. Which one the desk is working is read off the
+       staggered due dates. */
+    expect(rows.every(r => r.state === 'due'), 'a step opened in another state').toBe(true)
+
+    /* The documents came across, filed under the step that reads each. */
+    const verify = rows[0]
+    expect(verify.documents.length, 'company verification has no documents').toBeGreaterThan(0)
+    expect(verify.document_paths.length).toBe(verify.documents.length)
+    expect(verify.document_paths.every(p => p.startsWith(`${reference}/`))).toBe(true)
+
+    const { data: policy } = await supabase.from('enterprise_approval_policy')
+      .select('threshold, self_approve').eq('account_id', accountId).maybeSingle()
+    const pol = policy as { threshold: number; self_approve: boolean } | null
+    expect(Number(pol?.threshold)).toBe(75000)
+    /* Off, and it stays off until somebody decides otherwise. */
+    expect(pol?.self_approve).toBe(false)
+    await signOut()
+  }, 120000)
+
+  it('did not create a partner as well', async () => {
+    await signIn(OPERATOR.email, OPERATOR.password)
+    const { data } = await supabase.from('applications')
+      .select('partner_id, account_id, state').eq('id', reference).maybeSingle()
+    const app = data as { partner_id: string | null; account_id: string | null; state: string } | null
+    expect(app?.state).toBe('accepted')
+    expect(app?.partner_id, 'a business application also made a partner').toBeNull()
+    expect(app?.account_id).toBe(accountId)
+    await signOut()
+  }, 30000)
+})
+
 describe('what an anonymous applicant cannot reach', () => {
   beforeAll(async () => { await signOut() })
 
   it('cannot read the applications table, only call the functions', async () => {
-    const { data, error } = await supabase.from('partner_applications').select('id, access_code')
+    const { data, error } = await supabase.from('applications').select('id, access_code')
     /* RLS narrows rather than raises, so an empty result is the refusal — and
        an error is fine too. What must not happen is rows coming back. */
     expect(error ? true : (data ?? []).length === 0,
@@ -301,7 +444,7 @@ describe('what an anonymous applicant cannot reach', () => {
   })
 
   it('cannot read anybody\'s answers directly', async () => {
-    const { data, error } = await supabase.from('partner_application_answers').select('*')
+    const { data, error } = await supabase.from('application_answers').select('*')
     expect(error ? true : (data ?? []).length === 0,
       'an anonymous visitor read the answers table').toBe(true)
   })
@@ -340,7 +483,7 @@ describe('an applicant is asked for documents', () => {
     kinds = await loadDocumentKinds()
     const res = await startApplication({
       email: mail(), phone: '+91 80 4000 0000', company: 'Document Test Ltd',
-      contact_name: 'D Tester', country: 'IN', kind: 'Reseller',
+      contact_name: 'D Tester', country: 'IN', kind: 'Reseller', kind_of: 'seller',
     })
     if (!res.ok) throw new Error(res.reason)
     reference = res.value.reference
@@ -355,7 +498,7 @@ describe('an applicant is asked for documents', () => {
        leaves an application behind every run. */
     await signIn(OPERATOR.email, OPERATOR.password)
     await removeApplicationFolder(reference)
-    await supabase.from('partner_applications').delete().eq('id', reference)
+    await supabase.from('applications').delete().eq('id', reference)
     await signOut()
   }, 120000)
 
@@ -472,7 +615,7 @@ describe('the desk accepts an application', () => {
 
     const res = await startApplication({
       email: mail(), phone: '+254 20 111 2222', company: 'Accept Test Sensors',
-      contact_name: 'A Reviewer', country: 'KE', kind: 'IoT hardware',
+      contact_name: 'A Reviewer', country: 'KE', kind: 'IoT hardware', kind_of: 'seller',
     })
     if (!res.ok) throw new Error(`could not start an application: ${res.reason}`)
     reference = res.value.reference
@@ -509,7 +652,7 @@ describe('the desk accepts an application', () => {
     if (partnerId) {
       /* Children first — the application references the partner, and the
          partner is referenced by everything the accept created. */
-      await supabase.from('partner_applications').update({ partner_id: null, state: 'withdrawn' }).eq('id', reference)
+      await supabase.from('applications').update({ partner_id: null, state: 'withdrawn' }).eq('id', reference)
       for (const t of ['onboarding_tasks', 'onboarding_gates', 'onboarding_documents',
                        'partner_markets', 'partner_contacts', 'partner_lifecycle_events']) {
         await supabase.from(t).delete().eq('partner_id', partnerId)
@@ -517,7 +660,7 @@ describe('the desk accepts an application', () => {
       await supabase.from('partners').delete().eq('id', partnerId)
     }
     await removeApplicationFolder(reference)
-    await supabase.from('partner_applications').delete().eq('id', reference)
+    await supabase.from('applications').delete().eq('id', reference)
     await signOut()
   }, 120000)
 
@@ -628,13 +771,15 @@ describe('the desk accepts an application', () => {
   it('will not withdraw one that has already become a partner', async () => {
     const out = await withdrawApplication(reference, 'changed our minds')
     expect(out.ok).toBe(false)
-    if (!out.ok) expect(out.reason).toMatch(/Suspend the partner instead/i)
+    /* "Suspend it instead" — the message covers an accepted application of
+       either kind now, and a business becomes an account rather than a partner. */
+    if (!out.ok) expect(out.reason).toMatch(/Suspend it instead/i)
   })
 
   it('refuses to withdraw anything without a reason', async () => {
     const other = await startApplication({
       email: mail(), phone: '+91 80 4000 0000', company: 'Withdraw Test Ltd',
-      contact_name: 'W Tester', country: 'IN', kind: 'Reseller',
+      contact_name: 'W Tester', country: 'IN', kind: 'Reseller', kind_of: 'seller',
     })
     expect(other.ok).toBe(true)
     if (!other.ok) return
@@ -659,7 +804,7 @@ describe('the operator sees what came in', () => {
   afterAll(async () => { await signOut() })
 
   it('can read applications, which is who the desk is', async () => {
-    const { data, error } = await supabase.from('partner_applications').select('id, state, email')
+    const { data, error } = await supabase.from('applications').select('id, state, email')
     expect(error).toBeNull()
     /* Not asserting a count: applications are made and removed by the suite
        above, so the claim is reachability, not population. */
@@ -670,7 +815,7 @@ describe('the operator sees what came in', () => {
     /* `partner_id` is set when the desk accepts one. A draft or submitted
        application carrying a partner id would mean a stranger got into the
        seller directory by filling in a form. */
-    const { data } = await supabase.from('partner_applications')
+    const { data } = await supabase.from('applications')
       .select('id, state, partner_id').in('state', ['draft', 'submitted'])
     for (const a of (data ?? []) as { id: string; partner_id: string | null }[]) {
       expect(a.partner_id, `${a.id} is not accepted but already names a partner`).toBeNull()

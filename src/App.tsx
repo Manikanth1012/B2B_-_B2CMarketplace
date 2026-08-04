@@ -336,9 +336,13 @@ function AppInner() {
            the reference-and-code form. Landing them on the start form and
            making them find the resume button is how a returning applicant
            starts a second application by mistake. */
+        kindOf={surface.kindOf ?? 'seller'}
         startAt={surface.resume ? 'resume' : 'start'}
-        onLeave={() => { setSurface({ kind: 'public', page: 'partner' }); window.scrollTo({ top: 0 }) }}
-        onSignIn={() => setSurface({ kind: 'login', prefill: 'partner' })}
+        onLeave={() => {
+          setSurface({ kind: 'public', page: surface.kindOf === 'business' ? 'enterprise' : 'partner' })
+          window.scrollTo({ top: 0 })
+        }}
+        onSignIn={() => setSurface({ kind: 'login', prefill: surface.kindOf === 'business' ? 'enterprise' : 'partner' })}
       />
     )
   }
@@ -371,6 +375,8 @@ function AppInner() {
             onApply={() => { setSurface({ kind: 'apply' }); window.scrollTo({ top: 0 }) }}
             onResumeApplication={() => { setSurface({ kind: 'apply', resume: true }); window.scrollTo({ top: 0 }) }}
             onRegister={() => { setSurface({ kind: 'register' }); window.scrollTo({ top: 0 }) }}
+            onApplyBusiness={() => { setSurface({ kind: 'apply', kindOf: 'business' }); window.scrollTo({ top: 0 }) }}
+            onResumeBusiness={() => { setSurface({ kind: 'apply', kindOf: 'business', resume: true }); window.scrollTo({ top: 0 }) }}
             /* Anyone can browse; the basket needs an owner. The first add sends
                the visitor to sign in and is completed for them afterwards. */
             onAddToBasket={(p) => {
