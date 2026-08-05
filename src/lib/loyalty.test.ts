@@ -3,6 +3,7 @@ import {
   offeredTo, worthOf, mostRedeemable, validateRedemption, canRedeemAnything,
   ladderFor, rungOf, rungState, nextRung,
   rateFor, worthIn, ladderIn, returnRate, earnLine, pointsFor,
+  earnOnSpend, reversalOf,
   fmtPoints, fmtMoney,
 } from './loyalty'
 import type { Member, Programme, RedeemOption, PointRate, Threshold } from './loyalty'
@@ -338,6 +339,94 @@ describe('pointsFor', () => {
 
   it('earns nothing where nobody has priced a point', () => {
     expect(pointsFor(14000, null, 1.5)).toBe(0)
+  })
+
+  it('floors rather than rounds, so an unearned point is not awarded', () => {
+    /* KES 3,188.79 at 1.25× is 39.86 points, and the ledger row says 39. This
+       was Math.round, which said 40 — the screen quoting the next earn and the
+       ledger recording it disagreed by one. */
+    expect(pointsFor(3188.79, rateFor(RATES, 'KES'), 1.25)).toBe(39)
+    expect(pointsFor(1981.90, rateFor(RATES, 'KES'), 1.25)).toBe(24)
+    expect(pointsFor(81895.69, rateFor(RATES, 'KES'), 1.25)).toBe(1023)
+  })
+})
+
+describe('earnOnSpend', () => {
+  const kenyan = { currency: 'KES' }
+  /* USD→KES on 28 Jul 2026, the rate the marketplace treasury had in force. */
+  const RATE = 128.45
+
+  it('converts the spend before computing points, not the points afterwards', () => {
+    const got = earnOnSpend({
+      spend: 12.50, paidIn: 'USD', member: kenyan, rates: RATES, fxRate: RATE, multiplier: 1.25,
+    })
+    expect(got.spendInHome).toBe(1605.63)
+    expect(got.points).toBe(20)
+    expect(got.converted).toBe(true)
+
+    /* The wrong way round, for the record: earning in dollars first gives 15,
+       and 15 points in a KES programme is KSh 15 rather than the KSh 20 that
+       spend is worth. */
+    expect(pointsFor(12.50, rateFor(RATES, 'USD'), 1.25)).toBe(15)
+  })
+
+  it('returns the same 1% of spend whichever currency it was paid in', () => {
+    const inDollars = earnOnSpend({
+      spend: 100, paidIn: 'USD', member: kenyan, rates: RATES, fxRate: RATE,
+    })
+    const inShillings = earnOnSpend({
+      spend: 100 * RATE, paidIn: 'KES', member: kenyan, rates: RATES, fxRate: 1,
+    })
+    expect(inDollars.points).toBe(inShillings.points)
+  })
+
+  it('applies no rate at all when the money is already the member’s own', () => {
+    const got = earnOnSpend({
+      spend: 1637.07, paidIn: 'KES', member: kenyan, rates: RATES, fxRate: 999,
+    })
+    expect(got.fxRate).toBe(1)
+    expect(got.spendInHome).toBe(1637.07)
+    expect(got.converted).toBe(false)
+  })
+
+  it('refuses a conversion it has no rate for rather than assuming parity', () => {
+    const got = earnOnSpend({
+      spend: 12.50, paidIn: 'USD', member: kenyan, rates: RATES, fxRate: 0,
+    })
+    /* Parity would award 1/129th of the points and look like a small purchase
+       rather than a missing rate. */
+    expect(got.points).toBe(0)
+    expect(got.converted).toBe(true)
+  })
+
+  it('earns nothing where nobody has priced a point in the member’s currency', () => {
+    const got = earnOnSpend({
+      spend: 1000, paidIn: 'KES', member: { currency: 'ZZZ' }, rates: RATES, fxRate: 1,
+    })
+    expect(got.points).toBe(0)
+  })
+})
+
+describe('reversalOf', () => {
+  it('gives back exactly what the earn gave, never a recomputation', () => {
+    expect(reversalOf(20)).toBe(-20)
+    /* Idempotent on a figure that is already negative, so a caller passing the
+       reversal's own points does not flip it back to a credit. */
+    expect(reversalOf(-20)).toBe(-20)
+  })
+
+  it('does not let a movement in the exchange rate change what comes back', () => {
+    const kenyan = { currency: 'KES' }
+    const earned = earnOnSpend({
+      spend: 12.50, paidIn: 'USD', member: kenyan, rates: RATES, fxRate: 128.45, multiplier: 1.25,
+    })
+    /* The shilling weakens between the purchase and the refund. The customer
+       neither profits nor loses by returning the item. */
+    const later = earnOnSpend({
+      spend: 12.50, paidIn: 'USD', member: kenyan, rates: RATES, fxRate: 140.00, multiplier: 1.25,
+    })
+    expect(later.points).toBeGreaterThan(earned.points)
+    expect(reversalOf(earned.points)).toBe(-20)
   })
 })
 

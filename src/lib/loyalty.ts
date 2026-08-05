@@ -311,12 +311,100 @@ export function ladderIn<T extends Rung & { id: string }>(
 /**
  * The points a spend earns, at a rung's multiplier.
  *
- * Rounded, because points are whole. Nothing on the marketplace issues a
- * fraction of one, and a screen that quotes "210.4 points" is quoting a number
- * the ledger will never contain.
+ * Whole, because the ledger holds whole points. Nothing on the marketplace
+ * issues a fraction of one, and a screen that quotes "210.4 points" is quoting
+ * a number the ledger will never contain.
+ *
+ * Floored rather than rounded: a point that was not earned is not awarded. This
+ * was `Math.round`, which disagreed with every seeded row on the marketplace —
+ * KES 3,188.79 at 1.25× is 39.86 points and the ledger says 39. Two rules for
+ * one number, and the screen quoting the customer's next earn was using the
+ * generous one.
  */
 export const pointsFor = (spend: number, rate: PointRate | null, multiplier = 1): number =>
-  rate ? Math.round(spend * rate.earn_per_unit * multiplier) : 0
+  rate ? Math.floor(spend * rate.earn_per_unit * multiplier) : 0
+
+/**
+ * What a purchase earns when it was not made in the member's own currency.
+ *
+ * A member holds one balance, and a balance is a single number — so a point has
+ * to mean one thing across everything they have ever bought. The rule is that
+ * **the spend converts and the points do not**: the amount paid is brought into
+ * the member's currency at the rate in force on the day, and only then are
+ * points computed.
+ *
+ * Doing it the other way round quietly loses money. Earning in the paid
+ * currency and then converting the point count gives a different answer,
+ * because the point count carries no currency with it — the moment it lands in
+ * a KES member's balance it *means* KES:
+ *
+ *     $12.50 net, Silver 1.25×, USD→KES 128.45
+ *       spend converts:  12.50 × 128.45 = KES 1,605.63 → 20 points (worth KSh 20)
+ *       points convert:  floor(12.50 × 1 × 1.25) = 15 points, and 15 points in
+ *                        a KES programme is KSh 15 — the customer is short
+ *
+ * The 1% return invariant is what makes the first answer the right one: KSh
+ * 1,605.63 of spend returns KSh 20 of points wherever it is earned, which is
+ * exactly what the same money spent in shillings would have returned.
+ *
+ * @param fxRate the paid currency into the member's, on the day of the
+ *   purchase. Pass 1 when they are the same currency — the caller looks the
+ *   dated rate up, because a rate is a fact about a moment and this module has
+ *   no clock.
+ */
+/* Two decimal places, agreeing with the database.
+ *
+ * `Math.round(n * 100) / 100` — the version copied into six modules here — puts
+ * $12.50 × 128.45 at 160562.49999999997 and rounds it *down* to 1,605.62, while
+ * Postgres `round(1605.625, 2)` on `numeric` gives 1,605.63. A conversion is
+ * exactly where a half-cent lands, so the app and the ledger would differ by a
+ * cent on the same purchase — and occasionally, at the boundary, by a point.
+ *
+ * `toPrecision(12)` puts the product back on the decimal the arithmetic meant
+ * before the rounding decision is taken. Twelve digits is far inside a double's
+ * 15–17 and far outside any money this marketplace handles.
+ */
+const toMoney = (n: number): number =>
+  Math.round(Number((n * 100).toPrecision(12))) / 100
+
+export function earnOnSpend(
+  { spend, paidIn, member, rates, fxRate, multiplier = 1 }: {
+    spend: number
+    paidIn: string
+    member: { currency: string }
+    rates: readonly PointRate[]
+    fxRate: number
+    multiplier?: number
+  },
+): { points: number; spendInHome: number; converted: boolean; fxRate: number } {
+  const same = paidIn === member.currency
+  /* A conversion with no rate is refused rather than defaulted to 1. Treating a
+     missing USD→KES rate as parity would award 1/129th of the points and look
+     like an ordinary small purchase. */
+  if (!same && !(fxRate > 0)) {
+    return { points: 0, spendInHome: 0, converted: true, fxRate: 0 }
+  }
+  const applied = same ? 1 : fxRate
+  const spendInHome = toMoney(spend * applied)
+  return {
+    points: pointsFor(spendInHome, rateFor(rates, member.currency), multiplier),
+    spendInHome,
+    converted: !same,
+    fxRate: applied,
+  }
+}
+
+/**
+ * What a reversal gives back: exactly the points the earn gave, never a
+ * recomputation.
+ *
+ * The one place the exchange rate must not be applied a second time. A customer
+ * who buys in dollars and returns the item after the shilling weakens would
+ * otherwise keep the difference, and one who returns it after the shilling
+ * strengthens would be short — neither of which is anything either party
+ * agreed to.
+ */
+export const reversalOf = (earned: number): number => -Math.abs(earned)
 
 /**
  * How much of one unit of currency comes back as points, as a percentage.
