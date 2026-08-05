@@ -2,7 +2,8 @@
    without a network — and so there is one place that decides what "strong enough"
    means rather than a chain of ifs inside a modal. */
 
-/* The four seeded personas. Their credentials are printed on the sign-in cards and
+/* The seeded demo accounts — four personas, and two shoppers under the consumer
+   one because the marketplace trades in more than one country. Their credentials are printed on the sign-in cards and
    re-seeded by scripts/seed-auth-users.mjs, and they are *shared* — every visitor to
    the demo signs in as the same Priya. One person changing her password locks
    everybody else out of the demo, including the integration suite.
@@ -13,6 +14,7 @@
    list to enable it everywhere. */
 const DEMO_ACCOUNTS = new Set([
   'priya.raman@example.com',
+  'wanjiru.kamau@example.com',
   'anika.sharma@aventa.com',
   'rajesh.kumar@nimbussensors.com',
   'vikram.shah@smartbuild.in',

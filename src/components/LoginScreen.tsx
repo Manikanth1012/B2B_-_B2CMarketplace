@@ -67,6 +67,36 @@ const DEMO_CREDENTIALS: Record<Persona, { email: string; password: string }> = {
   enterprise: { email: 'vikram.shah@smartbuild.in', password: 'enterprise123' },
 }
 
+/**
+ * The shoppers a demo can be given as.
+ *
+ * A persona is one console; a shopper is one country's version of it. The
+ * marketplace trades in India, the UAE and Kenya, and the only account anybody
+ * could sign in as was Indian — so the second and third markets were things the
+ * screens claimed rather than things a demo could show.
+ *
+ * The first entry is what `DEMO_CREDENTIALS.consumer` already was, unchanged
+ * and still the default, so every demo that exists today opens as it did.
+ */
+interface DemoShopper {
+  email: string
+  password: string
+  who: string
+  where: string
+  money: string
+}
+
+const CONSUMER_SHOPPERS: DemoShopper[] = [
+  {
+    email: 'priya.raman@example.com', password: 'demo1234',
+    who: 'Priya Raman', where: 'Bengaluru, India', money: 'Billed in ₹ under GST',
+  },
+  {
+    email: 'wanjiru.kamau@example.com', password: 'demo1234',
+    who: 'Wanjiru Kamau', where: 'Nairobi, Kenya', money: 'Billed in KSh and $ under VAT',
+  },
+]
+
 const PERSONA_META: Record<Persona, { label: string; sub: string; user: string; icon: React.ReactNode; accentBg: string; accentFg: string; accentColor: string }> = {
   consumer: {
     label: 'Consumer',
@@ -123,9 +153,13 @@ export function LoginScreen(
      visitor is already looking at the one field it needs. */
   const [resetting, setResetting] = useState(false)
   const [resetNotice, setResetNotice] = useState('')
+  /* Which demo shopper the consumer card is filled with. Zero is the Indian one
+     it has always been, so nothing anybody already demonstrates changes. */
+  const [shopper, setShopper] = useState(0)
 
   const pickPersona = (p: Persona) => {
     setSelected(p)
+    setShopper(0)
     setEmail(DEMO_CREDENTIALS[p].email)
     setPassword(DEMO_CREDENTIALS[p].password)
     setError('')
@@ -281,10 +315,38 @@ export function LoginScreen(
                     {/* The demo screen names the person whose password is in the
                         box. The real one has no idea who is about to sign in and
                         does not pretend to. */}
-                    {demo ? PERSONA_META[audience].user : REAL_SUB[audience]}
+                    {!demo ? REAL_SUB[audience]
+                      : audience === 'consumer'
+                        ? `${CONSUMER_SHOPPERS[shopper].who} · ${CONSUMER_SHOPPERS[shopper].where}`
+                        : PERSONA_META[audience].user}
                   </p>
                 </div>
               </div>
+
+              {/* Which country's shopper to be. Only the consumer has two, and a
+                  marketplace that trades in three countries is worth little in a
+                  demo that can only ever open the first. Demo mode only — the
+                  real sign-in has no business prefilling anybody. */}
+              {demo && audience === 'consumer' && (
+                <div style={{ display: 'flex', gap: '8px', marginBottom: 'var(--space-5)' }}>
+                  {CONSUMER_SHOPPERS.map((c, i) => (
+                    <button
+                      key={c.email}
+                      type="button"
+                      onClick={() => { setShopper(i); setEmail(c.email); setPassword(c.password); setError('') }}
+                      style={{
+                        flex: 1, textAlign: 'left', cursor: 'pointer',
+                        padding: '9px 11px', borderRadius: 'var(--radius)',
+                        border: `1px solid ${i === shopper ? 'var(--brand-accent)' : 'var(--border)'}`,
+                        background: i === shopper ? 'rgba(0,166,166,0.06)' : 'white',
+                      }}
+                    >
+                      <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text)' }}>{c.where}</div>
+                      <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '1px' }}>{c.money}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <form onSubmit={handleSubmit}>
                 <div style={{ marginBottom: 'var(--space-4)' }}>

@@ -358,10 +358,10 @@ insert into ke_bill values
   ('BILL-449288-2026-04-KES', 'April 2026',  '01 May 2026', '15 May 2026', 'KES', 1981.90, 3101.73,     0.00, 'paid', '07 May 2026', 3, date '2026-04-01'),
   ('BILL-449288-2026-05-KES', 'May 2026',    '01 Jun 2026', '15 Jun 2026', 'KES', 1981.90, 3876.73,     0.00, 'paid', '11 Jun 2026', 3, date '2026-05-01'),
   ('BILL-449288-2026-06-KES', 'June 2026',   '01 Jul 2026', '15 Jul 2026', 'KES', 1981.90, 3876.73, 81895.69, 'paid', '10 Jul 2026', 6, date '2026-06-01'),
-  ('BILL-449288-2026-07-KES', 'July 2026',   '01 Aug 2026', '15 Aug 2026', 'KES', 1981.90, 4608.63,     0.00, 'due',  null,          4, date '2026-07-01'),
+  ('BILL-449288-2026-07-KES', 'July 2026',   '01 Aug 2026', '15 Aug 2026', 'KES', 1981.90, 4608.63,     0.00, 'open', null,          4, date '2026-07-01'),
   /* The same month in dollars: the travel eSIM and the cloud gaming
      subscription were both bought in USD, so they are collected in USD. */
-  ('BILL-449288-2026-07-USD', 'July 2026',   '01 Aug 2026', '15 Aug 2026', 'USD',    0.00,    8.61,    12.50, 'due',  null,          2, date '2026-07-01');
+  ('BILL-449288-2026-07-USD', 'July 2026',   '01 Aug 2026', '15 Aug 2026', 'USD',    0.00,    8.61,    12.50, 'open', null,          2, date '2026-07-01');
 
 insert into consumer_bills (id, period, issued, due, plan_charge, subscriptions, oneoff,
                             tax, total, status, paid_on, pages, user_id, tax_rate,

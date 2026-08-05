@@ -21,12 +21,28 @@ import { createClient } from '@supabase/supabase-js'
 import { buildPdf, wrap, Sheet, A4, MARGIN } from '../src/lib/pdf'
 
 const URL = process.env.SUPABASE_URL
-const KEY = process.env.SUPABASE_SERVICE_ROLE
+const KEY = process.env.SUPABASE_SERVICE_ROLE ?? process.env.SUPABASE_ANON_KEY
 if (!URL || !KEY) {
-  console.error('SUPABASE_URL and SUPABASE_SERVICE_ROLE are required')
+  console.error('SUPABASE_URL and one of SUPABASE_SERVICE_ROLE or SUPABASE_ANON_KEY are required')
   process.exit(1)
 }
 const db = createClient(URL, KEY, { auth: { persistSession: false } })
+
+/* Two ways in. The service role is the original and writes everything. The
+   operator sign-in is the other, for an environment where the service role key
+   is deliberately absent — `evidence_operator_all` lets the operator write the
+   whole bucket, which is the same permission by a narrower route. It reads only
+   what the operator's own policies allow, so it is used with ONLY, below. */
+const OPERATOR = process.env.OPERATOR_EMAIL
+const OPERATOR_PASSWORD = process.env.OPERATOR_PASSWORD
+
+/* Restrict the run to one section, so a customer's records can be regenerated
+   without rewriting two hundred seller documents. */
+const ONLY = process.env.ONLY ?? 'all'
+
+/* One customer, by the id on their profile. Without it every consumer document
+   in the table is written. */
+const CUSTOMER = process.env.CUSTOMER ?? null
 
 const NAVY: [number, number, number] = [13, 71, 161]
 const INK: [number, number, number] = [17, 24, 39]
@@ -405,9 +421,55 @@ async function put(path: string, bytes: Uint8Array): Promise<boolean> {
   return true
 }
 
+/**
+ * The customers' own records.
+ *
+ * Its own function because it is the one section an operator sign-in can run on
+ * its own: regenerating a customer's paperwork should not mean rewriting two
+ * hundred sellers' onboarding documents.
+ */
+async function consumerRecords(): Promise<{ made: number; failed: number }> {
+  let made = 0
+  let failed = 0
+  /* Keyed on the document's own owner rather than on `id = 'me'`. That lookup
+     was right while there was one registered customer and wrote the first
+     customer's name onto the second one's paperwork the moment there were two. */
+  const { data: mine } = await db.from('consumer_documents').select('*').order('sort_order')
+  const { data: profiles } = await db.from('consumer_profile').select('name, customer_id, user_id')
+  const owner = (userId: string | null) => profiles?.find(p => p.user_id === userId) ?? null
+
+  const wanted = (mine ?? []).filter(c =>
+    !CUSTOMER || owner(c.user_id)?.customer_id === CUSTOMER)
+
+  for (const c of wanted) {
+    const who = owner(c.user_id)
+    const ok = await put(c.path, document({
+      title: c.name, who: who?.name ?? 'The account holder', reference: c.id,
+      issued: day(c.issued, c.issued), kind: c.kind, consumer: true, intro: c.detail,
+      meta: [['Account', who?.customer_id ?? '—'], ['Category', c.category]],
+    }))
+    ok ? made++ : failed++
+  }
+  console.log(`customer records: ${wanted.length} written`)
+  return { made, failed }
+}
+
 async function main() {
   let made = 0
   let failed = 0
+
+  if (OPERATOR && OPERATOR_PASSWORD) {
+    const { error } = await db.auth.signInWithPassword({ email: OPERATOR, password: OPERATOR_PASSWORD })
+    if (error) { console.error(`Could not sign in as ${OPERATOR}: ${error.message}`); process.exit(1) }
+    console.log(`signed in as ${OPERATOR}`)
+  }
+
+  if (ONLY === 'consumer') {
+    const only = await consumerRecords()
+    console.log(`\n${only.made} documents uploaded, ${only.failed} failed`)
+    if (only.failed) process.exit(1)
+    return
+  }
 
   /* ---- the sellers' gate documents ---- */
   const { data: docs } = await db.from('onboarding_documents').select('*').order('partner_id')
@@ -469,18 +531,10 @@ async function main() {
   }
   console.log('business onboarding: written')
 
-  /* ---- the customer's own records ---- */
-  const { data: mine } = await db.from('consumer_documents').select('*').order('sort_order')
-  const { data: profile } = await db.from('consumer_profile').select('name, customer_id').eq('id', 'me').maybeSingle()
-  for (const c of mine ?? []) {
-    const ok = await put(c.path, document({
-      title: c.name, who: profile?.name ?? 'The account holder', reference: c.id,
-      issued: day(c.issued, c.issued), kind: c.kind, consumer: true, intro: c.detail,
-      meta: [['Account', profile?.customer_id ?? '—'], ['Category', c.category]],
-    }))
-    ok ? made++ : failed++
-  }
-  console.log(`customer records: ${(mine ?? []).length} written`)
+  const c = await consumerRecords()
+  made += c.made
+  failed += c.failed
+
 
   console.log(`\n${made} documents uploaded, ${failed} failed`)
   if (failed) process.exit(1)
