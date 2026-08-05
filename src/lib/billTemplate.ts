@@ -38,7 +38,11 @@ export interface Template {
   numbering: string
   next_seq: number
   date_format: string
-  currency: string
+  /* No `currency`. The template used to carry one, left over from when every
+     document was in dollars. It decided nothing — `BillFacts.currency` below is
+     taken from the row being billed — so an operator could set a template to
+     EUR and every bill under it still printed rupees. A template is a layout,
+     and one layout renders a rupee bill and a dirham bill. */
   tax_label: string
   rounding: string
   language: string

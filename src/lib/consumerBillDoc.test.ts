@@ -34,7 +34,7 @@ const ALL_IDS = SECTIONS.map(s => s.id)
 const TEMPLATE: Template = {
   id: 'BT-CON', name: 'Consumer standard', audience: 'consumer', doc_title: 'Your monthly bill',
   accent: '#0D47A1', note: '', system: true, numbering: 'BILL-{YYYY}-{SEQ}', next_seq: 88214,
-  date_format: 'DD MMM YYYY', currency: 'USD', tax_label: 'GST', rounding: 'Half up, 2 decimal places',
+  date_format: 'DD MMM YYYY', tax_label: 'GST', rounding: 'Half up, 2 decimal places',
   language: 'English', logo: true, show_order_lines: true,
   remittance: 'Pay online, by card on file, or by bank transfer quoting the bill number.',
   footer: 'Issued by Aventa Telecom.', updated_by: null, updated_on: null, sort_order: 1,

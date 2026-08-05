@@ -199,7 +199,7 @@ function TemplateList(
 function blankDraft(): Draft {
   return {
     name: '', audience: 'consumer', doc_title: 'Invoice', accent: '#0D47A1', note: '',
-    numbering: 'INV-{YYYY}-{SEQ}', next_seq: 1, date_format: 'DD MMM YYYY', currency: 'USD',
+    numbering: 'INV-{YYYY}-{SEQ}', next_seq: 1, date_format: 'DD MMM YYYY',
     tax_label: 'Tax', rounding: 'Half up, 2 decimal places', language: 'English',
     logo: true, show_order_lines: true,
     remittance: 'Paid by bank transfer to the account on file. Quote the document reference.',
@@ -377,9 +377,6 @@ function TemplateEditor(
                 <Select value={draft.date_format} onChange={e => set('date_format', e.target.value)}>
                   {['DD MMM YYYY', 'YYYY-MM-DD', 'MM/DD/YYYY', 'DD/MM/YYYY'].map(f => <option key={f}>{f}</option>)}
                 </Select>
-              </FormField>
-              <FormField label="Currency">
-                <TextInput value={draft.currency} onChange={e => set('currency', e.target.value)} />
               </FormField>
               <FormField label="Tax label"
                 hint="What the tax line is called on the face of the document.">

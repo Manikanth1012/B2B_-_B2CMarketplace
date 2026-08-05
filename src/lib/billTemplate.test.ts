@@ -37,7 +37,7 @@ const sec = (id: string): Section => {
 const template = (over: Partial<Template> = {}): Template => ({
   id: 'BT-CON', name: 'Consumer standard', audience: 'consumer', doc_title: 'Your monthly bill',
   accent: '#0D47A1', note: '', system: true, numbering: 'BILL-{YYYY}-{SEQ}', next_seq: 88214,
-  date_format: 'DD MMM YYYY', currency: 'USD', tax_label: 'GST', rounding: 'Half up, 2 decimal places',
+  date_format: 'DD MMM YYYY', tax_label: 'GST', rounding: 'Half up, 2 decimal places',
   language: 'English', logo: true, show_order_lines: true, remittance: '', footer: '',
   updated_by: 'Anika Sharma', updated_on: '2026-07-28', sort_order: 1, ...over,
 })

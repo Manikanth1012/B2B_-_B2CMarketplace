@@ -37,7 +37,7 @@ const CONSUMER = { email: 'priya.raman@example.com', password: 'demo1234' }
 const draftOf = (over: Partial<Draft> = {}): Draft => ({
   name: 'Integration test template', audience: 'consumer', doc_title: 'Your monthly bill',
   accent: '#0D47A1', note: 'Written by the integration suite.',
-  numbering: 'IT-{YYYY}-{SEQ}', next_seq: 1, date_format: 'DD MMM YYYY', currency: 'USD',
+  numbering: 'IT-{YYYY}-{SEQ}', next_seq: 1, date_format: 'DD MMM YYYY',
   tax_label: 'GST', rounding: 'Half up, 2 decimal places', language: 'English',
   logo: true, show_order_lines: true,
   remittance: 'Bank transfer quoting the reference.', footer: 'Issued by Aventa Telecom.',

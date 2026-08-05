@@ -18,7 +18,7 @@ const ISSUER: Issuer = {
 const TEMPLATE: Template = {
   id: 'BT-ENT', name: 'Enterprise consolidated', audience: 'enterprise', doc_title: 'Consolidated bill',
   accent: '#1B5E20', note: '', system: true, numbering: 'INV-{YYYY}-{SEQ}', next_seq: 715,
-  date_format: 'DD MMM YYYY', currency: 'USD', tax_label: 'VAT / GST', rounding: 'Half up, 2 decimal places',
+  date_format: 'DD MMM YYYY', tax_label: 'VAT / GST', rounding: 'Half up, 2 decimal places',
   language: 'English', logo: true, show_order_lines: true,
   remittance: 'Payable by bank transfer within the agreed terms.',
   footer: 'Issued by Aventa Telecom.', updated_by: null, updated_on: null, sort_order: 2,

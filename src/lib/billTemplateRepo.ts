@@ -210,8 +210,8 @@ async function loadSamples(
       support, terms,
       howToPay: remit('consumer'),
       payRef: p?.customer_id ?? bill.id,
-      currency: bill.currency ?? 'USD',
-      currencyMark: markFor(bill.currency ?? 'USD'),
+      currency: bill.currency,
+      currencyMark: markFor(bill.currency),
       taxLabel: 'GST',
     }
   }
@@ -271,8 +271,8 @@ async function loadSamples(
       support, terms,
       howToPay: remit('enterprise'),
       payRef: inv.po_ref || inv.id,
-      currency: inv.currency ?? 'USD',
-      currencyMark: markFor(inv.currency ?? 'USD'),
+      currency: inv.currency,
+      currencyMark: markFor(inv.currency),
       taxLabel: 'GST',
     }
   }
@@ -324,8 +324,8 @@ async function loadSamples(
       support, terms,
       howToPay: remit('partner'),
       payRef: st.id,
-      currency: st.currency ?? 'USD',
-      currencyMark: markFor(st.currency ?? 'USD'),
+      currency: st.currency,
+      currencyMark: markFor(st.currency),
       taxLabel: 'GST',
     }
   }
@@ -357,9 +357,13 @@ function day(iso: string | null): string {
 
 /* ------------------------------------------------------------- the writes -- */
 
+/* `currency` is not here: it is a fact about the transaction, and every table
+   a document is raised from declares it `not null`. The `?? 'USD'` defaults
+   that used to guard these reads could not fire, and would have mislabelled
+   somebody's money if they ever had. */
 export type Draft = Pick<Template,
   'name' | 'audience' | 'doc_title' | 'accent' | 'note' | 'numbering' | 'next_seq' |
-  'date_format' | 'currency' | 'tax_label' | 'rounding' | 'language' | 'logo' |
+  'date_format' | 'tax_label' | 'rounding' | 'language' | 'logo' |
   'show_order_lines' | 'remittance' | 'footer'>
 
 /**

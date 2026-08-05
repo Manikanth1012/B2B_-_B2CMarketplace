@@ -17,7 +17,9 @@ import { blocksFor, money } from '../lib/billTemplate'
 
 export function BillDocument(
   { template, ids, facts, reference }: {
-    template: Pick<Template, 'doc_title' | 'accent' | 'tax_label' | 'currency' | 'logo' |
+    /* No 'currency': the document is denominated by the row it is raised from,
+       which `facts` carries. The template only decides how it looks. */
+    template: Pick<Template, 'doc_title' | 'accent' | 'tax_label' | 'logo' |
       'show_order_lines' | 'remittance' | 'footer' | 'audience' | 'language'>
     ids: readonly string[]
     facts: BillFacts | null
