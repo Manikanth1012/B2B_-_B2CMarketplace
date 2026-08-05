@@ -16,10 +16,10 @@ const contact = (over: Partial<Contact> & Pick<Contact, 'id'>): Contact => ({
 })
 
 const bank = (over: Partial<BankAccount> = {}): BankAccount => ({
-  partner_id: 'PTR-1004', holder: 'Nimbus Sensors Ltd', bank: 'Deutsche Bank',
-  branch: 'München', account: '100668276720', local_label: 'Bankleitzahl', local_code: '50010517',
-  swift: 'DEUTDEFF', iban: 'DE8937041006682767', currency: 'USD',
-  tax_label: 'USt-IdNr', tax_id: 'DE123456789', residency: 'Germany',
+  partner_id: 'PTR-1004', holder: 'Nimbus Sensors Private Limited', bank: 'HDFC Bank',
+  branch: 'Bengaluru — Residency Road', account: '100668276720', local_label: 'IFSC', local_code: 'HDFC0001234',
+  swift: 'HDFCINBB', iban: null, currency: 'INR',
+  tax_label: 'PAN', tax_id: 'AAACH1234K', residency: 'India',
   treaty_on_file: true, treaty_expires: '2026-09-15', withholding: 'Nil under treaty',
   verified: true, verified_on: '2024-09-27', verified_by: 'Ruben Oyelaran',
   method: 'Two micro-deposits matched',
@@ -172,12 +172,23 @@ describe('groupByPurpose', () => {
 describe('bankCodeFor', () => {
   it('asks for the thing the person is actually holding', () => {
     expect(bankCodeFor('India').local).toBe('IFSC')
-    expect(bankCodeFor('Germany').local).toBe('Bankleitzahl')
+    expect(bankCodeFor('UAE').local).toBe('Routing code')
+    expect(bankCodeFor('Kenya').local).toBe('Bank/branch code')
   })
 
   it('knows where an IBAN is used and where it is not', () => {
-    expect(bankCodeFor('Germany').iban).toBe(true)
+    expect(bankCodeFor('UAE').iban).toBe(true)
     expect(bankCodeFor('India').iban).toBe(false)
+    expect(bankCodeFor('Kenya').iban).toBe(false)
+  })
+
+  it('knows only the markets the marketplace trades in', () => {
+    /* It used to carry fourteen countries, nine of which had a seller banking
+       in them and none of which the marketplace does business in. A seller
+       cannot settle into a country with no entity, no tax registration and no
+       payout rail behind it. */
+    expect(bankCodeFor('Germany').local).toBe('Local clearing code')
+    expect(bankCodeFor('Singapore').local).toBe('Local clearing code')
   })
 
   it('falls back to something legible for a country it has never seen', () => {
@@ -189,13 +200,15 @@ describe('showLocalCode', () => {
   it('shows a clearing code outright — it identifies a bank, not an account', () => {
     /* Masking it beside an unmasked BIC would be one card contradicting itself
        about what the secret is. */
-    expect(showLocalCode('Germany', '50010517')).toBe('50010517')
     expect(showLocalCode('India', 'HDFC0001234')).toBe('HDFC0001234')
+    expect(showLocalCode('UAE', '302620122')).toBe('302620122')
+    expect(showLocalCode('Kenya', '068-000')).toBe('068-000')
   })
 
   it('masks the one country whose local field carries an account number in it', () => {
-    /* Brazil's "Agência/conta" is a branch and an account in one box. */
-    expect(showLocalCode('Brazil', '0001 / 12345-6')).toBe('•••• 45-6')
+    /* Nothing is masked any more. Brazil's "Agência/conta" was the one country
+       whose clearing code carried an account number, and it is not a market. */
+    expect(showLocalCode('Brazil', '0001 / 12345-6')).toBe('0001 / 12345-6')
   })
 })
 
@@ -288,7 +301,7 @@ describe('taxPosition', () => {
   it('explains that withholding is not a marketplace charge when nothing is on file', () => {
     const t = taxPosition(bank({
       treaty_on_file: false, treaty_expires: null,
-      withholding: '10% statutory — no certificate on file', residency: 'Brazil',
+      withholding: '10% statutory — no certificate on file', residency: 'Kenya',
     }), on('2026-07-31'))
     expect(t.level).toBe('none')
     expect(t.detail).toMatch(/not a marketplace charge/)

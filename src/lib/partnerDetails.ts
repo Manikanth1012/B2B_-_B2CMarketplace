@@ -204,34 +204,32 @@ export interface BankCode {
   tax: string
   taxEg: string
   iban: boolean
-  /* Whether the local code field carries an account number inside it. Almost
-     nowhere does — a sort code, an IFSC or a Bankleitzahl identifies a bank or a
-     branch and is public directory data, so masking it would say something
-     untrue about what the secret is here. Brazil is the exception: "Agência/
-     conta" is a branch and an account number in one field. */
-  localHoldsAccount?: boolean
 }
 
 /* What a country actually calls its local clearing code, so the form asks for
    the thing the person is holding rather than a generic "bank code" they cannot
-   find on a statement. */
+   find on a statement.
+
+   The three markets the marketplace trades in, and no more. It used to carry
+   fourteen — Singapore, Germany, Poland, Brazil, Vietnam, Sweden, Taiwan,
+   Israel, the UK and the United States among them — none of which the
+   marketplace does business in, and nine sellers were seeded banking in them.
+   A seller cannot settle into an account in a country the marketplace has no
+   entity, no tax registration and no payout rail in, so offering to ask them
+   for a Bankleitzahl was offering something that could not happen.
+
+   `DEFAULT_BANK_CODE` still catches anything else, which is what a fourth
+   market looks like on the day it opens and before this list learns about
+   it. */
 const BANK_CODES: Record<string, BankCode> = {
-  'India':          { local: 'IFSC',             localEg: 'HDFC0001234',    tax: 'PAN',        taxEg: 'AAACH1234K',        iban: false },
-  'UAE':            { local: 'Routing code',     localEg: '302620122',      tax: 'TRN',        taxEg: '100123456700003',   iban: true },
-  'Kenya':          { local: 'Bank/branch code', localEg: '068-000',        tax: 'KRA PIN',    taxEg: 'P051234567X',       iban: false },
-  'Singapore':      { local: 'Bank/branch code', localEg: '7171-001',       tax: 'UEN',        taxEg: '201812345K',        iban: false },
-  'Germany':        { local: 'Bankleitzahl',     localEg: '50010517',       tax: 'USt-IdNr',   taxEg: 'DE123456789',       iban: true },
-  'Poland':         { local: 'Sort code',        localEg: '10201026',       tax: 'NIP',        taxEg: 'PL5252445767',      iban: true },
-  'Brazil':         { local: 'Agência/conta',    localEg: '0001 / 12345-6', tax: 'CNPJ',       taxEg: '12.345.678/0001-95', iban: false, localHoldsAccount: true },
-  'Vietnam':        { local: 'Branch code',      localEg: '79204001',       tax: 'MST',        taxEg: '0312345678',        iban: false },
-  'UK':             { local: 'Sort code',        localEg: '04-00-04',       tax: 'VAT',        taxEg: 'GB123456789',       iban: true },
-  'United Kingdom': { local: 'Sort code',        localEg: '04-00-04',       tax: 'VAT',        taxEg: 'GB123456789',       iban: true },
-  'United States':  { local: 'ACH routing',      localEg: '021000021',      tax: 'EIN',        taxEg: '12-3456789',        iban: false },
-  'Sweden':         { local: 'Clearing number',  localEg: '5000',           tax: 'Moms',       taxEg: 'SE556123456701',    iban: true },
-  'Taiwan':         { local: 'Bank/branch code', localEg: '822-0361',       tax: 'BAN',        taxEg: '12345678',          iban: false },
-  'Israel':         { local: 'Bank/branch code', localEg: '10-800',         tax: 'Tax ID',     taxEg: '514123456',         iban: true },
+  'India': { local: 'IFSC',             localEg: 'HDFC0001234', tax: 'PAN',     taxEg: 'AAACH1234K',      iban: false },
+  'UAE':   { local: 'Routing code',     localEg: '302620122',   tax: 'TRN',     taxEg: '100123456700003', iban: true },
+  'Kenya': { local: 'Bank/branch code', localEg: '068-000',     tax: 'KRA PIN', taxEg: 'P051234567X',     iban: false },
 }
 
+/* Deliberately generic rather than a guess. A seller in a market this list has
+   not learned yet gets a field they can still fill in, instead of being asked
+   for the wrong country's identifier. */
 const DEFAULT_BANK_CODE: BankCode =
   { local: 'Local clearing code', localEg: '—', tax: 'Tax identifier', taxEg: '—', iban: true }
 
@@ -239,11 +237,29 @@ export function bankCodeFor(country: string | null | undefined): BankCode {
   return BANK_CODES[String(country ?? '')] ?? DEFAULT_BANK_CODE
 }
 
-/** How to render the local clearing code. Shown outright almost everywhere,
-    because a bank identifier is not a secret and masking it alongside an
-    unmasked BIC is one card contradicting itself. */
+/**
+ * How to render the local clearing code: outright.
+ *
+ * A bank identifier is not a secret. An IFSC, a routing code and a branch code
+ * all name a bank or a branch and are published directory data, so masking one
+ * beside an unmasked BIC would be a card contradicting itself about what it is
+ * protecting.
+ *
+ * There used to be an exception, and a `localHoldsAccount` flag for it: Brazil's
+ * "Agência/conta" is a branch and an account number in one box, so it was
+ * masked. Brazil is not a market the marketplace trades in and the seller who
+ * banked there has been moved, which left that branch unreachable — and an
+ * unreachable branch is one nothing exercises and nobody notices breaking. A
+ * market whose clearing code carries an account number will need it back, with
+ * a test; it is easier to add that deliberately than to trust code that has
+ * never run.
+ *
+ * `country` stays in the signature because this is where the decision belongs
+ * and both callers already have it to hand.
+ */
 export function showLocalCode(country: string | null | undefined, code: string): string {
-  return bankCodeFor(country).localHoldsAccount ? maskAccount(code) : code
+  void country
+  return code
 }
 
 export interface BankAccount {

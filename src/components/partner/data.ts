@@ -13,7 +13,7 @@ export const PARTNER_PROFILE = {
   tier: 'Silver',
   joined: 'Sep 2024',
   rating: 4.6,
-  country: 'Germany',
+  country: 'India',
   verticals: ['iot', 'device'] as string[],
   status: 'active',
 }

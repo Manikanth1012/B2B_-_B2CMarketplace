@@ -6,9 +6,9 @@ import {
 } from './partnerDirectory'
 
 const row = (o: Partial<DirectoryRow> & { id: string; name: string }): DirectoryRow => ({
-  type: 'IoT hardware', country: 'Germany', status: 'live', tier_id: 'silver',
+  type: 'IoT hardware', country: 'India', status: 'live', tier_id: 'silver',
   categories: ['iot'], planName: 'IoT — hardware + connectivity', listings: 3, liveListings: 3,
-  contact: 'Katrin Boehm', email: 'k.boehm@nimbus.de',
+  contact: 'Katrin Boehm', email: 'k.boehm@nimbussensors.com',
   currentGate: null, clearedGates: 7, totalGates: 7, ...o,
 })
 
@@ -32,7 +32,7 @@ describe('matchesSearch', () => {
     expect(matchesSearch(r, 'nimbus')).toBe(true)
     expect(matchesSearch(r, '1004')).toBe(true)
     expect(matchesSearch(r, 'iot hardware')).toBe(true)
-    expect(matchesSearch(r, 'germany')).toBe(true)
+    expect(matchesSearch(r, 'india')).toBe(true)
     expect(matchesSearch(r, 'boehm')).toBe(true)
   })
 
