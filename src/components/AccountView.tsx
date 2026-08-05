@@ -504,9 +504,12 @@ function PasswordModal({ profile, onClose, showToast }: { profile: ConsumerProfi
   const [confirm, setConfirm] = useState('')
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
-  /* Keyed on the address the session is authenticated as, not profile.email — those
-     differ by design (priya.raman@example.com signs in; the profile shows
-     priya.raman@6dtech.co.in), and it is the sign-in identity that is shared. */
+  /* Keyed on the address the session is authenticated as, not profile.email.
+     The two are equal now — `20260806090000` brought the profile into line with
+     the sign-in, because the profile address is what gets printed on the bill
+     and the customer had never seen it — but the session is still what to ask.
+     `profile.email` is editable on the tab above; a password modal keyed on a
+     field somebody can type into is a password modal keyed on nothing. */
   const [authEmail, setAuthEmail] = useState<string | null>(null)
   useEffect(() => { currentEmail().then(setAuthEmail) }, [])
   const demo = authEmail !== null && isDemoAccount(authEmail)
