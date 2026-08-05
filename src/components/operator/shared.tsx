@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useId } from 'react'
 import { X } from 'lucide-react'
 
 export function fmtMoney(n: number): string {
@@ -360,14 +360,44 @@ export function Modal({ open, onClose, title, children, footer }: ModalProps) {
 
 // ---------- Form primitives ----------
 
+/**
+ * A labelled field.
+ *
+ * The label used to sit beside its input and be attached to nothing: no
+ * `htmlFor`, no `id`, and the input not nested inside it. So across every form
+ * in this console, clicking a label did not focus its field and a screen reader
+ * announced an unnamed text box — the field said "Role name" to somebody
+ * looking at it and nothing at all to anybody who was not.
+ *
+ * The id is generated and pushed onto a single child element, which covers the
+ * ordinary `<FormField><TextInput/></FormField>` shape without every call site
+ * having to invent one. A field whose children are something else — a row of
+ * chips, a group of buttons — is left alone: there is no one control for the
+ * label to point at, and those carry their own accessible names.
+ */
 export function FormField({ label, children, required, hint }: { label: string; children: React.ReactNode; required?: boolean; hint?: string }) {
+  const id = useId()
+  const hintId = `${id}-hint`
+  const only = React.Children.count(children) === 1 ? React.Children.only(children) : null
+  const single = React.isValidElement(only) ? only : null
+  const bound = single
+    ? React.cloneElement(single as React.ReactElement<Record<string, unknown>>, {
+      id: (single.props as { id?: string }).id ?? id,
+      /* The hint is part of the field's description, not decoration beside it —
+         "One line per line, as it should be printed" is instruction. */
+      'aria-describedby': hint ? hintId : undefined,
+      'aria-required': required || undefined,
+    })
+    : children
+
   return (
     <div style={{ marginBottom: '16px' }}>
-      <label style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
+      <label htmlFor={single ? ((single.props as { id?: string }).id ?? id) : undefined}
+        style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
         {label}{required && <span style={{ color: 'var(--danger)' }}> *</span>}
       </label>
-      {children}
-      {hint && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>{hint}</div>}
+      {bound}
+      {hint && <div id={hintId} style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>{hint}</div>}
     </div>
   )
 }

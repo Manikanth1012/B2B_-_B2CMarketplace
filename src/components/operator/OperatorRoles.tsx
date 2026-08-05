@@ -3,6 +3,10 @@ import { Pager, usePaging } from '../Pager'
 import { supabase } from '../../lib/supabase'
 import type { OperatorRole, OperatorUser } from '../../types'
 import { SectionCard, Table, Td, StatusPill, EmptyState, fmtDateTime, Btn, Modal, FormField, TextInput, Select, TextArea, toast, ConfirmDialog } from './shared'
+import {
+  byArea, matching, levelOf, summarise, validateRole, emptyCapabilities, fillGaps,
+} from '../../lib/operatorAccess'
+import type { CapabilityDef, AuditCategoryDef, CapabilityLevel } from '../../lib/operatorAccess'
 
 export function OperatorRoles() {
   const [roles, setRoles] = useState<OperatorRole[]>([])
@@ -13,14 +17,23 @@ export function OperatorRoles() {
   const [addRoleModal, setAddRoleModal] = useState(false)
   const [addUserModal, setAddUserModal] = useState(false)
   const [editUser, setEditUser] = useState<OperatorUser | null>(null)
+  /* What the console actually has. The form used to ask an operator to type
+     these from memory into a comma-separated box, with nothing offering the
+     values and nothing checking them. */
+  const [caps, setCaps] = useState<CapabilityDef[]>([])
+  const [cats, setCats] = useState<AuditCategoryDef[]>([])
 
   useEffect(() => {
     Promise.all([
       supabase.from('operator_roles').select('*').order('sort_order'),
       supabase.from('operator_users').select('*').order('sort_order'),
-    ]).then(([r, u]) => {
+      supabase.from('operator_capabilities').select('*').order('sort_order'),
+      supabase.from('operator_audit_categories').select('*').order('sort_order'),
+    ]).then(([r, u, c, a]) => {
       if (r.data) setRoles(r.data as OperatorRole[])
       if (u.data) setUsers(u.data as OperatorUser[])
+      if (c.data) setCaps(c.data as CapabilityDef[])
+      if (a.data) setCats(a.data as AuditCategoryDef[])
       setLoading(false)
     })
   }, [])
@@ -107,16 +120,18 @@ export function OperatorRoles() {
           {roles.length === 0 ? <EmptyState message="No roles defined" /> : (
             <><Table headers={['Role', 'Description', 'Assigned', 'Audit Scope', 'Capabilities', 'Actions']}>
               {rolesPage.rows.map(r => {
-                const caps = Object.entries(r.capabilities)
-                const fullCount = caps.filter(([, v]) => v === 'full').length
-                const scopedCount = caps.filter(([, v]) => v === 'scoped').length
+                /* The same summary the editor shows. This counted `full` and
+                   `scoped` only, so the Read-Only Analyst's three read-only
+                   grants read as "0 full · 0 scoped" — a role that looked empty
+                   on the one screen that lists them all. */
+                const held = summarise(r.capabilities, caps)
                 return (
                   <tr key={r.id}>
                     <Td>{r.name}{r.is_builtin && <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginLeft: '4px' }}>built-in</span>}</Td>
                     <Td>{r.description}</Td>
                     <Td right>{r.assigned_count}</Td>
-                    <Td right>{r.audit_categories.length} categories</Td>
-                    <Td right>{fullCount} full · {scopedCount} scoped</Td>
+                    <Td right>{r.audit_categories.length} {r.audit_categories.length === 1 ? 'category' : 'categories'}</Td>
+                    <Td right>{held.text}</Td>
                     <Td right>
                       <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
                         <Btn variant="secondary" size="sm" onClick={() => setEditRole(r)}>Edit</Btn>
@@ -158,48 +173,184 @@ export function OperatorRoles() {
         </SectionCard>
       )}
 
-      {(editRole || addRoleModal) && <RoleModal role={editRole} onClose={() => { setEditRole(null); setAddRoleModal(false) }} onSave={handleSaveRole} />}
+      {(editRole || addRoleModal) && <RoleModal role={editRole} caps={caps} cats={cats} onClose={() => { setEditRole(null); setAddRoleModal(false) }} onSave={handleSaveRole} />}
       {(editUser || addUserModal) && <UserModal user={editUser} roles={roles} onClose={() => { setEditUser(null); setAddUserModal(false) }} onSave={handleSaveUser} />}
     </div>
   )
 }
 
-function RoleModal({ role, onClose, onSave }: { role: OperatorRole | null; onClose: () => void; onSave: (r: OperatorRole) => void }) {
+/* The three settings, as a segmented control rather than a dropdown. Twenty-
+   eight dropdowns is twenty-eight clicks before you can even read the state;
+   three buttons show the current one and set any other in a single click. */
+const LEVEL_LABEL: Record<CapabilityLevel, string> = {
+  none: 'None', read: 'Read', scoped: 'Scoped', full: 'Full',
+}
+const LEVEL_TINT: Record<CapabilityLevel, string> = {
+  none: 'var(--text-tertiary)', read: 'var(--info)', scoped: '#B26A00', full: 'var(--success)',
+}
+
+function LevelPicker({ value, scopable, onChange }: {
+  value: CapabilityLevel; scopable: boolean; onChange: (l: CapabilityLevel) => void
+}) {
+  /* A capability that cannot be scoped drops that one button rather than
+     showing it greyed — a disabled control invites the question of what it
+     would have meant. `read` is always offered: nothing here can only be looked
+     at in full or not at all. */
+  const options: CapabilityLevel[] = scopable
+    ? ['none', 'read', 'scoped', 'full']
+    : ['none', 'read', 'full']
+  return (
+    <div role="group" style={{ display: 'flex', border: '1px solid var(--border)', borderRadius: 'var(--radius)', overflow: 'hidden' }}>
+      {options.map(l => (
+        <button key={l} type="button" onClick={() => onChange(l)} aria-pressed={value === l}
+          style={{
+            padding: '4px 10px', fontSize: '11px', fontWeight: 700, cursor: 'pointer',
+            border: 'none', borderLeft: l === options[0] ? 'none' : '1px solid var(--border)',
+            background: value === l ? LEVEL_TINT[l] : 'white',
+            color: value === l ? 'white' : 'var(--text-tertiary)',
+          }}>{LEVEL_LABEL[l]}</button>
+      ))}
+    </div>
+  )
+}
+
+function RoleModal({ role, caps, cats, onClose, onSave }: {
+  role: OperatorRole | null
+  caps: CapabilityDef[]
+  cats: AuditCategoryDef[]
+  onClose: () => void
+  onSave: (r: OperatorRole) => void
+}) {
   const [form, setForm] = useState<OperatorRole>(role || {
     id: '', name: '', description: '', is_builtin: false, assigned_count: 0, audit_categories: [], capabilities: {}, sort_order: 0,
   })
+  const [filter, setFilter] = useState('')
   useEffect(() => { if (role) setForm(role) }, [role])
 
+  /* Every capability the console has, at whatever level this role holds it.
+     The form used to list only the keys already on the role, so a capability
+     added since it was made was invisible — and the only way to grant it was to
+     type its name correctly from memory. */
+  useEffect(() => {
+    if (!caps.length) return
+    setForm(f => ({ ...f, capabilities: role ? fillGaps(f.capabilities, caps) : emptyCapabilities(caps) }))
+  }, [caps, role])
+
+  const setLevel = (id: string, level: CapabilityLevel) =>
+    setForm(f => ({ ...f, capabilities: { ...f.capabilities, [id]: level } }))
+
+  const toggleCategory = (id: string) => setForm(f => ({
+    ...f,
+    audit_categories: f.audit_categories.includes(id)
+      ? f.audit_categories.filter(c => c !== id)
+      : [...f.audit_categories, id],
+  }))
+
+  const setArea = (area: string, level: CapabilityLevel) => setForm(f => ({
+    ...f,
+    capabilities: {
+      ...f.capabilities,
+      ...Object.fromEntries(caps.filter(c => c.area === area)
+        .map(c => [c.id, level === 'scoped' && !c.scopable ? 'full' : level])),
+    },
+  }))
+
   const handleSave = () => {
-    if (!form.name.trim()) { toast('Role name is required', 'error'); return }
+    const check = validateRole(form, { categories: cats, capabilities: caps })
+    if (!check.ok) { toast(check.reason, 'error'); return }
     onSave(form)
   }
 
+  const shown = matching(caps, filter)
+  const total = summarise(form.capabilities, caps)
+
   return (
     <Modal open onClose={onClose} title={role ? 'Edit Role' : 'New Role'}
-      footer={<><Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn><Btn size="sm" onClick={handleSave}>Save</Btn></>}>
+      footer={<>
+        <span style={{ flex: 1, fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+          {total.text}{form.audit_categories.length > 0
+            ? ` · ${form.audit_categories.length} audit ${form.audit_categories.length === 1 ? 'category' : 'categories'}`
+            : ''}
+        </span>
+        <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
+        <Btn size="sm" onClick={handleSave}>Save</Btn>
+      </>}>
       <FormField label="Role name" required><TextInput value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></FormField>
       <FormField label="Description"><TextArea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></FormField>
-      <FormField label="Audit categories (comma-separated)"><TextInput value={form.audit_categories.join(', ')} onChange={(e) => setForm({ ...form, audit_categories: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} /></FormField>
-      <div style={{ marginTop: '16px' }}>
-        <h4 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: '8px' }}>Capabilities</h4>
-        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '12px' }}>Each capability: none, scoped, or full. Click to cycle.</p>
-        {Object.keys(form.capabilities).length > 0 ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-            {Object.entries(form.capabilities).map(([key, val]) => (
-              <div key={key} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span style={{ flex: 1, fontSize: 'var(--text-sm)' }}>{key}</span>
-                <Select value={val} onChange={(e) => setForm({ ...form, capabilities: { ...form.capabilities, [key]: e.target.value } })} style={{ width: 'auto' }}>
-                  <option value="none">None</option><option value="scoped">Scoped</option><option value="full">Full</option>
-                </Select>
-              </div>
-            ))}
-          </div>
-        ) : <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>No capabilities defined.</p>}
-        <div style={{ display: 'flex', gap: '8px', marginTop: '12px' }}>
-          <TextInput id="new-cap" placeholder="Add capability..." style={{ flex: 1 }} />
-          <Btn variant="secondary" size="sm" onClick={() => { const input = document.getElementById('new-cap') as HTMLInputElement; if (input?.value.trim()) { setForm({ ...form, capabilities: { ...form.capabilities, [input.value.trim()]: 'none' } }); input.value = '' } }}>Add</Btn>
+
+      {/* Was a comma-separated box. Nobody remembers thirteen category names,
+          and a typo saved cleanly as a role scoped to nothing. */}
+      <FormField label="Audit categories"
+        hint="Which parts of the audit trail this role may read. Leave empty for none.">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+          {cats.map(c => {
+            const on = form.audit_categories.includes(c.id)
+            return (
+              <button key={c.id} type="button" onClick={() => toggleCategory(c.id)} title={c.covers}
+                aria-pressed={on}
+                style={{
+                  padding: '5px 10px', borderRadius: 'var(--radius-full)', cursor: 'pointer',
+                  fontSize: '12px', fontWeight: 600,
+                  border: `1px solid ${on ? 'var(--brand-navy)' : 'var(--border)'}`,
+                  background: on ? 'var(--brand-navy)' : 'white',
+                  color: on ? 'white' : 'var(--text-secondary)',
+                }}>{c.label}</button>
+            )
+          })}
         </div>
+      </FormField>
+
+      <div style={{ marginTop: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: '12px', marginBottom: '4px' }}>
+          <h4 style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>Capabilities</h4>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{total.text}</span>
+        </div>
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '10px' }}>
+          Everything this console can do. Read is look but do not change; Scoped is act, but only within the seller,
+          market or queue the holder is assigned. A few cannot be scoped.
+        </p>
+
+        <TextInput value={filter} onChange={(e) => setFilter(e.target.value)}
+          placeholder="Filter — name, area, or what it covers (try “webhooks”)" style={{ marginBottom: '10px' }} />
+
+        {shown.length === 0
+          ? <EmptyState message={`Nothing matches “${filter}”. The console has ${caps.length} capabilities.`} />
+          : byArea(shown).map(group => (
+            <div key={group.area} style={{ marginBottom: '14px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                <h5 style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-tertiary)' }}>{group.area}</h5>
+                {/* Granting a whole area at once. Eight areas beats twenty-eight
+                    rows when the intent is "everything in support". */}
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button type="button" onClick={() => setArea(group.area, 'full')}
+                    style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700, color: 'var(--brand-accent)' }}>All</button>
+                  <button type="button" onClick={() => setArea(group.area, 'none')}
+                    style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700, color: 'var(--text-tertiary)' }}>None</button>
+                </div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                {group.caps.map(c => {
+                  const level = levelOf(form.capabilities, c.id)
+                  return (
+                    <div key={c.id} style={{
+                      display: 'flex', alignItems: 'center', gap: '12px', padding: '6px 8px',
+                      borderRadius: 'var(--radius)',
+                      background: level === 'none' ? 'transparent' : 'rgba(0,166,166,0.05)',
+                    }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>{c.label}</div>
+                        {/* The sentence that stops anybody having to go and look
+                            it up. `mor` is the reason this line exists. */}
+                        <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{c.covers}</div>
+                      </div>
+                      <LevelPicker value={level} scopable={c.scopable}
+                        onChange={(l) => setLevel(c.id, l)} />
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
       </div>
     </Modal>
   )
