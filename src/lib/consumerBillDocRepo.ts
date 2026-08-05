@@ -7,6 +7,7 @@
  */
 import { supabase } from './supabase'
 import type { Currency, Market } from './money'
+import { issuerFor } from './billTemplate'
 import type {
   Section, Template, TemplateSection, Assignment, Issuer,
 } from './billTemplate'
@@ -25,7 +26,11 @@ export async function loadBillBook(): Promise<BillBook> {
       supabase.from('invoice_templates').select('*').order('sort_order'),
       supabase.from('invoice_template_sections').select('*'),
       supabase.from('invoice_template_assignments').select('*'),
-      supabase.from('invoice_issuer').select('*').eq('id', 'default').maybeSingle(),
+      /* Every issuer, narrowed below to the one registered where this customer
+         is. Read whole rather than filtered because the profile it depends on
+         is being read in the same round trip — one query that returns three
+         rows beats a second round trip. */
+      supabase.from('invoice_issuer').select('*'),
       /* Their own profile, whoever they are — RLS narrows it. The demo row's
          id was hard-coded here, so a registered shopper's bill carried Priya
          Raman's name and address. */
@@ -56,7 +61,9 @@ export async function loadBillBook(): Promise<BillBook> {
     templates: (tplRes.data ?? []) as Template[],
     chosen: (tsRes.data ?? []) as TemplateSection[],
     assignments: (asgRes.data ?? []) as Assignment[],
-    issuer: (issRes.data as Issuer | null) ?? null,
+    /* The entity registered where this customer is. Was `id = 'default'`, the
+       Indian company, on every bill in every market. */
+    issuer: issuerFor(profile?.market, (issRes.data ?? []) as Issuer[]),
     profile,
     address: (addrRes.data as Record<string, string> | null) ?? null,
     member,

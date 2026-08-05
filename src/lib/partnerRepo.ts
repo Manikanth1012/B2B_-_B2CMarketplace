@@ -65,6 +65,10 @@ export interface PartnerRecord {
   name: string
   type: string
   country: string
+  /* Which of the marketplace's jurisdictions the country places them in, and
+     so which registered entity issues their settlement statement. Distinct
+     from `country`, which is what they typed and what their evidence says. */
+  market: string | null
   tier: string
   status: PartnerStatus
   rating: number

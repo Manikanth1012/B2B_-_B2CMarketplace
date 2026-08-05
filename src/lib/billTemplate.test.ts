@@ -3,7 +3,8 @@ import {
   type Section, type Template, type TemplateSection, type Assignment, type BillFacts,
   sectionsOn, has, offeredTo, canRemove, canAdd, warningsFor, validateTemplate,
   nextReference, referencePattern, validateNumbering, templateFor, usedBy, canDelete,
-  blocksFor, suppressed, money,
+  blocksFor, suppressed, money, issuerFor, issuersByMarket,
+  type Issuer,
 } from './billTemplate'
 
 /* The fixtures are the seeded catalogue, not an invented one. A test that
@@ -527,5 +528,63 @@ describe('money', () => {
   it('does not print minus zero', () => {
     expect(money(-0)).toBe('0.00')
     expect(money(-0.001)).toBe('0.00')
+  })
+})
+
+/* ----------------------------------------------- who the document is from -- */
+
+/* The three seeded entities, trimmed to the fields the rule reads. */
+function entity(over: Partial<Issuer>): Issuer {
+  return {
+    id: 'x', legal_name: 'x', trading_name: 'Aventa Telecom', lines: [],
+    tax_label: 'GSTIN', tax_id: 'x', company_no: null, bank_name: 'x',
+    bank_detail: 'x', support_phone: 'x', support_hours: 'x', support_email: 'x',
+    support_portal: 'x', dispute_window: 'x', dispute_note: 'x', escalation: 'x',
+    terms: [], updated_by: null, updated_on: null, market: null, ...over,
+  }
+}
+
+const ISSUERS: Issuer[] = [
+  entity({ id: 'default', market: 'IN', legal_name: 'Aventa Communications Private Limited', tax_label: 'GSTIN', support_phone: '+91 80 4000 6000' }),
+  entity({ id: 'KE', market: 'KE', legal_name: 'Aventa Telecom Kenya Limited', tax_label: 'KRA PIN', support_phone: '+254 20 400 6000' }),
+  entity({ id: 'AE', market: 'AE', legal_name: 'Aventa Telecom FZ-LLC', tax_label: 'TRN', support_phone: '+971 4 400 6000' }),
+]
+
+describe('the entity a document is issued by', () => {
+  it('is the one registered where the counterparty is', () => {
+    expect(issuerFor('KE', ISSUERS)?.legal_name).toBe('Aventa Telecom Kenya Limited')
+    expect(issuerFor('KE', ISSUERS)?.tax_label).toBe('KRA PIN')
+    expect(issuerFor('AE', ISSUERS)?.support_phone).toBe('+971 4 400 6000')
+  })
+
+  it('does not fall back to another country when a market has no entity', () => {
+    /* A Ugandan customer gets a bill with no issuer rather than an Indian
+       company's GSTIN charging them Ugandan VAT. A gap is visible; a foreign
+       entity looks correct and is not filable. */
+    expect(issuerFor('UG', ISSUERS)).toBeNull()
+  })
+
+  it('has no entity to name when nobody said where the counterparty is', () => {
+    expect(issuerFor(null, ISSUERS)).toBeNull()
+    expect(issuerFor(undefined, ISSUERS)).toBeNull()
+  })
+
+  it('never answers with the row that happens to be first', () => {
+    /* `id = 'default'` was hard-coded at four call sites, which is exactly the
+       shape this refuses: the first row is not everybody's issuer. */
+    expect(issuerFor('KE', ISSUERS)?.id).not.toBe('default')
+  })
+
+  it('lists entities in the marketplace’s own market order', () => {
+    const order = [{ code: 'KE', sort_order: 1 }, { code: 'IN', sort_order: 2 }, { code: 'AE', sort_order: 3 }]
+    expect(issuersByMarket(ISSUERS, order).map(i => i.market)).toEqual(['KE', 'IN', 'AE'])
+  })
+
+  it('puts an entity in no market last rather than dropping it', () => {
+    const stray = entity({ id: 'orphan', market: null })
+    const order = [{ code: 'IN', sort_order: 1 }, { code: 'KE', sort_order: 2 }, { code: 'AE', sort_order: 3 }]
+    const got = issuersByMarket([stray, ...ISSUERS], order)
+    expect(got[got.length - 1].id).toBe('orphan')
+    expect(got).toHaveLength(4)
   })
 })

@@ -151,6 +151,29 @@ describe('what the bill says', () => {
     expect(factsFor(bill(), book({ member: null })).rewards).toBeNull()
   })
 
+  it('prints the month’s points once, on the bill in the currency they are held in', () => {
+    /* A customer buying in two currencies gets two bills for one month. The
+       points are one figure on one account, so printing them on both reports
+       42 twice and reads as 84. */
+    const kenyan = book({
+      member: { id: 'LM-4030', name: 'Wanjiru Kamau', balance: '760', user_id: 'u2', currency: 'KES' },
+      ledger: [{ member: 'LM-4030', when_date: '11 Jul 2026', type: 'earn', points: '42' }],
+    })
+    const shillings = bill({ id: 'BILL-2026-07-KES', market: 'KE', currency: 'KES' })
+    const dollars = bill({ id: 'BILL-2026-07-USD', market: 'KE', currency: 'USD' })
+
+    expect(factsFor(shillings, kenyan).rewards?.earned).toBe(42)
+    /* The dollar bill is a document about dollars. A balance cannot be stated
+       in a currency it is not held in, so it says nothing about points. */
+    expect(factsFor(dollars, kenyan).rewards).toBeNull()
+  })
+
+  it('still prints the block when the member’s currency is not recorded', () => {
+    /* Every customer before this one had one bill a month, and their fixtures
+       carry no member currency — the rule must not silently blank their bill. */
+    expect(factsFor(bill(), book()).rewards).not.toBeNull()
+  })
+
   it('marks a settled bill as settled', () => {
     const f = factsFor(bill({ status: 'paid', paid_on: '08 Aug 2026' }), book())
     expect(f.paid_already).toBe(true)

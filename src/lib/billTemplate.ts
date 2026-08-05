@@ -94,6 +94,40 @@ export interface Issuer {
   terms: string[]
   updated_by: string | null
   updated_on: string | null
+  /* The market this entity is registered in and issues for. One issuer per
+     market, enforced by a unique index. */
+  market?: string | null
+}
+
+/**
+ * The entity that issues a document to a customer in a given market.
+ *
+ * There was one issuer row, `id = 'default'`, and every bill in every market
+ * came from it — so the Kenyan customer's VAT bill was issued by an Indian
+ * private limited company, quoted an Indian GSTIN against 16% Kenyan VAT, and
+ * told her to pay into a rupee account in Bengaluru. The support number is what
+ * somebody notices; the tax identifier is what makes the document unfileable,
+ * and the bank details are what costs money if followed.
+ *
+ * There is no fallback to another country's entity. A market with no registered
+ * issuer returns null and the caller shows no issuer at all, because a bill
+ * from the wrong jurisdiction is worse than a bill with a gap in it — the first
+ * looks correct.
+ */
+export function issuerFor(
+  market: string | null | undefined, issuers: readonly Issuer[],
+): Issuer | null {
+  if (!market) return null
+  return issuers.find(i => i.market === market) ?? null
+}
+
+/** Issuers in market order, for the operator's picker. */
+export function issuersByMarket(
+  issuers: readonly Issuer[], order: readonly { code: string; sort_order: number }[],
+): Issuer[] {
+  const rank = (code: string | null | undefined) =>
+    order.find(m => m.code === code)?.sort_order ?? 999
+  return [...issuers].sort((a, b) => rank(a.market) - rank(b.market))
 }
 
 /* ------------------------------------------------------------ what is on -- */

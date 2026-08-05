@@ -252,7 +252,6 @@ export interface ConsumerProfile {
   msisdn: string
   city: string
   since: string
-  tier: string
   wallet: number
   /* What this customer's money is in — their bills', their wallet's, their
      orders'. Every figure on the account screens is formatted with it rather
@@ -260,7 +259,6 @@ export interface ConsumerProfile {
      in rupees who switches the storefront to Kenya has not thereby been
      refunded in shillings. */
   currency: string
-  points: number
   payment_method: string
   email: string
   mfa_enabled: boolean

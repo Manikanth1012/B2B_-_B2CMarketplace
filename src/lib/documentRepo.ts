@@ -10,7 +10,7 @@
  * counterparty is entitled to know the shape of the document they are sent.
  */
 import { supabase } from './supabase'
-import { sectionsOn, templateFor } from './billTemplate'
+import { sectionsOn, templateFor, issuerFor } from './billTemplate'
 import type { Section, Template, Issuer, Audience } from './billTemplate'
 
 export interface DocumentSetup {
@@ -27,16 +27,21 @@ export interface DocumentSetup {
  * @param partyId a counterparty with an exception of their own — one seller in
  *   a jurisdiction that prescribes a format must not change the document every
  *   other seller gets
+ * @param market where the counterparty is. A document is issued by an entity
+ *   registered where the party receiving it is, and this was `id = 'default'`
+ *   — so a Kenyan seller's settlement statement came from an Indian company
+ *   quoting a GSTIN and a Bengaluru bank account. Null shows no issuer rather
+ *   than the wrong one: a gap is visible and a foreign entity is not.
  */
 export async function loadDocumentSetup(
-  audience: Audience, partyId?: string | null,
+  audience: Audience, partyId?: string | null, market?: string | null,
 ): Promise<DocumentSetup> {
   const [secRes, tplRes, tsRes, asgRes, issRes] = await Promise.all([
     supabase.from('invoice_sections').select('*').order('sort_order'),
     supabase.from('invoice_templates').select('*').order('sort_order'),
     supabase.from('invoice_template_sections').select('*'),
     supabase.from('invoice_template_assignments').select('*'),
-    supabase.from('invoice_issuer').select('*').eq('id', 'default').maybeSingle(),
+    supabase.from('invoice_issuer').select('*'),
   ])
 
   const sections = (secRes.data ?? []) as Section[]
@@ -48,7 +53,7 @@ export async function loadDocumentSetup(
   const failed = [secRes.error, tplRes.error, asgRes.error].find(Boolean)
 
   return {
-    issuer: (issRes.data as Issuer | null) ?? null,
+    issuer: issuerFor(market, (issRes.data ?? []) as Issuer[]),
     template,
     ids: template ? sectionsOn(template, sections, chosen).map(s => s.id) : [],
     sections,

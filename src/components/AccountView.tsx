@@ -238,6 +238,11 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
      section read as decoration — adding a card changed nothing on the screen
      behind it. */
   const [cards, setCards] = useState<ConsumerPaymentMethod[]>([])
+  /* Tier and balance come from `loyalty_members`, where `rebalance_member`
+     computes them. `consumer_profile` used to carry a copy of both, maintained
+     by nothing — Priya's was reconciled by hand once and the second customer
+     arrived with 0 against a ledger of 760. */
+  const [rewards, setRewards] = useState<{ tier: string; balance: number } | null>(null)
   const prefs = effectivePreferences(profile)
   const [language, setLanguage] = useState(prefs.language)
   const [timeZone, setTimeZone] = useState(prefs.timeZone)
@@ -246,6 +251,13 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
   const loadCards = useCallback(async () => {
     const { data } = await supabase.from('consumer_payment_methods').select('*')
     if (data) setCards(data as ConsumerPaymentMethod[])
+  }, [])
+
+  useEffect(() => {
+    void supabase.from('loyalty_members').select('tier,balance').eq('kind', 'consumer').maybeSingle()
+      .then(({ data }) => {
+        if (data) setRewards({ tier: String(data.tier), balance: Number(data.balance) })
+      })
   }, [])
 
   useEffect(() => { loadCards() }, [loadCards])
@@ -368,9 +380,10 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <SummaryRow label="Customer ID" value={profile.customer_id} />
             <SummaryRow label="Member since" value={profile.since} />
-            <SummaryRow label="Tier" value={profile.tier} />
+            <SummaryRow label="Tier"
+              value={rewards ? rewards.tier.charAt(0).toUpperCase() + rewards.tier.slice(1) : '—'} />
             <SummaryRow label="Wallet balance" value={fmtIn(profile.wallet, profile.currency)} />
-            <SummaryRow label="Reward points" value={fmtPts(profile.points)} />
+            <SummaryRow label="Reward points" value={rewards ? fmtPts(rewards.balance) : '—'} />
             <SummaryRow label="Payment method" value={profile.payment_method} />
           </div>
         </Card>

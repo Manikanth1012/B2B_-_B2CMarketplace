@@ -26,7 +26,13 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut, currentV
      markup. The points were 3,180 and the ledger was reconciled to 2,500 in
      `20260801820000_one_points_balance_per_customer.sql`, so the header said
      one number and the rewards page said another — the kind of contradiction
-     nobody reports because each screen looks right on its own. */
+     nobody reports because each screen looks right on its own.
+
+     That reconciliation moved the copy in `consumer_profile` rather than
+     removing it, so the second customer arrived with 0 in the profile and 760
+     in the ledger and the menu said "Silver member · 0 pts". The copy is gone;
+     the tier and the balance come from `loyalty_members`, which is where
+     `rebalance_member` computes them. */
   const [me, setMe] = useState<{ name: string; tier: string; points: number } | null>(null)
 
   /* The nav is a retail customer's nav, so it lists the shelves a retail
@@ -39,8 +45,24 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut, currentV
        on this table is already `user_id = auth.uid()` — so the filter was both
        redundant for her and wrong for everybody else. A registered shopper got
        no row at all and the avatar read "MA", for "My account". */
-    supabase.from('consumer_profile').select('name,tier,points').maybeSingle()
-      .then(({ data }) => { if (data) setMe({ ...data, points: Number(data.points) } as typeof me) })
+    void Promise.all([
+      supabase.from('consumer_profile').select('name').maybeSingle(),
+      /* RLS narrows this to their own membership, the same way it narrows the
+         profile — no id filter, because the demo customer's id is not
+         everybody's. */
+      supabase.from('loyalty_members').select('tier,balance').eq('kind', 'consumer').maybeSingle(),
+    ]).then(([prof, mem]) => {
+      if (!prof.data) return
+      const rewards = mem.data as { tier: string; balance: number } | null
+      setMe({
+        name: (prof.data as { name: string }).name,
+        /* `loyalty_members.tier` is the rung's id — 'silver' — where the
+           profile held the display name. Capitalised here rather than stored
+           twice. */
+        tier: rewards ? rewards.tier.charAt(0).toUpperCase() + rewards.tier.slice(1) : '',
+        points: Number(rewards?.balance ?? 0),
+      })
+    })
     const onScroll = () => setScrolled(window.scrollY > 10)
     window.addEventListener('scroll', onScroll)
     return () => window.removeEventListener('scroll', onScroll)

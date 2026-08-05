@@ -94,7 +94,17 @@ export function factsFor(bill: ConsumerBill, book: BillBook): BillFacts {
   const rows = m ? book.ledger.filter(l => l.member === m.id && sameMonth(l.when_date, bill.period)) : []
   const sum = (f: (l: Record<string, string>) => boolean) =>
     rows.filter(f).reduce((n, l) => n + Number(l.points), 0)
-  const rewards = m ? {
+  /* Points belong to the account, not to a document, and a customer buying in
+     two currencies gets two bills for one month. Printing the month's points on
+     both of them reports 42 twice and reads as 84.
+
+     So the reward block goes on the bill in the currency the points are
+     denominated in — which is the member's own, the one currency a balance can
+     be stated in. A dollar bill to a shilling member is a document about
+     dollars and says nothing about points. Nothing changes for a customer with
+     one bill a month, which until now was everybody. */
+  const showRewards = !!m && (!m.currency || m.currency === currency)
+  const rewards = m && showRewards ? {
     earned: sum(l => l.type === 'earn' || l.type === 'bonus')
       + sum(l => l.type === 'reverse' && Number(l.points) < 0),
     redeemed: -(sum(l => l.type === 'redeem') + sum(l => l.type === 'reverse' && Number(l.points) > 0)),

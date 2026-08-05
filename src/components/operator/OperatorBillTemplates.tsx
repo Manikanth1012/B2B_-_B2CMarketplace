@@ -576,22 +576,46 @@ function Assignments({ book, onChanged }: { book: BillTemplateBook; onChanged: (
 /* ------------------------------------------------------- billing identity -- */
 
 function BillingIdentity({ book, onChanged }: { book: BillTemplateBook; onChanged: () => Promise<void> }) {
-  const issuer = book.issuer
+  /* One entity per market. There was one row for the whole marketplace, so a
+     Kenyan customer's VAT bill was issued by an Indian private limited company
+     quoting a GSTIN and a Bengaluru bank account. */
+  const [market, setMarket] = useState(() => book.issuer?.market ?? book.issuers[0]?.market ?? null)
+  const issuer = book.issuers.find(i => i.market === market) ?? null
   const [form, setForm] = useState(() => issuer ? { ...issuer } : null)
   const [saving, setSaving] = useState(false)
 
   useEffect(() => { setForm(issuer ? { ...issuer } : null) }, [issuer])
 
-  if (!form) return <EmptyState message="No issuing entity on file." />
+  if (!book.issuers.length) return <EmptyState message="No issuing entity on file." />
+
+  const picker = (
+    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+      {book.issuers.map(i => (
+        <button key={i.id} type="button" onClick={() => setMarket(i.market ?? null)}
+          className={i.market === market ? 'chip chip-on' : 'chip'}
+          style={{
+            padding: '8px 14px', borderRadius: 8, cursor: 'pointer', textAlign: 'left',
+            border: i.market === market ? '2px solid #0D47A1' : '1px solid #d5d9e0',
+            background: i.market === market ? '#eef3fb' : '#fff',
+          }}>
+          <div style={{ fontWeight: 600 }}>{i.market}</div>
+          <div style={{ fontSize: 12, color: '#5b6472' }}>{i.legal_name}</div>
+        </button>
+      ))}
+    </div>
+  )
+
+  if (!form) return <>{picker}<EmptyState message="No issuing entity on file for that market." /></>
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm(f => f ? { ...f, [k]: v } : f)
 
   return (
     <>
-      <Callout tone="warning" title="This prints on every document, on every template">
+      <Callout tone="warning" title="This prints on every document issued in this market">
         The parties block and the support block draw from here rather than from the template, so a
-        change lands on the next bill every counterparty receives. Documents already issued are
-        unaffected — a bill is a snapshot, not a live render.
+        change lands on the next bill every counterparty in this market receives. Documents already
+        issued are unaffected — a bill is a snapshot, not a live render.
       </Callout>
+      {picker}
 
       <SectionCard pad title="Who the bill is from">
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>

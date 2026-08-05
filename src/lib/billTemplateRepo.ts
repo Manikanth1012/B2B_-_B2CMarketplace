@@ -16,7 +16,7 @@ import { markFor } from './money'
 import {
   type Section, type Template, type TemplateSection, type Assignment, type Issuer,
   type Audience, type BillFacts,
-  canDelete, nextReference, validateTemplate, money,
+  canDelete, nextReference, validateTemplate, money, issuerFor, issuersByMarket,
 } from './billTemplate'
 
 export type Result = { ok: true; note?: string } | { ok: false; reason: string }
@@ -26,6 +26,10 @@ export interface BillTemplateBook {
   templates: Template[]
   chosen: TemplateSection[]
   assignments: Assignment[]
+  /* One issuing entity per market. The preview renders through the Indian one
+     because the specimen customer it samples is Indian; the operator picks
+     which to edit. */
+  issuers: Issuer[]
   issuer: Issuer | null
   /* One genuine document per audience, for the preview to render through
      whichever template is being edited. */
@@ -37,20 +41,29 @@ const EMPTY_SAMPLES: Record<Audience, BillFacts | null> =
   { consumer: null, enterprise: null, partner: null }
 
 export async function loadBillTemplates(): Promise<BillTemplateBook> {
-  const [secRes, tplRes, tsRes, asgRes, issRes] = await Promise.all([
+  const [secRes, tplRes, tsRes, asgRes, issRes, mktRes] = await Promise.all([
     supabase.from('invoice_sections').select('*').order('sort_order'),
     supabase.from('invoice_templates').select('*').order('sort_order'),
     supabase.from('invoice_template_sections').select('*'),
     supabase.from('invoice_template_assignments').select('*').order('id'),
-    supabase.from('invoice_issuer').select('*').eq('id', 'default').maybeSingle(),
+    supabase.from('invoice_issuer').select('*'),
+    supabase.from('markets').select('code, sort_order').order('sort_order'),
   ])
 
-  const issuer = (issRes.data as Issuer | null) ?? null
+  const issuers = issuersByMarket(
+    (issRes.data ?? []) as Issuer[],
+    (mktRes.data ?? []) as { code: string; sort_order: number }[],
+  )
+  /* The specimen customer the preview samples is the Indian demo row, so the
+     preview is rendered under the Indian entity. Anything else would print a
+     Kenyan company's KRA PIN above a rupee bill. */
+  const issuer = issuerFor('IN', issuers) ?? issuers[0] ?? null
   const book: BillTemplateBook = {
     sections: (secRes.data ?? []) as Section[],
     templates: (tplRes.data ?? []) as Template[],
     chosen: (tsRes.data ?? []) as TemplateSection[],
     assignments: (asgRes.data ?? []) as Assignment[],
+    issuers,
     issuer,
     samples: EMPTY_SAMPLES,
   }
@@ -546,28 +559,41 @@ export async function removeOverride(
   return { ok: true, note: `${assignment.party_id} goes back to the ${assignment.audience} default.` }
 }
 
-/** The identity every document is issued under. One row, so one write. */
+/**
+ * The identity documents in one market are issued under.
+ *
+ * Written by `id`, taken off the row being edited. It used to be hard-coded to
+ * `'default'` — which was the only row, and would now mean editing the Kenyan
+ * entity's support number and saving it onto the Indian company.
+ */
 export async function saveIssuer(
   { issuer, actor }: { issuer: Partial<Issuer>; actor: string },
 ): Promise<Result> {
+  if (!issuer.id) {
+    return { ok: false, reason: 'No issuing entity was selected, so there is nothing to save against.' }
+  }
   if (!issuer.legal_name?.trim()) {
     return { ok: false, reason: 'A registered legal name is required — it is who the document is from.' }
   }
   if (!(issuer.lines ?? []).filter(l => l.trim()).length) {
     return { ok: false, reason: 'A registered address is required. A bill without one is not a document a finance team can process.' }
   }
+  /* The market is what decides which customers see this entity, and moving it
+     would silently reassign every bill in two countries. Changed through the
+     markets screen, not through a text field on a billing identity. */
+  const { market: _pinned, ...editable } = issuer
   const { data, error } = await supabase.from('invoice_issuer').update({
-    ...issuer,
+    ...editable,
     lines: (issuer.lines ?? []).map(l => l.trim()).filter(Boolean),
     terms: (issuer.terms ?? []).map(l => l.trim()).filter(Boolean),
     updated_by: actor, updated_on: new Date().toISOString().slice(0, 10),
-  }).eq('id', 'default').select('id')
+  }).eq('id', issuer.id).select('id')
   if (error) return { ok: false, reason: friendly(error.message) }
   if (!data?.length) return { ok: false, reason: REFUSED }
 
   await writeAudit(actor, 'bill.issuer.edited', issuer.legal_name, null, 'edited',
-    'Billing identity changed — it prints on every document from now on')
-  return { ok: true, note: 'Saved. It prints on every document issued from now on.' }
+    `Billing identity for ${issuer.market ?? issuer.id} changed — it prints on every document issued there from now on`)
+  return { ok: true, note: 'Saved. It prints on every document issued in that market from now on.' }
 }
 
 /* --------------------------------------------------------------- helpers -- */

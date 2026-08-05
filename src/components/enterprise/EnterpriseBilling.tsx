@@ -50,7 +50,12 @@ export function EnterpriseBilling() {
   /* The template every business invoice is issued on, and the identity it
      is issued under. Loaded once for the screen. */
   const [doc, setDoc] = useState<DocumentSetup>({ issuer: null, template: null, ids: [], sections: [] })
-  useEffect(() => { void loadDocumentSetup('enterprise').then(setDoc) }, [])
+  /* Issued by the entity registered in this account's market, so it waits for
+     the account. Was the Indian company on every invoice in every market. */
+  const accountMarket = book?.account?.market ?? null
+  useEffect(() => {
+    void loadDocumentSetup('enterprise', null, accountMarket).then(setDoc)
+  }, [accountMarket])
 
   if (!book) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 

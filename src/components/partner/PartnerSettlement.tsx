@@ -43,8 +43,15 @@ export function PartnerSettlement({ partnerId }: { partnerId: string }) {
      jurisdiction whose regulator prescribes a format does not change the
      document every other seller gets. */
   const [doc, setDoc] = useState<DocumentSetup>({ issuer: null, template: null, ids: [], sections: [] })
-  useEffect(() => { void loadDocumentSetup('partner', partnerId).then(setDoc) }, [partnerId])
   const [record, setRecord] = useState<SellerRecord | null>(null)
+  /* The issuing entity is the one registered where this seller is, so it waits
+     for the seller's own record. Every statement used to be issued by the
+     Indian company — a Nairobi seller was told to expect payment from a
+     Bengaluru bank account under a GSTIN. */
+  const sellerMarket = record?.partner?.market ?? null
+  useEffect(() => {
+    void loadDocumentSetup('partner', partnerId, sellerMarket).then(setDoc)
+  }, [partnerId, sellerMarket])
 
   const reload = useCallback(async () => {
     const [s, r] = await Promise.all([loadSellerStatements(partnerId), loadSellerRecord(partnerId)])
