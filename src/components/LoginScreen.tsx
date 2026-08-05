@@ -1,8 +1,10 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { ShoppingBag, Settings, Store, Building2, ArrowRight, Mail, Lock, Eye, EyeOff, Loader as Loader2 } from 'lucide-react'
 import type { Persona, Session } from '../types/view'
 import { signIn, requestPasswordReset, SignInError } from '../lib/authRepo'
 import { looksLikeEmail, RESET_SENT_MESSAGE } from '../lib/password'
+import { useMarket } from '../lib/MarketContext'
+import { CONSUMER_SHOPPERS, shopperForMarket } from '../lib/demoShoppers'
 
 interface LoginScreenProps {
   onLogin: (session: Session) => void
@@ -67,36 +69,6 @@ const DEMO_CREDENTIALS: Record<Persona, { email: string; password: string }> = {
   enterprise: { email: 'vikram.shah@smartbuild.in', password: 'enterprise123' },
 }
 
-/**
- * The shoppers a demo can be given as.
- *
- * A persona is one console; a shopper is one country's version of it. The
- * marketplace trades in India, the UAE and Kenya, and the only account anybody
- * could sign in as was Indian — so the second and third markets were things the
- * screens claimed rather than things a demo could show.
- *
- * The first entry is what `DEMO_CREDENTIALS.consumer` already was, unchanged
- * and still the default, so every demo that exists today opens as it did.
- */
-interface DemoShopper {
-  email: string
-  password: string
-  who: string
-  where: string
-  money: string
-}
-
-const CONSUMER_SHOPPERS: DemoShopper[] = [
-  {
-    email: 'priya.raman@example.com', password: 'demo1234',
-    who: 'Priya Raman', where: 'Bengaluru, India', money: 'Billed in ₹ under GST',
-  },
-  {
-    email: 'wanjiru.kamau@example.com', password: 'demo1234',
-    who: 'Wanjiru Kamau', where: 'Nairobi, Kenya', money: 'Billed in KSh and $ under VAT',
-  },
-]
-
 const PERSONA_META: Record<Persona, { label: string; sub: string; user: string; icon: React.ReactNode; accentBg: string; accentFg: string; accentColor: string }> = {
   consumer: {
     label: 'Consumer',
@@ -153,15 +125,36 @@ export function LoginScreen(
      visitor is already looking at the one field it needs. */
   const [resetting, setResetting] = useState(false)
   const [resetNotice, setResetNotice] = useState('')
-  /* Which demo shopper the consumer card is filled with. Zero is the Indian one
-     it has always been, so nothing anybody already demonstrates changes. */
-  const [shopper, setShopper] = useState(0)
+  /* Which demo shopper the consumer card is filled with, or null while it is
+     still following the market picker. Null rather than a number so that
+     changing the market in the header keeps moving it, and clicking one of the
+     two chips pins it. */
+  const [shopper, setShopper] = useState<number | null>(null)
+
+  /* The market the visitor chose in the header. A demo that offers a market
+     picker and then signs everybody in as the same Indian shopper has not
+     offered a choice, it has offered a decoration. */
+  const { market } = useMarket()
+  const suggested = shopperForMarket(market?.code)
+  const activeShopper = shopper ?? suggested
+
+  /* Keep the boxes in step with whichever shopper is active — the market
+     resolving after mount, or one of the chips being clicked. Only in demo
+     mode, and only on the consumer card: filling a stranger's password into a
+     live sign-in box is the thing this separation exists to stop. */
+  useEffect(() => {
+    if (!demo || selected !== 'consumer') return
+    setEmail(CONSUMER_SHOPPERS[activeShopper].email)
+    setPassword(CONSUMER_SHOPPERS[activeShopper].password)
+  }, [demo, selected, activeShopper])
 
   const pickPersona = (p: Persona) => {
     setSelected(p)
-    setShopper(0)
-    setEmail(DEMO_CREDENTIALS[p].email)
-    setPassword(DEMO_CREDENTIALS[p].password)
+    /* Back to following the picker rather than to Priya, so coming back from
+       another card in a Kenyan demo does not quietly reset the country. */
+    setShopper(null)
+    setEmail(p === 'consumer' ? CONSUMER_SHOPPERS[suggested].email : DEMO_CREDENTIALS[p].email)
+    setPassword(p === 'consumer' ? CONSUMER_SHOPPERS[suggested].password : DEMO_CREDENTIALS[p].password)
     setError('')
   }
 
@@ -317,7 +310,7 @@ export function LoginScreen(
                         does not pretend to. */}
                     {!demo ? REAL_SUB[audience]
                       : audience === 'consumer'
-                        ? `${CONSUMER_SHOPPERS[shopper].who} · ${CONSUMER_SHOPPERS[shopper].where}`
+                        ? `${CONSUMER_SHOPPERS[activeShopper].who} · ${CONSUMER_SHOPPERS[activeShopper].where}`
                         : PERSONA_META[audience].user}
                   </p>
                 </div>
@@ -337,8 +330,8 @@ export function LoginScreen(
                       style={{
                         flex: 1, textAlign: 'left', cursor: 'pointer',
                         padding: '9px 11px', borderRadius: 'var(--radius)',
-                        border: `1px solid ${i === shopper ? 'var(--brand-accent)' : 'var(--border)'}`,
-                        background: i === shopper ? 'rgba(0,166,166,0.06)' : 'white',
+                        border: `1px solid ${i === activeShopper ? 'var(--brand-accent)' : 'var(--border)'}`,
+                        background: i === activeShopper ? 'rgba(0,166,166,0.06)' : 'white',
                       }}
                     >
                       <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text)' }}>{c.where}</div>
