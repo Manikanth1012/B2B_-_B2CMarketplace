@@ -314,7 +314,25 @@ function AppInner() {
     return (
       <LoginScreen
         prefill={surface.prefill}
+        demo={surface.demo}
         onLogin={handleLogin}
+        /* Back to the page they were on. The audience pages are where every real
+           sign-in starts, so that is where cancelling returns to. */
+        onBack={() => setSurface({
+          kind: 'public',
+          page: surface.prefill === 'partner' ? 'partner'
+            : surface.prefill === 'enterprise' ? 'enterprise'
+            : surface.prefill === 'consumer' ? 'retail'
+            : 'landing',
+        })}
+        /* Whatever "get an account" means for the audience they arrived as. */
+        onNewAccount={() => {
+          if (surface.prefill === 'partner') setSurface({ kind: 'apply' })
+          else if (surface.prefill === 'enterprise') setSurface({ kind: 'apply', kindOf: 'business' })
+          else if (surface.prefill === 'operator') setSurface({ kind: 'public', page: 'landing' })
+          else setSurface({ kind: 'register' })
+          window.scrollTo({ top: 0 })
+        }}
         /* The notice exists because the visitor arrives here as the consequence
            of a click somewhere else, and a sign-in screen that does not say why
            it appeared reads as having lost their place. */
@@ -367,7 +385,7 @@ function AppInner() {
       <PublicShell
         page={surface.page}
         onNavigate={(page) => { setSurface({ kind: 'public', page }); window.scrollTo({ top: 0 }) }}
-        onDemoSignIn={() => setSurface({ kind: 'login' })}
+        onDemoSignIn={() => setSurface({ kind: 'login', demo: true })}
       >
         {surface.page === 'landing' && <LandingPage onNavigate={(page) => { setSurface({ kind: 'public', page }); window.scrollTo({ top: 0 }) }} />}
         {surface.page !== 'landing' && (

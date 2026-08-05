@@ -8,13 +8,29 @@ import type { Session } from '../types/view'
 export { SignInError }
 
 /** Exchange credentials for a real JWT. The persona comes back from the server. */
-export async function signIn(email: string, password: string): Promise<Session> {
+/**
+ * Signing in.
+ *
+ * `demo` changes only what a refusal says. The message used to end "Use the
+ * pre-filled demo credentials" for everybody, which on the real sign-in screen
+ * is advice a registered seller cannot act on — there are no prefilled
+ * credentials there, and the sentence reads as though the marketplace has
+ * mistaken them for a tourist.
+ *
+ * Neither version says which half was wrong. "No account with that address"
+ * tells a stranger who is registered here.
+ */
+export async function signIn(email: string, password: string, demo = false): Promise<Session> {
   const { data, error } = await supabase.auth.signInWithPassword({
     email: email.trim(),
     password,
   })
 
-  if (error) throw new SignInError('Incorrect email or password. Use the pre-filled demo credentials.')
+  if (error) {
+    throw new SignInError(demo
+      ? 'Incorrect email or password. Use the pre-filled demo credentials.'
+      : 'Incorrect email or password.')
+  }
 
   const session = sessionFromAppMetadata(data.user?.app_metadata)
   if (!session) {

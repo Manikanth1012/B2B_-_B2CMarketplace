@@ -89,9 +89,18 @@ export type PublicPage = 'landing' | 'partner' | 'retail' | 'enterprise'
    existing state machine gains a third surface. */
 export type Surface =
   | { kind: 'public'; page: PublicPage }
-  /* `prefill` preselects a persona card. It chooses which credentials are
-     filled in, never which console opens — that comes back from the server. */
-  | { kind: 'login'; prefill?: Persona }
+  /* Signing in.
+
+     `demo` opens the four-persona chooser with its passwords already typed in —
+     the tour. Without it this is the real sign-in a registered seller, shopper
+     or business uses: one address, one password, nothing prefilled.
+
+     `prefill` names the audience the visitor came from. In demo mode it picks
+     the card and its credentials; in real mode it only decides what the heading
+     calls them. Neither decides which console opens — that comes back from the
+     server with the JWT, so signing in from the wrong page lands somebody in
+     their own console rather than in somebody else's. */
+  | { kind: 'login'; prefill?: Persona; demo?: boolean }
   /* Applying to sell. Its own surface rather than a public page, because the
      applicant is part-way through a form that is being saved as they go — the
      header's marketplace nav would take them out of it with one click, and

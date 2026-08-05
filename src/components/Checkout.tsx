@@ -67,7 +67,7 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
    * order for $7.66: the wrong number, in the wrong currency, and recorded that
    * way. Both halves come from the market now, and the split is worked back out
    * of the total rather than added to it. */
-  const { market, currency, fmt } = useMarket()
+  const { book, market, currency, fmt } = useMarket()
   const shopCurrency = currency?.code ?? market?.currency ?? 'USD'
   const taxRate = Number(market?.tax_rate ?? 0)
   const taxLabel = market?.tax_label ?? 'Tax'
@@ -318,12 +318,18 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                       onChange={(e) => setCountry(e.target.value)}
                       style={inputStyle}
                     >
-                      <option>India</option>
-                      <option>UAE</option>
-                      <option>Kenya</option>
-                      <option>Singapore</option>
-                      <option>Germany</option>
-                      <option>UK</option>
+                      {/* The markets the marketplace actually trades in, from
+                          `markets` — not a hard-coded six. Singapore, Germany
+                          and the UK were on this list and are not markets: an
+                          order addressed to any of them had a delivery country
+                          nothing ships to, no tax rate, and no entity to bill
+                          from. */}
+                      {/* Until the book loads there is nothing to offer; keep
+                          the current value as the only option so the field is
+                          never momentarily blank with a value set. */}
+                      {book.markets.length === 0
+                        ? <option>{country}</option>
+                        : book.markets.map(m => <option key={m.code}>{m.name}</option>)}
                     </select>
                   </div>
                 </div>

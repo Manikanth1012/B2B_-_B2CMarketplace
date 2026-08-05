@@ -632,15 +632,42 @@ export function PartnerNewListing({ partnerId }: { partnerId: string }) {
 
     // Step 4: Compliance
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* What was chosen on "Where it is sold", read back — not asked again.
+          This was a second row of five hard-coded countries with
+          `defaultChecked` and no `onChange`: it recorded nothing, it disagreed
+          with the step that does, and two of the five — Singapore and Germany —
+          are markets the marketplace does not trade in at all. A seller could
+          tick Germany here and declare radio type approval for it.
+
+          The declarations below say "every selected market", so what is
+          selected has to be the real answer or the declaration is about
+          nothing. */}
       <div>
-        <label style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)', marginBottom: '8px', display: 'block' }}>Markets</label>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          {['India', 'UAE', 'Kenya', 'Singapore', 'Germany'].map(m => (
-            <label key={m} style={{ display: 'flex', gap: '6px', alignItems: 'center', border: '1px solid var(--border)', borderRadius: '20px', padding: '5px 11px', cursor: 'pointer' }}>
-              <input type="checkbox" defaultChecked={m === 'India' || m === 'UAE'} />
-              <span style={{ fontSize: 'var(--text-sm)' }}>{m}</span>
-            </label>
-          ))}
+        <label style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)', marginBottom: '8px', display: 'block' }}>
+          Markets you are declaring for
+        </label>
+        {markets.length === 0 ? (
+          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--warning)' }}>
+            None chosen yet. Go back to “Where it is sold” — these declarations are made per market.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {markets.map(code => {
+              const m = ctx?.markets.find(x => x.code === code)
+              return (
+                <span key={code} style={{
+                  display: 'flex', gap: '6px', alignItems: 'center',
+                  border: '1px solid var(--border)', borderRadius: '20px', padding: '5px 11px',
+                  background: 'var(--bg-alt)', fontSize: 'var(--text-sm)',
+                }}>
+                  {m?.name ?? code}
+                </span>
+              )
+            })}
+          </div>
+        )}
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '6px' }}>
+          Set on “Where it is sold”, and limited to the markets you are approved to trade in.
         </div>
       </div>
       <div>

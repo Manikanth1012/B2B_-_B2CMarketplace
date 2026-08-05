@@ -6,13 +6,58 @@ import { looksLikeEmail, RESET_SENT_MESSAGE } from '../lib/password'
 
 interface LoginScreenProps {
   onLogin: (session: Session) => void
-  /* Preselects a card, so arriving from an audience page lands on the right
-     one. It only chooses the prefilled credentials. */
+  /* The audience the visitor came from. In demo mode it preselects the card and
+     fills its credentials in; in real mode it only decides what the heading
+     calls them. Neither decides which console opens. */
   prefill?: Persona
   /* Why the visitor is here, when they did not come looking for the login screen
      — adding to the basket sends them through it. Without this the redirect looks
      like the site lost their click. */
   notice?: string
+  /* The tour: four persona cards with their passwords typed in. Reached only
+     from "Demo sign-in" in the header.
+
+     Everywhere else — the seller console link on Partners, the Retail and
+     Enterprise sign-in buttons, the redirect after adding to the basket — is
+     the real thing, where somebody types their own address and their own
+     password. Those two used to be one screen, so a seller who had just been
+     onboarded was shown four demo accounts with somebody else's password
+     already in the box, and no way to sign in as themselves. */
+  demo?: boolean
+  /* Back to where they came from. A sign-in screen with no way out is a dead
+     end for the visitor who only wanted to look at the catalogue. */
+  onBack?: () => void
+  /* How somebody without an account gets one. A password box is the wrong place
+     to discover you cannot use it, and the right next step differs by audience:
+     a seller applies, a business asks for an account, a shopper registers. */
+  onNewAccount?: () => void
+}
+
+/* What the real sign-in calls each audience. Not "Consumer Sign-In" — nobody
+   arriving from the Retail page thinks of themselves as a consumer, and the
+   word is an internal one. */
+const REAL_HEADING: Record<Persona, string> = {
+  consumer: 'Sign in',
+  operator: 'Marketplace sign-in',
+  partner: 'Seller sign-in',
+  enterprise: 'Business sign-in',
+}
+
+const REAL_SUB: Record<Persona, string> = {
+  consumer: 'To your account, orders and rewards',
+  operator: 'To the marketplace console',
+  partner: 'To your seller console',
+  enterprise: 'To your company account',
+}
+
+/* The way in for somebody who has no account. The operator has none on purpose
+   — marketplace staff are issued accounts, and offering a sign-up link would
+   say otherwise. */
+const NEW_ACCOUNT: Record<Persona, { lead: string; cta: string }> = {
+  consumer: { lead: 'New here?', cta: 'Create an account' },
+  operator: { lead: 'Marketplace accounts are issued by your administrator.', cta: 'Back to the marketplace' },
+  partner: { lead: 'Not selling with us yet?', cta: 'Apply to sell' },
+  enterprise: { lead: 'No account for your company yet?', cta: 'Ask for one' },
 }
 
 const DEMO_CREDENTIALS: Record<Persona, { email: string; password: string }> = {
@@ -61,10 +106,16 @@ const PERSONA_META: Record<Persona, { label: string; sub: string; user: string; 
   },
 }
 
-export function LoginScreen({ onLogin, prefill, notice }: LoginScreenProps) {
-  const [selected, setSelected] = useState<Persona | null>(prefill ?? null)
-  const [email, setEmail] = useState(prefill ? DEMO_CREDENTIALS[prefill].email : '')
-  const [password, setPassword] = useState(prefill ? DEMO_CREDENTIALS[prefill].password : '')
+export function LoginScreen(
+  { onLogin, prefill, notice, demo = false, onBack, onNewAccount }: LoginScreenProps,
+) {
+  /* In real mode there is nothing to select — the form is the screen. `selected`
+     still carries the audience, so the heading and its icon are the right ones. */
+  const [selected, setSelected] = useState<Persona | null>(demo ? prefill ?? null : prefill ?? 'consumer')
+  /* Empty in real mode. Filling a stranger's password into a live sign-in box is
+     the whole thing this separation exists to stop. */
+  const [email, setEmail] = useState(demo && prefill ? DEMO_CREDENTIALS[prefill].email : '')
+  const [password, setPassword] = useState(demo && prefill ? DEMO_CREDENTIALS[prefill].password : '')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
@@ -89,7 +140,7 @@ export function LoginScreen({ onLogin, prefill, notice }: LoginScreenProps) {
     setError('')
     setLoading(true)
     try {
-      onLogin(await signIn(email, password))
+      onLogin(await signIn(email, password, demo))
     } catch (err) {
       setError(err instanceof SignInError ? err.message : 'Could not reach the sign-in service. Try again.')
       setLoading(false)
@@ -97,6 +148,11 @@ export function LoginScreen({ onLogin, prefill, notice }: LoginScreenProps) {
   }
 
   const personaCards: Persona[] = ['consumer', 'operator', 'partner', 'enterprise']
+
+  /* Whose wording the form wears. In demo mode a card has been picked by now; in
+     real mode it is whichever page they came from, and the shopper's is the
+     sensible default for somebody who arrived directly. */
+  const audience: Persona = selected ?? 'consumer'
 
   return (
     <div style={{
@@ -131,7 +187,7 @@ export function LoginScreen({ onLogin, prefill, notice }: LoginScreenProps) {
             {notice}
           </div>
         )}
-        {!selected ? (
+        {demo && !selected ? (
           <>
             <div style={{ textAlign: 'center', marginBottom: 'var(--space-8)' }}>
               <h1 style={{ color: 'white', fontSize: 'var(--text-3xl)', fontWeight: 800, marginBottom: 'var(--space-2)' }}>
@@ -195,28 +251,37 @@ export function LoginScreen({ onLogin, prefill, notice }: LoginScreenProps) {
               padding: 'var(--space-8)',
               boxShadow: 'var(--shadow-xl)',
             }}>
-              <button
-                onClick={() => setSelected(null)}
-                style={{ color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: '4px' }}
-              >
-                ← Back to persona selection
-              </button>
+              {/* In demo mode this goes back to the four cards. In real mode
+                  there are no cards to go back to, so it leaves the sign-in
+                  screen entirely — otherwise a visitor who only wanted to look
+                  at the catalogue is stranded on a password box. */}
+              {(demo || onBack) && (
+                <button
+                  onClick={() => (demo ? setSelected(null) : onBack?.())}
+                  style={{ color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)', marginBottom: 'var(--space-4)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                >
+                  {demo ? '← Back to persona selection' : '← Back to the marketplace'}
+                </button>
+              )}
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', marginBottom: 'var(--space-6)' }}>
                 <div style={{
                   width: 40, height: 40, borderRadius: 'var(--radius)',
-                  background: PERSONA_META[selected].accentBg,
-                  color: PERSONA_META[selected].accentColor,
+                  background: PERSONA_META[audience].accentBg,
+                  color: PERSONA_META[audience].accentColor,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  {PERSONA_META[selected].icon}
+                  {PERSONA_META[audience].icon}
                 </div>
                 <div>
                   <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 800, color: 'var(--text)' }}>
-                    {PERSONA_META[selected].label} Sign-In
+                    {demo ? `${PERSONA_META[audience].label} Sign-In` : REAL_HEADING[audience]}
                   </h2>
                   <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
-                    {PERSONA_META[selected].user}
+                    {/* The demo screen names the person whose password is in the
+                        box. The real one has no idea who is about to sign in and
+                        does not pretend to. */}
+                    {demo ? PERSONA_META[audience].user : REAL_SUB[audience]}
                   </p>
                 </div>
               </div>
@@ -341,10 +406,34 @@ export function LoginScreen({ onLogin, prefill, notice }: LoginScreenProps) {
               <div style={{
                 marginTop: 'var(--space-5)', padding: 'var(--space-3) var(--space-4)',
                 borderRadius: 'var(--radius)', background: 'var(--bg-alt)',
-                fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', textAlign: 'center',
+                fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)',
+                textAlign: 'center', lineHeight: 1.6,
               }}>
-                Demo credentials are pre-filled — just click Sign In
+                {demo
+                  ? 'Demo credentials are pre-filled — just click Sign In'
+                  : /* Which console opens is the account's business, not this
+                       page's. Somebody who both sells and buys holds two
+                       accounts and signs in to whichever they meant. */
+                    'Sign in with the address and password on your account. Whichever console it belongs to is the one that opens.'}
               </div>
+
+              {!demo && onNewAccount && (
+                <div style={{
+                  marginTop: 'var(--space-3)', fontSize: 'var(--text-sm)',
+                  color: 'var(--text-tertiary)', textAlign: 'center',
+                }}>
+                  {NEW_ACCOUNT[audience].lead}{' '}
+                  <button
+                    type="button"
+                    onClick={onNewAccount}
+                    style={{
+                      background: 'none', border: 'none', padding: 0, cursor: 'pointer',
+                      font: 'inherit', color: 'var(--brand-accent-dark)', fontWeight: 700,
+                      textDecoration: 'underline',
+                    }}
+                  >{NEW_ACCOUNT[audience].cta}</button>
+                </div>
+              )}
             </div>
           </>
         )}
