@@ -165,38 +165,14 @@ async function fresh(walletId: string): Promise<
   }
 }
 
-/**
- * Money in, from the customer's own instrument.
- *
- * Lands in the cash pot, which is what makes it returnable later. A top-up is
- * the customer handing the marketplace their money to hold.
- */
-export async function topUp(
-  { walletId, amount, instrument }: { walletId: string; amount: number; instrument: string },
-): Promise<Result> {
-  const now = await fresh(walletId)
-  if (!now) return { ok: false, reason: 'Could not read the wallet. Try again.' }
-
-  const verdict = canTopUp(now.wallet, amount, now.limit, now.fmt)
-  if (!verdict.ok) return verdict
-  if (!instrument.trim()) return { ok: false, reason: 'Choose what to pay with.' }
-
-  const { error: ledErr } = await supabase.from('wallet_ledger').insert({
-    id: txId(), wallet_id: walletId, when_date: today(), source: 'topup',
-    what: `Top-up from ${instrument}`, amount, pot: 'cash',
-    sort_order: 999,
-  })
-  if (ledErr) return { ok: false, reason: `The top-up was not recorded: ${ledErr.message}` }
-
-  const { error } = await supabase.from('wallets')
-    .update({ cash: +(Number(now.wallet.cash) + amount).toFixed(2), last_move: today() })
-    .eq('id', walletId)
-  if (error) {
-    return { ok: false, reason: `The movement was recorded but the balance did not update: ${error.message}. Tell support before trying again.` }
-  }
-
-  return { ok: true, note: `${now.fmt(amount)} added. It is your money and you can ask for it back at any time.` }
-}
+/* Money in used to be written here, from a browser, in two writes: a ledger row
+   and then the balance. It has moved to `settle_payment_attempt` in the
+   database, called by `gatewayRepo`, because a top-up now begins with a trip to
+   a provider who may say no — and because two writes from a browser cannot
+   promise that the second one happens. What used to live here had to apologise
+   in prose when it did not ("the movement was recorded but the balance did not
+   update... tell support before trying again"), and that apology was an honest
+   description of a bug rather than a message worth writing. */
 
 /**
  * Points converted to spendable credit.

@@ -1979,5 +1979,8 @@ function WalletTab() {
       .then(({ data }) => { if (data) setCards(data as ConsumerPaymentMethod[]) })
   }, [])
 
-  return <WalletCard paymentMethods={cards.map(c => ({ detail: c.detail, is_primary: c.is_primary }))} />
+  /* Passed whole rather than trimmed to a label: the top-up needs the kind and
+     the expiry too, so it can offer a saved card for a card payment and leave
+     out one that has expired. */
+  return <WalletCard paymentMethods={cards} />
 }
