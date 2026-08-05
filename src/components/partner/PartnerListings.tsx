@@ -1,8 +1,18 @@
 import { Package, Plus, Download, Search, Upload, TriangleAlert } from 'lucide-react'
 import { Pager, usePaging } from '../Pager'
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { SectionCard, Table, Td, fmtMoney, Btn, EmptyState, toast, FormField, TextArea } from '../operator/shared'
+import { SectionCard, Table, Td, fmtMoney, Btn, EmptyState, toast, FormField, TextArea, TextInput } from '../operator/shared'
 import { parseFeed, feedTemplate, feedSummary, toSubmission } from '../../lib/bulkListings'
+import {
+  STATE_MEANING, stateOf, sellerMayMoveTo, validatePause, validateRetire,
+  validateGoLiveFor, untilLive, changesIn, validateProposal, canPropose, pendingVersion,
+  VERSIONED_FIELDS,
+} from '../../lib/listingLifecycle'
+import type { Listing, ProductVersion } from '../../lib/listingLifecycle'
+import {
+  publishDue, loadVersions, pauseListing, resumeListing, retireListing, setGoLive,
+  proposeChange, withdrawProposal,
+} from '../../lib/listingLifecycleRepo'
 import type { Feed } from '../../lib/bulkListings'
 import { loadListingContext } from '../../lib/listingDraftRepo'
 import type { ListingContext } from '../../lib/listingDraftRepo'
@@ -47,6 +57,16 @@ export function PartnerListings({ partnerId, onNewListing }: {
   /* "Bulk upload — CSV or catalogue feed" was a toast. A seller with forty SKUs
      had the same wizard forty times, and the button that acknowledged that did
      nothing about it. */
+  /* The row used to show a state and offer no way to change it. */
+  const [managing, setManaging] = useState<ListingRow | null>(null)
+  const [versions, setVersions] = useState<ProductVersion[]>([])
+  const [pauseWhy, setPauseWhy] = useState('')
+  const [retireWhy, setRetireWhy] = useState('')
+  const [confirmName, setConfirmName] = useState('')
+  const [goLive, setGoLiveDate] = useState('')
+  const [edit, setEdit] = useState<Record<string, string> | null>(null)
+  const [editNote, setEditNote] = useState('')
+  const [acting, setActing] = useState(false)
   const [bulk, setBulk] = useState(false)
   const [pasted, setPasted] = useState('')
   const [context, setContext] = useState<ListingContext | null>(null)
@@ -55,6 +75,10 @@ export function PartnerListings({ partnerId, onNewListing }: {
   const [pricing, setPricing] = useState<{ id: string; name: string; partner_id: string | null; price: number; currency?: string } | null>(null)
 
   const reload = useCallback(async () => {
+    /* Anything whose go-live date has arrived becomes live before the list is
+       read, so the screen never shows "scheduled" for yesterday. There is no
+       timer; this is what stands in for one. */
+    await publishDue()
     const [r, s] = await Promise.all([loadSellerRecord(partnerId), loadSellerSubmissions(partnerId)])
     setRec(r); setSubs(s.submissions); setQueries(s.queries); setLoading(false)
   }, [partnerId])
@@ -67,6 +91,16 @@ export function PartnerListings({ partnerId, onNewListing }: {
     if (!bulk || context) return
     void loadListingContext(partnerId).then(setContext)
   }, [bulk, context, partnerId])
+
+  /* The listing being managed, and the changes it already has in flight. Above
+     the loading guard with the rest of the hooks: below it this one would run
+     on some renders and not others, which is the hook-order rule. */
+  useEffect(() => {
+    if (!managing) { setVersions([]); return }
+    setGoLiveDate(managing.go_live_on ?? '')
+    setPauseWhy(''); setRetireWhy(''); setConfirmName(''); setEdit(null); setEditNote('')
+    void loadVersions(managing.id).then(setVersions)
+  }, [managing])
 
   /* Derived above the loading guard, because `usePaging` is a hook: below an
      early return it runs on some renders and not others. */
@@ -84,6 +118,14 @@ export function PartnerListings({ partnerId, onNewListing }: {
   const catName = (id: string) => rec.categories.find(c => c.id === id)?.name ?? id
   const breakdown = listingBreakdown(rec.listings)
   const states = ['all', ...new Set(rec.listings.map(l => l.status))]
+
+  const act = async (fn: () => Promise<{ ok: boolean; reason?: string; note?: string }>) => {
+    setActing(true)
+    const r = await fn()
+    setActing(false)
+    toast(r.ok ? r.note ?? 'Saved' : r.reason ?? 'That did not work', r.ok ? 'success' : 'error')
+    if (r.ok) { await reload(); setManaging(null) }
+  }
 
   /* Parsed on every keystroke rather than on a button, so the refusals appear
      beside the file while it is still being fixed. */
@@ -234,7 +276,9 @@ export function PartnerListings({ partnerId, onNewListing }: {
                   color: filter === f ? 'white' : 'var(--text-secondary)',
                 }}
               >
-                {f === 'all' ? 'All' : listingState(f).label}
+                {/* From the same table the rows read, so a filter chip cannot
+                    say "paused" beside a row that says "Paused". */}
+                {f === 'all' ? 'All' : STATE_MEANING[stateOf({ id: f, name: f, status: f })].label}
               </button>
             ))}
           </div>
@@ -245,9 +289,10 @@ export function PartnerListings({ partnerId, onNewListing }: {
             ? 'Nothing listed yet. Your storefront opens at the last onboarding gate.'
             : 'No listing matches that'} />
         ) : (
-          <><Table headers={['Listing', 'Marketplace', 'Price', 'Commission', 'Availability', 'State', 'Review', 'Markets']}>
+          /* The last column holds the row's actions and was headed "Markets" —
+             a column of buttons under a heading naming something else. */
+          <><Table headers={['Listing', 'Marketplace', 'Price', 'Commission', 'Availability', 'State', 'Review', '']}>
             {page.rows.map(l => {
-              const state = listingState(l.status)
               return (
                 <tr key={l.id}
                     onClick={() => setViewing(l)}
@@ -282,11 +327,17 @@ export function PartnerListings({ partnerId, onNewListing }: {
                     </span>
                   </Td>
                   <Td right>
+                    {/* One description of each state, shared with the rules that
+                        decide what may be done in it. */}
                     <div style={{
                       fontSize: 'var(--text-xs)', fontWeight: 700,
-                      color: l.status === 'live' ? 'var(--success)' : l.status === 'pending' ? 'var(--warning)' : 'var(--danger)',
-                    }}>{state.label}</div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', maxWidth: '220px' }}>{state.meaning}</div>
+                      color: l.status === 'live' ? 'var(--success)'
+                        : l.status === 'pending' || l.status === 'scheduled' || l.status === 'paused' ? 'var(--warning)'
+                        : 'var(--danger)',
+                    }}>{STATE_MEANING[stateOf(l)].label}</div>
+                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', maxWidth: '220px' }}>
+                      {untilLive(l.go_live_on ?? null) ?? STATE_MEANING[stateOf(l)].says}
+                    </div>
                   </Td>
                   <Td>
                     {(() => {
@@ -307,9 +358,12 @@ export function PartnerListings({ partnerId, onNewListing }: {
                     })()}
                   </Td>
                   <Td right>
-                    {/* Stops the row's own click — pricing is a different
-                        thing from reading the listing. */}
-                    <Btn variant="secondary" size="sm" onClick={e => { e.stopPropagation(); setPricing({ id: l.id, name: l.name, partner_id: partnerId, price: l.price }) }}>Prices</Btn>
+                    {/* Both stop the row's own click — pricing and managing are
+                        different things from reading the listing. */}
+                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                      <Btn variant="secondary" size="sm" onClick={e => { e.stopPropagation(); setPricing({ id: l.id, name: l.name, partner_id: partnerId, price: l.price }) }}>Prices</Btn>
+                      <Btn variant="secondary" size="sm" onClick={e => { e.stopPropagation(); setManaging(l) }}>Manage</Btn>
+                    </div>
                   </Td>
                 </tr>
               )
@@ -318,6 +372,101 @@ export function PartnerListings({ partnerId, onNewListing }: {
           <div style={{ padding: '0 18px 12px' }}><Pager page={page} noun="listings" /></div></>
         )}
       </SectionCard>
+
+      {/* ----------------------------------------------------- one listing */}
+      {/* The row has advertised "Open this listing" since the detail popups
+          went in; nothing opened. Eight columns of a listing are eight
+          truncated cells, and the review note — the thing a seller most needs
+          to read — was three lines of 10px type inside one of them. */}
+      <Modal
+        open={viewing !== null}
+        onClose={() => setViewing(null)}
+        title={viewing ? viewing.name : ''}
+        footer={
+          viewing ? (
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between', width: '100%' }}>
+              <Btn variant="secondary" onClick={() => { const l = viewing; setViewing(null); setManaging(l) }}>Manage</Btn>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <Btn variant="secondary" onClick={() => { const l = viewing; setViewing(null); setPricing({ id: l.id, name: l.name, partner_id: partnerId, price: l.price }) }}>Prices</Btn>
+                <Btn variant="secondary" onClick={() => setViewing(null)}>Close</Btn>
+              </div>
+            </div>
+          ) : null
+        }>
+        {viewing && (() => {
+          const trail = subs.filter(s => s.product_id === viewing.id).sort((a, b) => b.version - a.version)
+          const asked = queries.filter(q => q.product_id === viewing.id)
+          const state = stateOf(viewing)
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <Callout tone={state === 'live' ? 'info' : state === 'suspended' || state === 'retired' ? 'danger' : 'warning'}
+                       title={STATE_MEANING[state].label}>
+                {untilLive(viewing.go_live_on ?? null) ?? STATE_MEANING[state].says}
+                {state === 'paused' && viewing.paused_reason && <> You said: “{viewing.paused_reason}”.</>}
+                {state === 'retired' && viewing.retired_reason && <> You said: “{viewing.retired_reason}”.</>}
+              </Callout>
+
+              {viewing.description && (
+                <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                  {viewing.description}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '7px' }}>
+                <Fact label="SKU" value={viewing.id} />
+                <Fact label="Marketplace" value={catName(viewing.category_id) + (viewing.sub_category ? ` · ${viewing.sub_category}` : '')} />
+                <Fact label="Availability" value={viewing.stock === 'in' ? 'In stock' : viewing.stock === 'low' ? 'Low stock' : 'Out of stock'} />
+                {viewing.fulfil && <Fact label="Fulfilment" value={viewing.fulfil} />}
+                <Fact label="Listed" value={viewing.listed ?? 'Not recorded'} />
+                <Fact label="Go-live date" value={viewing.go_live_on ?? 'As soon as it is approved'} />
+                <Fact label="List price" value={`$${fmtMoney(viewing.price)}`} />
+                {/* The number that matters to a seller is not the price, it is
+                    what lands in their account after the plan takes its cut. */}
+                {rate === null
+                  ? <Fact label="You receive" value="No commission plan is attached to your account yet" />
+                  : <>
+                      <Fact label="Commission" value={`${rate}% · $${fmtMoney(viewing.price * rate / 100)}`} />
+                      <Fact label="You receive" value={`$${fmtMoney(viewing.price * (100 - rate) / 100)}`} />
+                    </>}
+                {viewing.tags?.length ? <Fact label="Tags" value={viewing.tags.join(', ')} /> : null}
+              </div>
+
+              <div>
+                <Heading>Catalogue review</Heading>
+                {trail.length === 0 ? (
+                  <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
+                    No submission on record for this listing.
+                  </div>
+                ) : trail.map(s => (
+                  <div key={`${s.product_id}-${s.version}`} style={{
+                    borderLeft: `2px solid ${s.status === 'approved' ? 'var(--success)' : s.status === 'rejected' ? 'var(--danger)' : 'var(--warning)'}`,
+                    paddingLeft: '10px', marginBottom: '8px',
+                  }}>
+                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>
+                      v{s.version} · {s.status === 'pending' ? `waiting since ${fmtDate(s.submitted_at)}` : `${s.status} by ${s.reviewed_by}`}
+                    </div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                      {s.decision_reason ?? s.issue ?? s.check_note ?? 'No note recorded.'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {asked.length > 0 && (
+                <div>
+                  <Heading>Questions from the desk</Heading>
+                  {asked.map(q => (
+                    <div key={q.id} style={{ fontSize: 'var(--text-xs)', marginBottom: '6px' }}>
+                      <strong>{q.subject}</strong> — {q.body}
+                      {q.answer && <div style={{ color: 'var(--text-tertiary)' }}>You answered: {q.answer}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })()}
+      </Modal>
 
       <Modal
         open={pricing !== null}
@@ -332,6 +481,215 @@ export function PartnerListings({ partnerId, onNewListing }: {
             onChanged={() => { void loadSellerRecord(partnerId).then(setRec) }}
           />
         )}
+      </Modal>
+
+      {/* --------------------------------------------------- manage a listing */}
+      <Modal
+        open={!!managing}
+        onClose={() => setManaging(null)}
+        title={managing ? `Manage ${managing.name}` : ''}
+        footer={<Btn variant="secondary" onClick={() => setManaging(null)}>Close</Btn>}>
+        {managing && (() => {
+          const l: Listing = managing
+          const state = stateOf(l)
+          const moves = sellerMayMoveTo(l)
+          const open = pendingVersion(versions)
+          const proposable = canPropose(l, versions)
+          const field = (key: string) => (managing as unknown as Record<string, unknown>)[key]
+          const was = Object.fromEntries(VERSIONED_FIELDS.map(f => [f.key, field(f.key)]))
+          /* Only the versioned fields, whatever else the form happens to hold —
+             `changesIn` ignores the rest, and so should what is sent. */
+          const proposed = edit
+            ? Object.fromEntries(Object.entries(edit).filter(([k]) => VERSIONED_FIELDS.some(f => f.key === k)))
+            : {}
+          const changes = edit ? changesIn(proposed, was) : []
+          const proposalCheck = edit ? validateProposal(changes, editNote) : null
+          const goLiveCheck = validateGoLiveFor(l, goLive)
+
+          return (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+              <Callout tone={state === 'live' ? 'info' : state === 'suspended' ? 'danger' : 'warning'}
+                       title={STATE_MEANING[state].label}>
+                {STATE_MEANING[state].says}
+                {l.paused_reason && state === 'paused' && <> You said: “{l.paused_reason}”.</>}
+              </Callout>
+
+              {/* -------------------------------------------------- on sale */}
+              {(moves.includes('paused') || moves.includes('live')) && (
+                <div>
+                  <Heading>Whether it is on sale</Heading>
+
+                  {/* Resuming needs nothing said, so it is a button. Pausing
+                      needs a reason, so it is a field with a button under it —
+                      a button that opens a field to fill in is one more click
+                      for the same two things. */}
+                  {moves.includes('live') && (
+                    <Btn variant="primary" size="sm" disabled={acting}
+                         onClick={() => void act(() => resumeListing(l))}>
+                      {acting ? 'Saving…' : l.go_live_on && l.go_live_on > new Date().toISOString().slice(0, 10)
+                        ? `Put it back — it waits for ${l.go_live_on}`
+                        : 'Put it back on sale'}
+                    </Btn>
+                  )}
+
+                  {moves.includes('paused') && (
+                    <>
+                      <FormField label="Why it is coming off sale" required
+                                 hint="Your colleagues and the catalogue desk read this. Buyers never see it.">
+                        <TextInput value={pauseWhy} onChange={e => setPauseWhy(e.target.value)}
+                                   placeholder="Cell supplier delayed to September" />
+                      </FormField>
+                      <Btn variant="secondary" size="sm" disabled={acting || !validatePause(pauseWhy).ok}
+                           onClick={() => void act(() => pauseListing(l, pauseWhy))}>
+                        {acting ? 'Saving…' : 'Take it off sale'}
+                      </Btn>
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* ------------------------------------------------- go live on */}
+              {state !== 'retired' && state !== 'suspended' && (
+                <div>
+                  <Heading>When it goes on sale</Heading>
+                  <FormField label="Go-live date"
+                             hint="Leave it empty to go on sale as soon as the catalogue desk approves it.">
+                    <TextInput type="date" value={goLive} onChange={e => setGoLiveDate(e.target.value)} />
+                  </FormField>
+                  <div style={{
+                    fontSize: 'var(--text-xs)', marginBottom: '8px',
+                    color: goLiveCheck.ok ? 'var(--text-tertiary)' : 'var(--danger)',
+                  }}>
+                    {goLiveCheck.ok ? goLiveCheck.note : goLiveCheck.reason}
+                  </div>
+                  <Btn variant="secondary" size="sm" disabled={acting || !goLiveCheck.ok}
+                       onClick={() => void act(() => setGoLive(l, goLive))}>
+                    {acting ? 'Saving…' : 'Save the date'}
+                  </Btn>
+                </div>
+              )}
+
+              {/* --------------------------------------------- change request */}
+              <div>
+                <Heading>Changing what it says</Heading>
+
+                {open ? (
+                  <div style={{
+                    padding: '12px 14px', borderRadius: 'var(--radius-md)',
+                    background: 'var(--warning-bg)', border: '1px solid var(--warning)',
+                    fontSize: 'var(--text-sm)', color: 'var(--warning)',
+                  }}>
+                    <strong>Version {open.version} is with the catalogue desk.</strong>{' '}
+                    {managing.name} keeps selling exactly as it is until they decide.
+                    <div style={{ marginTop: '6px' }}>
+                      {changesIn(open.proposed, open.was).map(c => (
+                        <div key={c.key} style={{ fontSize: 'var(--text-xs)' }}>
+                          {c.label}: “{c.from}” → “{c.to}”
+                        </div>
+                      ))}
+                    </div>
+                    <Btn variant="secondary" size="sm" style={{ marginTop: '8px' }} disabled={acting}
+                         onClick={() => void act(() => withdrawProposal(open))}>Withdraw it</Btn>
+                  </div>
+                ) : !proposable.ok ? (
+                  <Callout tone="warning">{proposable.reason}</Callout>
+                ) : !edit ? (
+                  <>
+                    <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '8px' }}>
+                      What is on sale is what the desk approved, so a change is a proposal rather than an
+                      edit. {managing.name} keeps selling unchanged while they look at it.
+                    </div>
+                    <Btn variant="secondary" size="sm"
+                         onClick={() => setEdit(Object.fromEntries(
+                           VERSIONED_FIELDS.map(f => {
+                             const v = (managing as unknown as Record<string, unknown>)[f.key]
+                             return [f.key, Array.isArray(v) ? v.join(', ') : String(v ?? '')]
+                           }),
+                         ))}>Propose a change</Btn>
+                  </>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {VERSIONED_FIELDS.map(f => (
+                      <FormField key={f.key} label={f.label}>
+                        {f.key === 'description'
+                          ? <TextArea rows={3} value={edit[f.key] ?? ''}
+                                      onChange={e => setEdit({ ...edit, [f.key]: e.target.value })} />
+                          : <TextInput value={edit[f.key] ?? ''}
+                                       onChange={e => setEdit({ ...edit, [f.key]: e.target.value })} />}
+                      </FormField>
+                    ))}
+
+                    <FormField label="What changed, and why" required
+                               hint="The desk decides from this. A proposal with a sentence is answered faster than one without.">
+                      <TextArea rows={2} value={editNote} onChange={e => setEditNote(e.target.value)}
+                                placeholder="Battery life corrected to seven years after retest." />
+                    </FormField>
+
+                    {changes.length > 0 && (
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+                        {changes.map(c => (
+                          <div key={c.key}>{c.label}: “{c.from}” → “{c.to}”</div>
+                        ))}
+                      </div>
+                    )}
+                    {proposalCheck && !proposalCheck.ok && (
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)' }}>{proposalCheck.reason}</div>
+                    )}
+
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <Btn variant="secondary" size="sm" onClick={() => setEdit(null)}>Cancel</Btn>
+                      <Btn variant="primary" size="sm" disabled={acting || !proposalCheck?.ok}
+                           onClick={() => void act(() => proposeChange({
+                             listing: l, partnerId,
+                             proposed: Object.fromEntries(changes.map(c => [c.key,
+                               c.key === 'tags' ? (proposed[c.key] as string).split(',').map(t => t.trim()).filter(Boolean)
+                                 : proposed[c.key]])),
+                             was, note: editNote,
+                             submittedBy: rec?.partner?.name ?? 'The seller',
+                             existing: versions,
+                           }))}>
+                        {acting ? 'Sending…' : 'Send for review'}
+                      </Btn>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* ------------------------------------------------- withdrawal */}
+              {moves.includes('retired') && (
+                <div>
+                  <Heading>Withdrawing it for good</Heading>
+                  <FormField label="Why" required>
+                    <TextInput value={retireWhy} onChange={e => setRetireWhy(e.target.value)}
+                               placeholder="Discontinued — replaced by the Mk II" />
+                  </FormField>
+                  <FormField label={`Type “${managing.name}” to confirm`} required
+                             hint="This cannot be undone. To take it off sale for a while, pause it instead.">
+                    <TextInput value={confirmName} onChange={e => setConfirmName(e.target.value)} />
+                  </FormField>
+                  <Btn variant="secondary" size="sm" disabled={acting || !validateRetire(retireWhy, confirmName, l).ok}
+                       onClick={() => void act(() => retireListing(l, retireWhy))}>
+                    {acting ? 'Withdrawing…' : 'Withdraw it'}
+                  </Btn>
+                </div>
+              )}
+
+              {/* --------------------------------------------------- history */}
+              {versions.length > 0 && (
+                <div>
+                  <Heading>Change history</Heading>
+                  {versions.map(v => (
+                    <div key={v.id} style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '3px' }}>
+                      v{v.version} · {v.state}
+                      {v.decided_by ? ` by ${v.decided_by}` : ''}
+                      {v.decision_reason ? ` — ${v.decision_reason}` : v.note ? ` — ${v.note}` : ''}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })()}
       </Modal>
 
       {/* ------------------------------------------------------ bulk upload */}
@@ -417,6 +775,15 @@ export function PartnerListings({ partnerId, onNewListing }: {
         </div>
       </Modal>
     </div>
+  )
+}
+
+function Heading({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em',
+      color: 'var(--text-tertiary)', marginBottom: '8px',
+    }}>{children}</div>
   )
 }
 

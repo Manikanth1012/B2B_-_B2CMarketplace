@@ -38,6 +38,14 @@ export interface ProductRow {
   badge: string | null
   specs: Record<string, string>
   sort_order: number
+  /* Where the listing is in its own life. `go_live_on` is when the seller wants
+     it on sale — approving a listing that carries a future one schedules it
+     rather than publishing it. */
+  go_live_on?: string | null
+  paused_on?: string | null
+  paused_reason?: string | null
+  retired_on?: string | null
+  retired_reason?: string | null
 }
 
 export interface Submission {

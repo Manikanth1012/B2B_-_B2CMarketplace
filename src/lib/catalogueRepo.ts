@@ -8,6 +8,8 @@ import type {
   ProductRow, Submission, ProductRule, Component, Media, CategoryPolicy, PolicyRuleRow,
 } from './catalogue'
 import type { CommissionPlan } from './partnerCommerce'
+import { stateAfterApproval } from './listingLifecycle'
+import type { ProductVersion } from './listingLifecycle'
 import type { Category } from '../types'
 import { compose, compositionProblem, priceBasis } from './federation'
 import type { TelcoItem, BundleRule, ComponentPick } from './federation'
@@ -53,6 +55,9 @@ export interface CatalogueSnapshot {
   plans: CommissionPlan[]
   partners: { id: string; name: string; status: string; plan_id: string | null }[]
   queries: ListingQuery[]
+  /* Changes proposed to listings that are already selling. A seller cannot edit
+     a live listing in place — they propose, and this is what the desk decides. */
+  versions: ProductVersion[]
   /* The federated BSS rate card and the policy for composing from it. Empty for
      anyone but the operator — the rate card carries delivery costs, and RLS
      returns no rows rather than an error to a persona that may not read it. */
@@ -77,7 +82,7 @@ export async function loadCatalogue(): Promise<CatalogueSnapshot> {
   const [
     prodRes, subRes, ruleRes, compRes, mediaRes,
     catRes, polRes, prRes, matrixRes, planRes, partnerRes, queryRes,
-    telcoRes, bundleRuleRes, packCompRes,
+    telcoRes, bundleRuleRes, packCompRes, versionRes,
   ] = await Promise.all([
     supabase.from('products').select('*').order('sort_order'),
     supabase.from('operator_listings').select('*').order('sort_order'),
@@ -94,6 +99,7 @@ export async function loadCatalogue(): Promise<CatalogueSnapshot> {
     supabase.from('telco_catalogue').select('*').order('sort_order'),
     supabase.from('bundle_rules').select('*').eq('id', 'standard').maybeSingle(),
     supabase.from('product_telco_components').select('*').order('sort_order'),
+    supabase.from('product_versions').select('*').order('submitted_at', { ascending: false }),
   ])
 
   const errors: string[] = []
@@ -106,7 +112,7 @@ export async function loadCatalogue(): Promise<CatalogueSnapshot> {
      expresses that as an empty result rather than an error. Only a real failure
      is worth reporting, so these are noted the same way as the rest. */
   note('rate card', telcoRes.error); note('composition rule', bundleRuleRes.error)
-  note('pack components', packCompRes.error)
+  note('pack components', packCompRes.error); note('change requests', versionRes.error)
 
   return {
     products: (prodRes.data ?? []) as ProductRow[],
@@ -124,6 +130,7 @@ export async function loadCatalogue(): Promise<CatalogueSnapshot> {
     telco: (telcoRes.data ?? []) as TelcoItem[],
     bundleRule: (bundleRuleRes.data as BundleRule | null) ?? FALLBACK_RULE,
     packComponents: (packCompRes.data ?? []) as PackComponent[],
+    versions: (versionRes.data ?? []) as ProductVersion[],
     ...(errors.length > 0 ? { loadError: `Could not load the full catalogue (${errors.join('; ')}).` } : {}),
   }
 }
@@ -159,9 +166,19 @@ export async function approveListing(
   }
 
   /* Publishing is what approval means. Without this the queue empties and
-     nothing goes on sale. */
+     nothing goes on sale.
+
+     A listing the seller gave a future go-live date lands in `scheduled`
+     instead: approving it is the desk saying yes to what it says, not
+     overriding when the seller wants it on sale. `publish_due_listings()`
+     moves it on the day. Setting `live` here would also fail the schedule
+     check outright, which is the database making the same point. */
+  const { data: prod } = await supabase.from('products')
+    .select('go_live_on').eq('id', (fresh as Submission).product_id).maybeSingle()
+  const landsIn = stateAfterApproval((prod as { go_live_on: string | null } | null)?.go_live_on ?? null)
+
   const { data: pub, error: pubErr } = await supabase.from('products')
-    .update({ status: 'live' }).eq('id', (fresh as Submission).product_id).select('id')
+    .update({ status: landsIn }).eq('id', (fresh as Submission).product_id).select('id')
   if (pubErr || !pub || pub.length === 0) {
     return {
       ok: false,
@@ -169,7 +186,7 @@ export async function approveListing(
     }
   }
 
-  await writeAudit(actor, 'catalogue.listing.approved', (fresh as Submission).product_id, 'pending', 'live', 'info')
+  await writeAudit(actor, 'catalogue.listing.approved', (fresh as Submission).product_id, 'pending', landsIn, 'info')
   return { ok: true }
 }
 

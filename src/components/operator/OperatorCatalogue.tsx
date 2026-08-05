@@ -21,6 +21,9 @@ import {
   loadCatalogue, approveListing, rejectListing, raiseQuery, publishFirstParty,
   createBundle, previewBundle, composePack, setAudiences,
 } from '../../lib/catalogueRepo'
+import { publishDue, approveProposal, rejectProposal } from '../../lib/listingLifecycleRepo'
+import { changesIn, STATE_MEANING, stateOf, untilLive } from '../../lib/listingLifecycle'
+import type { ProductVersion } from '../../lib/listingLifecycle'
 import type { CatalogueSnapshot, BundleDraft, PackDraft } from '../../lib/catalogueRepo'
 import { compose, compositionProblem, compositionWarnings, maxComponentDiscount, priceBasis } from '../../lib/federation'
 import { checkBundleAgainstFloors, bundleRoom, bases, headroom } from '../../lib/pricing'
@@ -39,7 +42,9 @@ const RISK: Record<string, { label: string; ink: string; bg: string }> = {
 
 const STATUS_INK: Record<string, string> = {
   live: 'var(--success)', pending: 'var(--warning)',
-  rejected: 'var(--danger)', suspended: 'var(--danger)', draft: 'var(--text-tertiary)',
+  scheduled: 'var(--warning)', paused: 'var(--warning)',
+  rejected: 'var(--danger)', suspended: 'var(--danger)', retired: 'var(--danger)',
+  draft: 'var(--text-tertiary)',
 }
 
 type Tab = 'queue' | 'catalogue' | 'firstparty' | 'rules'
@@ -51,13 +56,23 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
   const [tab, setTab] = useState<Tab>('queue')
   const [openProduct, setOpenProduct] = useState<string | null>(focus)
   const [decide, setDecide] = useState<{ sub: Submission; mode: 'approve' | 'reject' | 'query' } | null>(null)
+  /* A change proposed to a listing that is already selling, and the decision
+     being written on it. Separate from `decide`: a submission is a listing
+     asking to exist, a version is a listing asking to say something else. */
+  const [rule, setRule] = useState<{ v: ProductVersion; mode: 'approve' | 'reject' } | null>(null)
   const [bundleOpen, setBundleOpen] = useState(false)
   const [packOpen, setPackOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [catFilter, setCatFilter] = useState('')
   const [stateFilter, setStateFilter] = useState('')
 
-  const reload = useCallback(async () => setSnap(await loadCatalogue()), [])
+  /* Anything whose go-live date has arrived becomes live before the catalogue
+     is read, so the desk never sees "scheduled" for a date that has passed.
+     There is no timer; this and the seller's screen are what stand in for one. */
+  const reload = useCallback(async () => {
+    await publishDue()
+    setSnap(await loadCatalogue())
+  }, [])
   useEffect(() => { reload().then(() => setLoading(false)) }, [reload])
 
   const today = useMemo(() => new Date(), [])
@@ -75,6 +90,11 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
     .filter(s => s.status === 'pending')
     .sort((a, b) => ({ high: 0, medium: 1, low: 2 })[a.risk] - ({ high: 0, medium: 1, low: 2 })[b.risk])
   const blocked = queue.filter(s => s.risk === 'high')
+  /* Changes waiting on the desk, oldest first — a proposal that has sat a week
+     is the one to look at, and newest-first buries it. */
+  const changeQueue = snap.versions
+    .filter(v => v.state === 'pending')
+    .sort((a, b) => a.submitted_at.localeCompare(b.submitted_at))
 
   const catalogue = snap.products.filter(p => {
     const q = search.trim().toLowerCase()
@@ -143,7 +163,7 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
 
       <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
         {([
-          ['queue', `Review queue (${queue.length})`],
+          ['queue', `Review queue (${queue.length + changeQueue.length})`],
           ['catalogue', `Live catalogue (${snap.products.length})`],
           ['firstparty', `First party (${firstParty.length})`],
           ['rules', `Dependencies (${snap.rules.length})`],
@@ -223,6 +243,74 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
               })}
             </div>
           )}
+        </SectionCard>
+      )}
+
+      {/* A listing that is already selling cannot be edited in place — the desk
+          approved those words, and changing them without anybody approving the
+          change is the drift this queue exists to stop. The seller proposes;
+          this is where it is decided. */}
+      {tab === 'queue' && changeQueue.length > 0 && (
+        <SectionCard title={`Change requests (${changeQueue.length})`}
+                     subtitle="Each of these is a listing that keeps selling exactly as it is until you decide">
+          <div>
+            {changeQueue.map(v => {
+              const p = productOf(v.product_id)
+              const diff = changesIn(v.proposed, v.was)
+              return (
+                <div key={v.id} style={{ padding: '15px 20px', borderTop: '1px solid var(--border-light)' }}>
+                  <div style={{ display: 'flex', gap: '13px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                    <Thumb url={p ? heroOf(p.id) : null} />
+                    <div style={{ flex: 1, minWidth: '260px' }}>
+                      <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '3px' }}>
+                        version {v.version} · proposed {fmtDate(v.submitted_at.slice(0, 10))}
+                        {v.submitted_by ? ` by ${v.submitted_by}` : ''}
+                      </div>
+                      <button onClick={() => p && setOpenProduct(p.id)} style={{
+                        background: 'none', border: 'none', padding: 0,
+                        cursor: p ? 'pointer' : 'default', textAlign: 'left',
+                        fontSize: 'var(--text-base)', fontWeight: 700, color: 'var(--brand-navy)',
+                      }}>{p?.name ?? v.product_id}</button>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                        {p ? `${p.seller} · ${p.id}` : v.product_id}
+                        {p && ` · currently ${STATE_MEANING[stateOf(p)].label.toLowerCase()}`}
+                      </div>
+                      {v.note && (
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: '6px' }}>
+                          “{v.note}”
+                        </div>
+                      )}
+
+                      {/* Only what differs. A review screen listing every field
+                          with most of them identical is one where the reviewer
+                          skims past the one that matters. */}
+                      <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {diff.length === 0 ? (
+                          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--warning)' }}>
+                            Nothing in this proposal differs from the listing any more — approving it would change nothing.
+                          </span>
+                        ) : diff.map(c => (
+                          <div key={c.key} style={{ fontSize: 'var(--text-xs)' }}>
+                            <span style={{ color: 'var(--text-tertiary)' }}>{c.label}: </span>
+                            <span style={{ textDecoration: 'line-through', color: 'var(--text-tertiary)' }}>{c.from}</span>
+                            {' → '}
+                            <span style={{ color: 'var(--text)', fontWeight: 600 }}>{c.to}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: '7px', marginTop: '11px', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <span style={{ flex: 1, fontSize: '11px', color: 'var(--text-tertiary)', minWidth: '180px' }}>
+                      Approving applies the proposed fields to the listing. The seller is told the reason either way.
+                    </span>
+                    <Btn variant="danger" size="sm" onClick={() => setRule({ v, mode: 'reject' })}>Refuse</Btn>
+                    <Btn size="sm" disabled={diff.length === 0} onClick={() => setRule({ v, mode: 'approve' })}>Approve</Btn>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
         </SectionCard>
       )}
 
@@ -410,6 +498,21 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
                   subject: 'Question on your listing', body: text, actor: ACTOR,
                 }), 'Query raised')
             if (done) setDecide(null)
+          }}
+        />
+      )}
+
+      {rule && (
+        <DecideChangeDialog
+          version={rule.v}
+          mode={rule.mode}
+          productName={productOf(rule.v.product_id)?.name ?? rule.v.product_id}
+          onClose={() => setRule(null)}
+          onSubmit={async text => {
+            const done = rule.mode === 'approve'
+              ? await act(() => approveProposal(rule.v, ACTOR), 'Applied — buyers see the new wording from now on')
+              : await act(() => rejectProposal(rule.v, ACTOR, text), 'Refused, with your reason on the record')
+            if (done) setRule(null)
           }}
         />
       )}
@@ -630,6 +733,38 @@ function ProductInspector({ product, snap, today, onClose, catName, onChanged, o
             <Callout tone="danger" title={`${failures.length} enforced rule${failures.length === 1 ? '' : 's'} this listing fails`}>
               {failures.map(f => `${f.rule.name}: ${f.automatic!.detail}`).join(' ')}
             </Callout>
+          )}
+
+          {/* Where it is in its own life. "Paused" and "Suspended" both mean not
+              on sale and mean it for opposite reasons — the desk took one down
+              and the seller took the other — so the header's bare status word
+              was the one thing on this panel that could be read backwards. */}
+          {product.status !== 'live' && (
+            <Callout tone={stateOf(product) === 'suspended' || stateOf(product) === 'retired' ? 'danger' : 'warning'}
+                     title={STATE_MEANING[stateOf(product)].label}>
+              {untilLive(product.go_live_on ?? null) ?? STATE_MEANING[stateOf(product)].says}
+              {product.paused_reason && stateOf(product) === 'paused' && <> The seller said: “{product.paused_reason}”.</>}
+              {product.retired_reason && stateOf(product) === 'retired' && <> The seller said: “{product.retired_reason}”.</>}
+            </Callout>
+          )}
+
+          {/* The change history for this listing, so a decision is taken with
+              the last three in view rather than on its own. */}
+          {snap.versions.some(v => v.product_id === product.id) && (
+            <section>
+              <SubHead>Change requests</SubHead>
+              {snap.versions.filter(v => v.product_id === product.id)
+                .sort((a, b) => b.version - a.version).map(v => (
+                <div key={v.id} style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginBottom: '5px' }}>
+                  <strong>v{v.version} · {v.state}</strong>
+                  {v.decided_by ? ` by ${v.decided_by}` : ''}
+                  {v.decision_reason ? ` — ${v.decision_reason}` : v.note ? ` — ${v.note}` : ''}
+                  <div style={{ color: 'var(--text-tertiary)' }}>
+                    {changesIn(v.proposed, v.was).map(c => `${c.label}: ${c.from} → ${c.to}`).join(' · ') || 'No difference recorded.'}
+                  </div>
+                </div>
+              ))}
+            </section>
           )}
 
           {/* Big enough to judge. A review of a picture nobody can see is a
@@ -922,7 +1057,12 @@ function DecideDialog({ sub, mode, product, onClose, onSubmit }: {
 
         {mode === 'approve' && (
           <Callout tone="info" title="What this does">
-            The listing goes on sale immediately, and the seller is told it was approved along with what you checked.
+            {/* Approving a listing the seller dated forward schedules it rather
+                than publishing it: the desk is saying yes to what it says, not
+                overriding when the seller wants it on sale. */}
+            {product.go_live_on && product.go_live_on > new Date().toISOString().slice(0, 10)
+              ? `The listing is approved and stays hidden until ${product.go_live_on}, which is the date the seller set. It goes on sale on its own that morning.`
+              : 'The listing goes on sale immediately, and the seller is told it was approved along with what you checked.'}
           </Callout>
         )}
         {mode === 'reject' && (
@@ -953,6 +1093,85 @@ function DecideDialog({ sub, mode, product, onClose, onSubmit }: {
                       ? 'e.g. Policy 7.4 — randomised paid rewards. Withdraw the two markets that prohibit them and resubmit.'
                       : 'e.g. Confirm which markets you intend to sell in'} />
         </FormField>
+      </div>
+    </Modal>
+  )
+}
+
+/**
+ * Deciding a change to a listing that is already selling.
+ *
+ * Kept apart from `DecideDialog` because the two decisions are not the same
+ * shape. A submission decision asks "may this exist"; this one asks "may this
+ * say something else", and the thing being decided is the difference — so the
+ * difference is what the dialog shows, right down to the last moment before
+ * the button is pressed.
+ */
+function DecideChangeDialog({ version, mode, productName, onClose, onSubmit }: {
+  version: ProductVersion
+  mode: 'approve' | 'reject'
+  productName: string
+  onClose: () => void
+  onSubmit: (text: string) => void
+}) {
+  const [text, setText] = useState('')
+  const diff = changesIn(version.proposed, version.was)
+  /* Approving needs nothing typed — the difference is the decision. Refusing
+     does, because the seller has only that to work from. */
+  const ready = mode === 'approve' || text.trim().length >= 4
+
+  return (
+    <Modal open onClose={onClose}
+      title={mode === 'approve' ? `Apply version ${version.version}` : `Refuse version ${version.version}`}
+      footer={<>
+        <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
+        <Btn size="sm" variant={mode === 'reject' ? 'danger' : 'primary'} disabled={!ready}
+             onClick={() => onSubmit(text)}>
+          {mode === 'approve' ? 'Apply it' : 'Refuse it'}
+        </Btn>
+      </>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '13px' }}>
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: 0 }}>
+          <strong>{productName}</strong>
+          {version.submitted_by ? `, proposed by ${version.submitted_by}` : ''}.
+        </p>
+
+        {version.note && <Callout tone="info" title="What the seller says">{version.note}</Callout>}
+
+        <div>
+          <div style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', marginBottom: '6px' }}>
+            What changes
+          </div>
+          {diff.map(c => (
+            <div key={c.key} style={{ fontSize: 'var(--text-sm)', marginBottom: '4px' }}>
+              <span style={{ color: 'var(--text-tertiary)' }}>{c.label}: </span>
+              <span style={{ textDecoration: 'line-through', color: 'var(--text-tertiary)' }}>{c.from}</span>
+              {' → '}
+              <span style={{ fontWeight: 600 }}>{c.to}</span>
+            </div>
+          ))}
+        </div>
+
+        {mode === 'approve' ? (
+          <Callout tone="info" title="What this does">
+            The proposed fields replace what is on the listing now, and buyers see the new wording from that
+            moment. The listing does not come off sale, and its price is untouched — a price is changed in the
+            price book, per market.
+          </Callout>
+        ) : (
+          <Callout tone="warning" title="What this does">
+            The listing is left exactly as it is. The seller sees your reason and may propose a different
+            change, which arrives here as a new version rather than reopening this one.
+          </Callout>
+        )}
+
+        {mode === 'reject' && (
+          <FormField label="Why" required
+                     hint="Name what is wrong and what would clear it. The seller has only this to work from.">
+            <TextArea value={text} onChange={e => setText(e.target.value)} rows={3}
+                      placeholder="e.g. The new description claims a seven-year cell; the datasheet on file says five. Attach the retest and propose it again." />
+          </FormField>
+        )}
       </div>
     </Modal>
   )

@@ -172,7 +172,11 @@ export interface MatrixRow { category_id: string; rule_id: string; level: string
 export async function loadPartnerDetail(partnerId: string): Promise<PartnerDetail> {
   const [pRes, prodRes, pcRes, histRes, evRes, ruleRes, docRes, stmtRes, matrixRes] = await Promise.all([
     supabase.from('partners').select('*, plan:commission_plans(*)').eq('id', partnerId).maybeSingle(),
-    supabase.from('products').select('id,name,category_id,status,price,stock,listed')
+    /* The lifecycle columns come back with the row rather than on opening one:
+       My Listings tells a seller "goes live in 6 days" in the table itself, and
+       a second read per row to say that would be a read per row. */
+    supabase.from('products')
+      .select('id,name,category_id,status,price,stock,listed,description,sub_category,fulfil,tags,go_live_on,paused_on,paused_reason,retired_on,retired_reason')
       .eq('partner_id', partnerId).order('id'),
     supabase.from('partner_categories').select('*').eq('partner_id', partnerId),
     supabase.from('partner_lifecycle_events').select('*').eq('partner_id', partnerId),

@@ -198,6 +198,9 @@ export function orderedPlans(plans: readonly CommissionPlan[]): CommissionPlan[]
 
 /* ------------------------------------------------------------ listings ---- */
 
+import { STATE_MEANING } from './listingLifecycle'
+import type { ListingState } from './listingLifecycle'
+
 export interface ListingRow {
   id: string
   name: string
@@ -206,22 +209,40 @@ export interface ListingRow {
   price: number
   stock: string
   listed: string | null
+  /* What the seller may propose changing, and where the listing is in its life.
+     Optional because a caller reading a shorter projection of `products` is
+     still a listing row — the screens that need these ask for them. */
+  description?: string | null
+  sub_category?: string | null
+  fulfil?: string | null
+  tags?: string[] | null
+  go_live_on?: string | null
+  paused_on?: string | null
+  paused_reason?: string | null
+  retired_on?: string | null
+  retired_reason?: string | null
 }
 
-/** The lifecycle a listing sits in, and what it means for a buyer. Separate
-    from the seller's own lifecycle: a live seller can hold a rejected listing,
-    and a suspended seller's listings are all down regardless of their own
-    state. */
-export const LISTING_STATES: Record<string, { label: string; meaning: string }> = {
-  live:      { label: 'Live',      meaning: 'On sale and visible to buyers.' },
-  pending:   { label: 'In review', meaning: 'Submitted and waiting on the catalogue desk. Not visible to buyers.' },
-  rejected:  { label: 'Rejected',  meaning: 'Failed a catalogue rule. The seller can correct it and resubmit.' },
-  suspended: { label: 'Suspended', meaning: 'Taken down. Either the listing broke a rule or the seller is suspended.' },
-  draft:     { label: 'Draft',     meaning: 'Not submitted. Only the seller can see it.' },
-}
-
+/**
+ * The lifecycle a listing sits in, and what it means for a buyer. Separate from
+ * the seller's own lifecycle: a live seller can hold a rejected listing, and a
+ * suspended seller's listings are all down regardless of their own state.
+ *
+ * The eight states and their wording come from `STATE_MEANING`, which is also
+ * what the seller's own controls are built from. This had its own list of five,
+ * and a listing screen ended up showing a chip reading "paused" beside a row
+ * reading "Paused" — two tables describing one thing, disagreeing in the one
+ * place a reader could see both at once.
+ *
+ * A status that is in neither is reported as itself rather than mapped to
+ * something plausible: an unrecognised state is a fault worth seeing.
+ */
 export function listingState(status: string): { label: string; meaning: string } {
-  return LISTING_STATES[status] ?? { label: status, meaning: 'No description recorded for this state.' }
+  const known = STATE_MEANING[status.toLowerCase() as ListingState] as
+    { label: string; says: string } | undefined
+  return known
+    ? { label: known.label, meaning: known.says }
+    : { label: status, meaning: 'No description recorded for this state.' }
 }
 
 /** A seller's listings grouped by state, biggest group first, for the summary
