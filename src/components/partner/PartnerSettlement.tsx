@@ -13,6 +13,7 @@ import type { Statement } from '../../lib/ledger'
 import { loadSellerRecord } from '../../lib/partnerRepo'
 import type { SellerRecord } from '../../lib/partnerRepo'
 import { loadDocumentSetup } from '../../lib/documentRepo'
+import { taxLabelFor } from '../../lib/billTemplate'
 import { useMarket } from '../../lib/MarketContext'
 import { byCurrency, formatGroups, money } from '../../lib/money'
 import type { DocumentSetup } from '../../lib/documentRepo'
@@ -85,6 +86,12 @@ export function PartnerSettlement({ partnerId }: { partnerId: string }) {
     const facts = statementFacts(st as unknown as StatementRow, {
       issuer: doc.issuer, template: doc.template,
       reference: nextReference(doc.template, { party: st.partner_id ?? undefined }),
+      currencies: moneyBook.currencies,
+      /* The tax is called what it is called where the seller is registered.
+         Left to the template it printed "GST / VAT" — the hedge a seeded
+         template has to make because one template renders documents in three
+         countries. */
+      taxLabel: taxLabelFor(sellerMarket, moneyBook.markets, doc.template),
     })
     saveBlob(billPdf(facts, doc.template, doc.ids, doc.sections), pdfNameFor(facts))
     toast(`${st.period} downloaded as a PDF`)

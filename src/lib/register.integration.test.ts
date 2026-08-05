@@ -58,10 +58,10 @@ describe('a shopper registers', () => {
     /* The profile is theirs, in their own market, with their own details — not
        the seeded defaults, which are Priya Raman's down to her wallet. */
     const { data } = await supabase.from('consumer_profile')
-      .select('name, customer_id, city, market, currency, tier, wallet, points, msisdn').maybeSingle()
+      .select('name, customer_id, city, market, currency, wallet, msisdn').maybeSingle()
     const p = data as {
       name: string; customer_id: string; city: string; market: string
-      currency: string; tier: string; wallet: number; points: number; msisdn: string
+      currency: string; wallet: number; msisdn: string
     } | null
     expect(p?.name).toBe('Integration Shopper')
     expect(p?.customer_id).toBe(res.customer_id)
@@ -69,11 +69,17 @@ describe('a shopper registers', () => {
     expect(p?.market).toBe('IN')
     expect(p?.currency).toBe('INR')
     expect(p?.msisdn).toBe('+91 98860 41127')
-    /* A new shopper starts at nothing. Inheriting the demo customer's Gold tier
-       and her ₹42.60 would be the table's defaults leaking. */
-    expect(p?.tier).toBe('Bronze')
+    /* A new shopper starts at nothing. Inheriting the demo customer's ₹42.60
+       would be the table's defaults leaking. */
     expect(Number(p?.wallet)).toBe(0)
-    expect(Number(p?.points)).toBe(0)
+
+    /* Tier and balance are read off the membership, not the profile: they used
+       to be duplicated onto `consumer_profile` and nothing maintained the copy,
+       so the second seeded customer arrived with 0 points against a ledger of
+       760. The membership assertions are in their own test below. */
+    const { data: mem } = await supabase.from('loyalty_members').select('tier, balance').maybeSingle()
+    expect((mem as { tier: string } | null)?.tier).toBe('bronze')
+    expect(Number((mem as { balance: number } | null)?.balance)).toBe(0)
   }, 60000)
 
   it('can do what a shopper does, and nothing an operator does', async () => {
@@ -180,12 +186,17 @@ describe('a shopper registers', () => {
        must not have moved it — the defaults on that table are hers. */
     await signIn(OPERATOR.email, OPERATOR.password)
     const { data } = await supabase.from('consumer_profile')
-      .select('id, name, tier, market, currency').eq('id', 'me').maybeSingle()
-    const p = data as { name: string; tier: string; market: string; currency: string } | null
+      .select('id, name, market, currency').eq('id', 'me').maybeSingle()
+    const p = data as { name: string; market: string; currency: string } | null
     expect(p?.name).toBe('Priya Raman')
-    expect(p?.tier).toBe('Gold')
     expect(p?.market).toBe('IN')
     expect(p?.currency).toBe('INR')
+
+    /* Her tier lives on the membership now rather than on the profile. */
+    const { data: hers } = await supabase.from('loyalty_members')
+      .select('tier, balance').eq('id', 'LM-4001').maybeSingle()
+    expect((hers as { tier: string } | null)?.tier).toBe('gold')
+    expect(Number((hers as { balance: number } | null)?.balance)).toBe(2500)
     await signOut()
   }, 30000)
 

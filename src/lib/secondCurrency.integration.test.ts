@@ -47,21 +47,64 @@ describe('a market that trades in more than one currency', () => {
     expect(multi.length, 'no market trades in two currencies').toBeGreaterThan(1)
   })
 
-  it('prices every live product in every currency its markets accept', async () => {
+  it('prices every live product in every currency ITS OWN seller’s markets accept', async () => {
     /* Offering the choice and then falling back to the base row is the failure
-       with no symptom: a plausible number in the wrong money. */
-    const [{ data: products }, { data: prices }] = await Promise.all([
-      supabase.from('products').select('id, name').eq('status', 'live'),
+       with no symptom: a plausible number in the wrong money.
+     *
+     * Scoped to the seller's own approved markets, which is not where this
+     * started. It read "every currency any market accepts", and passed for
+     * months because every seller was approved everywhere — the same assumption
+     * `homeMarket.integration.test.ts` says was true "until `20260802460000`".
+     *
+     * The first seller approved in some markets and not others broke the tie,
+     * and broke it against this test: Beacon Reseller Co is approved in Kenya
+     * and the UAE and suspended in India, and the sibling rule — a seller holds
+     * no price in a currency none of their approved markets take — forbids them
+     * a rupee price outright. Both rules cannot hold. This one was the loose
+     * statement of a per-seller rule, so it is narrowed rather than the other
+     * one being weakened.
+     *
+     * A first-party listing has no seller and is priced everywhere. */
+    const [{ data: products }, { data: prices }, { data: grants }] = await Promise.all([
+      supabase.from('products').select('id, name, partner_id').eq('status', 'live'),
       supabase.from('product_prices').select('product_id, currency'),
+      supabase.from('partner_markets').select('partner_id, market_code, state'),
     ])
     const priced = new Set((prices ?? []).map(p => `${p.product_id}|${p.currency}`))
+    const approved = (grants ?? []) as { partner_id: string; market_code: string; state: string }[]
+    const everywhere = new Set(money.accepted.map(a => a.currency))
+
+    const owed = (partnerId: string | null): Set<string> => {
+      if (!partnerId) return everywhere
+      const mine = approved.filter(g => g.partner_id === partnerId && g.state === 'approved')
+      return new Set(money.accepted
+        .filter(a => mine.some(g => g.market_code === a.market_code))
+        .map(a => a.currency))
+    }
+
     const gaps: string[] = []
-    for (const cur of new Set(money.accepted.map(a => a.currency))) {
-      for (const p of (products ?? []) as { id: string; name: string }[]) {
+    for (const p of (products ?? []) as { id: string; name: string; partner_id: string | null }[]) {
+      for (const cur of owed(p.partner_id)) {
         if (!priced.has(`${p.id}|${cur}`)) gaps.push(`${p.name} has no ${cur} price`)
       }
     }
     expect(gaps).toEqual([])
+  })
+
+  it('has a seller whose currencies are a subset, so the narrowing is exercised', async () => {
+    /* Without one, the scoping above is indistinguishable from the loose rule
+       it replaced and this file would pass against a marketplace that never
+       enforced it. */
+    const [{ data: grants }, { data: markets }] = await Promise.all([
+      supabase.from('partner_markets').select('partner_id, market_code, state'),
+      supabase.from('markets').select('code'),
+    ])
+    const approved = (grants ?? []).filter(g => g.state === 'approved')
+    const byPartner = new Map<string, number>()
+    for (const g of approved) byPartner.set(g.partner_id, (byPartner.get(g.partner_id) ?? 0) + 1)
+    const partial = [...byPartner.values()].filter(n => n > 0 && n < (markets ?? []).length)
+    expect(partial.length, 'every seller trades in every market, so the scoping proves nothing')
+      .toBeGreaterThan(0)
   })
 
   it('accepts an order in the second currency the BUYER\'s own market takes', async () => {

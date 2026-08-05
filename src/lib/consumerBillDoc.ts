@@ -23,7 +23,7 @@
 import type {
   Section, Template, TemplateSection, Assignment, Issuer, BillFacts,
 } from './billTemplate'
-import { sectionsOn, templateFor, blocksFor, money } from './billTemplate'
+import { sectionsOn, templateFor, blocksFor, money, taxLabelFor } from './billTemplate'
 import { markFor } from './money'
 import type { Currency, Market } from './money'
 import type { ConsumerBill } from '../types'
@@ -47,8 +47,7 @@ export interface BillBook {
   loadError?: string
 }
 
-/**
- * Everything a bill needs beyond  are issued on. */
+/** The template a customer's bills are issued on. */
 export function templateForBill(book: BillBook): Template | null {
   return templateFor({ audience: 'consumer' }, book.assignments, book.templates)
 }
@@ -168,7 +167,11 @@ export function factsFor(bill: ConsumerBill, book: BillBook): BillFacts {
     currencyMark: markFor(currency, book.currencies),
     /* The market's own name for its tax. A UAE bill saying GST is a bill from
        the wrong jurisdiction. */
-    taxLabel: book.markets?.find(m => m.code === bill.market)?.tax_label ?? template?.tax_label ?? 'Tax',
+    /* GST in India, VAT in the UAE and Kenya. This screen worked it out first
+       and the seller statement and enterprise invoice did not, so they printed
+       the template's hedge — "GST / VAT" and "VAT / GST". One rule, in
+       `taxLabelFor`, for all three. */
+    taxLabel: taxLabelFor(bill.market, book.markets ?? [], template),
   }
 }
 

@@ -4,7 +4,7 @@ import type { Persona, Session } from '../types/view'
 import { signIn, requestPasswordReset, SignInError } from '../lib/authRepo'
 import { looksLikeEmail, RESET_SENT_MESSAGE } from '../lib/password'
 import { useMarket } from '../lib/MarketContext'
-import { CONSUMER_SHOPPERS, shopperForMarket } from '../lib/demoShoppers'
+import { shoppersFor, shopperForMarket } from '../lib/demoShoppers'
 
 interface LoginScreenProps {
   onLogin: (session: Session) => void
@@ -125,36 +125,44 @@ export function LoginScreen(
      visitor is already looking at the one field it needs. */
   const [resetting, setResetting] = useState(false)
   const [resetNotice, setResetNotice] = useState('')
-  /* Which demo shopper the consumer card is filled with, or null while it is
-     still following the market picker. Null rather than a number so that
-     changing the market in the header keeps moving it, and clicking one of the
-     two chips pins it. */
+  /* Which country's account the card is filled with, or null while it is still
+     following the market picker. Null rather than a number so that changing the
+     market in the header keeps moving it, and clicking one of the chips pins
+     it. */
   const [shopper, setShopper] = useState<number | null>(null)
 
   /* The market the visitor chose in the header. A demo that offers a market
-     picker and then signs everybody in as the same Indian shopper has not
+     picker and then signs everybody in as the same Indian account has not
      offered a choice, it has offered a decoration. */
   const { market } = useMarket()
-  const suggested = shopperForMarket(market?.code)
+  /* Three of the four personas are registered somewhere. The operator runs all
+     three markets and is registered in none, so their card has no picker. */
+  const cardShoppers = shoppersFor(selected ?? '')
+  const suggested = shopperForMarket(market?.code, cardShoppers)
   const activeShopper = shopper ?? suggested
 
-  /* Keep the boxes in step with whichever shopper is active — the market
-     resolving after mount, or one of the chips being clicked. Only in demo
-     mode, and only on the consumer card: filling a stranger's password into a
-     live sign-in box is the thing this separation exists to stop. */
+  /* Keep the boxes in step with whichever account is active — the market
+     resolving after mount, or one of the chips being clicked. Demo mode only:
+     filling a stranger's password into a live sign-in box is the thing this
+     separation exists to stop. */
   useEffect(() => {
-    if (!demo || selected !== 'consumer') return
-    setEmail(CONSUMER_SHOPPERS[activeShopper].email)
-    setPassword(CONSUMER_SHOPPERS[activeShopper].password)
-  }, [demo, selected, activeShopper])
+    if (!demo || !cardShoppers.length) return
+    const pick = cardShoppers[activeShopper]
+    if (!pick) return
+    setEmail(pick.email)
+    setPassword(pick.password)
+  }, [demo, selected, activeShopper, cardShoppers])
 
   const pickPersona = (p: Persona) => {
     setSelected(p)
-    /* Back to following the picker rather than to Priya, so coming back from
-       another card in a Kenyan demo does not quietly reset the country. */
+    /* Back to following the picker rather than to the Indian account, so coming
+       back from another card in a Kenyan demo does not quietly reset the
+       country. */
     setShopper(null)
-    setEmail(p === 'consumer' ? CONSUMER_SHOPPERS[suggested].email : DEMO_CREDENTIALS[p].email)
-    setPassword(p === 'consumer' ? CONSUMER_SHOPPERS[suggested].password : DEMO_CREDENTIALS[p].password)
+    const list = shoppersFor(p)
+    const pick = list[shopperForMarket(market?.code, list)]
+    setEmail(pick?.email ?? DEMO_CREDENTIALS[p].email)
+    setPassword(pick?.password ?? DEMO_CREDENTIALS[p].password)
     setError('')
   }
 
@@ -309,20 +317,22 @@ export function LoginScreen(
                         box. The real one has no idea who is about to sign in and
                         does not pretend to. */}
                     {!demo ? REAL_SUB[audience]
-                      : audience === 'consumer'
-                        ? `${CONSUMER_SHOPPERS[activeShopper].who} · ${CONSUMER_SHOPPERS[activeShopper].where}`
+                      : cardShoppers[activeShopper]
+                        ? `${cardShoppers[activeShopper].who} · ${cardShoppers[activeShopper].where}`
                         : PERSONA_META[audience].user}
                   </p>
                 </div>
               </div>
 
-              {/* Which country's shopper to be. Only the consumer has two, and a
-                  marketplace that trades in three countries is worth little in a
-                  demo that can only ever open the first. Demo mode only — the
+              {/* Which country's account to be. A marketplace that trades in
+                  three countries is worth little in a demo that can only ever
+                  open the first — and the point is not presentational: four
+                  faults in the Kenyan market had been live for weeks purely
+                  because no Kenyan screen could be opened. Demo mode only; the
                   real sign-in has no business prefilling anybody. */}
-              {demo && audience === 'consumer' && (
+              {demo && cardShoppers.length > 1 && (
                 <div style={{ display: 'flex', gap: '8px', marginBottom: 'var(--space-5)' }}>
-                  {CONSUMER_SHOPPERS.map((c, i) => (
+                  {cardShoppers.map((c, i) => (
                     <button
                       key={c.email}
                       type="button"

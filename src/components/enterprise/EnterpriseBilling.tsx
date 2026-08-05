@@ -8,6 +8,8 @@ import { Callout } from '../OnboardingJourney'
 import { useAccountMoney } from './money'
 import { loadAccount, payInvoice, disputeInvoice, invoiceCsv } from '../../lib/enterpriseRepo'
 import { loadDocumentSetup } from '../../lib/documentRepo'
+import { taxLabelFor } from '../../lib/billTemplate'
+import { useMarket } from '../../lib/MarketContext'
 import type { DocumentSetup } from '../../lib/documentRepo'
 import { invoiceFacts } from '../../lib/documentFacts'
 import type { InvoiceRow, InvoiceLineRow, AccountRow } from '../../lib/documentFacts'
@@ -41,6 +43,9 @@ export function EnterpriseBilling() {
 
   const reload = useCallback(async () => setBook(await loadAccount()), [])
   const { money, money0 } = useAccountMoney(book?.account?.currency)
+  /* The markets catalogue, for what the tax is called where this account is
+     registered. */
+  const { book: moneyBook } = useMarket()
   useEffect(() => { void reload() }, [reload])
 
   /* Above the loading guard, and reading through an empty list until the book
@@ -85,7 +90,14 @@ export function EnterpriseBilling() {
     const facts = invoiceFacts(
       invoice as unknown as InvoiceRow,
       book.invoiceLines as unknown as InvoiceLineRow[],
-      { issuer: doc.issuer, account: account as unknown as AccountRow, template: doc.template })
+      {
+        issuer: doc.issuer, account: account as unknown as AccountRow, template: doc.template,
+        /* The tax is called what it is called where the account is registered.
+           Left to the template a Kenyan invoice printed "VAT / GST at 16%",
+           which tells its reader the issuer is unsure which country they are
+           in. */
+        taxLabel: taxLabelFor(account.market, moneyBook.markets, doc.template),
+      })
     saveBlob(billPdf(facts, doc.template, doc.ids, doc.sections), pdfNameFor(facts))
     toast(`${invoice.id} downloaded as a PDF`)
   }

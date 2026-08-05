@@ -3,7 +3,7 @@ import {
   type Section, type Template, type TemplateSection, type Assignment, type BillFacts,
   sectionsOn, has, offeredTo, canRemove, canAdd, warningsFor, validateTemplate,
   nextReference, referencePattern, validateNumbering, templateFor, usedBy, canDelete,
-  blocksFor, suppressed, money, issuerFor, issuersByMarket,
+  blocksFor, suppressed, money, issuerFor, issuersByMarket, taxLabelFor,
   type Issuer,
 } from './billTemplate'
 
@@ -586,5 +586,40 @@ describe('the entity a document is issued by', () => {
     const got = issuersByMarket([stray, ...ISSUERS], order)
     expect(got[got.length - 1].id).toBe('orphan')
     expect(got).toHaveLength(4)
+  })
+})
+
+describe('what the tax on a document is called', () => {
+  const MARKETS = [
+    { code: 'IN', tax_label: 'GST' },
+    { code: 'KE', tax_label: 'VAT' },
+    { code: 'AE', tax_label: 'VAT' },
+  ]
+
+  it('is the name used where the document is raised', () => {
+    expect(taxLabelFor('IN', MARKETS)).toBe('GST')
+    expect(taxLabelFor('KE', MARKETS)).toBe('VAT')
+    expect(taxLabelFor('AE', MARKETS)).toBe('VAT')
+  })
+
+  it('does not let the template name it', () => {
+    /* One template renders documents in three countries, so the best a template
+       can do is hedge — the seeded seller template says "GST / VAT" and the
+       enterprise one "VAT / GST", and both printed on the document verbatim. A
+       Kenyan invoice reading "VAT / GST at 16%" tells its reader the issuer is
+       not sure which country they are in. */
+    expect(taxLabelFor('KE', MARKETS, { tax_label: 'GST / VAT' })).toBe('VAT')
+    expect(taxLabelFor('IN', MARKETS, { tax_label: 'VAT / GST' })).toBe('GST')
+  })
+
+  it('falls back to the template for a market not on file', () => {
+    expect(taxLabelFor('UG', MARKETS, { tax_label: 'GST / VAT' })).toBe('GST / VAT')
+  })
+
+  it('names it something rather than nothing', () => {
+    /* An unlabelled tax line is worse than a generically labelled one — the
+       reader cannot tell whether the number is tax or a rounding. */
+    expect(taxLabelFor(null, [], null)).toBe('Tax')
+    expect(taxLabelFor('KE', [], { tax_label: '' })).toBe('Tax')
   })
 })

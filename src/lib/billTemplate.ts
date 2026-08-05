@@ -121,6 +121,35 @@ export function issuerFor(
   return issuers.find(i => i.market === market) ?? null
 }
 
+/**
+ * What the tax on a document is called where it is raised.
+ *
+ * GST in India, VAT in the UAE and Kenya. `invoice_templates.tax_label` names
+ * it too, and cannot: one template renders documents in all three markets, so
+ * the best it can manage is a hedge — the seeded seller template says
+ * "GST / VAT" and the enterprise one "VAT / GST", which print on the document
+ * exactly as written. A Kenyan invoice reading "VAT / GST at 16%" is a document
+ * telling its reader the issuer is not sure which country they are in.
+ *
+ * The consumer bill already worked this out and read the market directly.
+ * The seller statement and the enterprise invoice did not, so they are the two
+ * documents still carrying the hedge — this is the same rule, in one place, for
+ * all three.
+ *
+ * The template's label survives only as the fallback for a market that is not
+ * on file, and 'Tax' behind that: an unnamed tax line is worse than a
+ * generically named one.
+ */
+export function taxLabelFor(
+  market: string | null | undefined,
+  markets: readonly { code: string; tax_label: string }[],
+  template?: { tax_label?: string | null } | null,
+): string {
+  return markets.find(m => m.code === market)?.tax_label
+    || template?.tax_label
+    || 'Tax'
+}
+
 /** Issuers in market order, for the operator's picker. */
 export function issuersByMarket(
   issuers: readonly Issuer[], order: readonly { code: string; sort_order: number }[],

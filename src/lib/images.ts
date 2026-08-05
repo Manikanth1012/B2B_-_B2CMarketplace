@@ -85,6 +85,13 @@ export const PRODUCT_IMAGES: Record<string, string> = {
   'SKU-7001': `${PEXELS}/5380642/pexels-photo-5380642.jpeg${Q}`,
   'SKU-7002': `${PEXELS}/7988099/pexels-photo-7988099.jpeg${Q}`,
   'SKU-7003': `${PEXELS}/5474028/pexels-photo-5474028.jpeg${Q}`,
+  /* Beacon Reseller Co, Nairobi. `SKU-7004` is in review rather than live, so
+     the integration check — which ranges over the live shelf — would not have
+     caught its absence until the day it was approved. Added with the other two
+     for that reason. */
+  'SKU-7004': `${PEXELS}/1181244/pexels-photo-1181244.jpeg${Q}`,
+  'SKU-7009': `${PEXELS}/3760067/pexels-photo-3760067.jpeg${Q}`,
+  'SKU-7010': `${PEXELS}/4482900/pexels-photo-4482900.jpeg${Q}`,
 }
 
 // Category hero images

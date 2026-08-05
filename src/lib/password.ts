@@ -18,6 +18,11 @@ const DEMO_ACCOUNTS = new Set([
   'anika.sharma@aventa.com',
   'rajesh.kumar@nimbussensors.com',
   'vikram.shah@smartbuild.in',
+  /* The Kenyan seller and buyer. Every persona that has a demo account has one
+     in two markets now, so a demo of Kenya is a demo of the whole marketplace
+     rather than of its storefront. */
+  'amara.okonkwo@example.com',
+  'grace.wanjiru@harbourpoint.co.ke',
 ])
 
 export function isDemoAccount(email: string): boolean {
