@@ -42,12 +42,24 @@ export async function expireStale(): Promise<number> {
   return Number(data ?? 0)
 }
 
+/** One payment, by the reference the shopper's orders carry. */
+export async function loadAttemptByRef(reference: string): Promise<PaymentAttempt | null> {
+  const { data } = await supabase.from('payment_attempts')
+    .select('*').eq('reference', reference).maybeSingle()
+  return data ? { ...(data as PaymentAttempt), amount: Number((data as PaymentAttempt).amount) } : null
+}
+
 /** This wallet's payments, most recent first — the failed ones included. */
 export async function loadAttempts(walletId: string): Promise<PaymentAttempt[]> {
   await expireStale()
   const { data } = await supabase.from('payment_attempts')
     .select('*').eq('wallet_id', walletId).order('started_at', { ascending: false }).limit(20)
   return ((data ?? []) as PaymentAttempt[]).map(a => ({ ...a, amount: Number(a.amount) }))
+}
+
+/** A reference the checkout can put on its orders before the attempt exists. */
+export function newReference(now = new Date()): string {
+  return referenceFor(now, now.getTime() + Math.floor(Math.random() * 1e6))
 }
 
 /**
@@ -59,22 +71,36 @@ export async function loadAttempts(walletId: string): Promise<PaymentAttempt[]> 
  * case with none.
  */
 export async function startPayment(
-  { walletId, amount, currency, method, marketCode, provider }: {
-    walletId: string
+  { walletId, orderRef, userId, amount, currency, method, marketCode, provider, reference }: {
+    /* A payment is for a wallet or for a basket, never both — the table's own
+       check constraint says so, and passing both here is a caller bug rather
+       than something to resolve quietly. */
+    walletId?: string
+    orderRef?: string
+    userId?: string
     amount: number
     currency: string
     method: PaymentMethod
     marketCode: string
     provider: string
+    /* The checkout needs the reference before the attempt exists, because the
+       orders it is about to write carry it. Given here when so. */
+    reference?: string
   },
 ): Promise<{ ok: true; attempt: PaymentAttempt } | { ok: false; reason: string }> {
+  if ((walletId == null) === (orderRef == null)) {
+    return { ok: false, reason: 'A payment is for a wallet or for an order, not both and not neither.' }
+  }
+
   const now = new Date()
   const id = `PA-${now.getTime().toString(36).toUpperCase()}`
   const row = {
     id,
-    reference: referenceFor(now, now.getTime() + Math.floor(Math.random() * 1e6)),
-    wallet_id: walletId,
-    purpose: 'wallet_topup',
+    reference: reference ?? referenceFor(now, now.getTime() + Math.floor(Math.random() * 1e6)),
+    wallet_id: walletId ?? null,
+    order_ref: orderRef ?? null,
+    user_id: userId ?? null,
+    purpose: walletId ? 'wallet_topup' : 'order',
     amount: +amount.toFixed(2),
     currency,
     method_id: method.id,
@@ -88,7 +114,7 @@ export async function startPayment(
     return {
       ok: false,
       reason: /row-level security/i.test(error.message)
-        ? 'That wallet is not yours to top up.'
+        ? (walletId ? 'That wallet is not yours to top up.' : 'That basket is not yours to pay for.')
         : `The payment could not be started: ${error.message}`,
     }
   }

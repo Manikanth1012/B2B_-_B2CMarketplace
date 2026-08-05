@@ -1,10 +1,30 @@
 import { useState, useEffect } from 'react'
-import { Check, CreditCard, Wallet, Building2, Smartphone, MapPin } from 'lucide-react'
+import {
+  Check, CreditCard, Wallet, Building2, Smartphone, MapPin, Landmark, Receipt,
+} from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { CartItem } from '../types'
 import { orderedAddresses, defaultAddress, formatAddress, type Address } from '../lib/addresses'
 import { basketMoney, bySeller } from '../lib/basket'
 import { useMarket } from '../lib/MarketContext'
+import { offersIn, canHandOff, describe as describeAttempt } from '../lib/gateway'
+import type { PaymentMethod, PaymentAttempt, MethodKind } from '../lib/gateway'
+import { loadPaymentCatalogue, startPayment, newReference } from '../lib/gatewayRepo'
+import type { PaymentCatalogue } from '../lib/gatewayRepo'
+import { PaymentGateway } from './PaymentGateway'
+
+/* One icon per rail, so the list reads at a glance rather than as six identical
+   rows of text. */
+function MethodIcon({ kind }: { kind: MethodKind }) {
+  const Icon = kind === 'card' ? CreditCard
+    : kind === 'netbanking' ? Landmark
+    : kind === 'upi' ? Smartphone
+    : kind === 'mobile_money' ? Smartphone
+    : kind === 'mobile_wallet' ? Wallet
+    : kind === 'carrier_billing' ? Receipt
+    : Building2
+  return <Icon size={20} />
+}
 
 /** `guard_shoppable()` and the RLS policies refuse in their own words on
     purpose. This strips the Postgres wrapper so the shopper reads a sentence. */
@@ -29,7 +49,13 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
   const [address, setAddress] = useState('')
   const [city, setCity] = useState('')
   const [country, setCountry] = useState('India')
-  const [paymentMethod, setPaymentMethod] = useState('card')
+  /* Which rail the shopper picked. Null until they pick one — the old screen
+     defaulted to 'card' and so recorded a choice nobody had made. */
+  const [paymentMethod, setPaymentMethod] = useState<string | null>(null)
+  const [catalogue, setCatalogue] = useState<PaymentCatalogue | null>(null)
+  /* The trip to the provider, and what they said when it came back. */
+  const [away, setAway] = useState<{ attempt: PaymentAttempt; method: PaymentMethod } | null>(null)
+  const [outcome, setOutcome] = useState<PaymentAttempt | null>(null)
   const [processing, setProcessing] = useState(false)
   const [orderRef, setOrderRef] = useState('')
   /* Why the order did not go through. Every write below used to be
@@ -39,6 +65,8 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
      the saved ones are offered first and free text stays as the fallback. */
   const [addresses, setAddresses] = useState<Address[]>([])
   const [chosen, setChosen] = useState<string | null>(null)
+
+  useEffect(() => { void loadPaymentCatalogue().then(setCatalogue) }, [])
 
   useEffect(() => {
     supabase.from('consumer_addresses').select('*').then(({ data }) => {
@@ -84,18 +112,62 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
    */
   const groups = bySeller(cartItems)
 
+  /* What this shopper, in this market, may pay with — from the marketplace's
+     own catalogue rather than four options typed into this file. The old list
+     offered "PayTM, Airtel Money, M-Pesa" on one line to everybody, which is
+     three countries' rails shown to a shopper standing in one of them. */
+  const marketCode = market?.code ?? null
+  const offers = catalogue && marketCode ? offersIn(marketCode, catalogue.methods, catalogue.links) : []
+  const method = offers.find(o => o.method.id === paymentMethod)?.method ?? null
+  const provider = offers.find(o => o.method.id === paymentMethod)?.provider ?? null
+  const handoff = canHandOff({ amount: total, method, offers })
+
+  /* Everything or nothing. A basket that produced one order and then failed on
+     the second would leave the shopper charged for half a purchase with no way
+     to tell which half. Held outside `handleSubmit` because the provider's
+     answer arrives later, and a refusal has to be able to take them back. */
+  const [placed, setPlaced] = useState<{ id: string; ref: string }[]>([])
+
+  const undo = async (rows: { id: string }[]) => {
+    for (const o of rows) await supabase.from('orders').delete().eq('id', o.id)
+  }
+
+  /**
+   * Take the basket as far as the provider's door.
+   *
+   * The orders are written first, in `awaiting_payment`, because an order that
+   * does not exist until the money arrives cannot be reconciled against a
+   * payment that arrived without one. They carry the payment's reference, and
+   * `settle_payment_attempt` is what moves them to `placed`. Nothing here
+   * declares the purchase done.
+   */
   const handleSubmit = async () => {
+    if (!method || !provider || !marketCode) return
     setProcessing(true)
     setFailure(null)
 
     const stamp = Date.now().toString().slice(-8)
-    const placed: { id: string; ref: string }[] = []
-    /* Everything or nothing. A basket that produced one order and then failed on
-       the second would leave the shopper charged for half a purchase with no way
-       to tell which half. */
-    const undo = async () => {
-      for (const o of placed) await supabase.from('orders').delete().eq('id', o.id)
+    const reference = newReference()
+    const { data: auth } = await supabase.auth.getUser()
+
+    /* The attempt first. An attempt with no orders behind it settles to
+       "nothing left to pay for" and expires harmlessly; orders with no attempt
+       would sit in `awaiting_payment` with nothing to ever clear them. */
+    const started = await startPayment({
+      orderRef: `ORD-${stamp}`,
+      userId: auth.user?.id,
+      amount: total,
+      currency: shopCurrency,
+      method, marketCode, provider, reference,
+    })
+    if (!started.ok) {
+      setProcessing(false)
+      setFailure(`${started.reason} Nothing has been charged.`)
+      return
     }
+
+    const made: { id: string; ref: string }[] = []
+    const undoAll = async () => { await undo(made) }
 
     for (const [n, group] of groups.entries()) {
       const ref = groups.length === 1 ? `ORD-${stamp}` : `ORD-${stamp}-${n + 1}`
@@ -104,7 +176,10 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
       const { data: order, error: orderErr } = await supabase.from('orders').insert({
         order_ref: ref,
         seller: group.seller || null,
-        status: 'placed',
+        /* Not an order yet — a basket waiting on a provider. It becomes
+           `placed` inside `settle_payment_attempt`, and nowhere else. */
+        status: 'awaiting_payment',
+        payment_ref: reference,
         total: groupTotal,
         subtotal: net,
         tax: groupTax,
@@ -115,19 +190,19 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
         currency: shopCurrency,
         market: market?.code ?? null,
         tax_rate: taxRate,
-        payment_method: paymentMethod,
+        payment_method: method.id,
         buyer_name: name,
         buyer_email: email,
         shipping_address: { address, city, country },
       }).select().single()
 
       if (orderErr || !order) {
-        await undo()
+        await undoAll()
         setProcessing(false)
         setFailure(friendly(orderErr?.message) ?? 'The order could not be placed. Nothing has been charged.')
         return
       }
-      placed.push({ id: order.id, ref })
+      made.push({ id: order.id, ref })
 
       const orderItems = group.lines.map((item) => ({
         order_id: order.id,
@@ -144,7 +219,7 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
          swallowed, and the customer was shown a confirmation for an order with
          nothing in it. The orders go back rather than standing empty. */
       if (itemsErr) {
-        await undo()
+        await undoAll()
         setProcessing(false)
         setFailure(friendly(itemsErr.message) ?? 'Something in your basket could not be ordered. Nothing has been charged.')
         return
@@ -172,10 +247,44 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
       }
     }
 
-    await onClearCart()
-    setOrderRef(placed.map(o => o.ref).join(' · '))
+    setPlaced(made)
     setProcessing(false)
-    setStep('confirm')
+    setAway({ attempt: started.attempt, method })
+  }
+
+  /* What the provider said, applied to the screen. The orders were moved to
+     `placed` inside the database function or they were not moved at all — this
+     only decides what the shopper is shown, and takes the basket back when the
+     payment did not happen. */
+  const settled = async (a: PaymentAttempt) => {
+    setAway(null)
+    if (a.state === 'succeeded') {
+      await onClearCart()
+      setOrderRef(placed.map(o => o.ref).join(' · '))
+      setPlaced([])
+      setStep('confirm')
+      return
+    }
+    await undo(placed)
+    setPlaced([])
+    setOutcome(a)
+    setFailure(null)
+  }
+
+  /* Away at the provider. Rendered before the guards below because the basket
+     is still full at this point and the shopper is mid-payment — dropping them
+     back onto the empty-basket screen would be the worst possible moment. */
+  if (away) {
+    return (
+      <PaymentGateway
+        attempt={away.attempt}
+        method={away.method}
+        savedLabel={null}
+        merchant="Aventa Telecom"
+        money={fmt}
+        onSettled={settled}
+      />
+    )
   }
 
   if (cartItems.length === 0 && step !== 'confirm') {
@@ -347,44 +456,102 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
             {step === 'payment' && (
               <div className="fade-in">
                 <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 600, marginBottom: '20px' }}>Payment method</h2>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {[
-                    { id: 'card', label: 'Credit / Debit Card', icon: <CreditCard size={20} />, desc: 'Visa, Mastercard, Amex' },
-                    { id: 'wallet', label: 'Mobile Wallet', icon: <Wallet size={20} />, desc: 'PayTM, Airtel Money, M-Pesa' },
-                    { id: 'carrier', label: 'Carrier Billing', icon: <Smartphone size={20} />, desc: 'Add to your telecom bill' },
-                    { id: 'bank', label: 'Net Banking', icon: <Building2 size={20} />, desc: 'Direct bank transfer' },
-                  ].map((method) => (
-                    <button
-                      key={method.id}
-                      onClick={() => setPaymentMethod(method.id)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '16px',
-                        padding: '16px',
-                        borderRadius: 'var(--radius)',
-                        border: paymentMethod === method.id ? '2px solid var(--brand-accent)' : '1px solid var(--border)',
-                        background: paymentMethod === method.id ? 'rgba(0,166,166,0.05)' : 'white',
-                        transition: 'all 150ms ease',
-                        textAlign: 'left',
-                      }}
-                    >
-                      <div style={{ color: paymentMethod === method.id ? 'var(--brand-accent)' : 'var(--text-tertiary)' }}>
-                        {method.icon}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{method.label}</div>
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{method.desc}</div>
-                      </div>
-                      <div style={{
-                        width: '20px',
-                        height: '20px',
-                        borderRadius: '50%',
-                        border: paymentMethod === method.id ? '6px solid var(--brand-accent)' : '2px solid var(--gray-300)',
-                      }} />
-                    </button>
-                  ))}
-                </div>
+                {!catalogue ? (
+                  <div style={{ textAlign: 'center', padding: '24px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+                ) : offers.length === 0 ? (
+                  <div style={{
+                    padding: '14px', borderRadius: 'var(--radius)',
+                    background: 'var(--warning-bg)', color: 'var(--warning)', fontSize: 'var(--text-sm)',
+                  }}>
+                    No way to pay is set up for {market?.name ?? 'this market'} yet. Support can take the order
+                    over the phone in the meantime.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    {offers.map(({ method: m, provider: who }) => {
+                      const on = paymentMethod === m.id
+                      /* A rail the basket is too big for is shown and disabled
+                         rather than hidden. A shopper who used carrier billing
+                         last week needs to know why it is not there today. */
+                      const tooBig = m.max_amount != null && total > m.max_amount
+                      return (
+                        <button
+                          key={m.id}
+                          onClick={() => !tooBig && setPaymentMethod(m.id)}
+                          disabled={tooBig}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'flex-start',
+                            gap: '16px',
+                            padding: '16px',
+                            borderRadius: 'var(--radius)',
+                            border: on ? '2px solid var(--brand-accent)' : '1px solid var(--border)',
+                            background: on ? 'rgba(0,166,166,0.05)' : 'white',
+                            transition: 'all 150ms ease',
+                            textAlign: 'left',
+                            opacity: tooBig ? 0.55 : 1,
+                            cursor: tooBig ? 'not-allowed' : 'pointer',
+                          }}
+                        >
+                          <div style={{ color: on ? 'var(--brand-accent)' : 'var(--text-tertiary)', marginTop: '1px' }}>
+                            <MethodIcon kind={m.kind} />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'baseline', flexWrap: 'wrap' }}>
+                              <span style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{m.label}</span>
+                              <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                                via {who} · {m.typical}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                              {tooBig
+                                ? `Takes up to ${fmt(m.max_amount!)} at a time — this basket is more than that.`
+                                : m.blurb}
+                            </div>
+                          </div>
+                          <div style={{
+                            width: '20px',
+                            height: '20px',
+                            borderRadius: '50%',
+                            flexShrink: 0,
+                            border: on ? '6px solid var(--brand-accent)' : '2px solid var(--gray-300)',
+                          }} />
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {/* What is about to happen, before it happens. A shopper thrown
+                    at an unfamiliar provider's page with no warning is a
+                    shopper who abandons the basket. */}
+                {method && handoff.ok && (
+                  <div style={{
+                    marginTop: '16px', padding: '12px 14px', borderRadius: 'var(--radius)',
+                    background: 'var(--info-bg)', fontSize: 'var(--text-xs)',
+                    color: 'var(--text-secondary)', lineHeight: 1.55,
+                  }}>
+                    <strong style={{ color: 'var(--info)' }}>Next: {provider}</strong><br />
+                    {handoff.note}
+                  </div>
+                )}
+
+                {/* A payment that was refused or abandoned. The orders went back
+                    with it, so this says so rather than leaving the shopper to
+                    wonder whether they have bought something. */}
+                {outcome && (() => {
+                  const d = describeAttempt(outcome, fmt)
+                  return (
+                    <div role="alert" style={{
+                      marginTop: '16px', padding: '12px 14px', borderRadius: 'var(--radius)',
+                      background: 'var(--danger-bg)', color: 'var(--danger)', fontSize: 'var(--text-sm)',
+                    }}>
+                      <strong style={{ display: 'block', marginBottom: '2px' }}>{d.headline}</strong>
+                      <span style={{ fontWeight: 400 }}>{d.detail} Your basket is untouched — try another way to pay.</span>
+                    </div>
+                  )
+                })()}
+
                 {failure && (
                   <div role="alert" style={{
                     marginTop: '20px', padding: '12px 14px', borderRadius: 'var(--radius)',
@@ -400,11 +567,11 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                   </button>
                   <button
                     onClick={handleSubmit}
-                    disabled={processing}
+                    disabled={processing || !handoff.ok}
                     className="btn btn-primary btn-lg"
                     style={{ flex: 1 }}
                   >
-                    {processing ? 'Processing...' : `Pay ${fmt(total)}`}
+                    {processing ? 'Taking you to the provider…' : `Pay ${fmt(total)}`}
                   </button>
                 </div>
               </div>

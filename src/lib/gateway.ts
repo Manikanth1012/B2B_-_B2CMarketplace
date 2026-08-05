@@ -14,7 +14,9 @@
 export type { Check } from './enterprise'
 import type { Check } from './enterprise'
 
-export type MethodKind = 'card' | 'netbanking' | 'upi' | 'mobile_money' | 'bank_transfer'
+export type MethodKind =
+  | 'card' | 'netbanking' | 'upi' | 'mobile_money' | 'bank_transfer'
+  | 'mobile_wallet' | 'carrier_billing'
 
 export interface PaymentMethod {
   id: string
@@ -25,6 +27,9 @@ export interface PaymentMethod {
   asks_for: string
   typical: string
   sort_order: number
+  /* A ceiling per payment, in the market's currency, or null for none. Carrier
+     billing has one because a monthly telecom bill is not a credit line. */
+  max_amount?: number | null
 }
 
 export interface MethodMarket {
@@ -39,7 +44,9 @@ export type AttemptState = 'initiated' | 'succeeded' | 'failed' | 'cancelled' | 
 export interface PaymentAttempt {
   id: string
   reference: string
+  purpose?: 'wallet_topup' | 'order'
   wallet_id: string | null
+  order_ref?: string | null
   amount: number
   currency: string
   method_id: string
@@ -160,6 +167,15 @@ export function canHandOff({ amount, method, offers }: Handoff): Check {
   }
   if (amount <= 0) return { ok: false, reason: 'Enter an amount first.' }
 
+  /* A carrier bill is not a credit line, so the ceiling is refused here rather
+     than by the operator's billing three days later. */
+  if (method.max_amount != null && amount > method.max_amount) {
+    return {
+      ok: false,
+      reason: `${method.label} takes up to ${method.max_amount.toLocaleString()} at a time, and this is more than that. Pay by card or from your bank instead.`,
+    }
+  }
+
   const provider = offers.find(o => o.method.id === method.id)!.provider
   return {
     ok: true,
@@ -226,8 +242,24 @@ export function fieldsFor(method: PaymentMethod, savedLabel: string | null): Fie
         { key: 'account', label: 'Account number', kind: 'text' },
         { key: 'holder', label: 'Account holder', kind: 'text' },
       ]
+    case 'mobile_wallet':
+      return [
+        { key: 'wallet', label: 'Which wallet', kind: 'select', options: WALLET_BRANDS,
+          hint: 'The balance is debited straight away — there is no bill afterwards.' },
+        { key: 'msisdn', label: 'Registered mobile number', kind: 'text',
+          hint: 'The number the wallet is registered against, not necessarily the one you are browsing on.' },
+      ]
+    case 'carrier_billing':
+      return [
+        { key: 'msisdn', label: 'Your Aventa mobile number', kind: 'text',
+          hint: 'It has to be a number billed by Aventa. Another operator’s number cannot be charged here.' },
+      ]
   }
 }
+
+/* The wallets an Indian or Emirati shopper would actually recognise. Named
+   rather than invented, for the same reason the bank list is. */
+export const WALLET_BRANDS = ['PayTM', 'PhonePe', 'Amazon Pay', 'Mobikwik', 'Careem Pay', 'e& money']
 
 const digits = (s: string) => s.replace(/\D/g, '')
 
@@ -275,6 +307,17 @@ export function validateFields(method: PaymentMethod, values: Record<string, str
     case 'bank_transfer':
       if (digits(values.account ?? '').length < 6) return { ok: false, reason: 'An account number is at least six digits.' }
       return { ok: true }
+    case 'mobile_wallet': {
+      if (!WALLET_BRANDS.includes(values.wallet ?? '')) return { ok: false, reason: 'Choose which wallet you are paying from.' }
+      const n = digits(values.msisdn ?? '')
+      if (n.length < 9 || n.length > 12) return { ok: false, reason: 'That is not a mobile number a wallet would be registered against.' }
+      return { ok: true }
+    }
+    case 'carrier_billing': {
+      const n = digits(values.msisdn ?? '')
+      if (n.length < 9 || n.length > 12) return { ok: false, reason: 'Give the mobile number Aventa bills you on.' }
+      return { ok: true }
+    }
   }
 }
 
@@ -305,7 +348,16 @@ export function instrumentLabel(
     case 'upi': return `UPI ${values.vpa}`
     case 'mobile_money': return `M-Pesa ${values.msisdn}`
     case 'bank_transfer': return `bank transfer from ${digits(values.account ?? '').slice(-4)}`
+    case 'mobile_wallet': return `${values.wallet} wallet ${mask(values.msisdn ?? '')}`
+    case 'carrier_billing': return `the Aventa bill for ${mask(values.msisdn ?? '')}`
   }
+}
+
+/* A number a customer can recognise without it being a number anybody else
+   could use. The last four, which is what every provider shows back. */
+export function mask(msisdn: string): string {
+  const d = digits(msisdn)
+  return d.length <= 4 ? d : `•••••• ${d.slice(-4)}`
 }
 
 /* ---------------------------------------------------------- coming back --- */
@@ -392,4 +444,231 @@ export function canStart(attempts: readonly PaymentAttempt[], now = new Date()):
     ok: false,
     reason: `${open.reference} is still with ${open.provider ?? 'the provider'}. Finish or cancel that one before starting another, or you may be charged twice.`,
   }
+}
+
+/* ------------------------------------------------- the provider's step two -- */
+
+/**
+ * What happens after the customer has said how they want to pay.
+ *
+ * Every one of these rails has a second act, and it is the act that decides
+ * whether the payment happens: the bank's one-time code, the wallet's PIN, the
+ * approval that arrives in a UPI app, the code texted to the number the bill
+ * belongs to. A payment page that takes a card number and immediately says
+ * "paid" is not a payment page, it is a form.
+ *
+ * There is no SMS and no bank, so the code is shown on screen. That is the one
+ * place the flow admits mid-way that it is a stand-in, and it is better than
+ * the alternative — a code field nobody can fill.
+ */
+export interface Fact {
+  label: string
+  value: string
+}
+
+export interface ConfirmStep {
+  title: string
+  /* In the provider's voice, not the marketplace's. */
+  blurb: string
+  /* What the customer types. Empty where the confirmation happens somewhere
+     else entirely — a UPI app, an M-Pesa PIN prompt on the handset itself. */
+  fields: Field[]
+  /* The code or PIN, shown because there is nowhere for it to arrive. Null when
+     nothing has to be typed. */
+  shown: string | null
+  /* What the provider knows about this payment and would show back. */
+  facts: Fact[]
+  action: string
+}
+
+/**
+ * A six-digit code from the payment's own reference.
+ *
+ * Deterministic, so the page can show it and check it without holding it in
+ * state where a re-render would lose it, and so two payments never share one.
+ */
+export function oneTimeCode(reference: string): string {
+  let h = 7
+  for (let i = 0; i < reference.length; i++) h = (h * 31 + reference.charCodeAt(i)) % 1_000_000
+  return String(h).padStart(6, '0')
+}
+
+/** A four-digit wallet PIN, from the same reference by a different seed. */
+export function walletPin(reference: string): string {
+  return oneTimeCode(`${reference}#pin`).slice(-4)
+}
+
+/** The date a carrier-billed purchase lands on. Bills are struck on the 1st. */
+export function nextBillDate(now = new Date()): string {
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1))
+  return d.toISOString().slice(0, 10)
+}
+
+/* A balance the wallet would plausibly hold — always enough, because a wallet
+   that could not cover it would have been refused before this screen. */
+function walletBalance(reference: string, amount: number): number {
+  return Math.round((amount + 500 + (Number(oneTimeCode(reference)) % 9000)) * 100) / 100
+}
+
+export function confirmFor(
+  { method, values, reference, amount, savedLabel, money, now = new Date() }: {
+    method: PaymentMethod
+    values: Record<string, string>
+    reference: string
+    amount: number
+    savedLabel: string | null
+    money: (n: number) => string
+    now?: Date
+  },
+): ConfirmStep {
+  const code = oneTimeCode(reference)
+  const target = mask(values.msisdn ?? '')
+
+  switch (method.kind) {
+    case 'card': {
+      const pan = savedLabel ?? `•••• ${(values.number ?? '').replace(/\D/g, '').slice(-4)}`
+      return {
+        title: 'Verify with your bank',
+        blurb: `Your bank is checking this payment. A one-time code has been sent to the mobile number registered against ${pan}. It is valid for five minutes.`,
+        fields: [{ key: 'otp', label: 'One-time code', kind: 'text', hint: 'Six digits' }],
+        shown: code,
+        facts: [
+          { label: 'Card', value: pan },
+          { label: 'Amount', value: money(amount) },
+          { label: 'Merchant', value: 'AVENTA TELECOM' },
+          { label: 'Reference', value: reference },
+        ],
+        action: 'Confirm payment',
+      }
+    }
+
+    case 'netbanking':
+      return {
+        title: `${values.bank} — internet banking`,
+        blurb: 'Sign in to authorise the payment. You are on your bank’s page; the merchant never sees these details.',
+        fields: [
+          { key: 'customer', label: 'Customer ID', kind: 'text' },
+          { key: 'password', label: 'Password', kind: 'password' },
+        ],
+        shown: null,
+        facts: [
+          { label: 'Paying', value: 'AVENTA TELECOM' },
+          { label: 'Amount', value: money(amount) },
+          { label: 'From', value: `${values.bank} savings account` },
+          { label: 'Reference', value: reference },
+        ],
+        action: 'Sign in and pay',
+      }
+
+    case 'upi':
+      return {
+        title: 'Approve it in your UPI app',
+        blurb: `A collect request has gone to ${values.vpa}. Open your UPI app and approve it — the request expires in five minutes.`,
+        fields: [],
+        shown: null,
+        facts: [
+          { label: 'To', value: 'aventatelecom@razorpay' },
+          { label: 'Amount', value: money(amount) },
+          { label: 'From', value: values.vpa ?? '' },
+          { label: 'Reference', value: reference },
+        ],
+        action: 'I have approved it',
+      }
+
+    case 'mobile_money':
+      return {
+        title: 'Check your phone',
+        blurb: `An M-Pesa prompt has been sent to ${target}. Enter your M-Pesa PIN on the handset to confirm — nothing is typed here.`,
+        fields: [],
+        shown: null,
+        facts: [
+          { label: 'Pay bill', value: '247 247 · Aventa Telecom' },
+          { label: 'Amount', value: money(amount) },
+          { label: 'Phone', value: target },
+          { label: 'Reference', value: reference },
+        ],
+        action: 'I have entered my PIN',
+      }
+
+    case 'mobile_wallet': {
+      const before = walletBalance(reference, amount)
+      return {
+        title: `${values.wallet} — confirm payment`,
+        blurb: `Enter your ${values.wallet} PIN to release the payment. The balance is debited straight away.`,
+        fields: [{ key: 'pin', label: `${values.wallet} PIN`, kind: 'password', hint: 'Four digits' }],
+        shown: walletPin(reference),
+        facts: [
+          { label: 'Wallet', value: `${values.wallet} · ${target}` },
+          { label: 'Balance', value: money(before) },
+          { label: 'This payment', value: money(amount) },
+          { label: 'Left after', value: money(+(before - amount).toFixed(2)) },
+        ],
+        action: 'Pay from wallet',
+      }
+    }
+
+    case 'carrier_billing':
+      return {
+        title: 'Confirm the charge to your bill',
+        blurb: `We have texted a code to ${target}. Entering it authorises Aventa to put this purchase on your monthly bill — nothing leaves your bank today.`,
+        fields: [{ key: 'otp', label: 'Code we texted you', kind: 'text', hint: 'Six digits' }],
+        shown: code,
+        facts: [
+          { label: 'Number', value: target },
+          { label: 'Amount', value: money(amount) },
+          { label: 'Appears on', value: `your bill dated ${nextBillDate(now)}` },
+          { label: 'Reference', value: reference },
+        ],
+        action: 'Add it to my bill',
+      }
+
+    case 'bank_transfer':
+      return {
+        title: 'Authorise the transfer',
+        blurb: 'Confirm the transfer in your banking app. Quote the reference below if your bank asks for one.',
+        fields: [],
+        shown: null,
+        facts: [
+          { label: 'Beneficiary', value: 'Aventa Telecom FZ-LLC' },
+          { label: 'Amount', value: money(amount) },
+          { label: 'Reference', value: reference },
+        ],
+        action: 'I have authorised it',
+      }
+  }
+}
+
+/**
+ * Whether the second step is answered.
+ *
+ * The code is checked against the one this payment was issued, not merely for
+ * being six digits — a page that accepts any six digits has a code field for
+ * decoration.
+ */
+export function validateConfirm(
+  step: ConfirmStep, values: Record<string, string>, reference: string,
+): Check {
+  for (const f of step.fields) {
+    if (!(values[f.key] ?? '').trim()) return { ok: false, reason: `${f.label} is needed.` }
+  }
+
+  if ('otp' in values || step.fields.some(f => f.key === 'otp')) {
+    if (values.otp !== oneTimeCode(reference)) {
+      return { ok: false, reason: 'That code is not the one we sent. Check it and try again.' }
+    }
+  }
+  if (step.fields.some(f => f.key === 'pin')) {
+    if (values.pin !== walletPin(reference)) {
+      return { ok: false, reason: 'That PIN is wrong. Two more attempts before the wallet is locked.' }
+    }
+  }
+  if (step.fields.some(f => f.key === 'password')) {
+    if ((values.customer ?? '').trim().length < 4) {
+      return { ok: false, reason: 'A customer ID is at least four characters.' }
+    }
+    if ((values.password ?? '').length < 6) {
+      return { ok: false, reason: 'Your internet banking password is at least six characters.' }
+    }
+  }
+  return { ok: true }
 }

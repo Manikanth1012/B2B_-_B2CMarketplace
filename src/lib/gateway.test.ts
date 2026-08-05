@@ -4,7 +4,8 @@ import { describe, it, expect } from 'vitest'
 import {
   offersIn, savedFor, canHandOff, referenceFor, fieldsFor, validateFields, luhn,
   instrumentLabel, describe as describeAttempt, stale, inFlight, canStart,
-  NET_BANKS, HANDOFF_MINUTES, marketForWallet,
+  NET_BANKS, HANDOFF_MINUTES, marketForWallet, WALLET_BRANDS,
+  confirmFor, validateConfirm, oneTimeCode, walletPin, nextBillDate, mask,
 } from './gateway'
 import type { PaymentMethod, MethodMarket, PaymentAttempt, SavedInstrument } from './gateway'
 import { isExpired } from './payments'
@@ -266,5 +267,136 @@ describe('starting another one', () => {
   it('says yes when there is nothing outstanding', () => {
     expect(canStart([], NOW).ok).toBe(true)
     expect(canStart([attempt({ state: 'failed', decided_at: 'x', failure_reason: 'Declined.' })], NOW).ok).toBe(true)
+  })
+})
+
+
+describe('the two rails a telecom marketplace ought to have', () => {
+  const wallet = method({ id: 'mobile_wallet', label: 'Mobile wallet', kind: 'mobile_wallet' })
+  const carrier = method({
+    id: 'carrier_billing', label: 'Add to your telecom bill', kind: 'carrier_billing',
+    max_amount: 30000,
+  })
+
+  it('asks a wallet customer which wallet, from ones they would recognise', () => {
+    const fields = fieldsFor(wallet, null)
+    expect(fields.map(f => f.key)).toEqual(['wallet', 'msisdn'])
+    expect(fields[0].options).toEqual(WALLET_BRANDS)
+  })
+
+  it('asks carrier billing for the number the bill belongs to, and nothing else', () => {
+    expect(fieldsFor(carrier, null).map(f => f.key)).toEqual(['msisdn'])
+  })
+
+  it('refuses a carrier-billed purchase over the ceiling, and names a way to pay', () => {
+    /* A monthly telecom bill is not a credit line. Refusing here beats the
+       operator's billing refusing it three days later. */
+    const offers = [{ method: carrier, provider: 'Aventa Telecom billing' }]
+    const r = canHandOff({ amount: 66098, method: carrier, offers })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toMatch(/Pay by card or from your bank instead/)
+    expect(canHandOff({ amount: 1099, method: carrier, offers }).ok).toBe(true)
+  })
+
+  it('shows a number back the way a provider does', () => {
+    expect(mask('+91 98860 41127')).toBe('•••••• 1127')
+    expect(mask('411')).toBe('411')
+  })
+
+  it('names what was charged', () => {
+    expect(instrumentLabel(wallet, { wallet: 'PayTM', msisdn: '9886041127' }, null))
+      .toBe('PayTM wallet •••••• 1127')
+    expect(instrumentLabel(carrier, { msisdn: '9886041127' }, null))
+      .toBe('the Aventa bill for •••••• 1127')
+  })
+})
+
+describe('the provider\u2019s second step', () => {
+  const REF = 'PAY-260805-3K2M'
+  const money = (n: number) => `\u20b9${n.toFixed(2)}`
+  const step = (m: PaymentMethod, values: Record<string, string> = {}) =>
+    confirmFor({ method: m, values, reference: REF, amount: 2500, savedLabel: null, money,
+                 now: new Date('2026-08-05T00:00:00Z') })
+
+  it('gives a card payment the bank check that actually decides it', () => {
+    /* A page that takes a card number and immediately says "paid" is not a
+       payment page, it is a form. */
+    const s = step(method(), { number: '4111111111111111' })
+    expect(s.title).toMatch(/Verify with your bank/)
+    expect(s.fields.map(f => f.key)).toEqual(['otp'])
+    expect(s.shown).toBe(oneTimeCode(REF))
+    expect(s.facts.find(f => f.label === 'Card')?.value).toBe('\u2022\u2022\u2022\u2022 1111')
+  })
+
+  it('sends a UPI customer to their own app, with nothing to type here', () => {
+    const s = step(method({ kind: 'upi' }), { vpa: 'priya@okhdfcbank' })
+    expect(s.fields).toEqual([])
+    expect(s.shown).toBeNull()
+    expect(s.action).toMatch(/approved it/)
+  })
+
+  it('sends an M-Pesa customer to the handset, because that is where the PIN goes', () => {
+    const s = step(method({ kind: 'mobile_money' }), { msisdn: '0722431908' })
+    expect(s.blurb).toMatch(/nothing is typed here/i)
+    expect(s.fields).toEqual([])
+  })
+
+  it('puts a net-banking customer on their bank\u2019s own sign-in', () => {
+    const s = step(method({ kind: 'netbanking' }), { bank: 'HDFC Bank' })
+    expect(s.title).toBe('HDFC Bank \u2014 internet banking')
+    expect(s.fields.map(f => f.key)).toEqual(['customer', 'password'])
+    expect(s.blurb).toMatch(/merchant never sees these details/)
+  })
+
+  it('shows a wallet customer what the payment leaves behind', () => {
+    const s = step(method({ kind: 'mobile_wallet' }), { wallet: 'PayTM', msisdn: '9886041127' })
+    const before = Number(s.facts.find(f => f.label === 'Balance')!.value.replace(/[^\d.]/g, ''))
+    const after = Number(s.facts.find(f => f.label === 'Left after')!.value.replace(/[^\d.]/g, ''))
+    expect(+(before - after).toFixed(2)).toBe(2500)
+    expect(before).toBeGreaterThan(2500)
+  })
+
+  it('tells a carrier-billing customer which bill it lands on', () => {
+    const s = step(method({ kind: 'carrier_billing' }), { msisdn: '9886041127' })
+    expect(s.facts.find(f => f.label === 'Appears on')?.value).toBe('your bill dated 2026-09-01')
+    expect(s.blurb).toMatch(/nothing leaves your bank today/i)
+  })
+
+  it('strikes the bill on the first of the following month', () => {
+    expect(nextBillDate(new Date('2026-08-05T00:00:00Z'))).toBe('2026-09-01')
+    expect(nextBillDate(new Date('2026-12-31T00:00:00Z'))).toBe('2027-01-01')
+  })
+
+  it('gives every payment its own code rather than one code for all of them', () => {
+    expect(oneTimeCode('PAY-A')).not.toBe(oneTimeCode('PAY-B'))
+    expect(oneTimeCode(REF)).toMatch(/^\d{6}$/)
+    expect(walletPin(REF)).toMatch(/^\d{4}$/)
+    expect(walletPin(REF)).not.toBe(oneTimeCode(REF).slice(-4))
+  })
+
+  it('checks the code against the one this payment was issued', () => {
+    /* A page that accepts any six digits has a code field for decoration. */
+    const s = step(method(), { number: '4111111111111111' })
+    expect(validateConfirm(s, { otp: '000000' }, REF).ok).toBe(false)
+    expect(validateConfirm(s, { otp: oneTimeCode(REF) }, REF).ok).toBe(true)
+  })
+
+  it('warns a wallet customer what a wrong PIN costs', () => {
+    const s = step(method({ kind: 'mobile_wallet' }), { wallet: 'PayTM', msisdn: '9886041127' })
+    const r = validateConfirm(s, { pin: '0000' }, REF)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toMatch(/before the wallet is locked/)
+    expect(validateConfirm(s, { pin: walletPin(REF) }, REF).ok).toBe(true)
+  })
+
+  it('asks for both halves of a bank sign-in', () => {
+    const s = step(method({ kind: 'netbanking' }), { bank: 'HDFC Bank' })
+    expect(validateConfirm(s, { customer: 'ab', password: 'secret1' }, REF).ok).toBe(false)
+    expect(validateConfirm(s, { customer: '48819021', password: 'secret1' }, REF).ok).toBe(true)
+  })
+
+  it('needs nothing typed where the confirmation happens elsewhere', () => {
+    const s = step(method({ kind: 'upi' }), { vpa: 'priya@okhdfcbank' })
+    expect(validateConfirm(s, {}, REF).ok).toBe(true)
   })
 })

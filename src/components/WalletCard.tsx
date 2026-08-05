@@ -10,13 +10,14 @@ import { loadMyWallet } from '../lib/walletRepo'
 import type { MyWallet } from '../lib/walletRepo'
 import { canTopUp, runningBalance, settleOnClosure, limitFor } from '../lib/wallet'
 import {
-  offersIn, savedFor, canHandOff, canStart, marketForWallet, fieldsFor,
-  validateFields, instrumentLabel, describe as describeAttempt,
+  offersIn, savedFor, canHandOff, canStart, marketForWallet,
+  describe as describeAttempt,
 } from '../lib/gateway'
 import type { PaymentMethod, PaymentAttempt, MethodKind } from '../lib/gateway'
-import { loadPaymentCatalogue, loadAttempts, startPayment, settle } from '../lib/gatewayRepo'
+import { loadPaymentCatalogue, loadAttempts, startPayment } from '../lib/gatewayRepo'
 import type { PaymentCatalogue } from '../lib/gatewayRepo'
 import { isExpired } from '../lib/payments'
+import { PaymentGateway } from './PaymentGateway'
 
 /* A card already on the account. The wallet panel is handed these by whichever
    screen it sits on, and the gateway needs the kind and the expiry as well as
@@ -304,7 +305,7 @@ function TopUpDialog({ my, money, methods: saved, onClose, onDone }: {
   /* ------------------------------------------------------- away, paying */
   if (away && my.wallet) {
     return (
-      <GatewayPage
+      <PaymentGateway
         attempt={away.attempt}
         method={away.method}
         savedLabel={savedCard}
@@ -438,137 +439,4 @@ function MethodIcon({ kind }: { kind: MethodKind }) {
     : kind === 'mobile_money' ? Smartphone
     : Building2
   return <Icon size={15} style={{ color: 'var(--brand-navy)' }} />
-}
-
-/**
- * The provider's own page.
- *
- * Deliberately does not look like the marketplace: a payment page that looks
- * exactly like the site you came from is the thing customers are told to be
- * suspicious of, and a demo that blurs the handoff teaches the wrong shape.
- *
- * It is a stand-in and says so in one line at the bottom. Everything above that
- * line behaves the way the real one does — including refusing a card number
- * that fails the check an issuer does, and including the two ways out that are
- * not "paid": the provider declining, and the customer walking away.
- */
-function GatewayPage({ attempt, method, savedLabel, merchant, money, onSettled }: {
-  attempt: PaymentAttempt
-  method: PaymentMethod
-  savedLabel: string | null
-  merchant: string
-  money: (n: number) => string
-  onSettled: (settled: PaymentAttempt) => Promise<void>
-}) {
-  const [values, setValues] = useState<Record<string, string>>(
-    savedLabel ? { __saved: savedLabel } : {})
-  const [busy, setBusy] = useState(false)
-  const fields = fieldsFor(method, savedLabel)
-  const check = validateFields(method, values)
-
-  const finish = async (
-    outcome: 'succeeded' | 'failed' | 'cancelled', reason?: string,
-  ) => {
-    setBusy(true)
-    try {
-      const instrument = outcome === 'succeeded' || outcome === 'failed'
-        ? instrumentLabel(method, values, savedLabel)
-        : undefined
-      const res = await settle({
-        attemptId: attempt.id, outcome, instrument,
-        gatewayRef: `${(attempt.provider ?? 'PSP').replace(/\W/g, '').slice(0, 4).toUpperCase()}-${attempt.id.slice(-6)}`,
-        reason,
-      })
-      if (!res.ok) { toast(res.reason, 'error'); return }
-      await onSettled({
-        ...attempt,
-        state: outcome,
-        instrument: instrument ?? attempt.instrument,
-        failure_reason: outcome === 'failed' ? (reason ?? null) : null,
-        decided_at: new Date().toISOString(),
-      })
-    } finally { setBusy(false) }
-  }
-
-  return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 500, background: '#0f172a',
-      display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-      padding: '32px 16px', overflowY: 'auto',
-    }}>
-      <div style={{ width: 'min(440px, 100%)', background: 'white', borderRadius: '14px', overflow: 'hidden' }}>
-        <div style={{ padding: '16px 20px', background: '#1e293b', color: 'white' }}>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <ShieldCheck size={16} />
-            <strong style={{ fontSize: 'var(--text-sm)' }}>{attempt.provider}</strong>
-          </div>
-          <div style={{ fontSize: '11px', opacity: 0.75, marginTop: '2px' }}>
-            Secure payment page · {attempt.reference}
-          </div>
-        </div>
-
-        <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          <div style={{
-            display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
-            paddingBottom: '12px', borderBottom: '1px solid var(--border)',
-          }}>
-            <div>
-              <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                Paying
-              </div>
-              <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>{merchant}</div>
-            </div>
-            <div style={{ fontSize: '24px', fontWeight: 800 }}>{money(attempt.amount)}</div>
-          </div>
-
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
-            {method.label} · {method.asks_for}
-          </div>
-
-          {fields.map(f => (
-            <FormField key={f.key} label={f.label} required hint={f.hint}>
-              {f.kind === 'select' ? (
-                <Select value={values[f.key] ?? ''} onChange={e => setValues({ ...values, [f.key]: e.target.value })}>
-                  <option value="">Choose…</option>
-                  {(f.options ?? []).map(o => <option key={o} value={o}>{o}</option>)}
-                </Select>
-              ) : (
-                <TextInput type={f.kind === 'password' ? 'password' : 'text'}
-                           value={values[f.key] ?? ''}
-                           onChange={e => setValues({ ...values, [f.key]: e.target.value })} />
-              )}
-            </FormField>
-          ))}
-
-          {!check.ok && Object.keys(values).length > (savedLabel ? 1 : 0) && (
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)' }}>{check.reason}</div>
-          )}
-
-          <Btn disabled={!check.ok || busy} onClick={() => void finish('succeeded')}>
-            {busy ? 'Talking to your bank…' : `Pay ${money(attempt.amount)}`}
-          </Btn>
-
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <Btn variant="secondary" size="sm" disabled={busy} style={{ flex: 1 }}
-                 onClick={() => void finish('cancelled')}>
-              Cancel and go back
-            </Btn>
-            {/* The refusal path, reachable. A payment screen that can only
-                succeed is a payment screen nobody has ever seen fail. */}
-            <Btn variant="secondary" size="sm" disabled={busy} style={{ flex: 1 }}
-                 onClick={() => void finish('failed',
-                   'Your bank declined the payment. They did not say why — your bank can tell you.')}>
-              Decline it
-            </Btn>
-          </div>
-
-          <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', lineHeight: 1.5, borderTop: '1px solid var(--border-light)', paddingTop: '10px' }}>
-            This stands in for {attempt.provider}’s hosted page so the handoff can be walked end to end.
-            Nothing typed here leaves your browser, and no card is charged. The wallet is credited only
-            when a payment succeeds, which is the whole point of the trip.
-          </div>
-        </div>
-      </div>
-    </div>
-  )
 }
