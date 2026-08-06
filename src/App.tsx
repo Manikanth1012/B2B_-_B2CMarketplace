@@ -16,6 +16,7 @@ import { LandingPage } from './components/public/LandingPage'
 import { AudiencePage } from './components/public/AudiencePage'
 import { ApplyToSell } from './components/public/ApplyToSell'
 import { RegisterShopper } from './components/public/RegisterShopper'
+import { ContinueWithAventaId } from './components/public/ContinueWithAventaId'
 import { Header } from './components/Header'
 import { Hero } from './components/Hero'
 import { CategoryStrip } from './components/CategoryStrip'
@@ -326,6 +327,7 @@ function AppInner() {
             : 'landing',
         })}
         /* Whatever "get an account" means for the audience they arrived as. */
+        onSso={() => { setSurface({ kind: 'sso' }); window.scrollTo({ top: 0 }) }}
         onNewAccount={() => {
           if (surface.prefill === 'partner') setSurface({ kind: 'apply' })
           else if (surface.prefill === 'enterprise') setSurface({ kind: 'apply', kindOf: 'business' })
@@ -375,7 +377,22 @@ function AppInner() {
       <RegisterShopper
         onLeave={() => { setSurface({ kind: 'public', page: 'retail' }); window.scrollTo({ top: 0 }) }}
         onSignIn={() => setSurface({ kind: 'login', prefill: 'consumer' })}
+        onSso={() => { setSurface({ kind: 'sso' }); window.scrollTo({ top: 0 }) }}
         onRegistered={(session) => handleLogin(session)}
+      />
+    )
+  }
+
+  /* Opening an account from an identity the telco already holds. Lands through
+     the same `handleLogin` the form and the sign-in screen use, so a customer
+     who came in this way reaches the same console with the same basket,
+     watches and profile loaded on the way. */
+  if (surface.kind === 'sso') {
+    return (
+      <ContinueWithAventaId
+        onLeave={() => { setSurface({ kind: 'public', page: 'retail' }); window.scrollTo({ top: 0 }) }}
+        onRegisterInstead={() => { setSurface({ kind: 'register' }); window.scrollTo({ top: 0 }) }}
+        onDone={(session) => handleLogin(session)}
       />
     )
   }

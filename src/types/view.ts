@@ -110,4 +110,7 @@ export type Surface =
      it is a form somebody is part-way through, and the header's marketplace nav
      would take them out of it with one click. */
   | { kind: 'register' }
+  /* The second door. Somebody the telco already knows opens an account from
+     what it already holds, instead of filling the form in again. */
+  | { kind: 'sso' }
   | { kind: 'session'; session: Session }

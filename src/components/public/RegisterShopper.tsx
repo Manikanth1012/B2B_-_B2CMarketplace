@@ -32,9 +32,10 @@ const BAND: Record<Strength, { label: string; colour: string; fill: string }> = 
   strong: { label: 'Strong', colour: 'var(--success)', fill: '100%' },
 }
 
-export function RegisterShopper({ onLeave, onSignIn, onRegistered }: {
+export function RegisterShopper({ onLeave, onSignIn, onSso, onRegistered }: {
   onLeave: () => void
   onSignIn: () => void
+  onSso: () => void
   onRegistered: (session: Session, customerId: string) => void
 }) {
   const [draft, setDraft] = useState<SignUpDraft>(BLANK_SIGNUP)
@@ -87,6 +88,36 @@ export function RegisterShopper({ onLeave, onSignIn, onRegistered }: {
           One account for plans, devices, entertainment and home — one basket, one bill and one
           support queue. It takes a minute and you can shop straight afterwards.
         </p>
+
+        {/* Offered above the form rather than below it. Somebody who already
+            has an Aventa account has answered all of this once and had it
+            verified; finding that out after typing it again is finding out too
+            late. The form stays for everybody else, which is most people. */}
+        <div style={{
+          background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
+          padding: '16px 18px', marginTop: '20px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          gap: '16px', flexWrap: 'wrap',
+        }}>
+          <div>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--text)' }}>
+              Already an Aventa customer?
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+              Your details and verified identity come across. Nothing to fill in.
+            </div>
+          </div>
+          <button onClick={onSso} className="btn btn-secondary">Continue with Aventa ID</button>
+        </div>
+
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: '12px',
+          margin: '20px 0 4px', color: 'var(--text-tertiary)', fontSize: 'var(--text-xs)',
+        }}>
+          <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+          or fill this in
+          <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+        </div>
 
         <div style={{
           background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',

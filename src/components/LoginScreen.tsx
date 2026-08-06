@@ -33,6 +33,10 @@ interface LoginScreenProps {
      to discover you cannot use it, and the right next step differs by audience:
      a seller applies, a business asks for an account, a shopper registers. */
   onNewAccount?: () => void
+  /* The second door. Only the consumer card offers it: a seller or a business
+     is never a telco subscriber in the sense that has a 360 record to assert
+     against, and the operator is staff. */
+  onSso?: () => void
 }
 
 /* What the real sign-in calls each audience. Not "Consumer Sign-In" — nobody
@@ -109,7 +113,7 @@ const PERSONA_META: Record<Persona, { label: string; sub: string; user: string; 
 }
 
 export function LoginScreen(
-  { onLogin, prefill, notice, demo = false, onBack, onNewAccount }: LoginScreenProps,
+  { onLogin, prefill, notice, demo = false, onBack, onNewAccount, onSso }: LoginScreenProps,
 ) {
   /* In real mode there is nothing to select — the form is the screen. `selected`
      still carries the audience, so the heading and its icon are the right ones. */
@@ -481,6 +485,27 @@ export function LoginScreen(
                        accounts and signs in to whichever they meant. */
                     'Sign in with the address and password on your account. Whichever console it belongs to is the one that opens.'}
               </div>
+
+              {/* Above "create an account", because a returning customer who
+                  came in through Aventa ID has no marketplace password to type
+                  into the boxes above and would otherwise be stuck looking at
+                  them. */}
+              {!demo && onSso && audience === 'consumer' && (
+                <div style={{ marginTop: 'var(--space-4)' }}>
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: '12px',
+                    color: 'var(--text-tertiary)', fontSize: 'var(--text-xs)', marginBottom: 'var(--space-3)',
+                  }}>
+                    <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                    or
+                    <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+                  </div>
+                  <button type="button" onClick={onSso} className="btn btn-secondary"
+                    style={{ width: '100%' }}>
+                    Continue with Aventa ID
+                  </button>
+                </div>
+              )}
 
               {!demo && onNewAccount && (
                 <div style={{

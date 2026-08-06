@@ -104,3 +104,55 @@ export function shopperForMarket(
   const i = list.findIndex(s => s.market === code)
   return i === -1 ? 0 : i
 }
+
+/* ------------------------------------------------- the second door's demo -- */
+
+/**
+ * The Aventa IDs a demo can arrive as.
+ *
+ * Scaffolding, and only scaffolding. A real identity provider holds its own
+ * session, so there is no picker at all — you are already signed in to it or
+ * you are not. This list stands in for that, the same way `CONSUMER_SHOPPERS`
+ * stands in for knowing which customer you are.
+ *
+ * Only the subject and the credential are here. Everything else about a
+ * subscriber — their name, number, address and what the telco verified — is
+ * held by the provider and arrives in the assertion, because a client that
+ * already knew it would not be demonstrating anything.
+ */
+export interface DemoIdentity {
+  subject: string
+  secret: string
+  /* What the picker shows. Deliberately just enough to choose between them,
+     and never the fields the assertion is there to deliver. */
+  who: string
+  shows: string
+}
+
+export const DEMO_IDENTITIES: DemoIdentity[] = [
+  {
+    subject: 'AV-IN-88214021', secret: 'telco1234',
+    who: 'Rohan Mehta · Pune',
+    shows: 'Not on the marketplace — opens an account with no form',
+  },
+  {
+    subject: 'AV-KE-44120876', secret: 'telco1234',
+    who: 'Otieno Odhiambo · Kisumu',
+    shows: 'Not on the marketplace — opens a Kenyan account, billed in KSh',
+  },
+  {
+    subject: 'AV-IN-77105533', secret: 'telco1234',
+    who: 'Priya Raman · Bengaluru',
+    shows: 'Already has an account here — asks for its password before linking',
+  },
+  {
+    subject: 'AV-AE-30047781', secret: 'telco1234',
+    who: 'Yusuf Al Marzooqi · Dubai',
+    shows: 'Verified for a phone line only — refused, with the reason',
+  },
+  {
+    subject: 'AV-UG-51200934', secret: 'telco1234',
+    who: 'Aisha Nakato · Kampala',
+    shows: 'Registered in Uganda, where the marketplace does not trade — refused',
+  },
+]
