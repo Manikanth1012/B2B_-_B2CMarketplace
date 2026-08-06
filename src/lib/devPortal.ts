@@ -113,6 +113,22 @@ export interface CallRecord {
   called_at: string
 }
 
+/* One row per application, environment, version, status code and day, from the
+   `api_call_rollup` view. Every figure on both screens is a sum over these.
+   Counting `CallRecord`s in the browser looked equivalent and was not:
+   PostgREST caps a response at a thousand rows, so a marketplace with more
+   calls than that was reporting percentages of whichever thousand arrived. */
+export interface Rollup {
+  application_id: string | null
+  environment: string
+  version_id: string | null
+  api_id: string | null
+  status_code: number
+  on_day: string
+  calls: number
+  total_ms: number
+}
+
 /* ---- Keys ----------------------------------------------------------------- */
 
 export const KEY_STATE_LABEL: Record<KeyState, string> = {
@@ -219,30 +235,47 @@ export interface Usage {
   nearLimit: boolean
 }
 
-export function usageOf(calls: CallRecord[], quota: number): Usage {
-  const n = calls.length
-  const failed = calls.filter(c => c.status_code >= 400).length
+export function usageOf(rows: Rollup[], quota: number): Usage {
+  let n = 0
+  let failed = 0
+  let totalMs = 0
   const byDay = new Map<string, number>()
-  for (const c of calls) {
-    const d = c.called_at.slice(0, 10)
-    byDay.set(d, (byDay.get(d) ?? 0) + 1)
+
+  for (const r of rows) {
+    n += r.calls
+    if (r.status_code >= 400) failed += r.calls
+    totalMs += r.total_ms
+    byDay.set(r.on_day, (byDay.get(r.on_day) ?? 0) + r.calls)
   }
+
   let peakDay = 0
   let peakDayOn: string | null = null
   for (const [d, k] of byDay) if (k > peakDay) { peakDay = k; peakDayOn = d }
-  const ms = calls.map(c => c.ms).filter(m => m > 0)
 
   return {
     calls: n,
     failed,
     successRate: n ? Math.round(((n - failed) / n) * 100) : null,
-    avgMs: ms.length ? Math.round(ms.reduce((a, b) => a + b, 0) / ms.length) : null,
+    avgMs: n ? Math.round(totalMs / n) : null,
     peakDay,
     peakDayOn,
     quota,
     headroom: quota > 0 ? quota - peakDay : null,
     nearLimit: quota > 0 && peakDay >= quota * 0.8,
   }
+}
+
+/* What the gateway answered, across everything rather than across a page. */
+export function statusBreakdown(rows: Rollup[]): { code: number; calls: number; share: number }[] {
+  const byCode = new Map<number, number>()
+  let total = 0
+  for (const r of rows) {
+    byCode.set(r.status_code, (byCode.get(r.status_code) ?? 0) + r.calls)
+    total += r.calls
+  }
+  return [...byCode.entries()]
+    .map(([code, calls]) => ({ code, calls, share: total ? calls / total : 0 }))
+    .sort((a, b) => b.calls - a.calls)
 }
 
 /* Sandbox is throttled harder than production on purpose: a seller testing a

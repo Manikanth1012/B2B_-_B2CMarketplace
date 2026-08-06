@@ -10,7 +10,7 @@ import {
 import { Callout } from '../OnboardingJourney'
 import {
   LIFECYCLE_LABEL, KEY_STATE_LABEL, keyNote, maskedSecret, usable, sunsetWarning,
-  usageOf, productionQueue, publishable, deprecatable, LIMITS, daysUntil,
+  usageOf, statusBreakdown, productionQueue, publishable, deprecatable, LIMITS, daysUntil,
 } from '../../lib/devPortal'
 import type { Version, Credential, Application, Subscription } from '../../lib/devPortal'
 import {
@@ -65,12 +65,12 @@ export function OperatorDeveloper() {
 
   if (!admin) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
-  const { versions, subscriptions, applications, credentials, calls } = admin
+  const { versions, subscriptions, applications, credentials, usage } = admin
   const queue = productionQueue(subscriptions)
   const liveSubs = subscriptions.filter(s => s.state === 'active')
   const undocumented = versions.filter(v => v.endpoints.length === 0)
-  const sandboxUse = usageOf(calls.filter(c => c.environment === 'sandbox'), LIMITS.sandbox.quota)
-  const liveUse = usageOf(calls.filter(c => c.environment === 'production'), LIMITS.production.quota)
+  const sandboxUse = usageOf(usage.filter(r => r.environment === 'sandbox'), LIMITS.sandbox.quota)
+  const liveUse = usageOf(usage.filter(r => r.environment === 'production'), LIMITS.production.quota)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -383,7 +383,7 @@ function ApplicationsTab({ admin, onSuspend, onChanged, onMinted }: {
   admin: PortalAdmin; onSuspend: (a: Application) => void; onChanged: () => void
   onMinted: (m: { client_id?: string; client_secret?: string; note: string }) => void
 }) {
-  const { applications, credentials, subscriptions, calls, partners } = admin
+  const { applications, credentials, subscriptions, usage, partners } = admin
   const page = usePaging(applications, { initialSize: 10 })
 
   const lift = async (a: Application) => {
@@ -414,7 +414,7 @@ function ApplicationsTab({ admin, onSuspend, onChanged, onMinted }: {
           {page.rows.map(app => {
             const keys = credentials.filter(c => c.application_id === app.id)
             const subs = subscriptions.filter(s => s.application_id === app.id)
-            const use = usageOf(calls.filter(c => c.application_id === app.id), LIMITS.production.quota)
+            const use = usageOf(usage.filter(r => r.application_id === app.id), LIMITS.production.quota)
             const seller = partners.find(p => p.id === app.partner_id)
 
             return (
@@ -480,13 +480,14 @@ function ApplicationsTab({ admin, onSuspend, onChanged, onMinted }: {
 /* ---- Traffic -------------------------------------------------------------- */
 
 function TrafficTab({ admin }: { admin: PortalAdmin }) {
-  const { calls, applications, partners } = admin
-  const failures = calls.filter(c => c.status_code >= 400).slice(0, 40)
+  const { usage, calls, applications, partners } = admin
+  /* `calls` is the most recent page of individual records — enough to list, not
+     enough to count from. Every figure below comes from `usage`, which is
+     aggregated in the database and therefore sees every call. */
+  const failures = calls.filter(c => c.status_code >= 400)
   const page = usePaging(failures, { initialSize: 15 })
-
-  const byCode = new Map<number, number>()
-  for (const c of calls) byCode.set(c.status_code, (byCode.get(c.status_code) ?? 0) + 1)
-  const codes = [...byCode.entries()].sort((a, b) => b[1] - a[1])
+  const codes = statusBreakdown(usage)
+  const total = codes.reduce((a, c) => a + c.calls, 0)
 
   const nameOf = (appId: string | null) => {
     const app = applications.find(a => a.id === appId)
@@ -496,22 +497,23 @@ function TrafficTab({ admin }: { admin: PortalAdmin }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <SectionCard title="What the gateway answered" subtitle={`Across ${fmtInt(calls.length)} recorded calls`}>
+      <SectionCard title="What the gateway answered" subtitle={`Every one of ${fmtInt(total)} recorded calls`}>
         <Table headers={['Status', 'Calls', 'Share', 'What it means']}>
-          {codes.map(([code, n]) => (
+          {codes.map(({ code, calls: n, share }) => (
             <tr key={code}>
               <Td><strong style={{
                 color: code < 400 ? 'var(--success)' : code < 500 ? 'var(--warning)' : 'var(--danger)',
               }}>{code}</strong></Td>
               <Td right>{fmtInt(n)}</Td>
-              <Td right>{Math.round((n / calls.length) * 100)}%</Td>
+              <Td right>{share < 0.005 && n > 0 ? '<1%' : `${Math.round(share * 100)}%`}</Td>
               <Td style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{CODE_MEANING[code] ?? ''}</Td>
             </tr>
           ))}
         </Table>
       </SectionCard>
 
-      <SectionCard title="Recent failures" subtitle="A 401 or 403 here is somebody's integration not working right now">
+      <SectionCard title="Recent failures"
+                   subtitle={`The ${fmtInt(failures.length)} in the last ${fmtInt(calls.length)} calls — a 401 or 403 here is somebody's integration not working right now`}>
         {failures.length === 0 ? <EmptyState message="Nothing has failed." /> : (
           <>
             <Table headers={['When', 'Caller', 'Call', 'Status']}>

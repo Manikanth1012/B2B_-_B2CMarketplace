@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
-  keyNote, usable, maskedSecret, daysUntil, sunsetWarning, usageOf, LIMITS,
+  keyNote, usable, maskedSecret, daysUntil, sunsetWarning, usageOf, statusBreakdown, LIMITS,
   curlFor, endpointUrl, scopesHeld, callability, productionQueue,
   publishable, deprecatable, statusTone, groupEndpoints, KEY_STATE_LABEL,
 } from './devPortal'
-import type { Credential, Version, Endpoint, Subscription, CallRecord } from './devPortal'
+import type { Credential, Version, Endpoint, Subscription, Rollup } from './devPortal'
 
 const NOW = new Date('2026-08-06T12:00:00Z')
 
@@ -39,10 +39,10 @@ const sub = (over: Partial<Subscription> = {}): Subscription => ({
   consumer_name: 'Nimbus Sensors', partner_id: 'PTR-1004', ...over,
 })
 
-const call = (over: Partial<CallRecord> = {}): CallRecord => ({
-  id: 1, application_id: 'APP-1', version_id: 'AP-CAT@2.1', environment: 'sandbox',
-  method: 'GET', path: '/productOffering', status_code: 200, ms: 120,
-  called_at: '2026-08-01T09:00:00Z', ...over,
+const roll = (over: Partial<Rollup> = {}): Rollup => ({
+  application_id: 'APP-1', environment: 'sandbox', version_id: 'AP-CAT@2.1',
+  api_id: 'AP-CAT', status_code: 200, on_day: '2026-08-01',
+  calls: 1, total_ms: 120, ...over,
 })
 
 describe('key state', () => {
@@ -151,8 +151,8 @@ describe('sunset warning', () => {
 describe('usage', () => {
   it('a quota is compared against the busiest day, not the average', () => {
     const calls = [
-      ...Array.from({ length: 90 }, (_, i) => call({ id: i, called_at: '2026-08-01T09:00:00Z' })),
-      ...Array.from({ length: 10 }, (_, i) => call({ id: 100 + i, called_at: '2026-08-02T09:00:00Z' })),
+      roll({ on_day: '2026-08-01', calls: 90, total_ms: 90 * 120 }),
+      roll({ on_day: '2026-08-02', calls: 10, total_ms: 10 * 120 }),
     ]
     const u = usageOf(calls, 100)
     expect(u.calls).toBe(100)
@@ -165,8 +165,9 @@ describe('usage', () => {
 
   it('counts failures as failures and reports the rate', () => {
     const u = usageOf([
-      call({ id: 1, status_code: 200 }), call({ id: 2, status_code: 200 }),
-      call({ id: 3, status_code: 403 }), call({ id: 4, status_code: 500 }),
+      roll({ status_code: 200, calls: 2, total_ms: 200 }),
+      roll({ status_code: 403, calls: 1, total_ms: 40 }),
+      roll({ status_code: 500, calls: 1, total_ms: 900 }),
     ], 1000)
     expect(u.failed).toBe(2)
     expect(u.successRate).toBe(50)
@@ -179,13 +180,50 @@ describe('usage', () => {
     expect(u.nearLimit).toBe(false)
   })
 
-  it('averages only calls that were timed', () => {
-    expect(usageOf([call({ ms: 100 }), call({ id: 2, ms: 0 }), call({ id: 3, ms: 300 })], 10).avgMs).toBe(200)
+  it('averages over every call summed, not over the rollup rows', () => {
+    /* Three rows holding 100 calls between them average across the 100, not
+       across the three — an average of averages is not the average. */
+    const u = usageOf([
+      roll({ on_day: '2026-08-01', calls: 90, total_ms: 90 * 100 }),
+      roll({ on_day: '2026-08-02', calls: 10, total_ms: 10 * 1000 }),
+    ], 10_000)
+    expect(u.avgMs).toBe(190)
+  })
+
+  it('sums across rows rather than counting them', () => {
+    /* The fault this replaced: counting rows in the browser off a capped page.
+       One rollup row can stand for four hundred calls. */
+    expect(usageOf([roll({ calls: 400, total_ms: 400 * 50 })], 10_000).calls).toBe(400)
   })
 
   it('throttles sandbox harder than production', () => {
     expect(LIMITS.sandbox.rate).toBeLessThan(LIMITS.production.rate)
     expect(LIMITS.sandbox.quota).toBeLessThan(LIMITS.production.quota)
+  })
+})
+
+describe('what the gateway answered', () => {
+  it('shares are of everything, and sort by volume', () => {
+    const b = statusBreakdown([
+      roll({ status_code: 200, calls: 750 }),
+      roll({ status_code: 403, calls: 200 }),
+      roll({ status_code: 500, calls: 50 }),
+    ])
+    expect(b.map(x => x.code)).toEqual([200, 403, 500])
+    expect(b[0].share).toBeCloseTo(0.75)
+  })
+
+  it('folds the same code across days into one row', () => {
+    const b = statusBreakdown([
+      roll({ status_code: 403, on_day: '2026-08-01', calls: 3 }),
+      roll({ status_code: 403, on_day: '2026-08-02', calls: 4 }),
+    ])
+    expect(b).toHaveLength(1)
+    expect(b[0].calls).toBe(7)
+  })
+
+  it('has nothing to say about nothing', () => {
+    expect(statusBreakdown([])).toEqual([])
   })
 })
 

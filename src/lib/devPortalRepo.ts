@@ -9,7 +9,7 @@
  */
 import { supabase } from './supabase'
 import type {
-  Application, Credential, Version, Endpoint, Subscription, CallRecord, Environment,
+  Application, Credential, Version, Endpoint, Subscription, CallRecord, Rollup, Environment,
 } from './devPortal'
 
 export interface DeveloperWorkspace {
@@ -17,13 +17,22 @@ export interface DeveloperWorkspace {
   credentials: Credential[]
   subscriptions: Subscription[]
   versions: Version[]
+  /* Every figure comes from here — one aggregated row per application,
+     environment, version, status code and day. `calls` below is a page of the
+     most recent individual records, for listing rather than for arithmetic. */
+  usage: Rollup[]
   calls: CallRecord[]
   loadError?: string
 }
 
 const EMPTY: DeveloperWorkspace = {
-  applications: [], credentials: [], subscriptions: [], versions: [], calls: [],
+  applications: [], credentials: [], subscriptions: [], versions: [], usage: [], calls: [],
 }
+
+/* PostgREST caps a response at a thousand rows, so counting `api_call_log` in
+   the browser silently reports a percentage of whichever thousand came back.
+   The rollup is one row per bucket and fits whole. */
+const RECENT_LIMIT = 200
 
 /* The catalogue of everything published, with its endpoints. Public by design —
    documentation nobody can read before they sign up is documentation nobody
@@ -65,12 +74,13 @@ export async function loadPublishedApis(): Promise<Version[]> {
    credentials and the call log; the partner id is passed for subscriptions,
    whose policy predates this model. */
 export async function loadWorkspace(partnerId: string): Promise<DeveloperWorkspace> {
-  const [apps, creds, subs, versions, calls] = await Promise.all([
+  const [apps, creds, subs, versions, usage, calls] = await Promise.all([
     supabase.from('api_applications').select('*').eq('partner_id', partnerId).order('created_at'),
     supabase.from('api_credential_state').select('*').order('issued_at', { ascending: false }),
     supabase.from('operator_api_subscriptions').select('*').eq('partner_id', partnerId).order('sort_order'),
     loadPublishedApis(),
-    supabase.from('api_call_log').select('*').order('called_at', { ascending: false }).limit(2000),
+    supabase.from('api_call_rollup').select('*'),
+    supabase.from('api_call_log').select('*').order('called_at', { ascending: false }).limit(RECENT_LIMIT),
   ])
 
   const err = apps.error ?? creds.error ?? subs.error ?? calls.error
@@ -86,6 +96,7 @@ export async function loadWorkspace(partnerId: string): Promise<DeveloperWorkspa
     credentials: ((creds.data ?? []) as unknown as Credential[]).filter(c => mine.has(c.application_id)),
     subscriptions: shapeSubs(subs.data ?? [], versions),
     versions,
+    usage: ((usage.data ?? []) as unknown as Rollup[]).filter(r => r.application_id && mine.has(r.application_id)),
     calls: ((calls.data ?? []) as unknown as CallRecord[]).filter(c => c.application_id && mine.has(c.application_id)),
     loadError: err?.message,
   }
@@ -98,18 +109,22 @@ export interface PortalAdmin {
   credentials: Credential[]
   subscriptions: Subscription[]
   versions: Version[]
+  usage: Rollup[]
+  /* The most recent individual calls, for the failures list. Not the source of
+     any total — see `usage`. */
   calls: CallRecord[]
   partners: { id: string; name: string }[]
   loadError?: string
 }
 
 export async function loadPortalAdmin(): Promise<PortalAdmin> {
-  const [apps, creds, subs, versions, calls, partners] = await Promise.all([
+  const [apps, creds, subs, versions, usage, calls, partners] = await Promise.all([
     supabase.from('api_applications').select('*').order('created_at', { ascending: false }),
     supabase.from('api_credential_state').select('*').order('issued_at', { ascending: false }),
     supabase.from('operator_api_subscriptions').select('*').order('sort_order'),
     loadPublishedApis(),
-    supabase.from('api_call_log').select('*').order('called_at', { ascending: false }).limit(2000),
+    supabase.from('api_call_rollup').select('*'),
+    supabase.from('api_call_log').select('*').order('called_at', { ascending: false }).limit(RECENT_LIMIT),
     supabase.from('partners').select('id, name').order('name'),
   ])
 
@@ -118,6 +133,7 @@ export async function loadPortalAdmin(): Promise<PortalAdmin> {
     credentials: (creds.data ?? []) as unknown as Credential[],
     subscriptions: shapeSubs(subs.data ?? [], versions),
     versions,
+    usage: (usage.data ?? []) as unknown as Rollup[],
     calls: (calls.data ?? []) as unknown as CallRecord[],
     partners: (partners.data ?? []) as { id: string; name: string }[],
     loadError: (apps.error ?? subs.error)?.message,

@@ -53,10 +53,10 @@ export function PartnerDeveloper({ partnerId }: { partnerId: string }) {
 
   if (!ws) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
-  const { applications, credentials, subscriptions, versions, calls } = ws
+  const { applications, credentials, subscriptions, versions, usage } = ws
   const activeApps = applications.filter(a => a.status === 'active')
-  const sandboxUsage = usageOf(calls.filter(c => c.environment === 'sandbox'), LIMITS.sandbox.quota)
-  const liveUsage = usageOf(calls.filter(c => c.environment === 'production'), LIMITS.production.quota)
+  const sandboxUsage = usageOf(usage.filter(r => r.environment === 'sandbox'), LIMITS.sandbox.quota)
+  const liveUsage = usageOf(usage.filter(r => r.environment === 'production'), LIMITS.production.quota)
   const live = subscriptions.filter(s => s.state === 'active')
   const pending = subscriptions.filter(s => s.state === 'pending')
 
@@ -118,7 +118,7 @@ export function PartnerDeveloper({ partnerId }: { partnerId: string }) {
       {tab === 'apps' && (
         <ApplicationsTab
           applications={applications} credentials={credentials} subscriptions={subscriptions}
-          versions={versions} calls={calls}
+          versions={versions} usage={usage}
           onRotate={setRotating} onRevoke={setRevoking}
           onSubscribe={() => setTab('apis')} />
       )}
@@ -168,10 +168,10 @@ export function PartnerDeveloper({ partnerId }: { partnerId: string }) {
 /* ---- Applications and their keys ------------------------------------------ */
 
 function ApplicationsTab({
-  applications, credentials, subscriptions, versions, calls, onRotate, onRevoke, onSubscribe,
+  applications, credentials, subscriptions, versions, usage, onRotate, onRevoke, onSubscribe,
 }: {
   applications: Application[]; credentials: Credential[]; subscriptions: Subscription[]
-  versions: Version[]; calls: DeveloperWorkspace['calls']
+  versions: Version[]; usage: DeveloperWorkspace['usage']
   onRotate: (c: Credential) => void; onRevoke: (c: Credential) => void; onSubscribe: () => void
 }) {
   if (applications.length === 0) {
@@ -193,8 +193,7 @@ function ApplicationsTab({
       {applications.map(app => {
         const keys = credentials.filter(c => c.application_id === app.id)
         const subs = subscriptions.filter(s => s.application_id === app.id)
-        const appCalls = calls.filter(c => c.application_id === app.id)
-        const use = usageOf(appCalls, LIMITS.sandbox.quota)
+        const use = usageOf(usage.filter(r => r.application_id === app.id), LIMITS.sandbox.quota)
 
         return (
           <SectionCard key={app.id} title={app.name}
