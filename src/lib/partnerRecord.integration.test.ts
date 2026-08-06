@@ -89,7 +89,19 @@ describe('what was submitted at each gate', () => {
 
     for (const g of gates) {
       const has = submissions.some(s => s.gate_id === g.id)
+      /* `current` means the gate is open, which covers both "submitted, being
+         reviewed" and "asked for, not sent yet". Both are correct states, so
+         it is the one status that constrains nothing — this asserted that a
+         gate somebody had only just arrived at already held a submission,
+         which was true of the seed and false of the first real application. */
+      if (g.status === 'current') continue
       expect(has, `${g.partner_id} ${g.gate_name} (${g.status})`).toBe(g.status !== 'pending')
+    }
+    /* The strong half is unchanged: a gate that cleared or failed was decided
+       on something, and that something has to be on file. */
+    for (const g of gates.filter(x => x.status === 'cleared' || x.status === 'failed')) {
+      expect(submissions.some(s => s.gate_id === g.id),
+        `${g.partner_id} ${g.gate_name} was decided with nothing submitted`).toBe(true)
     }
     /* And nothing is attached to a gate nobody reached. */
     const pendingIds = new Set(gates.filter(g => g.status === 'pending').map(g => g.id))
@@ -202,8 +214,28 @@ describe('what a seller may sell, and what they settle on', () => {
 
   it('gives every trading seller a plan, and the stopped application none', () => {
     for (const p of partners) {
-      if (p.status === 'rejected') expect(p.plan_id, `${p.name} was rejected but has a plan`).toBeNull()
-      else expect(p.plan_id, `${p.name} is ${p.status} with nothing to settle on`).toBeTruthy()
+      if (p.status === 'rejected') {
+        expect(p.plan_id, `${p.name} was rejected but has a plan`).toBeNull()
+      } else if (p.status === 'onboarding' || p.status === 'review') {
+        /* A commission plan is agreed at the Agreements gate. An applicant
+           still on gate one has not got there, and demanding one of it was
+           this check assuming every partner had already finished — which held
+           until somebody applied through the real journey. Once agreed it must
+           not disappear, so the constraint is one-directional. */
+        continue
+      } else {
+        expect(p.plan_id, `${p.name} is ${p.status} with nothing to settle on`).toBeTruthy()
+      }
+    }
+  })
+
+  it('never settles a seller on a plan that does not exist', async () => {
+    /* What the blanket check was really protecting. A plan id naming nothing
+       is worse than none: the console prints a commission rate from it. */
+    const { data } = await supabase.from('commission_plans').select('id')
+    const known = new Set(((data ?? []) as { id: string }[]).map(p => p.id))
+    for (const p of partners.filter(x => x.plan_id)) {
+      expect(known.has(p.plan_id!), `${p.name} settles on ${p.plan_id}, which is not a plan`).toBe(true)
     }
   })
 })

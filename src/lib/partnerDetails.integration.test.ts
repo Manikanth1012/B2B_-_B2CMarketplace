@@ -20,13 +20,27 @@ const DEMO = 'PTR-1004'
 describe('what the marketplace holds about every seller', () => {
   let partners: { id: string; name: string; country: string; joined: string }[] = []
   let banks: Awaited<ReturnType<typeof loadPartnerSettlement>>['bank'][] = []
+  /* Which sellers have actually reached the gate that collects bank details.
+     An application still on its first gate has not, and demanding one of it
+     was this check assuming every partner in the database had finished
+     onboarding — true until somebody applied through the real journey. */
+  let banked = new Set<string>()
+  let unreached = new Set<string>()
 
   beforeAll(async () => {
     await signIn(OPERATOR.email, OPERATOR.password)
-    const [p, b] = await Promise.all([
+    const [p, b, g] = await Promise.all([
       supabase.from('partners').select('id,name,country,joined'),
       supabase.from('partner_bank').select('*'),
+      supabase.from('onboarding_gates').select('partner_id,gate_name,status'),
     ])
+    const gs = (g.data ?? []) as { partner_id: string; gate_name: string; status: string }[]
+    banked = new Set(gs.filter(x => x.gate_name === 'Bank & tax' && x.status === 'cleared')
+                       .map(x => x.partner_id))
+    /* Never reached the gate at all — distinct from having reached it and being
+       under review, where details are on file and the gate has yet to clear. */
+    unreached = new Set(gs.filter(x => x.gate_name === 'Bank & tax' && x.status === 'pending')
+                          .map(x => x.partner_id))
     partners = (p.data ?? []) as typeof partners
     banks = (b.data ?? []) as typeof banks
     expect(partners.length).toBeGreaterThan(0)
@@ -34,10 +48,26 @@ describe('what the marketplace holds about every seller', () => {
 
   afterAll(async () => { await signOut() })
 
-  it('has somewhere to pay every seller', () => {
-    /* A settlement run with an amount and no destination is a run that halts. */
-    for (const p of partners) {
+  it('has somewhere to pay every seller that cleared the bank gate', () => {
+    /* A settlement run with an amount and no destination is a run that halts.
+       Scoped to sellers past the gate that collects the account: before it,
+       having none is the correct state, not a gap. */
+    expect(banked.size, 'no seller has cleared the bank gate, so this checked nothing')
+      .toBeGreaterThan(0)
+    for (const p of partners.filter(x => banked.has(x.id))) {
       expect(banks.find(b => b?.partner_id === p.id), `${p.name} has no settlement instruction`).toBeTruthy()
+    }
+  })
+
+  it('holds no bank details for a seller that never reached the gate', () => {
+    /* The other direction, which is the one that would be a leak: an account
+       number on file for somebody who was never asked for one. Reaching the
+       gate is enough — details arrive when it opens, and the gate clears once
+       they are checked, so "submitted but not yet cleared" is correct. */
+    for (const b of banks) {
+      if (!b) continue
+      expect(unreached.has(b.partner_id),
+        `${b.partner_id} has bank details but has not reached the bank gate`).toBe(false)
     }
   })
 
@@ -63,12 +93,16 @@ describe('what the marketplace holds about every seller', () => {
   })
 
   it('leaves an account unverified while its seller is still onboarding', () => {
-    /* Three sellers have no join date because they have not gone live. Their
-       account is recorded at the finance gate and proved later — claiming it
-       verified would be claiming a payment nobody has made. */
+    /* Sellers with no join date have not gone live. Their account is recorded
+       at the finance gate and proved later — claiming it verified would be
+       claiming a payment nobody has made. Having no account on file at all
+       satisfies that more strongly, and is the right state for a seller who
+       has not reached the gate, so the check is "not verified" rather than
+       "present and false". */
     for (const p of partners.filter(x => x.joined === '—')) {
       const b = banks.find(x => x?.partner_id === p.id)
-      expect(b?.verified, `${p.name} is still onboarding but its account is marked verified`).toBe(false)
+      expect(b?.verified, `${p.name} is still onboarding but its account is marked verified`)
+        .not.toBe(true)
     }
   })
 
