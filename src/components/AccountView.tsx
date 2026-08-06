@@ -1666,6 +1666,18 @@ const billBtn: React.CSSProperties = {
   fontSize: 'var(--text-xs)', cursor: 'pointer',
 }
 
+/* When a ticket was raised, from the column the table actually has.
+   `ConsumerTicket.opened` was read here for a long time and is not a column, so
+   every row on this list said "opened  ·" with a gap where the date goes. */
+function openedOn(t: ConsumerTicket): string {
+  const raw = t.opened_at ?? t.opened
+  if (!raw) return 'recently'
+  const d = new Date(raw)
+  return Number.isNaN(d.getTime())
+    ? raw
+    : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
 /* ============================ SUPPORT TAB ============================ */
 function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerTicket[]; showToast: (m: string) => void }) {
   const [tickets, setTickets] = useState<ConsumerTicket[]>(initialTickets)
@@ -1813,7 +1825,7 @@ function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerT
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{t.subject}</div>
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                  {t.id} · {t.category} · opened {t.opened} · {t.channel}
+                  {t.id} · {t.category} · opened {openedOn(t)} · {t.channel}
                 </div>
                 {t.owner && (
                   <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>

@@ -367,7 +367,12 @@ export interface ConsumerTicket {
   category: string
   severity: string
   status: string
-  opened: string
+  /* `opened` is not a column — support_tickets stores `opened_at`. The row is
+     cast straight to this type, so anything named here that the table does not
+     have arrives undefined. Kept optional so the screen has to say what it
+     does when there is nothing to show. */
+  opened?: string
+  opened_at?: string
   opened_by: string
   channel: string
   owner: string | null
