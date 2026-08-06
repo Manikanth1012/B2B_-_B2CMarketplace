@@ -16,7 +16,7 @@
    recomputing at today's rate is the single most common way currency handling
    goes wrong. */
 
-import { rateOn, roundMinor } from './money'
+import { rateOn, roundMinor , round2} from './money'
 import type { Rate, Currency } from './money'
 
 export interface Payout {
@@ -121,4 +121,4 @@ export function statementAddsUp(
   return Math.abs(Number(s.net) - expected) <= tolerance
 }
 
-const round2 = (n: number) => Math.round(n * 100) / 100
+

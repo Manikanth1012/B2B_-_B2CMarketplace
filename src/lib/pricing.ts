@@ -12,6 +12,8 @@
  * recording it — before this, composing a bundle meant guessing.
  */
 
+import { round2 } from './money'
+
 export interface Priced {
   price: number
   /* Whether `price` already carries tax. */
@@ -34,7 +36,7 @@ export interface Bases {
   quotedIn: 'gross' | 'net'
 }
 
-const round2 = (n: number) => Math.round(n * 100) / 100
+
 
 /** Both sides of a price, derived from whichever one was quoted. Stored once,
     shown twice — the alternative is two columns that drift. */

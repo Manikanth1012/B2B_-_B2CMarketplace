@@ -13,6 +13,7 @@
  * agree rather than each having an opinion.
  */
 import type { Check } from './enterprise'
+import { round2 } from './money'
 
 export type ListingKind = 'single' | 'bundle' | 'subscription'
 
@@ -95,8 +96,8 @@ export function taxPerMarket(
     const gross = includesTax ? price : price * (1 + rate)
     return [{
       code, name: m.name, label: m.taxLabel, rate: m.taxRate, currency,
-      gross: Math.round(gross * 100) / 100,
-      net: Math.round(net * 100) / 100,
+      gross: round2(gross),
+      net: round2(net),
       tax: Math.round((gross - net) * 100) / 100,
     }]
   })

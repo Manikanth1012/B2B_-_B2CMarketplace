@@ -8,6 +8,8 @@
    and can never silence a mandatory one, only move it. Everything below is
    built so a screen cannot offer a choice the database will then refuse. */
 
+import { round2 } from './money'
+
 export type KindId = 'inapp' | 'email' | 'push' | 'sms' | 'whatsapp'
 export type Persona = 'operator' | 'partner' | 'enterprise' | 'consumer'
 export type Severity = 'high' | 'normal' | 'low'
@@ -491,7 +493,7 @@ export function explain(entry: LogEntry): string {
 
 /* --------------------------------------------------------------- helpers -- */
 
-export function round2(n: number): number { return Math.round(n * 100) / 100 }
+export { round2 }
 export function round4(n: number): number { return Math.round(n * 10000) / 10000 }
 
 export function money(n: number): string {

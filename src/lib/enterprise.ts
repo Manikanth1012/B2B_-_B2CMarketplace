@@ -1,4 +1,4 @@
-import { format as formatMoney, money as asMoney, rateOn } from './money'
+import { format as formatMoney, money as asMoney, rateOn , round2} from './money'
 import type { Rate } from './money'
 
 /* The enterprise buyer's account — approvals, refunds and billing.
@@ -854,7 +854,9 @@ export function taxPosition(account: Account, invoices: Invoice[]): {
 /* --------------------------------------------------------------- helpers -- */
 
 export function round1(n: number): number { return Math.round(n * 10) / 10 }
-export function round2(n: number): number { return Math.round(n * 100) / 100 }
+/* Re-exported so this module's many call sites keep the short name, while
+   there is one implementation of it. */
+export { round2 }
 
 /**
  * An amount, in the currency it is actually in.

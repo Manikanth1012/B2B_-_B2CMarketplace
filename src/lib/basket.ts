@@ -1,5 +1,7 @@
 /* Basket rules, pure. What counts as "in the basket" once saving for later exists. */
 
+import { round2 } from './money'
+
 export interface BasketLine {
   id: string
   product_id: string
@@ -61,7 +63,7 @@ export function basketMoney(lines: readonly BasketLine[], taxRate: number): Bask
   return { net, tax: round2(total - net), total }
 }
 
-const round2 = (n: number) => Math.round(n * 100) / 100
+
 
 /**
  * A basket split into one group per seller.

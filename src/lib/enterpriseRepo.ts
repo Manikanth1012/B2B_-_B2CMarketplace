@@ -15,7 +15,7 @@ import type {
   Account, Member, CostCentre, Policy, Requisition, ReqLine,
   Subscription, Invoice, InvoiceLine, Check,
 } from './enterprise'
-import { currenciesOf } from './money'
+import { currenciesOf , round2} from './money'
 import type { Rate, MarketCurrency } from './money'
 import type { EnterpriseRole } from './enterpriseAdmin'
 
@@ -273,7 +273,10 @@ export async function raiseRequisition(
       id: `RL-${id.replace('REQ-', '')}-${n + 1}`,
       requisition_id: id, product_id: l.product_id, name: l.name, seller: l.seller,
       partner_id: l.partner_id, quantity: l.quantity, unit_price: l.unit_price,
-      line_total: Math.round(l.quantity * l.unit_price * 100) / 100, sort_order: n + 1,
+      /* `ledger_consistency` checks this against quantity x price using
+         Postgres rounding, so it has to be written with the rounding that
+         agrees with Postgres. */
+      line_total: round2(l.quantity * l.unit_price), sort_order: n + 1,
     })),
   )
   if (lineError) {

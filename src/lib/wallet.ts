@@ -34,7 +34,7 @@ export interface WalletPolicy {
  * a five-rupee floor is not a floor at all. Both are chosen local figures now,
  * in `wallet_limits`, the same shape as `loyalty_point_rates`.
  */
-import { byCurrency, money } from './money'
+import { byCurrency, money , round2} from './money'
 import type { Money } from './money'
 
 export interface WalletLimit {
@@ -82,7 +82,7 @@ export interface LedgerEntry {
   ref: string | null
 }
 
-const round2 = (n: number) => Math.round(n * 100) / 100
+
 
 /* ------------------------------------------------------------- topping up */
 

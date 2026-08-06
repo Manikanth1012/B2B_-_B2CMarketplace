@@ -18,6 +18,7 @@
 
 import type { Check, Member } from './enterprise'
 import { money, money0 } from './enterprise'
+import { round2 } from './money'
 
 /* ------------------------------------------------------------- the shapes -- */
 
@@ -570,7 +571,7 @@ export function creditPosition(billing: Billing, invoices: { total: number; stat
   const state: CreditPosition['state'] = pct >= 100 ? 'at-limit' : pct >= 80 ? 'watch' : 'clear'
   return {
     limit,
-    committed: Math.round(owed * 100) / 100,
+    committed: round2(owed),
     headroom,
     pct,
     state,

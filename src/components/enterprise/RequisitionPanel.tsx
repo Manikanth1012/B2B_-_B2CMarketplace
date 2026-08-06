@@ -20,6 +20,7 @@ import type { AccountBook } from '../../lib/enterpriseRepo'
 import { money } from '../../lib/enterprise'
 import { VERTICAL_NAMES } from './data'
 import { getProductImage } from '../../lib/images'
+import { round2 } from '../../lib/money'
 
 const BLANK = { title: '', reason: '', cost_centre: null as string | null, po_ref: '' }
 
@@ -194,7 +195,7 @@ export function RequisitionPanel({ onRaised }: {
                       style={{ ...field, width: '72px', textAlign: 'right' }}
                     />
                     <div style={{ width: 96, textAlign: 'right', fontWeight: 700, fontSize: 'var(--text-sm)' }}>
-                      {money(Math.round(l.quantity * l.unit_price * 100) / 100, basket.currency)}
+                      {money(round2(l.quantity * l.unit_price), basket.currency)}
                     </div>
                     <button onClick={() => remove(l.product_id)} aria-label={`Remove ${l.name}`} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}>
                       <Trash2 size={16} />

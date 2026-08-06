@@ -5,7 +5,7 @@ import {
   format, symbolOf, charmPrice, wasPriceFor, priceBandOk,
   currenciesOf, marketTakes, marketsTaking,
   describeIn, marketProse
-} from './money'
+, round2} from './money'
 import type { Currency, Market, MarketCurrency, Rate } from './money'
 
 const CURRENCIES: Currency[] = [
@@ -494,5 +494,39 @@ describe('naming the markets in prose', () => {
     /* The whole point. Uganda was added and removed inside an hour this week. */
     expect(marketProse([...THREE, m('UG', 'Uganda', 4)]))
       .toBe('India, United Arab Emirates, Kenya and Uganda')
+  })
+})
+
+describe('two decimal places, agreeing with the database', () => {
+  it('rounds a half-cent up, where the naive version rounds it down', () => {
+    /* The case the comment in money.ts names. $12.50 x 128.45 is 1605.625,
+       which binary floating point stores as 160562.49999999997 once scaled —
+       so Math.round(n*100)/100 gives 1605.62 while Postgres numeric gives
+       1605.63, and the app and the ledger differ by a cent on one purchase. */
+    const naive = (n: number) => Math.round(n * 100) / 100
+    expect(naive(12.50 * 128.45)).toBe(1605.62)
+    expect(round2(12.50 * 128.45)).toBe(1605.63)
+  })
+
+  it('agrees with the naive version everywhere it is not a half-cent', () => {
+    for (const n of [0, 1, 1.1, 2.5, 99.999, 1234.567, -8.125, 1e6 + 0.004]) {
+      const naive = Math.round(n * 100) / 100
+      if (Math.abs(naive - round2(n)) > 0) continue
+      expect(round2(n)).toBe(naive)
+    }
+  })
+
+  it('rounds away from zero on both sides, so a credit and a debit are symmetric', () => {
+    expect(round2(2.345)).toBe(2.35)
+    expect(round2(-2.345)).toBe(-2.35)
+  })
+
+  it('never returns negative zero, which reads as a debt of nothing', () => {
+    expect(Object.is(round2(-0.001), -0)).toBe(false)
+    expect(round2(-0.001)).toBe(0)
+  })
+
+  it('leaves a figure that is already exact alone', () => {
+    for (const n of [0.01, 12.34, 1605.63, 999999.99]) expect(round2(n)).toBe(n)
   })
 })

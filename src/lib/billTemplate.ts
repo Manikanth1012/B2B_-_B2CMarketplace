@@ -15,6 +15,8 @@
    certainly a mistake — so it is said out loud and then allowed, because the
    operator knows their own contracts and this module does not. */
 
+import { round2 } from './money'
+
 export type Check = { ok: true; note?: string } | { ok: false; reason: string }
 export type Audience = 'consumer' | 'enterprise' | 'partner'
 
@@ -541,7 +543,7 @@ export function suppressed(ids: readonly string[], facts: BillFacts): { id: stri
  * drawing the line, because only they know whether there is room for it.
  */
 export function money(n: number): string {
-  const rounded = Math.round(n * 100) / 100
+  const rounded = round2(n)
   const abs = Math.abs(rounded).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
   return `${rounded < 0 ? '-' : ''}${abs}`
 }

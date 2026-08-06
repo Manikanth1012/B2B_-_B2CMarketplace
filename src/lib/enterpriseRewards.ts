@@ -14,6 +14,7 @@
 
 import { ladderFor, rateFor, worthIn, returnRate, ladderIn, pointsFor, earnLine } from './loyalty'
 import type { PointRate, Threshold } from './loyalty'
+import { round2 } from './money'
 
 export type { PointRate, Threshold }
 export { ladderFor, rateFor, worthIn, returnRate, ladderIn, pointsFor, earnLine }
@@ -303,7 +304,7 @@ export function byRule(movements: Movement[], rules: RewardRule[]): {
       return {
         id, rule, points: v.points, count: v.count,
         funder: rule?.funder ?? 'operator',
-        value: Math.round(v.value * 100) / 100,
+        value: round2(v.value),
       }
     })
     .sort((a, b) => b.points - a.points)
@@ -326,7 +327,7 @@ export function byVertical(movements: Movement[], rules: RewardRule[]): {
     m.set(key, row)
   }
   return [...m.entries()]
-    .map(([vertical, v]) => ({ vertical, ...v, value: Math.round(v.value * 100) / 100 }))
+    .map(([vertical, v]) => ({ vertical, ...v, value: round2(v.value) }))
     .sort((a, b) => b.points - a.points)
 }
 

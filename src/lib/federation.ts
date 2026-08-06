@@ -12,6 +12,8 @@
  * future partner-facing composer read the same rule.
  */
 
+import { round2 } from './money'
+
 export interface TelcoItem {
   id: string
   name: string
@@ -84,7 +86,7 @@ export interface Composition {
   savingPct: number
 }
 
-const money = (n: number) => Math.round(n * 100) / 100
+const money = round2
 
 /**
  * The deepest a single component may be discounted: down to its own cost, never
