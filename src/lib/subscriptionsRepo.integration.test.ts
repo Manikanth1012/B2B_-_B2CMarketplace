@@ -19,9 +19,14 @@ beforeAll(async () => { await signIn(CONSUMER.email, CONSUMER.password) })
 afterAll(async () => { await signOut() })
 
 describe('the consumer subscriptions', () => {
-  it('carries the six the prototype defines', async () => {
+  it('still carries the seven the prototype defines', async () => {
     const subs = await load()
-    expect(subs.map(s => s.ref)).toEqual([
+    /* Present, not exhaustive. This asserted an exact list, which was wrong the
+       moment checkout could create a subscription: every browser run through
+       the storefront added a row and broke it, which taught nobody anything
+       except to ignore the failure. What matters is that the demo's own seven
+       survive whatever else happens to the account. */
+    for (const ref of [
       'SUB-9101', 'SUB-9102', 'SUB-9103', 'SUB-9104', 'SUB-9105', 'SUB-9106',
       /* SUB-9107 is not from the prototype. It was added when the product
          dependency rules were written down: the shopper owns a delivered Nimbus
@@ -30,7 +35,35 @@ describe('the consumer subscriptions', () => {
          would have been a demo of a marketplace that sells things that do not
          work. */
       'SUB-9107',
-    ])
+    ]) {
+      expect(subs.find(s => s.ref === ref), `${ref} has gone missing`).toBeTruthy()
+    }
+  })
+
+  /* What the exact list was really trying to protect, stated so that it holds
+     however many times somebody buys something. */
+  it('has an order behind every subscription it did not seed', async () => {
+    const subs = await load()
+    const bought = subs.filter(s => s.ref.startsWith('ORD-'))
+    const { data } = await supabase.from('orders').select('order_ref')
+    const orders = new Set(((data ?? []) as { order_ref: string }[]).map(o => o.order_ref))
+
+    for (const s of bought) {
+      /* A recurring charge whose purchase does not exist. Twelve of these
+         accumulated unnoticed because nothing ever asked. */
+      const stem = s.ref.split('-').slice(0, 2).join('-')
+      expect(orders.has(s.ref) || orders.has(stem),
+        `${s.ref} bills monthly against an order that does not exist`).toBe(true)
+    }
+  })
+
+  it('never subscribes the same account to the same product twice at once', async () => {
+    const subs = await load()
+    const live = subs.filter(isActive).map(s => s.product_id)
+    /* Paying twice a month for one thing. The storefront now refuses it; this
+       is the check that the data agrees. */
+    expect(live, 'one product is actively subscribed more than once')
+      .toHaveLength(new Set(live).size)
   })
 
   it('names a real catalogue product and its seller on every row', async () => {
@@ -50,11 +83,19 @@ describe('the consumer subscriptions', () => {
     }
   })
 
-  it('has five billing, one paused and one cancelled', async () => {
+  it('has five billing and one paused, and totals what they cost', async () => {
     const subs = await load()
     expect(subs.filter(isActive)).toHaveLength(5)
     expect(subs.filter(s => s.status === 'paused')).toHaveLength(1)
-    expect(subs.filter(s => s.status === 'cancelled')).toHaveLength(1)
+    /* Cancelled is no longer a fixed count: the duplicates that a checkout
+       created against products already held were cancelled rather than deleted,
+       because the orders behind them are real. What must hold is that every one
+       of them says how long access lasts. */
+    const cancelled = subs.filter(s => s.status === 'cancelled')
+    expect(cancelled.length).toBeGreaterThanOrEqual(1)
+    for (const c of cancelled) {
+      expect(c.ends_at, `${c.ref} is cancelled without saying when access ends`).toBeTruthy()
+    }
     /* Derived rather than written down. This was `54.28` — the dollar total,
        from when `subscriptions.price` carried the catalogue's USD list price
        on an account billed in rupees. A literal here says nothing about
