@@ -6,6 +6,9 @@ import { canRaiseTicket } from '../lib/orderTickets'
 import { RaiseTicketModal } from './RaiseTicketModal'
 import { Pager, usePaging } from './Pager'
 import { useMarket } from '../lib/MarketContext'
+import { paymentLabel } from '../lib/payments'
+import { loadPaymentCatalogue } from '../lib/gatewayRepo'
+import type { PaymentMethod } from '../lib/gateway'
 
 /* An order is read in the money it was placed in, not in whatever market the
    shopper has the storefront set to now. Switching to Kenya does not restate
@@ -22,11 +25,16 @@ export function OrdersView() {
   const [detailOrder, setDetailOrder] = useState<Order | null>(null)
   const [ticketOrder, setTicketOrder] = useState<Order | null>(null)
   const [raised, setRaised] = useState<string | null>(null)
+  /* The words for "how it was paid". The order stores a gateway id and this
+     table holds what to call it — the card printed the id for want of the
+     join. */
+  const [methods, setMethods] = useState<PaymentMethod[]>([])
   /* Order cards are tall. Five of them is a screenful; twenty is a scroll with
      no sense of how far down it goes. */
   const ordersPage = usePaging(orders, { initialSize: 5 })
 
   const loadOrders = useCallback(async () => {
+    void loadPaymentCatalogue().then(c => setMethods(c.methods))
     const { data } = await supabase.from('orders').select('*').order('created_at', { ascending: false })
     if (data) {
       const ords = data as Order[]
@@ -121,7 +129,9 @@ export function OrdersView() {
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <div style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>{fmtIn(order.total, order.currency)}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{order.payment_method}</div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                      {paymentLabel(order.payment_method, methods)}
+                    </div>
                   </div>
                 </div>
 
@@ -262,6 +272,7 @@ export function OrdersView() {
         <OrderDetailModal
           order={detailOrder}
           items={orderItems[detailOrder.id] || []}
+          methods={methods}
           onClose={() => setDetailOrder(null)}
         />
       )}
@@ -269,7 +280,9 @@ export function OrdersView() {
   )
 }
 
-function OrderDetailModal({ order, items, onClose }: { order: Order; items: OrderItem[]; onClose: () => void }) {
+function OrderDetailModal({ order, items, methods, onClose }: {
+  order: Order; items: OrderItem[]; methods: readonly PaymentMethod[]; onClose: () => void
+}) {
   const { fmtIn } = useMarket()
   const mny = (n: number) => fmtIn(n, order.currency)
   const stages = order.stages || ['Ordered', 'Confirmed', 'Dispatched', 'In transit', 'Delivered']
@@ -390,7 +403,7 @@ function OrderDetailModal({ order, items, onClose }: { order: Order; items: Orde
             <span>Total</span><span>{mny(order.total)}</span>
           </div>
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            Paid by {order.payment_method}
+            Paid by {paymentLabel(order.payment_method, methods)}
           </div>
         </div>
       </div>

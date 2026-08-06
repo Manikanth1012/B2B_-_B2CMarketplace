@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isExpired, paymentSummary, type PaymentMethodRow } from './payments'
+import { isExpired, paymentSummary, type PaymentMethodRow , paymentLabel} from './payments'
 
 const card = (o: Partial<PaymentMethodRow> = {}): PaymentMethodRow => ({
   status: 'active', expires: '08/28', is_primary: false, ...o,
@@ -52,5 +52,57 @@ describe('paymentSummary', () => {
     const one = paymentSummary([card()], now)
     const three = paymentSummary([card(), card(), card()], now)
     expect(one).not.toBe(three)
+  })
+})
+
+describe('what an order says about how it was paid', () => {
+  const METHODS = [
+    { id: 'card', label: 'Credit or debit card' },
+    { id: 'mobile_money', label: 'M-Pesa' },
+    { id: 'upi', label: 'UPI' },
+  ]
+
+  it('translates a gateway id through the table that already holds the words', () => {
+    /* A customer in Kisumu read "mobile_money" on the order card while the
+       payment-methods card on the same account said "M-Pesa". */
+    expect(paymentLabel('mobile_money', METHODS)).toBe('M-Pesa')
+    expect(paymentLabel('card', METHODS)).toBe('Credit or debit card')
+    expect(paymentLabel('upi', METHODS)).toBe('UPI')
+  })
+
+  it('leaves an arrangement alone, because it is already the sentence', () => {
+    /* Fourteen orders, every one of them enterprise. An arrangement is
+       negotiated, not picked at a checkout, so there is no gateway id to
+       normalise it to. */
+    expect(paymentLabel('On account — Net 30', METHODS)).toBe('On account — Net 30')
+    expect(paymentLabel('Invoice', METHODS)).toBe('Invoice')
+    expect(paymentLabel('Bill to mobile · card ending 4419', METHODS))
+      .toBe('Bill to mobile · card ending 4419')
+  })
+
+  it('humanises a token the table no longer knows', () => {
+    /* An old order should not start showing machine text because somebody
+       tidied the lookup table years later. */
+    expect(paymentLabel('carrier_billing', METHODS)).toBe('Carrier billing')
+    expect(paymentLabel('net-banking', METHODS)).toBe('Net banking')
+  })
+
+  it('says something rather than nothing when the order does not record one', () => {
+    expect(paymentLabel(null, METHODS)).toBe('—')
+    expect(paymentLabel('', METHODS)).toBe('—')
+    expect(paymentLabel('   ', METHODS)).toBe('—')
+  })
+
+  it('still reads sensibly before the lookup table has loaded', () => {
+    /* Every screen starts in this state, and an order card that prints
+       "mobile_money" for a second is the bug appearing intermittently. */
+    expect(paymentLabel('mobile_money')).toBe('Mobile money')
+    expect(paymentLabel('On account — Net 30')).toBe('On account — Net 30')
+  })
+
+  it('prefers the table to its own guess', () => {
+    /* The humanising rule must never override a real label — "M-Pesa" is not
+       reachable by de-underscoring "mobile_money". */
+    expect(paymentLabel('mobile_money', METHODS)).not.toBe('Mobile money')
   })
 })
