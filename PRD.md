@@ -1,8 +1,8 @@
 # Product Requirements Document (PRD): B2B/B2C Telecom Marketplace
 
 ## 1. Document Control
-* **Version**: 4.0  
-* **Date**: July 2026  
+* **Version**: 4.3  
+* **Date**: August 2026  
 * **Status**: Draft — sections 4.8 to 4.69 and section 7 added from the working build  
 * **Author**: AI Coding Assistant (Antigravity)  
 * **Target Audience**: Platform Owner (Telecom Operator), Product Managers, Developers, and Partners  
@@ -11,6 +11,7 @@
 
 | Version | Date | Change |
 |---|---|---|
+| **4.3** | **Aug 2026** | **Rewrote the developer portal against how public portals actually work.** Extended §4.21: generated OpenAPI 3.1 per version, endpoints with scopes and worked examples, applications as the subscribable object, per-environment credentials issued once and stored hashed, rotation with a grace window, executable sandbox calls, and deprecation in place of deletion. |
 | **4.2** | **Jul 2026** | Added §4.69 Notify me on an out-of-stock product, on both buy sides. |
 | **4.1** | **Jul 2026** | Added §4.67 Product eligibility and dependency, §4.68 Plan change as a switch. Partner Documents given the full width, settlement invoice action unified across both tables. |
 | **4.0** | **Jul 2026** | Added §4.62 Media view and download, §4.63 Wallets, §4.64 Action columns, §4.65 Fulfilment routing as configuration, §4.66 Operator roles. Tax display corrected, bill sketch driven by its sections, product artwork in media, out-of-stock tiles dimmed. |
@@ -31,7 +32,7 @@
 | **1.9** | **Jul 2026** | **Closed six of the gaps listed in v1.8 §7.2.** Added §4.15 Audit trail with role-scoped visibility, §4.16 Storefront advertising, §4.17 Inventory, §4.18 Ticketing and SLA, §4.19 Customer reviews, §4.20 Partner portal branding. Updated §7 to reflect what is now built. |
 | 1.8 | Jul 2026 | **Aligned to the working prototype.** Added §4.8 Cost-price floor & three-tier pricing, §4.9 Conditional discount rules engine, §4.10 Tax & merchant of record, §4.11 Commercial models & partner billing cycles, §4.12 Onboarding gate policy, §4.13 Partner outbound integrations, §4.14 Reporting periods & export. Added §7 Prototype implementation status with traceability. Extended §4.2 (media, cost floor), §4.4 (self-billing, per-partner cycles) and §4.7 (roles matrix, credential security, notification templates). |
 
-> **Companion documents**: `epics_and_stories.md` (v1.26) carries the EPIC and story breakdown. `CONTEXT.md` carries the build milestones, decisions and constraints — read that first if you are picking this work up cold or on a different model.
+> **Companion documents**: `epics_and_stories.md` (v1.32) carries the EPIC and story breakdown. `CONTEXT.md` carries the build milestones, decisions and constraints — read that first if you are picking this work up cold or on a different model.
 
 ---
 
@@ -438,6 +439,35 @@ The marketplace publishes APIs so that partners can integrate rather than log in
 - **Four version states**: current, supported, deprecated (with a mandatory sunset date), sunset. **Deprecating names the consumers still on it**, and the screen flags any subscription left on a version past its prime — a sunset date nobody has been moved off is a date you will end up moving.
 - **A subscription matrix** shows APIs down the side and consumers across, with the version each is on and deprecated versions in amber, backed by a filterable table of every subscription with scopes, environment, volume and start date.
 - An API with **no subscribers at all** is flagged: either nobody needs it yet, or it was published without a partner asking for it.
+
+**A published API is a specification, an application and a key — not a row in a list.**
+
+Everything above describes *what* is published. This is what a developer receives, and it is the part that separates a portal from a catalogue page.
+
+- **Every version carries a real OpenAPI 3.1 document**, and the document is *generated from the endpoint records rather than stored beside them*. A hand-maintained spec drifts from the reference page the moment somebody edits one and not the other, and the drift is invisible until a developer has already built against the wrong one. The page a developer reads and the file they download are the same rows.
+- **Every endpoint states the scope it needs** and carries a **worked request and response**, in the shapes this marketplace actually uses — a price with its currency and market, an order with its tax-inclusive total. An example that hides the awkward part of a model is an example that lets somebody build the wrong thing and discover it in production. **A write endpoint with no request example is refused**: a POST documented only by its response is a POST somebody has to guess at.
+- **Publishing without a specification is refused.** "TMF620 v2.1" with nothing behind it is a claim, not an API.
+
+**The subscribable object is an application, not a company.**
+
+- A seller registers **applications** — a production integration, an agency doing their catalogue, a throwaway for a spike — and **each holds its own credentials**. That is the entire reason the object exists: one can be revoked without taking the others down.
+- An application names **who to contact when a key is about to expire or a callback starts failing**. Not the billing address — the person who wrote the integration.
+
+**Credentials are issued per environment, and the secret is shown once.**
+
+- **Sandbox keys issue instantly on registration**, with no approval and no queue. A developer deciding whether to integrate at all should not be waiting on a desk, and sandbox keys reach nothing but seeded data.
+- **Production keys are issued only when the marketplace agrees**, against a stated use case, because production is other people's customers and other people's money. A refusal must carry a reason the seller can act on.
+- **The secret is returned exactly once, by the call that creates it.** What is stored is salted and hashed, so the credential table can be dumped without a working key coming out of it. Afterwards the portal shows the prefix, the last four characters and the dates — enough to identify a key, never enough to use one.
+- **A key says what it is**: `ak_sandbox_…` and `ak_live_…` cannot be confused in a config file or a screenshot, and one found in a public repository is identifiable without a lookup.
+- **Rotation issues a new secret and leaves the old one working for a stated grace window.** A rotation that breaks production the instant it is clicked is a rotation nobody performs, which is how keys end up five years old. **Revocation is immediate, dated and must state why** — a dead key nobody can explain is worse than a live one.
+- **Sandbox and production hold separate keys and neither reaches the other's data.** That separation is what makes instant sandbox issuance safe.
+
+**A developer can make a call before they write any code.**
+
+- The reference page **executes against sandbox data** and shows the request that was sent and the response that came back — not a canned sample. A portal where "try it" prints a fixed example is a portal that has never been tested against its own API.
+- **Calls are logged**, so the volume on a subscription is counted rather than asserted, and a rate limit is measured against something real.
+
+**Deprecation replaces deletion.** A published version with subscribers is never deleted; it is deprecated with a **sunset date and a migration note**, and the system refuses a deprecation carrying neither. A version nobody can be told how to leave is a version everybody stays on.
 
 ### 4.22 Listing Versioning and Contract Pricing (CAT)
 
