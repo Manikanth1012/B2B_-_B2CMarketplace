@@ -50,12 +50,44 @@ const MUTED: [number, number, number] = [107, 114, 128]
 const WASH: [number, number, number] = [246, 248, 251]
 const WARN: [number, number, number] = [180, 83, 9]
 
-const ISSUER = {
+interface Issuer { name: string; mark: string; lines: string[]; tax: string }
+
+/* The entity whose name goes on the page.
+ *
+ * This was one constant, and it named the Indian company on every document the
+ * script wrote — so a customer in Kisumu held an account record footed with a
+ * Bengaluru address and an Indian GSTIN. It is the same fault the bills had
+ * before `invoice_issuer` grew a `market`, and the fix is the same: read the
+ * entity registered where the customer is.
+ *
+ * Kept as a fallback for the seller documents, which are held by the
+ * marketplace rather than issued to anybody in particular. */
+const ISSUER: Issuer = {
   name: 'Aventa Communications Private Limited',
   mark: 'Aventa Telecom',
   lines: ['Level 9, Prestige Tech Park', 'Marathahalli, Bengaluru 560103', 'Karnataka, India'],
   tax: 'GSTIN 29AAACA4471Q1ZV',
 }
+
+const issuers = new Map<string, Issuer>()
+
+async function loadIssuers(): Promise<void> {
+  const { data } = await db.from('invoice_issuer')
+    .select('market, legal_name, trading_name, lines, tax_label, tax_id')
+  for (const r of data ?? []) {
+    issuers.set(r.market, {
+      name: r.legal_name,
+      mark: r.trading_name,
+      /* The stored lines lead with "Registered office:", which reads as a
+         label on a letterhead and as noise in a one-line footer. */
+      lines: (r.lines ?? []).map((l: string) => l.replace(/^Registered office:\s*/, '')),
+      tax: `${r.tax_label} ${r.tax_id}`,
+    })
+  }
+}
+
+const issuerFor = (market: string | null): Issuer =>
+  (market ? issuers.get(market) : undefined) ?? ISSUER
 
 /* What each kind of document actually contains. Keyed on the words in its
    name, because the rows were written as prose rather than as a type. */
@@ -201,6 +233,68 @@ const CONSUMER_BODIES: typeof BODIES = [
     ],
   },
   {
+    /* A customer who came in through the operator's identity provider. This is
+       deliberately not an identity certificate: the marketplace never ran a
+       check and never saw the document, so a page that reads like the result of
+       one would be claiming something it did not do. What it records is the
+       assertion — who vouched, for what, when, and where the underlying
+       document actually lives. */
+    match: /verified by aventa id|identity assertion|federated identity/i,
+    heading: 'Identity assertion from Aventa ID',
+    body: who => [
+      ['Subject', who],
+      ['Asserted by', 'Aventa Telecom, acting as the identity provider for this account.'],
+      ['What was asserted', 'Name, mobile number, service address and a verified government identity document, together with the date that document was checked.'],
+      ['Where the check happened', 'At the operator, before it would activate a line — which is where the rules already require it. The marketplace did not repeat it.'],
+      ['What is held here', 'This record of the assertion, and nothing else. The identity document itself was never sent to the marketplace, so no proof of identity and no proof of address were collected on this account.'],
+      ['If the assertion is withdrawn', 'Unlinking the Aventa ID leaves the marketplace account in place but removes the verified standing. Anything that needs a verified identity would then have to be established here directly.'],
+    ],
+  },
+  {
+    /* The consumer wording. Without an entry here the seller shape wins, and it
+       talks about counter-signature and onboarding gates — sentences about a
+       seller, printed on a customer's paperwork. */
+    match: /marketplace terms/i,
+    heading: 'Marketplace terms — accepted',
+    body: who => [
+      ['Accepted by', who],
+      ['What was accepted', 'The terms on which the marketplace sells: what is bought from whom, who answers for a fault, how refunds are decided and what happens to the account if it closes.'],
+      ['Why this one is here', 'An operator can vouch for who you are. It cannot agree to the marketplace\'s own contract on your behalf, so this is accepted here whichever door the account came through.'],
+      ['Changes', 'A material change is notified before it takes effect, and the version accepted is the one that governs until then.'],
+    ],
+  },
+  {
+    match: /warranty/i,
+    heading: 'Manufacturer\'s warranty',
+    body: who => [
+      ['Held by', who],
+      ['What is covered', 'Defects in materials and workmanship for the period stated, from the date of delivery rather than the date of manufacture.'],
+      ['What is not', 'Accidental damage, liquid ingress, cosmetic wear and anything arising after an unauthorised repair. Those are what a protection policy is for.'],
+      ['Claiming', 'Through the seller, who handles it with the manufacturer. A warranty claim does not run through the refunds process and does not have a refund\'s deadlines.'],
+    ],
+  },
+  {
+    match: /policy schedule|device protect/i,
+    heading: 'Protection policy schedule',
+    body: who => [
+      ['Policyholder', who],
+      ['Underwriter', 'Aegis Assurance. The marketplace sells the cover and does not carry the risk, so a claim is decided by the underwriter.'],
+      ['What is covered', 'Accidental damage, liquid damage and theft, for the device named on the schedule.'],
+      ['Excess', 'Payable on each claim, and stated on the schedule. A claim below the excess is not worth making and the schedule says so.'],
+      ['Cancelling', 'Cover can be stopped at the end of any billing period. Stopping it does not refund periods already covered.'],
+    ],
+  },
+  {
+    match: /vat statement|tax statement/i,
+    heading: 'Annual tax statement',
+    body: who => [
+      ['Account holder', who],
+      ['What this shows', 'Every bill issued in the tax year, the tax charged on each and the total, in the currency the account is billed in.'],
+      ['Why it exists', 'It is the document an accountant asks for and the one nobody keeps the individual bills to reconstruct.'],
+      ['Standing', 'A statement of what was charged. It is not itself a tax invoice — the individual bills are, and they remain available on the account.'],
+    ],
+  },
+  {
     match: /proof of identity/i,
     heading: 'Identity verification certificate',
     body: who => [
@@ -319,12 +413,16 @@ function document(opts: {
   consumer?: boolean
   /* A sentence about this particular document, above the standard prose. */
   intro?: string
+  /* Whose name goes on it. Defaults to the marketplace's own entity, which is
+     right for a seller's submission and wrong for a customer's record. */
+  issuer?: Issuer
 }): Uint8Array {
   const s = new Sheet()
+  const iss = opts.issuer ?? ISSUER
   const spec = shape(opts.title, opts.consumer)
   const HOLDER = opts.consumer ? 'Account holder' : 'Held for'
 
-  s.text(ISSUER.mark, { size: 14, font: 'bold', colour: NAVY })
+  s.text(iss.mark, { size: 14, font: 'bold', colour: NAVY })
   s.text(opts.kind.toUpperCase(), { x: s.right, align: 'right', size: 8, font: 'bold', colour: MUTED })
   s.y += 18
   s.rule({ colour: NAVY, width: 1.6, gap: 16 })
@@ -382,7 +480,7 @@ function document(opts: {
   s.gap(14)
   s.rule({ colour: [226, 232, 240], gap: 10 })
   s.paragraph(
-    `Issued by ${ISSUER.name}, ${ISSUER.lines.join(', ')}. ${ISSUER.tax}. `
+    `Issued by ${iss.name}, ${iss.lines.join(', ')}. ${iss.tax}. `
     + 'This document exists so that a record in the marketplace can be opened and read. '
     + 'It carries no legal effect and represents no real person or company.',
     { size: 7, colour: MUTED })
@@ -396,7 +494,7 @@ function document(opts: {
     })
   })
 
-  return buildPdf(s.pages, { title: `${opts.title} - ${opts.reference}`, author: ISSUER.name })
+  return buildPdf(s.pages, { title: `${opts.title} - ${opts.reference}`, author: iss.name })
 }
 
 const DAY: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short', year: 'numeric' }
@@ -435,7 +533,7 @@ async function consumerRecords(): Promise<{ made: number; failed: number }> {
      was right while there was one registered customer and wrote the first
      customer's name onto the second one's paperwork the moment there were two. */
   const { data: mine } = await db.from('consumer_documents').select('*').order('sort_order')
-  const { data: profiles } = await db.from('consumer_profile').select('name, customer_id, user_id')
+  const { data: profiles } = await db.from('consumer_profile').select('name, customer_id, user_id, market')
   const owner = (userId: string | null) => profiles?.find(p => p.user_id === userId) ?? null
 
   const wanted = (mine ?? []).filter(c =>
@@ -446,6 +544,10 @@ async function consumerRecords(): Promise<{ made: number; failed: number }> {
     const ok = await put(c.path, document({
       title: c.name, who: who?.name ?? 'The account holder', reference: c.id,
       issued: day(c.issued, c.issued), kind: c.kind, consumer: true, intro: c.detail,
+      /* The entity registered where this customer is, not the one the script
+         was written in. A Kenyan account record footed with an Indian GSTIN is
+         the same fault the bills used to have. */
+      issuer: issuerFor(who?.market ?? null),
       meta: [['Account', who?.customer_id ?? '—'], ['Category', c.category]],
     }))
     ok ? made++ : failed++
@@ -463,6 +565,9 @@ async function main() {
     if (error) { console.error(`Could not sign in as ${OPERATOR}: ${error.message}`); process.exit(1) }
     console.log(`signed in as ${OPERATOR}`)
   }
+
+  await loadIssuers()
+  console.log(`issuers: ${[...issuers.keys()].sort().join(', ') || 'none — falling back to the Indian entity'}`)
 
   if (ONLY === 'consumer') {
     const only = await consumerRecords()
