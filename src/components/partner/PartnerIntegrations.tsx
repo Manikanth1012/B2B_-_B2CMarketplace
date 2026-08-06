@@ -387,14 +387,18 @@ export function PartnerIntegrations({ partnerId }: { partnerId: string }) {
              footer={<Btn variant="secondary" onClick={() => setKeys(false)}>Close</Btn>}>
         {!access ? <EmptyState message="This did not load." /> : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* This used to say there was no self-service rotation. There is
+                now, on the Developer screen, along with the keys themselves —
+                so the sentence was telling sellers to open a ticket for
+                something they can do in two clicks. */}
             <Callout tone="info">
-              Keys are issued to a named technical contact and are never shown again after issue. Ask the
-              marketplace desk to rotate one if it has been exposed — there is no self-service rotation while
-              you are on sandbox.
+              This is a summary. The keys themselves, the API reference, the sandbox console and
+              rotation all live on the <strong>Developer</strong> screen — secrets are shown once at
+              issue and can be rotated there with a grace period, without a ticket.
             </Callout>
 
             {access.subscriptions.length === 0
-              ? <EmptyState message="No API subscriptions yet. The marketplace grants these at the technical gate." />
+              ? <EmptyState message="No API subscriptions yet. Register an application on the Developer screen and sandbox keys are issued straight away." />
               : (
                 <Table headers={['API', 'Version', 'Environment', 'Scopes', 'Calls']}>
                   {access.subscriptions.map(s => (

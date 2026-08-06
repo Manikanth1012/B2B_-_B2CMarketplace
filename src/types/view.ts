@@ -38,6 +38,7 @@ export type PartnerView =
   | 'pt-plan'
   | 'pt-performance'
   | 'pt-integrations'
+  | 'pt-developer'
   | 'pt-support'
   | 'pt-refunds'
   | 'pt-rewards'

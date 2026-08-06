@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Route, Package, ShoppingCart, Wallet, FileText,
   BarChart3, Plug, LifeBuoy, Users, History, User,
   Search, Bell as BellIcon, LogOut, Menu, X, Store, BookOpen, RotateCcw, Gift,
-  KeyRound, Monitor
+  KeyRound, Monitor, Code2
 } from 'lucide-react'
 import type { PartnerView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
@@ -49,6 +49,7 @@ const NAV_SECTIONS: { label: string; items: { id: PartnerView; label: string; ic
     items: [
       { id: 'pt-performance', label: 'Performance', icon: <BarChart3 size={18} /> },
       { id: 'pt-integrations', label: 'Integrations', icon: <Plug size={18} /> },
+      { id: 'pt-developer', label: 'Developer', icon: <Code2 size={18} /> },
       { id: 'pt-reviews', label: 'Reviews', icon: <Star size={18} /> },
       { id: 'pt-support', label: 'Disputes & Support', icon: <LifeBuoy size={18} /> },
     ]

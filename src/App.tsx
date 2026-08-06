@@ -61,6 +61,7 @@ import { PartnerSettlement } from './components/partner/PartnerSettlement'
 import { PartnerSettlementPlan } from './components/partner/PartnerSettlementPlan'
 import { PartnerPerformance } from './components/partner/PartnerPerformance'
 import { PartnerIntegrations } from './components/partner/PartnerIntegrations'
+import { PartnerDeveloper } from './components/partner/PartnerDeveloper'
 import { PartnerSupport } from './components/partner/PartnerSupport'
 import { PartnerTeam, PartnerAudit } from './components/partner/PartnerMisc'
 import { PartnerDetails } from './components/partner/PartnerDetails'
@@ -486,6 +487,7 @@ function AppInner() {
         {ptView === 'pt-plan' && <PartnerSettlementPlan partnerId={session!.partnerId!} />}
         {ptView === 'pt-performance' && <PartnerPerformance />}
         {ptView === 'pt-integrations' && <PartnerIntegrations partnerId={session!.partnerId!} />}
+        {ptView === 'pt-developer' && <PartnerDeveloper partnerId={session!.partnerId!} />}
         {ptView === 'pt-reviews' && <PartnerReviews partnerId={session?.partnerId ?? ''} />}
         {ptView === 'pt-support' && <PartnerSupport partnerId={session!.partnerId!} />}
         {ptView === 'pt-refunds' && <PartnerRefunds partnerId={session!.partnerId!} />}
