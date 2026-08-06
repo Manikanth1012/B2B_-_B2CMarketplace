@@ -282,10 +282,11 @@ export async function attachRefundEvidence(
 /**
  * Taking a file back off a refund request.
  *
- * `open` is whether the request is still `requested` or `escalated`. Once it is
- * approved, refunded, declined or partial, what was attached is what it was
- * decided on and it stays — the database refuses the delete either way, and
- * this is what the screen says before it tries.
+ * `open` is `evidenceOpen(refund)` from lib/refunds — the same rule the RLS
+ * policy enforces, so the screen and the database agree. Once a person has
+ * decided it, what was attached is what it was decided on and it stays; the
+ * database refuses the delete either way, and this is what the screen says
+ * before it tries.
  */
 export async function withdrawRefundEvidence(
   { attachment, open }: { attachment: Attachment; open: boolean },

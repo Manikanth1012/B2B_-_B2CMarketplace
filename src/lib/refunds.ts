@@ -506,3 +506,30 @@ export function insideWindow(
   const elapsed = Math.round((todayUtc(now) - toUtc(purchased)) / DAY)
   return { inside: elapsed <= w.days, days: elapsed, window: w.days }
 }
+
+/**
+ * Whether evidence can still be attached to this refund, or taken back off it.
+ *
+ * The same rule the RLS policies enforce, held here so a screen can grey a
+ * button out rather than let somebody choose five files and then be told the
+ * database refused them.
+ *
+ * Two windows, not one. `requested` and `escalated` are the states where a
+ * person has yet to decide, which is the case the gate was written for. The
+ * third is `approved` by the automatic decider: a refund under the small-claim
+ * threshold is approved *inside the same insert that raises it* and is never in
+ * `requested` for an instant — so gating on those two alone meant the
+ * photograph the customer had just chosen was refused by the policy on its way
+ * up, and the screen reported "1 file did not upload" about a request it had
+ * just accepted.
+ *
+ * An approval a seller or the marketplace made later is deliberately not in the
+ * window. That decision was taken by somebody reading what was in front of them,
+ * and a file arriving afterwards changes the record behind them.
+ */
+export function evidenceOpen(
+  refund: { state: RefundState; decider: Decider },
+): boolean {
+  if (refund.state === 'requested' || refund.state === 'escalated') return true
+  return refund.state === 'approved' && refund.decider === 'auto'
+}

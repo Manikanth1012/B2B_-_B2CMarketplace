@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   STATES, REASONS, sla, escalationDue, ownership, fundedBy, autoApproves, thresholdFor,
   canDecide, validateDecision, applyDecision, summarise, queue, byCategory,
-  slowSellers, windowFor, insideWindow,
+  slowSellers, windowFor, insideWindow, evidenceOpen
 } from './refunds'
 import type { Refund, RefundPolicy } from './refunds'
 
@@ -478,6 +478,38 @@ describe('the vocabulary', () => {
   it('names what would settle each reason, not just the reason', () => {
     for (const spec of Object.values(REASONS)) {
       expect(spec.evidence.length).toBeGreaterThan(3)
+    }
+  })
+})
+
+describe('whether a refund can still be sent its evidence', () => {
+  const r = (state: string, decider = 'seller') =>
+    ({ state, decider }) as unknown as Parameters<typeof evidenceOpen>[0]
+
+  it('is open while nobody has decided', () => {
+    expect(evidenceOpen(r('requested'))).toBe(true)
+    expect(evidenceOpen(r('escalated', 'marketplace'))).toBe(true)
+  })
+
+  it('is open for a refund that approved itself', () => {
+    /* The case that broke it in the browser: a ₹1,599 refund under the ₹2,000
+       threshold is approved inside the same insert that raises it, so it is
+       never 'requested' — and the photograph chosen in that submit was refused
+       on its way up. */
+    expect(evidenceOpen(r('approved', 'auto'))).toBe(true)
+  })
+
+  it('is closed once a person has approved it', () => {
+    /* Not the same thing. Somebody read what was in front of them and decided;
+       a file landing afterwards rewrites what that was. */
+    expect(evidenceOpen(r('approved', 'seller'))).toBe(false)
+    expect(evidenceOpen(r('approved', 'marketplace'))).toBe(false)
+  })
+
+  it('is closed once the money has moved or the answer was no', () => {
+    for (const s of ['refunded', 'declined', 'partial']) {
+      expect(evidenceOpen(r(s, 'auto'))).toBe(false)
+      expect(evidenceOpen(r(s, 'seller'))).toBe(false)
     }
   })
 })
