@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-  Key, Plus, Copy, RefreshCw, Ban, Play, Download, ChevronRight, ChevronDown, Rocket,
+  Plus, Copy, RefreshCw, Ban, Play, Download, ChevronRight, ChevronDown,
 } from 'lucide-react'
 import {
   SectionCard, StatCard, Table, Td, StatusPill, EmptyState, Btn, Modal,
-  FormField, TextInput, TextArea, Select, toast, fmtInt, fmtDate, fmtDateTime, Id,
+  FormField, TextInput, TextArea, Select, toast, fmtInt, fmtDate, Id,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
 import {
@@ -213,7 +213,7 @@ function ApplicationsTab({
                   <Table headers={['Environment', 'Client ID', 'Secret', 'State', 'Issued', '']}>
                     {keys.map(c => (
                       <tr key={c.id}>
-                        <Td><StatusPill status={c.environment === 'production' ? 'live' : 'sandbox'} /></Td>
+                        <Td><StatusPill status={c.environment} /></Td>
                         <Td style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)' }}>
                           <CopyText value={c.client_id} />
                         </Td>
@@ -222,10 +222,9 @@ function ApplicationsTab({
                         </Td>
                         <Td>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <StatusPill status={
-                              c.state === 'active' ? 'active'
-                                : c.state === 'retiring' ? 'pending'
-                                  : c.state === 'expired' ? 'paused' : 'rejected'} />
+                            {/* KEY_STATE_LABEL, not a status borrowed from
+                                elsewhere — "rotating" is what is happening. */}
+                            <StatusPill status={KEY_STATE_LABEL[c.state].toLowerCase()} />
                             <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', maxWidth: '34ch' }}>
                               {keyNote(c)}
                             </span>
@@ -329,7 +328,7 @@ function ReferenceTab({ versions, subscriptions, applications, onSubscribe }: {
               held.length ? ` · you hold it on ${held.map(s => s.environment).join(' and ')}` : ''}`}
             action={
               <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                <StatusPill status={v.lifecycle === 'current' ? 'active' : v.lifecycle === 'deprecated' ? 'pending' : 'paused'} />
+                <StatusPill status={v.lifecycle} />
                 <Btn variant="secondary" size="sm" onClick={() => void download(v)}>
                   <Download size={13} /> OpenAPI
                 </Btn>
@@ -898,8 +897,12 @@ function Code({ children, copy }: { children: string; copy?: boolean }) {
       <pre style={{
         margin: 0, padding: '12px 14px', borderRadius: 'var(--radius)',
         background: 'var(--brand-navy)', color: '#e8eef7',
-        fontSize: 'var(--text-xs)', lineHeight: 1.6, overflowX: 'auto',
+        fontSize: 'var(--text-xs)', lineHeight: 1.6, overflow: 'auto',
         whiteSpace: 'pre', fontFamily: 'monospace',
+        /* A real catalogue response runs to hundreds of lines. Without this the
+           page grows to the length of the JSON and the controls that sent it
+           scroll off the top. */
+        maxHeight: '420px',
       }}>{children}</pre>
       {copy && (
         <button onClick={() => { void navigator.clipboard?.writeText(children); toast('Copied.') }}

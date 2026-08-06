@@ -40,6 +40,17 @@ export function StatusPill({ status }: { status: string }) {
     deprecated: { bg: 'var(--warning-bg)', color: 'var(--warning)' },
     sunset: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
     supported: { bg: 'var(--info-bg)', color: 'var(--info)' },
+    /* The developer portal's own words. They were being mapped onto the
+       nearest existing status, which meant a deprecated API version rendered a
+       pill reading "pending" — the pill said something the row did not. */
+    retired: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
+    revoked: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
+    expired: { bg: 'var(--gray-100)', color: 'var(--text-secondary)' },
+    rotating: { bg: 'var(--warning-bg)', color: 'var(--warning)' },
+    refused: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
+    suspended: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
+    sandbox: { bg: 'var(--info-bg)', color: 'var(--info)' },
+    production: { bg: 'var(--success-bg)', color: 'var(--success)' },
   }
   const s = map[status] || { bg: 'var(--gray-100)', color: 'var(--text-secondary)' }
   return (
