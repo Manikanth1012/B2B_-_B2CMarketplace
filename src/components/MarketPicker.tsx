@@ -12,7 +12,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Globe, ChevronDown, Check } from 'lucide-react'
 import { useMarket } from '../lib/MarketContext'
-import { currenciesOf } from '../lib/money'
+import { currenciesOf, marketProse } from '../lib/money'
 
 export function MarketPicker({ tone = 'dark' }: { tone?: 'dark' | 'light' }) {
   const { book, market, currency, choices, setMarket, setCurrency, ready, home } = useMarket()
@@ -36,7 +36,9 @@ export function MarketPicker({ tone = 'dark' }: { tone?: 'dark' | 'light' }) {
      markets as static text keeps the bar the same height and says the same
      thing the old span did, rather than collapsing and pushing the page up. */
   if (!ready || !market) {
-    return <span style={{ color: ink }}>India · UAE · Kenya</span>
+    /* The book has not loaded. Name whatever it does know rather than three
+       markets typed in when there were three. */
+    return <span style={{ color: ink }}>{marketProse(book.markets, { conjunction: '', separator: ' · ' })}</span>
   }
 
   return (

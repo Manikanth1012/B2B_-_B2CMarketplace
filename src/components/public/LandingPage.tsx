@@ -13,9 +13,11 @@ import {
 } from '../../lib/storefront'
 import type { Category, Product } from '../../types'
 import type { PublicPage } from '../../types/view'
+import { marketProse } from '../../lib/money'
 
 export function LandingPage({ onNavigate }: { onNavigate: (p: PublicPage) => void }) {
-  const { market, currency } = useMarket()
+  const { book, market, currency } = useMarket()
+  const markets = marketProse(book.markets)
   /* The chosen currency, not the market's default. Reading the default here
      while the formatter reads the choice is how a shilling price ends up under
      a dollar sign — the same relabelling the bills migration had to undo. */
@@ -57,7 +59,7 @@ export function LandingPage({ onNavigate }: { onNavigate: (p: PublicPage) => voi
             </h1>
             <p style={{ fontSize: 'var(--text-lg)', color: 'rgba(255,255,255,0.75)', marginTop: '20px', maxWidth: '460px' }}>
               Plans, devices, security and IoT — sold by verified partners, settled by the marketplace,
-              across India, UAE and Kenya.
+              {markets ? ` across ${markets}` : ''}.
             </p>
             <div style={{ display: 'flex', gap: '12px', marginTop: '32px', flexWrap: 'wrap' }}>
               <button className="btn btn-primary btn-lg" onClick={() => onNavigate('retail')}>Shop retail</button>

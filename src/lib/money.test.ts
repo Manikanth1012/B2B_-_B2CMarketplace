@@ -4,7 +4,7 @@ import {
   roundMinor, round, minorUnitsOf, rateOn, convert, totalIn,
   format, symbolOf, charmPrice, wasPriceFor, priceBandOk,
   currenciesOf, marketTakes, marketsTaking,
-  describeIn,
+  describeIn, marketProse
 } from './money'
 import type { Currency, Market, MarketCurrency, Rate } from './money'
 
@@ -462,5 +462,37 @@ describe('describeIn', () => {
 
   it('handles an empty book', () => {
     expect(describeIn(product, new Map(), 'INR')).toBe(product.description)
+  })
+})
+
+describe('naming the markets in prose', () => {
+  const m = (code: string, name: string, sort_order: number): Market =>
+    ({ code, name, currency: 'X', tax_label: '', tax_rate: 0, tax_note: '', is_default: false, sort_order })
+
+  const THREE = [m('KE', 'Kenya', 3), m('IN', 'India', 1), m('AE', 'United Arab Emirates', 2)]
+
+  it('reads as a sentence, in the table’s own order', () => {
+    expect(marketProse(THREE)).toBe('India, United Arab Emirates and Kenya')
+  })
+
+  it('makes a separator list when asked for one', () => {
+    expect(marketProse(THREE, { conjunction: '', separator: ' · ' }))
+      .toBe('India · United Arab Emirates · Kenya')
+  })
+
+  it('does not dangle a conjunction on one market', () => {
+    expect(marketProse([m('IN', 'India', 1)])).toBe('India')
+  })
+
+  it('survives a marketplace with no markets yet', () => {
+    /* The sentence around it has to still make sense while the book is
+       loading, which is the state every screen starts in. */
+    expect(marketProse([])).toBe('')
+  })
+
+  it('picks up a fourth market without anybody editing a sentence', () => {
+    /* The whole point. Uganda was added and removed inside an hour this week. */
+    expect(marketProse([...THREE, m('UG', 'Uganda', 4)]))
+      .toBe('India, United Arab Emirates, Kenya and Uganda')
   })
 })

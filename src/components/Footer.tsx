@@ -3,6 +3,8 @@ import { loadCategories } from '../lib/storefrontRepo'
 import { categoriesFor } from '../lib/storefront'
 import type { Category } from '../types'
 import type { View } from '../types/view'
+import { marketProse } from '../lib/money'
+import { useMarket } from '../lib/MarketContext'
 
 interface FooterProps {
   /* `tab` names a section of the account, the same way the account menu does —
@@ -12,6 +14,11 @@ interface FooterProps {
 }
 
 export function Footer({ onNavigate }: FooterProps) {
+  /* Named from the markets table, so the sentence stops being a claim somebody
+     has to remember to update. */
+  const { book } = useMarket()
+  const markets = marketProse(book.markets)
+
   /* The shop column is the shopper's shelves, read from the catalogue rather
      than typed out. Typed out, it kept a link to Security — a shelf that is
      now business-only — pointing a retail customer at an empty category page.
@@ -40,7 +47,8 @@ export function Footer({ onNavigate }: FooterProps) {
           <div>
             <img src="/assets/brand/6d-logo-white.png" alt="6D Marketplace" style={{ height: '32px', marginBottom: '16px' }} />
             <p style={{ fontSize: 'var(--text-sm)', lineHeight: 1.6, maxWidth: '280px' }}>
-              A unified telecom marketplace bringing together plans, devices, security, IoT and digital content across India, UAE and Kenya.
+              A unified telecom marketplace bringing together plans, devices, security, IoT and
+              digital content{markets && ` across ${markets}`}.
             </p>
           </div>
 

@@ -1,5 +1,7 @@
 import type { PublicPage } from '../../types/view'
 import { MarketPicker } from '../MarketPicker'
+import { useMarket } from '../../lib/MarketContext'
+import { marketProse } from '../../lib/money'
 
 const NAV: { id: PublicPage; label: string }[] = [
   { id: 'partner', label: 'Partners' },
@@ -55,6 +57,11 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, children }: {
   onDemoSignIn: () => void
   children: React.ReactNode
 }) {
+  /* Sorted the way the markets table orders them, so the footer, the storefront
+     picker and the operator's own screen list them in one order. */
+  const { book } = useMarket()
+  const regions = [...book.markets].sort((a, b) => a.sort_order - b.sort_order)
+
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-alt)' }}>
       <header style={{ background: 'var(--brand-navy)', position: 'sticky', top: 0, zIndex: 100 }}>
@@ -128,8 +135,12 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, children }: {
                 Regions
               </h2>
               <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {['India', 'UAE', 'Kenya'].map(r => (
-                  <li key={r} style={{ fontSize: 'var(--text-sm)' }}>{r}</li>
+                {/* Read from the markets table, not typed. Uganda was added to
+                    that table and taken out again inside an hour; a footer that
+                    names its regions by hand would have gone on advertising a
+                    market the storefront had stopped selling in. */}
+                {regions.map(r => (
+                  <li key={r.code} style={{ fontSize: 'var(--text-sm)' }}>{r.name}</li>
                 ))}
               </ul>
             </div>
@@ -138,7 +149,7 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, children }: {
 
         <div className="container" style={{ paddingBottom: '28px' }}>
           <span style={{ fontSize: 'var(--text-sm)', color: 'rgba(255,255,255,0.55)' }}>
-            © 2026 6D Marketplace · India · UAE · Kenya
+            © 2026 6D Marketplace{regions.length > 0 && ` · ${marketProse(regions, { conjunction: '', separator: ' · ' })}`}
           </span>
         </div>
       </footer>

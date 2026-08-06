@@ -4,6 +4,7 @@ import { useMarket } from '../lib/MarketContext'
 import { money, rateOn, convert, charmPrice, format } from '../lib/money'
 
 import type { View } from '../types/view'
+import { marketProse } from '../lib/money'
 
 interface HeroProps {
   onNavigate: (view: View, opts?: { category?: string }) => void
@@ -14,6 +15,7 @@ const FREE_DELIVERY_OVER = money(50, 'USD')
 
 export function Hero({ onNavigate }: HeroProps) {
   const { book, currency } = useMarket()
+  const markets = marketProse(book.markets)
 
   /* "Orders over $50" was printed to a shopper in Nairobi being quoted in
      shillings, where fifty dollars is not a number they can act on. Unlike a
@@ -90,7 +92,8 @@ export function Hero({ onNavigate }: HeroProps) {
             marginBottom: '32px',
             maxWidth: '480px',
           }}>
-            Browse mobile plans, stream entertainment, protect your business, and deploy IoT fleets. Powered by Aventa Telecom across India, UAE and Kenya.
+            Browse mobile plans, stream entertainment, protect your business, and deploy IoT fleets.
+            Powered by Aventa Telecom{markets && ` across ${markets}`}.
           </p>
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
             <button onClick={() => onNavigate('category', { category: 'consumer' })} className="btn btn-primary btn-lg">

@@ -444,3 +444,32 @@ export function priceBandOk(
   if (row.list_price != null && row.list_price < row.price) return false
   return true
 }
+
+/* ------------------------------------------- naming the markets in prose -- */
+
+/**
+ * The markets, in the order the table gives them, as a list a sentence can use.
+ *
+ * Five screens said "India, UAE and Kenya" in hand-typed prose and one more
+ * printed "India · UAE · Kenya" as a fallback. Uganda was added to `markets`
+ * and taken out again inside an hour this week; every one of those six would
+ * have gone on advertising a market the storefront had stopped selling in, and
+ * none of them would have looked wrong.
+ *
+ * `conjunction` is the word before the last one — "and" for a sentence, and
+ * nothing for a separator list. An empty market table returns an empty string
+ * rather than a dangling "and", because a sentence built around it has to
+ * survive the marketplace having no markets yet.
+ */
+export function marketProse(
+  markets: readonly Market[],
+  { conjunction = 'and', separator = ', ' }: { conjunction?: string; separator?: string } = {},
+): string {
+  const names = [...markets]
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map(m => m.name)
+  if (names.length === 0) return ''
+  if (names.length === 1) return names[0]
+  if (!conjunction) return names.join(separator)
+  return `${names.slice(0, -1).join(separator)} ${conjunction} ${names[names.length - 1]}`
+}
