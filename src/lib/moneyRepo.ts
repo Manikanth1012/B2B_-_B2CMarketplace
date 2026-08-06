@@ -356,8 +356,22 @@ export async function currencyFootprint(
  * panel could not load would be the wrong trade.
  */
 export async function loadConsistency(): Promise<{ rows: Finding[]; error?: string }> {
-  const { data, error } = await supabase
-    .from('market_consistency').select('finding, subject, detail')
+  return readAudit('market_consistency')
+}
+
+/**
+ * The other audit: stored totals the rows beneath them cannot produce.
+ *
+ * Separate from the market one because they answer different questions and are
+ * read on different screens, but the same shape — a query whose empty result is
+ * the point.
+ */
+export async function loadLedgerConsistency(): Promise<{ rows: Finding[]; error?: string }> {
+  return readAudit('ledger_consistency')
+}
+
+async function readAudit(view: string): Promise<{ rows: Finding[]; error?: string }> {
+  const { data, error } = await supabase.from(view).select('finding, subject, detail')
   if (error) return { rows: [], error: tidy(error.message) }
   return { rows: (data ?? []) as Finding[] }
 }

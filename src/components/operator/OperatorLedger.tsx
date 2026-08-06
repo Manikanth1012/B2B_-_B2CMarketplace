@@ -6,6 +6,8 @@ import {
   SectionCard, StatCard, Btn, Modal, FormField, TextInput, TextArea, Select,
   Table, Td, toast, fmtMoney, fmtInt,
 } from './shared'
+import { AuditPanel } from './AuditPanel'
+import { loadLedgerConsistency } from '../../lib/moneyRepo'
 import { Callout } from '../OnboardingJourney'
 import { Pager, usePaging } from '../Pager'
 import {
@@ -41,8 +43,15 @@ export function OperatorLedger() {
   const [journal, setJournal] = useState(false)
   const [adding, setAdding] = useState(false)
   const [closing, setClosing] = useState(false)
+  /* Totals whose rows cannot produce them. This is the ledger screen, so a
+     figure that is not the sum of what is under it belongs on it. */
+  const [audit, setAudit] = useState<{ rows: Parameters<typeof AuditPanel>[0]['audit']['rows']; error?: string }>({ rows: [] })
 
-  const reload = useCallback(async () => setBook(await loadLedger()), [])
+  const reload = useCallback(async () => {
+    const [b, a] = await Promise.all([loadLedger(), loadLedgerConsistency()])
+    setBook(b)
+    setAudit(a)
+  }, [])
   useEffect(() => { void reload() }, [reload])
 
   /* Worked out above the loading guard, because the five tables below are
@@ -168,6 +177,17 @@ export function OperatorLedger() {
           }}>{label}</button>
         ))}
       </div>
+
+      {/* Above the trial balance, because a trial balance that foots is not
+          evidence that the figures feeding it were derived from anything. */}
+      {tab === 'balance' && (
+        <AuditPanel
+          title="Totals and the rows beneath them"
+          subtitle="Every stored total in the platform that has rows which ought to produce it, checked against those rows."
+          okText="Wallets agree with their movements, loyalty balances and lifetime figures agree with their ledgers, orders agree with their items, and bills, invoices and settlements agree with their parts."
+          audit={audit}
+        />
+      )}
 
       {tab === 'balance' && (
         <SectionCard title={`Trial balance — ${current?.label ?? ''}`}

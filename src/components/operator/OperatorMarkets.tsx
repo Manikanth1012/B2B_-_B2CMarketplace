@@ -25,12 +25,13 @@ import { currenciesOf, symbolOf } from '../../lib/money'
 import type { MarketCurrency } from '../../lib/money'
 import {
   addableTo, canRemove, canMakeDefault, grid, tallyFor, outstanding,
-  bookGaps, unsettleable, latestFixes, groupFindings, auditSummary,
+  bookGaps, unsettleable, latestFixes,
 } from '../../lib/marketAdmin'
 import type { Cell, GrantState } from '../../lib/marketAdmin'
 import type { PartnerMarket } from '../../lib/marketPricing'
 import { supabase } from '../../lib/supabase'
 import { SectionCard, StatCard, Btn, Table, Td, EmptyState, Modal, toast, ConfirmDialog } from './shared'
+import { AuditPanel } from './AuditPanel'
 
 interface Seller { id: string; name: string; type: string; country: string }
 
@@ -225,82 +226,15 @@ export function OperatorMarkets() {
 
       {/* ================================= what does not add up ========== */}
 
-      {/* Read from `market_consistency`, a view over nine tables. It sits here
-          rather than on a dashboard because this is the screen whose clicks
-          cause most of what it finds: granting a market, adding a currency and
-          approving a seller are the three actions that can leave a listing
-          priced into a market nobody may sell in.
-
-          The view reads with the caller's own rights, so an operator sees the
-          whole platform and nobody else sees anybody's rows. */}
-      <SectionCard
+      {/* Here rather than on a dashboard because granting a market, adding a
+          currency and approving a seller are the three clicks that cause most
+          of what it finds, and they are all on this screen. */}
+      <AuditPanel
         title="What does not add up"
         subtitle="Facts about markets, currencies and who may sell where that should not be true at the same time. Checked against what each market trades, not against anybody's default currency — a market may trade more than one."
-      >
-        {audit.error ? (
-          <div style={{ padding: '13px 16px', fontSize: 'var(--text-sm)', color: 'var(--danger)', lineHeight: 1.6 }}>
-            The audit did not load: {audit.error} Everything else on this screen still works.
-          </div>
-        ) : (() => {
-          const groups = groupFindings(audit.rows)
-          const sum = auditSummary(groups)
-          return (
-            <>
-              <div style={{
-                padding: '13px 16px', borderRadius: 'var(--radius-md)', margin: '0 0 14px',
-                fontSize: 'var(--text-sm)', lineHeight: 1.6,
-                background: sum.tone === 'ok' ? 'var(--success-bg)'
-                  : sum.tone === 'bad' ? 'var(--danger-bg)' : 'var(--warning-bg)',
-                border: `1px solid ${sum.tone === 'ok' ? 'var(--success)'
-                  : sum.tone === 'bad' ? 'var(--danger)' : 'var(--warning)'}`,
-              }}>
-                <strong>{sum.tone === 'ok' ? 'Nothing to answer for.' : sum.text}</strong>
-                {sum.tone === 'ok' && (
-                  <div style={{ marginTop: '4px', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
-                    {sum.text}
-                  </div>
-                )}
-              </div>
-
-              {groups.length > 0 && (
-                <Table headers={['What is wrong', 'How many', 'Which ones']}>
-                  {groups.map(g => (
-                    <tr key={g.finding}>
-                      <Td>
-                        <div style={{ fontWeight: 600 }}>
-                          {g.finding.charAt(0).toUpperCase() + g.finding.slice(1)}
-                        </div>
-                        <div style={{ fontSize: 'var(--text-xs)', color: g.live ? 'var(--danger)' : 'var(--text-tertiary)' }}>
-                          {g.live
-                            ? 'Affects what somebody can buy or is being charged now'
-                            : 'A record that reads oddly — nothing is being quoted or paid on it'}
-                        </div>
-                      </Td>
-                      <Td right>{g.rows.length}</Td>
-                      <Td style={{ whiteSpace: 'normal', maxWidth: '460px' }}>
-                        {/* Named rather than counted. A count tells somebody
-                            there is work; the names tell them where it is. */}
-                        <div style={{ fontSize: 'var(--text-xs)', lineHeight: 1.6 }}>
-                          {g.rows.slice(0, 6).map(r => (
-                            <div key={r.subject}>
-                              <strong>{r.subject}</strong> — {r.detail}
-                            </div>
-                          ))}
-                          {g.rows.length > 6 && (
-                            <div style={{ color: 'var(--text-tertiary)', marginTop: '2px' }}>
-                              and {g.rows.length - 6} more
-                            </div>
-                          )}
-                        </div>
-                      </Td>
-                    </tr>
-                  ))}
-                </Table>
-              )}
-            </>
-          )
-        })()}
-      </SectionCard>
+        okText="Every listing is priced in a currency its market trades, every seller earns and is paid where it is approved to sell, and no bill or order is in a currency its market does not take."
+        audit={audit}
+      />
 
       {/* ============================ the fixes settlements convert at ==== */}
 
