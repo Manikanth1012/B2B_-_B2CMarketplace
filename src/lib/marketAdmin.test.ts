@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   addableTo, canRemove, canMakeDefault, grid, tallyFor, outstanding, suspensionCost,
   bookGaps, unsettleable, latestFixes,
+  groupFindings, auditSummary, isLive,
 } from './marketAdmin'
 import type { Market, MarketCurrency } from './money'
 import type { PartnerMarket } from './marketPricing'
@@ -259,5 +260,74 @@ describe('latestFixes', () => {
 
   it('handles no rates at all', () => {
     expect(latestFixes([], 'USD')).toEqual([])
+  })
+})
+
+describe('what the audit view found', () => {
+  const f = (finding: string, subject: string) => ({ finding, subject, detail: `${subject} detail` })
+  const LIVE_ONE = 'listing priced into a market its seller cannot sell in'
+  const STALE_ONE = 'settled in a currency no market it is linked to trades'
+
+  it('gathers one problem reported many times into one row', () => {
+    /* Forty listings behind one suspended seller is one problem. Printing it
+       forty times buries the other three. */
+    const groups = groupFindings([
+      f('live listing behind a seller that is not live', 'SKU-1'),
+      f('live listing behind a seller that is not live', 'SKU-2'),
+      f('live listing behind a seller that is not live', 'SKU-3'),
+      f(STALE_ONE, 'ss-1'),
+    ])
+    expect(groups).toHaveLength(2)
+    expect(groups[0].rows).toHaveLength(3)
+    expect(groups[0].rows.map(r => r.subject)).toEqual(['SKU-1', 'SKU-2', 'SKU-3'])
+  })
+
+  it('puts what somebody can buy today above last quarter’s paperwork', () => {
+    const groups = groupFindings([
+      f(STALE_ONE, 'ss-1'), f(STALE_ONE, 'ss-2'), f(STALE_ONE, 'ss-3'),
+      f(LIVE_ONE, 'SKU-9'),
+    ])
+    /* The live one wins on order even though the stale one has more rows. */
+    expect(groups[0].finding).toBe(LIVE_ONE)
+    expect(groups[0].live).toBe(true)
+    expect(groups[1].live).toBe(false)
+  })
+
+  it('sorts the larger group first among equals, then by name', () => {
+    const groups = groupFindings([
+      f('b finding', 'x'),
+      f('a finding', 'y'), f('a finding', 'z'),
+    ])
+    expect(groups.map(g => g.finding)).toEqual(['a finding', 'b finding'])
+  })
+
+  it('treats an unrecognised finding as not live, rather than shouting', () => {
+    /* A finding added to the view and not named in the module should not be
+       assumed urgent — erring towards not interrupting somebody. */
+    expect(isLive('something nobody has classified yet')).toBe(false)
+    expect(groupFindings([f('something nobody has classified yet', 'x')])[0].live).toBe(false)
+  })
+
+  it('says something meaningful when there is nothing to report', () => {
+    /* "No results" reads as a query that has not run. */
+    const s = auditSummary([])
+    expect(s.tone).toBe('ok')
+    expect(s.text).toMatch(/every seller earns and is paid where it is approved/i)
+  })
+
+  it('counts what is live separately from what merely reads oddly', () => {
+    const bad = auditSummary(groupFindings([f(LIVE_ONE, 'SKU-9'), f(STALE_ONE, 'ss-1')]))
+    expect(bad.tone).toBe('bad')
+    expect(bad.text).toMatch(/1 of 2 facts affect what somebody can buy/)
+
+    const warn = auditSummary(groupFindings([f(STALE_ONE, 'ss-1'), f(STALE_ONE, 'ss-2')]))
+    expect(warn.tone).toBe('warn')
+    expect(warn.text).toMatch(/2 records read oddly/)
+    expect(warn.text).toMatch(/Nothing here changes what anybody is quoted/)
+  })
+
+  it('gets the singular right, because a screen that says "1 facts" is a screen nobody trusts', () => {
+    const one = auditSummary(groupFindings([f(STALE_ONE, 'ss-1')]))
+    expect(one.text).toMatch(/^1 record reads oddly\./)
   })
 })

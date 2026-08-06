@@ -16,6 +16,7 @@ import { wasPriceFor, describeIn } from './money'
 import type { Currency, Rate, Market, MarketCurrency } from './money'
 import type { Product } from '../types'
 import type { BookRow, PartnerMarket } from './marketPricing'
+import type { Finding } from './marketAdmin'
 
 export interface PriceRow {
   product_id: string
@@ -339,6 +340,26 @@ export async function currencyFootprint(
        as "priced in USD" on the screen rather than "priced in Kenya". */
     listings: p.count ?? 0,
   }
+}
+
+/**
+ * The market/currency audit, as the database sees it.
+ *
+ * `market_consistency` is a view over nine tables and it reads with the
+ * caller's own rights, so what comes back here is what this operator is
+ * allowed to see. An empty array is the invariant rather than a failure — the
+ * screen says so in words, because a blank panel reads as a query that never
+ * ran.
+ *
+ * A load error is returned rather than thrown: the rest of this screen is the
+ * grant grid, and losing the ability to approve a market because an audit
+ * panel could not load would be the wrong trade.
+ */
+export async function loadConsistency(): Promise<{ rows: Finding[]; error?: string }> {
+  const { data, error } = await supabase
+    .from('market_consistency').select('finding, subject, detail')
+  if (error) return { rows: [], error: tidy(error.message) }
+  return { rows: (data ?? []) as Finding[] }
 }
 
 /* A guard trigger raises with a sentence written for a person; Postgres wraps

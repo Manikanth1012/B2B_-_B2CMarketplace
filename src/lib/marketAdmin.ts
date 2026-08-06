@@ -244,3 +244,86 @@ export function latestFixes(
     .map(([currency, v]) => ({ currency, ...v }))
     .sort((a, b) => a.currency.localeCompare(b.currency))
 }
+
+/* --------------------------------------------- what the audit view found -- */
+
+export interface Finding {
+  finding: string
+  subject: string
+  detail: string
+}
+
+export interface FindingGroup {
+  finding: string
+  rows: Finding[]
+  /* Whether this kind of drift means somebody is currently being quoted, paid
+     or billed wrongly, or whether it is a record that reads oddly. Both are
+     worth fixing; only one is worth interrupting somebody for. */
+  live: boolean
+}
+
+/* The findings that describe money moving now, rather than a record that reads
+   oddly after the fact. A listing priced into a market its seller cannot sell
+   in is a thing a shopper can buy today; a settlement raised in a currency no
+   linked market trades is last quarter's paperwork.
+
+   Matched on the phrase the view emits. If a finding is added to the view and
+   not named here it is treated as not live, which errs towards not shouting. */
+const LIVE = [
+  'listing priced into a market its seller cannot sell in',
+  'listed in a market it has no price for',
+  'live listing behind a seller that is not live',
+  'consumer order in a currency their market does not trade',
+  'enterprise invoice in a currency their market does not take',
+]
+
+export const isLive = (finding: string): boolean => LIVE.includes(finding)
+
+/**
+ * The view's rows, gathered by kind.
+ *
+ * One row per broken fact is the right shape for a query and the wrong shape
+ * for a screen: forty listings behind one suspended seller is one problem, and
+ * printing it forty times buries the other three. Live kinds sort first, then
+ * the largest, so the thing to do next is at the top.
+ */
+export function groupFindings(rows: readonly Finding[]): FindingGroup[] {
+  const by = new Map<string, Finding[]>()
+  for (const r of rows) {
+    const held = by.get(r.finding)
+    if (held) held.push(r)
+    else by.set(r.finding, [r])
+  }
+  return [...by.entries()]
+    .map(([finding, rs]) => ({ finding, rows: rs, live: isLive(finding) }))
+    .sort((a, b) =>
+      Number(b.live) - Number(a.live)
+      || b.rows.length - a.rows.length
+      || a.finding.localeCompare(b.finding))
+}
+
+/**
+ * What to say above the list.
+ *
+ * An empty audit is the normal state and deserves a sentence that means
+ * something rather than a blank panel — "nothing to answer for" reads as a
+ * result, "no results" reads as a query that has not run.
+ */
+export function auditSummary(groups: readonly FindingGroup[]): {
+  tone: 'ok' | 'warn' | 'bad'; text: string
+} {
+  const rows = groups.reduce((a, g) => a + g.rows.length, 0)
+  if (rows === 0) {
+    return {
+      tone: 'ok',
+      text: 'Every listing is priced in a currency its market trades, every seller earns and is paid where it is approved to sell, and no bill or order is in a currency its market does not take.',
+    }
+  }
+  const live = groups.filter(g => g.live).reduce((a, g) => a + g.rows.length, 0)
+  return {
+    tone: live > 0 ? 'bad' : 'warn',
+    text: live > 0
+      ? `${live} of ${rows} ${rows === 1 ? 'fact' : 'facts'} affect what somebody can buy or is being charged right now.`
+      : `${rows} ${rows === 1 ? 'record reads' : 'records read'} oddly. Nothing here changes what anybody is quoted or paid today.`,
+  }
+}
