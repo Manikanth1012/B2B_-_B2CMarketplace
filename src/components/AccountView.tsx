@@ -30,6 +30,7 @@ import { billPdf, pdfNameFor, saveBlob } from '../lib/billPdf'
 import type { BillBook } from '../lib/consumerBillDoc'
 import { loadMyRefunds, requestRefund } from '../lib/refundRepo'
 import { attachRefundEvidence, attachFile } from '../lib/attachmentRepo'
+import { confirmResolved, reopenTicket } from '../lib/supportRepo'
 import { AttachmentPicker } from './AttachmentPicker'
 import type { RefundBook } from '../lib/refundRepo'
 import { STATES, REASONS, REASON_LIST, sla, ownership, autoApproves, thresholdFor } from '../lib/refunds'
@@ -1725,14 +1726,18 @@ function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerT
       : `Ticket ${id} created — we will respond within the SLA`)
   }
 
-  const openCount = tickets.filter((t) => t.status !== 'resolved').length
-  const resolvedCount = tickets.filter((t) => t.status === 'resolved').length
+  /* 'resolved' is not done — it is the desk's answer waiting on this customer.
+     Counting it as resolved was the screen agreeing on their behalf. */
+  const openCount = tickets.filter((t) => t.status !== 'resolved' && t.status !== 'closed').length
+  const awaitingCount = tickets.filter((t) => t.status === 'resolved').length
+  const resolvedCount = tickets.filter((t) => t.status === 'closed').length
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}>
         <StatBox icon={<LifeBuoy size={20} />} label="Open tickets" value={String(openCount)} />
-        <StatBox icon={<Check size={20} />} label="Resolved" value={String(resolvedCount)} />
+        <StatBox icon={<Check size={20} />} label="Waiting on you" value={String(awaitingCount)} />
+        <StatBox icon={<Check size={20} />} label="Closed" value={String(resolvedCount)} />
         <StatBox icon={<MessageSquare size={20} />} label="Total" value={String(tickets.length)} />
       </div>
 
@@ -1828,10 +1833,10 @@ function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerT
                 <span style={{
                   padding: '3px 10px', borderRadius: 'var(--radius-full)',
                   fontSize: 'var(--text-xs)', fontWeight: 600,
-                  background: t.status === 'resolved' ? '#DCFCE7' : t.status === 'inprogress' ? '#E0E7FF' : '#FEF3C7',
-                  color: t.status === 'resolved' ? 'var(--success)' : t.status === 'inprogress' ? '#4338CA' : 'var(--warning)',
+                  background: t.status === 'closed' ? '#DCFCE7' : t.status === 'resolved' ? '#FEF9C3' : t.status === 'inprogress' ? '#E0E7FF' : '#FEF3C7',
+                  color: t.status === 'closed' ? 'var(--success)' : t.status === 'resolved' ? '#A16207' : t.status === 'inprogress' ? '#4338CA' : 'var(--warning)',
                 }}>
-                  {t.status}
+                  {t.status === 'resolved' ? 'confirm?' : t.status}
                 </span>
                 <ChevronRight size={16} style={{ color: 'var(--text-tertiary)' }} />
               </div>
@@ -1852,6 +1857,7 @@ function TicketDetailModal({ ticket, onClose, showToast }: { ticket: ConsumerTic
   const [reply, setReply] = useState('')
   const [messages, setMessages] = useState<TicketMessage[]>(ticket.messages || [])
   const [sending, setSending] = useState(false)
+  const [saying, setSaying] = useState(false)
 
   const sendReply = async () => {
     if (!reply.trim()) return
@@ -1868,6 +1874,34 @@ function TicketDetailModal({ ticket, onClose, showToast }: { ticket: ConsumerTic
     setSending(false)
     showToast('Reply sent')
   }
+
+  /* This customer's word, which is the only thing that closes the ticket. The
+     trigger refuses it from anybody else, and records the name against it. */
+  const agree = async () => {
+    setSending(true)
+    const res = await confirmResolved(ticket, ticket.opened_by)
+    setSending(false)
+    showToast(res.ok ? res.note ?? 'Closed' : res.reason)
+    if (res.ok) onClose()
+  }
+
+  /* It was not fixed. Back to the desk with the reason on the thread, and the
+     bounce counted — a ticket sent back twice was cleared, not answered. */
+  const sendBack = async () => {
+    if (!reply.trim()) return
+    setSending(true)
+    const res = await reopenTicket({ id: ticket.id, messages }, reply, ticket.opened_by)
+    setSending(false)
+    showToast(res.ok ? res.note ?? 'Reopened' : res.reason)
+    if (res.ok) { setReply(''); setSaying(false); onClose() }
+  }
+
+  const due = ticket.confirm_due ? Date.parse(ticket.confirm_due) : NaN
+  const consentText = Number.isNaN(due)
+    ? 'Tell us whether this is fixed. Saying so closes it; saying it is not sends it back to the desk.'
+    : due <= Date.now()
+      ? 'The window to answer has run out, so this closes itself shortly. You can still say it is not fixed.'
+      : `If we do not hear from you by ${new Date(due).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} it closes on its own, counted as unanswered rather than as agreed.`
 
   return (
     <div onClick={onClose} style={{
@@ -1892,9 +1926,9 @@ function TicketDetailModal({ ticket, onClose, showToast }: { ticket: ConsumerTic
         <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
           <span style={{
             padding: '3px 10px', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 600,
-            background: ticket.status === 'resolved' ? '#DCFCE7' : ticket.status === 'inprogress' ? '#E0E7FF' : '#FEF3C7',
-            color: ticket.status === 'resolved' ? 'var(--success)' : ticket.status === 'inprogress' ? '#4338CA' : 'var(--warning)',
-          }}>{ticket.status}</span>
+            background: ticket.status === 'closed' ? '#DCFCE7' : ticket.status === 'resolved' ? '#FEF9C3' : ticket.status === 'inprogress' ? '#E0E7FF' : '#FEF3C7',
+            color: ticket.status === 'closed' ? 'var(--success)' : ticket.status === 'resolved' ? '#A16207' : ticket.status === 'inprogress' ? '#4338CA' : 'var(--warning)',
+          }}>{ticket.status === 'resolved' ? 'waiting on you' : ticket.status}</span>
           <span style={{
             padding: '3px 10px', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 600,
             background: 'var(--bg-alt)', color: 'var(--text-secondary)',
@@ -1930,7 +1964,65 @@ function TicketDetailModal({ ticket, onClose, showToast }: { ticket: ConsumerTic
           })}
         </div>
 
-        {ticket.status !== 'resolved' && (
+        {ticket.resolution_note && (
+          <div style={{
+            padding: '12px 14px', borderRadius: 'var(--radius)', marginBottom: '16px',
+            background: '#DCFCE7', fontSize: 'var(--text-sm)', lineHeight: 1.6,
+          }}>
+            <strong style={{ display: 'block', marginBottom: '2px' }}>What they say fixed it</strong>
+            {ticket.resolution_note}
+          </div>
+        )}
+
+        {/* The rung this screen never had. The desk has answered; nothing is
+            over until this customer says whether that answer worked. */}
+        {ticket.status === 'resolved' && (
+          <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '16px' }}>
+            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: '4px' }}>
+              Is this actually resolved?
+            </div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.6, marginBottom: '12px' }}>
+              {consentText}
+            </div>
+            {saying ? (
+              <>
+                <textarea
+                  style={{ ...inputStyle, minHeight: '60px', resize: 'vertical', marginBottom: '12px' }}
+                  value={reply} onChange={(e) => setReply(e.target.value)}
+                  placeholder="What is still wrong? This goes back to the desk with the ticket."
+                />
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                  <button onClick={() => setSaying(false)} style={btnSecondary}>Cancel</button>
+                  <button onClick={sendBack} disabled={sending || !reply.trim()}
+                          style={{ ...btnPrimary, background: 'var(--danger)' }}>
+                    {sending ? 'Sending…' : 'Send it back'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button onClick={() => setSaying(true)} style={btnSecondary}>No, it is not fixed</button>
+                <button onClick={agree} disabled={sending}
+                        style={{ ...btnPrimary, background: 'var(--success)' }}>
+                  {sending ? 'Saving…' : 'Yes, this is resolved'}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {ticket.status === 'closed' && (
+          <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '16px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+            {ticket.closed_how === 'confirmed'
+              ? `${ticket.confirmed_by ?? 'You'} confirmed this was resolved.`
+              : ticket.closed_how === 'offline'
+                ? `${ticket.confirmed_by} agreed this was resolved, recorded by the desk.`
+                : 'Closed automatically — the window to answer ran out with no reply.'}
+            {' '}Something still wrong? Raise a new ticket, so the dates on it are its own.
+          </div>
+        )}
+
+        {ticket.status !== 'resolved' && ticket.status !== 'closed' && (
           <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '16px' }}>
             <textarea
               style={{ ...inputStyle, minHeight: '60px', resize: 'vertical', marginBottom: '12px' }}

@@ -8,13 +8,14 @@ import { Callout } from '../OnboardingJourney'
 import { Pager, usePaging } from '../Pager'
 import { loadAccount } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
-import { loadSupport, raiseTicket, replyToTicket, closeTicket } from '../../lib/supportRepo'
+import { loadSupport, raiseTicket, replyToTicket, confirmResolved, reopenTicket } from '../../lib/supportRepo'
 import type { SupportBook } from '../../lib/supportRepo'
 import { attachFile } from '../../lib/attachmentRepo'
 import { AttachmentPicker } from '../AttachmentPicker'
 import {
   queue, summarise, byCategory, standing, pastTarget, isOpen, duration,
   categoriesFor, priorityFor, respondTarget, waitingOn, STATE_LABEL,
+  awaitingConfirmation, confirmWindow, closedBecause,
 } from '../../lib/support'
 import type { Ticket } from '../../lib/support'
 
@@ -205,9 +206,10 @@ function Thread({ ticket, book, account, onDone }: {
   ticket: Ticket; book: SupportBook; account: AccountBook; onDone: () => Promise<void>
 }) {
   const [reply, setReply] = useState('')
-  const [closing, setClosing] = useState(false)
+  const [saying, setSaying] = useState(false)
   const [busy, setBusy] = useState(false)
   const me = account.me?.name ?? 'The account'
+  const window_ = confirmWindow(ticket, new Date())
 
   const send = async () => {
     setBusy(true)
@@ -217,12 +219,23 @@ function Thread({ ticket, book, account, onDone }: {
     if (res.ok) { setReply(''); await onDone() }
   }
 
-  const accept = async () => {
+  /* The account's word, which is the only thing that closes this. */
+  const confirm = async () => {
     setBusy(true)
-    const res = await closeTicket(ticket, reply, me)
+    const res = await confirmResolved(ticket, me)
     setBusy(false)
     toast(res.ok ? res.note ?? 'Closed' : res.reason, res.ok ? 'success' : 'error')
-    if (res.ok) { setReply(''); setClosing(false); await onDone() }
+    if (res.ok) await onDone()
+  }
+
+  /* It was not fixed. Back to the desk with the reason on the thread, and the
+     reopen counted — a ticket that bounces twice was cleared, not answered. */
+  const reject = async () => {
+    setBusy(true)
+    const res = await reopenTicket(ticket, reply, me)
+    setBusy(false)
+    toast(res.ok ? res.note ?? 'Reopened' : res.reason, res.ok ? 'success' : 'error')
+    if (res.ok) { setReply(''); setSaying(false); await onDone() }
   }
 
   return (
@@ -245,6 +258,44 @@ function Thread({ ticket, book, account, onDone }: {
         <Callout tone="success" title="How it was resolved">{ticket.resolution_note}</Callout>
       )}
 
+      {ticket.status === 'closed' && closedBecause(ticket) && (
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+          {closedBecause(ticket)}
+          {ticket.reopened > 0 && ` Sent back ${ticket.reopened} time${ticket.reopened === 1 ? '' : 's'} before it stuck.`}
+        </div>
+      )}
+
+      {/* The rung the queue never had. The desk has answered; nothing is over
+          until this account says so, or until the window runs out. */}
+      {awaitingConfirmation(ticket) && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <Callout tone={window_?.lapsed ? 'warning' : 'info'} title="Is this actually resolved?">
+            {window_?.text ?? 'Tell us whether this is fixed.'}
+            {ticket.reopened > 0 && ` You have sent this back ${ticket.reopened} time${ticket.reopened === 1 ? '' : 's'} already.`}
+          </Callout>
+
+          {saying ? (
+            <>
+              <TextArea rows={3} value={reply} onChange={e => setReply(e.target.value)}
+                        placeholder="What is still wrong? This goes back to the desk with the ticket." />
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <Btn variant="secondary" size="sm" onClick={() => setSaying(false)}>Cancel</Btn>
+                <Btn variant="danger" size="sm" onClick={reject} disabled={busy || !reply.trim()}>
+                  Send it back
+                </Btn>
+              </div>
+            </>
+          ) : (
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+              <Btn variant="secondary" size="sm" onClick={() => setSaying(true)}>No, it is not fixed</Btn>
+              <Btn variant="success" size="sm" onClick={confirm} disabled={busy}>
+                Yes, this is resolved
+              </Btn>
+            </div>
+          )}
+        </div>
+      )}
+
       {isOpen(ticket) && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {ticket.waiting_on_customer && (
@@ -253,19 +304,12 @@ function Thread({ ticket, book, account, onDone }: {
             </Callout>
           )}
           <TextArea rows={3} value={reply} onChange={e => setReply(e.target.value)}
-                    placeholder={closing ? 'What resolved it? This is what anybody reading it later will see.' : 'Add to the thread…'} />
+                    placeholder="Add to the thread…" />
           <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-            {closing ? (
-              <>
-                <Btn variant="secondary" size="sm" onClick={() => setClosing(false)}>Cancel</Btn>
-                <Btn variant="success" size="sm" onClick={accept} disabled={busy}>Close it</Btn>
-              </>
-            ) : (
-              <>
-                <Btn variant="secondary" size="sm" onClick={() => setClosing(true)}>This is resolved</Btn>
-                <Btn size="sm" onClick={send} disabled={busy || !reply.trim()}><Send size={12} /> Reply</Btn>
-              </>
-            )}
+            {/* No "close it" here on purpose. An open ticket is one the desk
+                has not answered yet, and a requester closing it themselves is
+                a question that went unanswered and got filed as resolved. */}
+            <Btn size="sm" onClick={send} disabled={busy || !reply.trim()}><Send size={12} /> Reply</Btn>
           </div>
         </div>
       )}

@@ -11,7 +11,9 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { supabase } from './supabase'
 import { signIn, signOut } from './authRepo'
 import { loadAccount } from './enterpriseRepo'
-import { loadSupport, raiseTicket, replyToTicket, closeTicket } from './supportRepo'
+import {
+  loadSupport, raiseTicket, replyToTicket, resolveTicket, confirmResolved, reopenTicket,
+} from './supportRepo'
 import type { SupportBook } from './supportRepo'
 import { summarise, isOpen, pastTarget, workedMinutes, standing, priorityFor, categoriesFor } from './support'
 
@@ -241,22 +243,66 @@ describe('raising, replying and closing', () => {
     expect(after.tickets.find(t => t.id === raised)!.messages.length).toBe(2)
   })
 
-  it('closes it with a resolution, and refuses one without', async () => {
+  it('resolves it with a note, and refuses one without', async () => {
     const fresh = await loadSupport()
     const mine = fresh.tickets.find(t => t.id === raised)!
 
-    const bad = await closeTicket(mine, '  ', account.me!.name)
+    const bad = await resolveTicket(mine, '  ', account.me!.name)
     expect(bad.ok).toBe(false)
 
-    const good = await closeTicket(mine, 'Resolved — the seats needed the directory group mapping, now applied.', account.me!.name)
+    const good = await resolveTicket(mine, 'Resolved — the seats needed the directory group mapping, now applied.', account.me!.name)
     expect(good.ok, good.ok ? '' : good.reason).toBe(true)
 
     const after = await loadSupport()
     const saved = after.tickets.find(t => t.id === raised)!
+    /* Resolved, not closed. The desk's word starts a window; it does not end
+       the ticket. */
     expect(saved.status).toBe('resolved')
     expect(saved.resolution_note).toMatch(/directory group mapping/)
     expect(saved.resolved_at).toBeTruthy()
+    expect(saved.confirm_due).toBeTruthy()
+    expect(saved.closed_how).toBeNull()
     expect(isOpen(saved)).toBe(false)
+  })
+
+  it('sends it back when it was not fixed, and counts the bounce', async () => {
+    const fresh = await loadSupport()
+    const mine = fresh.tickets.find(t => t.id === raised)!
+    expect(mine.status).toBe('resolved')
+
+    const sent = await reopenTicket(mine, 'Four of the twelve seats still cannot sign in.', account.me!.name)
+    expect(sent.ok, sent.ok ? '' : sent.reason).toBe(true)
+
+    const after = await loadSupport()
+    const saved = after.tickets.find(t => t.id === raised)!
+    expect(saved.status).toBe('open')
+    expect(saved.reopened).toBe(1)
+    expect(saved.confirm_due).toBeNull()
+    expect(saved.resolution_note).toBeNull()
+    expect(saved.messages.at(-1)!.text).toMatch(/^Not resolved: /)
+  })
+
+  it('closes only when the account says so, and records that it did', async () => {
+    const fresh = await loadSupport()
+    const mine = fresh.tickets.find(t => t.id === raised)!
+
+    /* A ticket cannot jump from open to closed — the desk answers it first. */
+    const early = await confirmResolved(mine, account.me!.name)
+    expect(early.ok).toBe(false)
+
+    await resolveTicket(mine, 'Mapped the second directory group as well.', account.me!.name)
+    const mid = await loadSupport()
+    const done = await confirmResolved(mid.tickets.find(t => t.id === raised)!, account.me!.name)
+    expect(done.ok, done.ok ? '' : done.reason).toBe(true)
+
+    const after = await loadSupport()
+    const saved = after.tickets.find(t => t.id === raised)!
+    expect(saved.status).toBe('closed')
+    expect(saved.closed_how).toBe('confirmed')
+    expect(saved.confirmed_by).toBe(account.me!.name)
+    expect(saved.confirmed_at).toBeTruthy()
+    /* The bounce from the previous test is still on the record. */
+    expect(saved.reopened).toBe(1)
   })
 })
 

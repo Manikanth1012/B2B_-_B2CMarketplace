@@ -3,6 +3,8 @@ import {
   isOpen, workedMinutes, standing, pastTarget, duration, queue, summarise,
   byCategory, categoriesFor, priorityFor, respondTarget, validateTicket,
   validateReply, validateResolution, waitingOn, lastMessage, STATE_LABEL, OPEN_STATES,
+  awaitingConfirmation, confirmWindow, canConfirm, deskOptions, closedBecause, bounced,
+  consentSummary, CLOSE_LABEL,
 } from './support'
 import type { Ticket, Sla, Category } from './support'
 
@@ -17,6 +19,7 @@ function t(over: Partial<Ticket> = {}): Ticket {
     breached: false, escalated: false, escalated_at: null,
     waiting_on_customer: false, waiting_minutes: 0, waiting_since: null,
     resolved_at: null, resolution_note: null,
+    confirm_due: null, confirmed_by: null, confirmed_at: null, closed_how: null, reopened: 0,
     messages: [{ who: 'Vikram Shah', text: 'It is down.', when: '01 Aug 08:00' }],
     account_id: 'ENT-2007', partner_id: null, user_id: 'u1', raised_by_member: 'EU-2007-01',
     ref: null, channel: 'Enterprise portal', sort_order: 1, ...over,
@@ -24,9 +27,9 @@ function t(over: Partial<Ticket> = {}): Ticket {
 }
 
 const SLA: Sla[] = [
-  { priority: 'P1', label: 'Critical', meaning: '', respond_mins: 30, resolve_mins: 240, priority_queue_multiplier: 0.5, sort_order: 1 },
-  { priority: 'P2', label: 'High', meaning: '', respond_mins: 120, resolve_mins: 480, priority_queue_multiplier: 0.5, sort_order: 2 },
-  { priority: 'P3', label: 'Normal', meaning: '', respond_mins: 480, resolve_mins: 1440, priority_queue_multiplier: 0.75, sort_order: 3 },
+  { priority: 'P1', label: 'Critical', meaning: '', respond_mins: 30, resolve_mins: 240, confirm_days: 3, priority_queue_multiplier: 0.5, sort_order: 1 },
+  { priority: 'P2', label: 'High', meaning: '', respond_mins: 120, resolve_mins: 480, confirm_days: 3, priority_queue_multiplier: 0.5, sort_order: 2 },
+  { priority: 'P3', label: 'Normal', meaning: '', respond_mins: 480, resolve_mins: 1440, confirm_days: 3, priority_queue_multiplier: 0.75, sort_order: 3 },
 ]
 
 const CATS: Category[] = [
@@ -285,5 +288,107 @@ describe('shared vocabulary', () => {
     ] })
     expect(lastMessage(two)!.text).toBe('second')
     expect(lastMessage(t({ messages: [] }))).toBeNull()
+  })
+})
+
+describe('closing the loop', () => {
+  const resolved = (over: Partial<Ticket> = {}) => t({
+    status: 'resolved', resolution_note: 'Replaced the gateway.',
+    resolved_at: '2026-08-01T10:00:00Z',
+    confirm_due: '2026-08-03T10:00:00Z', ...over,
+  })
+
+  it('a resolved ticket is waiting on the requester, not finished', () => {
+    /* The distinction the queue never had: everything the desk marked resolved
+       fell off the bottom of the list, so a ticket cleared from a queue looked
+       exactly like one that fixed somebody's problem. */
+    expect(awaitingConfirmation(resolved())).toBe(true)
+    expect(awaitingConfirmation(t({ status: 'closed', closed_how: 'auto' }))).toBe(false)
+    expect(awaitingConfirmation(t())).toBe(false)
+  })
+
+  it('counts the window in whole days while there are days left', () => {
+    const w = confirmWindow(resolved(), NOW)!
+    expect(w.daysLeft).toBe(1)
+    expect(w.lapsed).toBe(false)
+    expect(w.text).toContain('1 day')
+  })
+
+  it('drops to hours on the last day rather than saying 0 days', () => {
+    const w = confirmWindow(resolved({ confirm_due: '2026-08-01T18:00:00Z' }), NOW)!
+    expect(w.daysLeft).toBe(0)
+    expect(w.text).toContain('6 hours')
+  })
+
+  it('a lapsed window still lets them answer', () => {
+    /* Lapsed means "may now be closed by the clock", not "closed". Saying
+       closed while it is still answerable is the same lie the old toast told. */
+    const w = confirmWindow(resolved({ confirm_due: '2026-07-30T10:00:00Z' }), NOW)!
+    expect(w.lapsed).toBe(true)
+    expect(w.text).toContain('not fixed')
+  })
+
+  it('has no window unless the desk has answered', () => {
+    expect(confirmWindow(t(), NOW)).toBeNull()
+    expect(confirmWindow(t({ status: 'closed', closed_how: 'auto' }), NOW)).toBeNull()
+  })
+
+  it('lets the company confirm, not only the person who clicked', () => {
+    /* A ticket only one colleague can confirm sits in resolved until the window
+       runs out every time they are on leave. */
+    const tk = resolved({ user_id: 'u1', account_id: 'ENT-2007' })
+    expect(canConfirm(tk, { userId: 'someone-else', accountId: 'ENT-2007' })).toBe(true)
+    expect(canConfirm(tk, { userId: 'u1' })).toBe(true)
+    expect(canConfirm(tk, { userId: 'x', accountId: 'ENT-9999' })).toBe(false)
+    expect(canConfirm(tk, null)).toBe(false)
+  })
+
+  it('nobody confirms a ticket that is not resolved', () => {
+    expect(canConfirm(t({ user_id: 'u1' }), { userId: 'u1' })).toBe(false)
+  })
+
+  it('the desk may record an agreement at any point, but only close it late', () => {
+    expect(deskOptions(resolved(), NOW)).toEqual({ offline: true, auto: false })
+    expect(deskOptions(resolved({ confirm_due: '2026-07-30T10:00:00Z' }), NOW))
+      .toEqual({ offline: true, auto: true })
+    expect(deskOptions(t(), NOW)).toEqual({ offline: false, auto: false })
+  })
+
+  it('says who closed it, and says so plainly when nobody did', () => {
+    expect(closedBecause(t({ status: 'closed', closed_how: 'confirmed', confirmed_by: 'Vikram Shah' })))
+      .toContain('Vikram Shah confirmed')
+    expect(closedBecause(t({ status: 'closed', closed_how: 'offline', confirmed_by: 'Vikram Shah' })))
+      .toContain('recorded by the desk')
+    expect(closedBecause(t({ status: 'closed', closed_how: 'auto' })))
+      .toContain('no reply')
+    expect(closedBecause(resolved())).toBeNull()
+  })
+
+  it('falls back to who raised it when a confirmation carries no name', () => {
+    expect(closedBecause(t({ status: 'closed', closed_how: 'confirmed', confirmed_by: null })))
+      .toContain('Vikram Shah')
+  })
+
+  it('flags a ticket that has been sent back more than once', () => {
+    expect(bounced(t({ reopened: 0 }))).toBe(false)
+    expect(bounced(t({ reopened: 1 }))).toBe(false)
+    expect(bounced(t({ reopened: 2 }))).toBe(true)
+  })
+
+  it('counts the closes nobody agreed to separately from the ones they did', () => {
+    /* The number worth watching. A desk measured on the total of both will
+       always find the second one easier. */
+    const s = consentSummary([
+      resolved(),
+      t({ status: 'closed', closed_how: 'confirmed' }),
+      t({ status: 'closed', closed_how: 'confirmed' }),
+      t({ status: 'closed', closed_how: 'offline', confirmed_by: 'X' }),
+      t({ status: 'closed', closed_how: 'auto', reopened: 2 }),
+    ])
+    expect(s).toEqual({ awaiting: 1, confirmed: 2, offline: 1, auto: 1, bounced: 1 })
+  })
+
+  it('names all three ways a ticket can close', () => {
+    expect(Object.keys(CLOSE_LABEL).sort()).toEqual(['auto', 'confirmed', 'offline'])
   })
 })

@@ -15,6 +15,9 @@ export interface Sla {
   meaning: string
   respond_mins: number
   resolve_mins: number
+  /* How long the person who raised it gets to say whether it really is fixed,
+     before the window runs out and it closes itself. */
+  confirm_days: number
   priority_queue_multiplier: number
   sort_order: number
 }
@@ -53,6 +56,14 @@ export interface Ticket {
   waiting_since: string | null
   resolved_at: string | null
   resolution_note: string | null
+  /* The consent record. 'resolved' means the desk believes it is fixed and is
+     waiting to be told; 'closed' means the person who raised it agreed, or the
+     window ran out. These four columns are what tells those two apart. */
+  confirm_due: string | null
+  confirmed_by: string | null
+  confirmed_at: string | null
+  closed_how: CloseKind | null
+  reopened: number
   messages: TicketMessage[]
   account_id: string | null
   partner_id: string | null
@@ -72,8 +83,19 @@ export const STATE_LABEL: Record<TicketState, string> = {
   open: 'Being worked on',
   waiting: 'Waiting on you',
   escalated: 'Escalated',
-  resolved: 'Resolved',
+  resolved: 'Fixed — waiting on you',
   closed: 'Closed',
+}
+
+/* How a ticket came to be closed. Kept apart because "the customer agreed" and
+   "nobody answered" are not the same fact, and a desk measured on the total of
+   both will always find the second one easier. */
+export type CloseKind = 'confirmed' | 'offline' | 'auto'
+
+export const CLOSE_LABEL: Record<CloseKind, string> = {
+  confirmed: 'Confirmed by the person who raised it',
+  offline: 'Agreement recorded by the desk',
+  auto: 'Closed automatically — nobody answered',
 }
 
 export function isOpen(t: Ticket): boolean {
@@ -277,4 +299,135 @@ export function waitingOn(t: Ticket): string {
 
 export function lastMessage(t: Ticket): TicketMessage | null {
   return t.messages.length ? t.messages[t.messages.length - 1] : null
+}
+
+/* ------------------------------------------- closing the loop, in words -- */
+
+/**
+ * Is this ticket sitting between the two rungs — the desk says fixed, the
+ * person who raised it has not said anything?
+ *
+ * This is the state the queue never had. Everything the desk marked resolved
+ * used to fall straight off the bottom of the list, so a ticket "resolved" by
+ * clearing it from a queue looked exactly like one that fixed somebody's
+ * problem.
+ */
+export function awaitingConfirmation(t: Ticket): boolean {
+  return t.status === 'resolved'
+}
+
+export interface ConfirmWindow {
+  /* Whole days left, rounded down — "1 day left" is a promise about the whole
+     of tomorrow, so a window with 1.4 days on it reads as 1, not 2. */
+  daysLeft: number
+  hoursLeft: number
+  lapsed: boolean
+  text: string
+}
+
+/**
+ * How long the requester has left to answer, and what to say about it.
+ *
+ * A lapsed window is not the same as a closed ticket. It means the ticket may
+ * now be closed by the clock — somebody or something still has to do it, and
+ * until then the requester can still confirm or reopen. Saying "closed" while
+ * it is still answerable would be the same lie the old toast told.
+ */
+export function confirmWindow(t: Ticket, now: Date): ConfirmWindow | null {
+  if (t.status !== 'resolved' || !t.confirm_due) return null
+  const ms = Date.parse(t.confirm_due) - now.getTime()
+  if (Number.isNaN(ms)) return null
+  const hoursLeft = Math.floor(ms / 3600000)
+  const daysLeft = Math.floor(hoursLeft / 24)
+
+  if (ms <= 0) {
+    return {
+      daysLeft: 0, hoursLeft: 0, lapsed: true,
+      text: 'The window to answer has run out, so this closes itself the next time the marketplace sweeps. You can still say it is not fixed.',
+    }
+  }
+  const left = daysLeft >= 1
+    ? `${daysLeft} day${daysLeft === 1 ? '' : 's'}`
+    : `${Math.max(1, hoursLeft)} hour${hoursLeft === 1 ? '' : 's'}`
+  return {
+    daysLeft, hoursLeft, lapsed: false,
+    text: `Tell us whether this is fixed. If we do not hear in ${left} it closes on its own.`,
+  }
+}
+
+/**
+ * Whether this signed-in party is the one whose word closes the ticket.
+ *
+ * Deliberately the company and not the person for an account or a seller: the
+ * colleague who picks the thread up next week is rarely the one who raised it,
+ * and a ticket only one person can confirm is a ticket that sits in 'resolved'
+ * until the window runs out every time they are on leave.
+ */
+export function canConfirm(
+  t: Ticket,
+  me: { userId?: string | null; accountId?: string | null; partnerId?: string | null } | null,
+): boolean {
+  if (t.status !== 'resolved' || !me) return false
+  if (t.user_id && me.userId && t.user_id === me.userId) return true
+  if (t.account_id && me.accountId && t.account_id === me.accountId) return true
+  if (t.partner_id && me.partnerId && t.partner_id === me.partnerId) return true
+  return false
+}
+
+/**
+ * What the desk is allowed to do with a ticket it has already resolved.
+ *
+ * Not "close it" — that is the requester's word. It may record an agreement
+ * given somewhere this system cannot see, which has to name who gave it, or it
+ * may wait. Once the window has run out it may also close it as unanswered,
+ * which is a different and visibly worse outcome.
+ */
+export function deskOptions(t: Ticket, now: Date): { offline: boolean; auto: boolean } {
+  if (t.status !== 'resolved') return { offline: false, auto: false }
+  const w = confirmWindow(t, now)
+  return { offline: true, auto: !!w?.lapsed }
+}
+
+/**
+ * How a closed ticket closed, as a sentence, with the name where there is one.
+ *
+ * A closed ticket with no author is what this whole change exists to prevent,
+ * so the one case with no name says so plainly rather than staying quiet.
+ */
+export function closedBecause(t: Ticket): string | null {
+  if (t.status !== 'closed' || !t.closed_how) return null
+  switch (t.closed_how) {
+    case 'confirmed':
+      return `${t.confirmed_by ?? t.opened_by} confirmed this was resolved.`
+    case 'offline':
+      return `${t.confirmed_by} agreed this was resolved, recorded by the desk.`
+    default:
+      return 'Closed automatically — the window to answer ran out with no reply.'
+  }
+}
+
+/**
+ * A ticket that has been sent back more than once.
+ *
+ * Worth surfacing on its own rather than folding into a resolution-time
+ * average: two bounces is not a slow fix, it is a fix that was not one, and the
+ * average hides exactly that.
+ */
+export function bounced(t: Ticket): boolean {
+  return t.reopened >= 2
+}
+
+/** How many are waiting on the requester rather than on the desk, and how many
+    of the closed ones nobody ever agreed to. The second number is the one worth
+    watching: it is what a queue looks like when it is being cleared. */
+export function consentSummary(tickets: readonly Ticket[]): {
+  awaiting: number; confirmed: number; offline: number; auto: number; bounced: number
+} {
+  return {
+    awaiting: tickets.filter(awaitingConfirmation).length,
+    confirmed: tickets.filter(t => t.closed_how === 'confirmed').length,
+    offline: tickets.filter(t => t.closed_how === 'offline').length,
+    auto: tickets.filter(t => t.closed_how === 'auto').length,
+    bounced: tickets.filter(bounced).length,
+  }
 }

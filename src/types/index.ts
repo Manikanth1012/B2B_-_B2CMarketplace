@@ -376,6 +376,14 @@ export interface ConsumerTicket {
   breached: boolean
   escalated: boolean
   messages: TicketMessage[]
+  /* The consent record, the customer's side of it. 'resolved' is the desk
+     saying it is fixed; nothing is over until this customer agrees or the
+     window runs out. */
+  resolution_note?: string | null
+  confirm_due?: string | null
+  confirmed_by?: string | null
+  closed_how?: 'confirmed' | 'offline' | 'auto' | null
+  reopened?: number
 }
 
 // ---------- Operator Console Types ----------
@@ -549,6 +557,16 @@ export interface OperatorTicket {
   escalated_at: string | null
   waiting_on_customer: boolean
   messages: TicketMessage[]
+  /* The consent record. 'resolved' means the desk has answered and is waiting
+     to be told whether that was right; 'closed' means somebody said so, or the
+     window ran out. The console shows which, because "closed because they
+     agreed" and "closed because nobody replied" are not the same queue. */
+  resolution_note: string | null
+  confirm_due: string | null
+  confirmed_by: string | null
+  confirmed_at: string | null
+  closed_how: 'confirmed' | 'offline' | 'auto' | null
+  reopened: number
   sort_order: number
 }
 

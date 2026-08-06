@@ -8,6 +8,8 @@ import { AttachmentList } from '../AttachmentList'
 import { loadAttachments } from '../../lib/attachmentRepo'
 import type { Attachment } from '../../lib/attachments'
 import { Pager, usePaging } from '../Pager'
+import { resolveTicket, closeOffline, closeUnanswered } from '../../lib/supportRepo'
+import { CLOSE_LABEL } from '../../lib/support'
 
 /* `focus` is a ticket id handed over from the dashboard. */
 export function OperatorTickets({ focus = null }: { focus?: string | null } = {}) {
@@ -20,6 +22,12 @@ export function OperatorTickets({ focus = null }: { focus?: string | null } = {}
      to find that out is a request per row wasted. */
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [reply, setReply] = useState('')
+  /* Resolving now asks for the note that the requester reads before agreeing,
+     so it needs a state of its own rather than borrowing the reply box. */
+  const [resolving, setResolving] = useState(false)
+  const [resolution, setResolution] = useState('')
+  const [offline, setOffline] = useState(false)
+  const [agreedBy, setAgreedBy] = useState('')
   const [addModal, setAddModal] = useState(false)
   const [newTicket, setNewTicket] = useState({ subject: '', category: 'Provisioning', priority: 'P3', opened_by: '', org: '' })
 
@@ -69,13 +77,43 @@ export function OperatorTickets({ focus = null }: { focus?: string | null } = {}
     setSelected({ ...selected, messages })
   }
 
-  const handleResolve = async (id: string) => {
-    await supabase.from('support_tickets').update({
-      status: 'resolved', resolution_mins: 120, owner: 'Operator Admin',
-    }).eq('id', id)
-    toast('Ticket resolved')
+  /* Resolving is answering, not finishing.
+   *
+   * This used to write `status: 'resolved'` with no resolution_note, which
+   * `support_tickets_resolved_check` has always refused — so the button
+   * reported "Ticket resolved" and the row never changed. Now it asks for the
+   * note, which is also the thing the requester reads when deciding whether to
+   * agree. */
+  const handleResolve = async () => {
+    if (!selected) return
+    if (!resolution.trim()) { toast('Say what resolved it — that is what they read before agreeing', 'error'); return }
+    const res = await resolveTicket(selected, resolution, 'Operator Admin')
+    if (!res.ok) { toast(res.reason, 'error'); return }
+    toast(res.note ?? 'Resolved')
+    setResolution(''); setResolving(false)
     await refresh()
     setSelected(null)
+  }
+
+  /* An agreement given on the phone. Allowed, and labelled as the desk's own
+     word rather than as the customer's click, so a queue closed entirely this
+     way is a queue that says so. */
+  const handleOffline = async () => {
+    if (!selected) return
+    const res = await closeOffline(selected, agreedBy, resolution, 'Operator Admin')
+    if (!res.ok) { toast(res.reason, 'error'); return }
+    toast(res.note ?? 'Closed')
+    setAgreedBy(''); setResolution(''); setOffline(false)
+    await refresh()
+    setSelected(null)
+  }
+
+  /* The ones nobody answered inside their window. Names them rather than
+     reporting a count, because a sweep you cannot check is a sweep. */
+  const handleSweep = async () => {
+    const res = await closeUnanswered()
+    toast(res.ok ? res.note ?? 'Swept' : res.reason, res.ok ? 'success' : 'error')
+    if (res.ok) { await refresh(); setSelected(null) }
   }
 
   const handleAssign = async (id: string, owner: string) => {
@@ -120,6 +158,17 @@ export function OperatorTickets({ focus = null }: { focus?: string | null } = {}
     await refresh()
   }
 
+  /* Counted off the queue rather than off a stored figure: "closed because
+     they agreed" and "closed because nobody replied" are different outcomes
+     and a desk measured on their total will always prefer the second. */
+  const consent = {
+    awaiting: inQueue.filter(t => t.status === 'resolved').length,
+    confirmed: inQueue.filter(t => t.closed_how === 'confirmed').length,
+    offline: inQueue.filter(t => t.closed_how === 'offline').length,
+    auto: inQueue.filter(t => t.closed_how === 'auto').length,
+    bounced: inQueue.filter(t => (t.reopened ?? 0) >= 2).length,
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -128,8 +177,18 @@ export function OperatorTickets({ focus = null }: { focus?: string | null } = {}
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginTop: '4px' }}>
             {openCount} open · {breachedCount} breached · {service.filter(t => t.escalated).length} escalated
           </p>
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+            {consent.awaiting} waiting on the requester to agree · {consent.confirmed} closed on their word ·{' '}
+            {consent.offline} on ours · {consent.auto} unanswered
+            {consent.bounced > 0 && ` · ${consent.bounced} sent back more than once`}
+          </p>
         </div>
-        <Btn onClick={() => setAddModal(true)}>New ticket</Btn>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          {/* The sweep exists because a resolved ticket nobody answers would
+              otherwise sit in 'resolved' for ever. It names what it closed. */}
+          <Btn variant="secondary" onClick={handleSweep}>Close the unanswered</Btn>
+          <Btn onClick={() => setAddModal(true)}>New ticket</Btn>
+        </div>
       </div>
 
       <div style={{ display: 'flex', gap: '8px' }}>
@@ -173,6 +232,35 @@ export function OperatorTickets({ focus = null }: { focus?: string | null } = {}
               {selected.breached && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', fontWeight: 600, marginTop: '4px' }}>SLA breached</div>}
               {selected.waiting_on_customer && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--info)', fontWeight: 600, marginTop: '4px' }}><Clock size={12} style={{ display: 'inline' }} /> Waiting on customer</div>}
 
+              {/* Where it stands on the second rung. A resolved ticket is not a
+                  finished one — it is one this desk believes it has answered. */}
+              {selected.status === 'resolved' && (
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--warning)', fontWeight: 600, marginTop: '4px' }}>
+                  Answered — waiting for {selected.opened_by} to agree
+                  {selected.confirm_due && ` (until ${fmtDateTime(selected.confirm_due)})`}
+                </div>
+              )}
+              {selected.status === 'closed' && selected.closed_how && (
+                <div style={{
+                  fontSize: 'var(--text-xs)', marginTop: '4px', fontWeight: 600,
+                  color: selected.closed_how === 'auto' ? 'var(--text-tertiary)' : 'var(--success)',
+                }}>
+                  {CLOSE_LABEL[selected.closed_how]}
+                  {selected.confirmed_by && ` — ${selected.confirmed_by}`}
+                </div>
+              )}
+              {(selected.reopened ?? 0) > 0 && (
+                <div style={{ fontSize: 'var(--text-xs)', color: (selected.reopened ?? 0) >= 2 ? 'var(--danger)' : 'var(--text-tertiary)', marginTop: '4px' }}>
+                  Sent back {selected.reopened} time{selected.reopened === 1 ? '' : 's'}
+                  {(selected.reopened ?? 0) >= 2 && ' — this was cleared rather than answered'}
+                </div>
+              )}
+              {selected.resolution_note && (
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: '8px', lineHeight: 1.5 }}>
+                  <strong>Resolution:</strong> {selected.resolution_note}
+                </div>
+              )}
+
               <div style={{ marginTop: '16px', borderTop: '1px solid var(--border-light)', paddingTop: '16px' }}>
                 <h5 style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Conversation</h5>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
@@ -196,7 +284,12 @@ export function OperatorTickets({ focus = null }: { focus?: string | null } = {}
                     <option>Support Agent</option><option>Finance Team</option><option>Integrations Team</option><option>Catalogue Team</option>
                   </Select>
                   {!selected.escalated && <Btn variant="secondary" size="sm" onClick={() => handleEscalate(selected.id)}>Escalate</Btn>}
-                  {selected.status === 'open' && <Btn variant="success" size="sm" onClick={() => handleResolve(selected.id)}>Resolve</Btn>}
+                  {(selected.status === 'open' || selected.status === 'new' || selected.status === 'escalated') && (
+                    <Btn variant="success" size="sm" onClick={() => { setResolution(reply); setResolving(true) }}>Resolve</Btn>
+                  )}
+                  {selected.status === 'resolved' && (
+                    <Btn variant="secondary" size="sm" onClick={() => setOffline(true)}>They agreed on the phone</Btn>
+                  )}
                   <Btn variant="danger" size="sm" onClick={() => handleDelete(selected.id)}>Delete</Btn>
                 </div>
               </div>
@@ -204,6 +297,43 @@ export function OperatorTickets({ focus = null }: { focus?: string | null } = {}
           ) : <EmptyState message="Click a ticket to see details" />}
         </SectionCard>
       </div>
+
+      {/* Resolving. The note is not paperwork — it is what the requester reads
+          before deciding whether to agree, which is now a decision they make. */}
+      <Modal open={resolving} onClose={() => setResolving(false)} title="Resolve this ticket"
+        footer={<>
+          <Btn variant="secondary" size="sm" onClick={() => setResolving(false)}>Cancel</Btn>
+          <Btn variant="success" size="sm" onClick={handleResolve}>Send it back for confirmation</Btn>
+        </>}>
+        <FormField label="What resolved it" required
+                   hint="This goes to the person who raised it. They confirm it or send it back, and the ticket does not close until one of those happens.">
+          <TextArea value={resolution} onChange={(e) => setResolution(e.target.value)}
+                    placeholder="e.g. The gateway firmware was two releases behind; updated and both sensors paired." />
+        </FormField>
+        {selected && (
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
+            {selected.opened_by} gets the window set by the {selected.priority} policy to answer. If nobody
+            does, it closes itself and is counted as unanswered rather than as agreed.
+          </div>
+        )}
+      </Modal>
+
+      {/* An agreement given somewhere this system cannot see. Allowed, named. */}
+      <Modal open={offline} onClose={() => setOffline(false)} title="They agreed it is resolved"
+        footer={<>
+          <Btn variant="secondary" size="sm" onClick={() => setOffline(false)}>Cancel</Btn>
+          <Btn variant="success" size="sm" onClick={handleOffline}>Record it and close</Btn>
+        </>}>
+        <FormField label="Who agreed" required
+                   hint="A name, not a role. This is recorded as the desk's word rather than as the customer's click, and the queue counts the two separately.">
+          <TextInput value={agreedBy} onChange={(e) => setAgreedBy(e.target.value)}
+                     placeholder={selected?.opened_by ?? 'e.g. Vikram Shah'} />
+        </FormField>
+        <FormField label="How they said so" hint="A call, an email, a site visit — enough that somebody reading this later knows it happened.">
+          <TextArea value={resolution} onChange={(e) => setResolution(e.target.value)}
+                    placeholder="e.g. Confirmed by phone on the number on the account." />
+        </FormField>
+      </Modal>
 
       {/* Add ticket modal */}
       <Modal open={addModal} onClose={() => setAddModal(false)} title="New Ticket"

@@ -156,7 +156,23 @@ export async function replyToTicket(ticket: Ticket, text: string, who: string): 
 /** Accepting the resolution. A requester can close their own ticket; they
     cannot mark it resolved without saying what resolved it, because that is
     the only part of the record anybody reads afterwards. */
-export async function closeTicket(ticket: Ticket, note: string, who: string): Promise<Result> {
+/* The four closure actions take the least they need rather than a whole
+   `Ticket`, because the marketplace console holds a narrower `OperatorTicket`
+   and widening that type would touch every screen that reads one. */
+export interface TicketRef { id: string; messages: TicketMessage[] }
+
+/**
+ * The desk says it is fixed.
+ *
+ * Not "closed". This sets 'resolved' and starts a window, and the ticket sits
+ * there until the person who raised it says whether it really is fixed. The
+ * old version of this set 'resolved' too — and then told the requester
+ * "closed. Reopening it means raising a new one", which was the party that
+ * decided it was over announcing that it was over.
+ */
+export async function resolveTicket(
+  ticket: TicketRef & { opened_by: string }, note: string, who: string,
+): Promise<Result> {
   const check = validateResolution(note)
   if (!check.ok) return check
 
@@ -171,7 +187,105 @@ export async function closeTicket(ticket: Ticket, note: string, who: string): Pr
   }).eq('id', ticket.id).select('id')
   if (error) return { ok: false, reason: friendly(error.message) }
   if (!data?.length) return { ok: false, reason: REFUSED }
-  return { ok: true, note: `${ticket.id} closed. Reopening it means raising a new one, so nothing gets lost in an old thread.` }
+  return {
+    ok: true,
+    note: `${ticket.id} is with ${ticket.opened_by} now. It closes on its own if nobody answers, and goes back on the queue if they say it is not fixed.`,
+  }
+}
+
+/**
+ * The person who raised it agrees. This is the only path that means what
+ * "closed" is supposed to mean, and only they can take it — the trigger
+ * refuses it from anybody else.
+ */
+export async function confirmResolved(ticket: { id: string }, who: string): Promise<Result> {
+  const { data, error } = await supabase.from('support_tickets').update({
+    status: 'closed',
+    closed_how: 'confirmed',
+    confirmed_by: who,
+  }).eq('id', ticket.id).select('id')
+  if (error) return { ok: false, reason: friendly(error.message) }
+  if (!data?.length) return { ok: false, reason: REFUSED }
+  return { ok: true, note: `${ticket.id} closed, with your name on it. Thank you for saying so.` }
+}
+
+/**
+ * It was not fixed.
+ *
+ * Goes back to the desk rather than becoming a new ticket, because the thread
+ * is the evidence that the first answer did not work — and the reopen is
+ * counted, so a ticket that bounces twice stops looking like a slow fix and
+ * starts looking like what it is.
+ */
+export async function reopenTicket(ticket: TicketRef, why: string, who: string): Promise<Result> {
+  const check = validateReply(why)
+  if (!check.ok) return check
+
+  const messages: TicketMessage[] = [
+    ...ticket.messages,
+    { who, text: `Not resolved: ${why.trim()}`, when: stamp(new Date()) },
+  ]
+  const { data, error } = await supabase.from('support_tickets').update({
+    status: 'open',
+    resolution_note: null,
+    messages,
+  }).eq('id', ticket.id).select('id')
+  if (error) return { ok: false, reason: friendly(error.message) }
+  if (!data?.length) return { ok: false, reason: REFUSED }
+  return {
+    ok: true,
+    note: `${ticket.id} is back with the desk and the clock is running again. Your note is on the thread.`,
+  }
+}
+
+/**
+ * The desk recording an agreement given somewhere this system cannot see.
+ *
+ * Allowed, because real desks take phone calls. It has to name who agreed, and
+ * it is stored as its own kind of close — so a queue where every ticket was
+ * closed on the desk's own word is a queue that says so.
+ */
+export async function closeOffline(
+  ticket: TicketRef, agreedBy: string, note: string, by: string,
+): Promise<Result> {
+  if (!agreedBy.trim()) {
+    return { ok: false, reason: 'Name who agreed to this. An offline close with no name is a close with no consent.' }
+  }
+  const messages: TicketMessage[] = [
+    ...ticket.messages,
+    { who: by, text: `${agreedBy.trim()} agreed this was resolved. ${note.trim()}`.trim(), when: stamp(new Date()) },
+  ]
+  const { data, error } = await supabase.from('support_tickets').update({
+    status: 'closed',
+    closed_how: 'offline',
+    confirmed_by: agreedBy.trim(),
+    messages,
+  }).eq('id', ticket.id).select('id')
+  if (error) return { ok: false, reason: friendly(error.message) }
+  if (!data?.length) return { ok: false, reason: REFUSED }
+  return { ok: true, note: `${ticket.id} closed on ${agreedBy.trim()}'s word, recorded as such.` }
+}
+
+/**
+ * Close the ones nobody answered.
+ *
+ * Run from the marketplace console rather than by a cron this prototype does
+ * not have. It returns what it closed so the screen can name them — a sweep
+ * that reports a count is a sweep nobody can check.
+ */
+export async function closeUnanswered(): Promise<
+  Result & { closed?: { id: string; subject: string; opened_by: string }[] }
+> {
+  const { data, error } = await supabase.rpc('close_unanswered_tickets')
+  if (error) return { ok: false, reason: friendly(error.message) }
+  const closed = (data ?? []) as { id: string; subject: string; opened_by: string }[]
+  return {
+    ok: true,
+    closed,
+    note: closed.length
+      ? `${closed.length} ticket${closed.length === 1 ? '' : 's'} closed unanswered: ${closed.map(c => c.id).join(', ')}.`
+      : 'Nothing to close — every resolved ticket is still inside its window.',
+  }
 }
 
 function stamp(d: Date): string {
