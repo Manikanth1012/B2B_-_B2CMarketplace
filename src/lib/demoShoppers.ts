@@ -138,7 +138,7 @@ export const DEMO_IDENTITIES: DemoIdentity[] = [
   {
     subject: 'AV-KE-44120876', secret: 'telco1234',
     who: 'Otieno Odhiambo · Kisumu',
-    shows: 'Not on the marketplace — opens a Kenyan account, billed in KSh',
+    shows: 'Already linked — signs straight in, no password',
   },
   {
     subject: 'AV-IN-77105533', secret: 'telco1234',

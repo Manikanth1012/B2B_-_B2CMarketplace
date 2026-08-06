@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { User, Bell, History, Users, RotateCcw, Check, X, Plus, CircleAlert as AlertCircle, Info, Shield, Wallet, Star, Phone, Mail, MapPin, CreditCard, Clock, ChevronRight, Lock, Trash2, FileText, LifeBuoy, MessageSquare, Send, Download, Globe, Eye, FolderOpen } from 'lucide-react'
+import { User, Bell, History, Users, RotateCcw, Check, X, Plus, CircleAlert as AlertCircle, Info, Shield, Wallet, Star, Phone, Mail, MapPin, CreditCard, Clock, ChevronRight, Lock, Trash2, FileText, LifeBuoy, MessageSquare, Send, Download, Globe, Eye, FolderOpen, KeyRound, ShieldCheck } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { changePassword, currentEmail, SignInError } from '../lib/authRepo'
+import { myLink } from '../lib/ssoRepo'
+import { securityOptions } from '../lib/sso'
 import { WalletCard } from './WalletCard'
 import { checkNewPassword, strengthOf, isDemoAccount, MIN_LENGTH } from '../lib/password'
 import { paymentSummary } from '../lib/payments'
@@ -413,26 +415,70 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
 /* Sign-in and security, its own tab. It used to be one card at the bottom of My
    details, which had grown to eight cards — and the account menu's "Sign-in &
    security" had nowhere to point at. */
+/* `verified_at` is a date column and arrives as 2024-02-03. Every other date a
+   customer sees on these screens reads "03 Feb 2024" — `pwd_changed` and
+   `since` are both stored that way — so the one machine-formatted date on the
+   card was the one that looked out of place. */
+function asDay(iso: string): string {
+  const d = new Date(iso)
+  return isNaN(d.getTime()) ? iso
+    : d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
 function SecurityTab({ profile, showToast }: { profile: ConsumerProfile; showToast: (m: string) => void }) {
   const [modal, setModal] = useState<null | 'password' | 'mfa' | 'payments' | 'sessions'>(null)
   const [cards, setCards] = useState<ConsumerPaymentMethod[]>([])
+  /* Whether this account is bound to an Aventa ID, and to which subscriber.
+     Read here rather than assumed from `identity_source`: an account opened
+     here and linked afterwards is 'self' and still signs in either way. */
+  const [link, setLink] = useState<Awaited<ReturnType<typeof myLink>>>(null)
 
   const loadCards = useCallback(async () => {
     const { data } = await supabase.from('consumer_payment_methods').select('*')
     if (data) setCards(data as ConsumerPaymentMethod[])
   }, [])
   useEffect(() => { loadCards() }, [loadCards])
+  useEffect(() => { void myLink().then(setLink) }, [])
+
+  /* What this account may actually be offered. An account opened with an
+     Aventa ID never had a marketplace password to choose, so "Change" would
+     offer to change something that does not exist. */
+  const security = securityOptions(profile.identity_source ?? 'self', !!link)
 
   return (
     <>
         <Card icon={<Shield size={18} />} title="Sign-in & security">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <SecurityRow
+              icon={<KeyRound size={16} />}
+              label="Aventa ID"
+              positive={!!link}
+              value={link
+                ? `Linked ${link.how === 'provisioned' ? 'when this account was opened' : 'after signing in to confirm it was yours'} · ${link.msisdn} · ${link.plan}`
+                : 'Not linked. If you have an Aventa account, choose Continue with Aventa ID next time you sign in and we will ask you to confirm this account is yours.'}
+              action={null}
+            />
+            {/* Provenance, and what it is worth. A name the telco checked
+                against an identity document is a different thing from a name
+                somebody typed into a form, and the account should say which
+                one it is holding. */}
+            {profile.verified_by && (
+              <SecurityRow
+                icon={<ShieldCheck size={16} />}
+                label="Identity verification"
+                positive
+                value={`Verified by ${profile.verified_by}${profile.verified_at ? ` on ${asDay(profile.verified_at)}` : ''}`}
+                action={null}
+              />
+            )}
+            <SecurityRow
               icon={<Lock size={16} />}
               label="Password"
-              value={`Last changed ${profile.pwd_changed}`}
-              action="Change"
-              onClick={() => setModal('password')}
+              value={security.canChangePassword
+                ? `Last changed ${profile.pwd_changed} · ${security.note}`
+                : security.note}
+              action={security.canChangePassword ? 'Change' : null}
+              onClick={security.canChangePassword ? () => setModal('password') : undefined}
             />
             <SecurityRow
               icon={<Shield size={16} />}
@@ -1943,18 +1989,25 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
   )
 }
 
-function SecurityRow({ icon, label, value, action, positive, onClick }: { icon: React.ReactNode; label: string; value: string; action: string; positive?: boolean; onClick?: () => void }) {
+/**
+ * A row on the security card.
+ *
+ * `action` is optional. A row with nothing to do shows no button rather than a
+ * disabled one — offering "Change" on a password that does not exist invites
+ * the question of what pressing it would have done.
+ */
+function SecurityRow({ icon, label, value, action, positive, onClick }: { icon: React.ReactNode; label: string; value: string; action?: string | null; positive?: boolean; onClick?: () => void }) {
   return (
     <div style={{
       display: 'flex', gap: '12px', alignItems: 'center',
       padding: '10px 0', borderBottom: '1px solid var(--border-light)',
     }}>
       <span style={{ color: positive ? 'var(--success)' : 'var(--text-tertiary)' }}>{icon}</span>
-      <div style={{ flex: 1 }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{label}</div>
-        <div style={{ fontSize: 'var(--text-xs)', color: positive ? 'var(--success)' : 'var(--text-tertiary)' }}>{value}</div>
+        <div style={{ fontSize: 'var(--text-xs)', color: positive ? 'var(--success)' : 'var(--text-tertiary)', lineHeight: 1.5 }}>{value}</div>
       </div>
-      <button onClick={onClick} style={{
+      {action && <button onClick={onClick} style={{
         padding: '6px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)',
         background: 'white', color: 'var(--text-secondary)', fontWeight: 600,
         fontSize: 'var(--text-xs)', cursor: onClick ? 'pointer' : 'default',
@@ -1964,7 +2017,7 @@ function SecurityRow({ icon, label, value, action, positive, onClick }: { icon: 
       onMouseLeave={(e) => { if (onClick) e.currentTarget.style.background = 'white' }}
       >
         {action}
-      </button>
+      </button>}
     </div>
   )
 }

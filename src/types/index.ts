@@ -264,6 +264,12 @@ export interface ConsumerProfile {
   mfa_enabled: boolean
   active_sessions: number
   pwd_changed: string
+  /* Which door they came through. It changes what this account can do — an
+     account opened with an Aventa ID has no marketplace password to change —
+     so it is recorded rather than inferred. */
+  identity_source: 'self' | 'telco-sso'
+  verified_by: string | null
+  verified_at: string | null
   /* How the marketplace talks to this customer. Defaulted in the database rather
      than nullable, so every screen has an effective answer without inventing one. */
   preferred_language: string
