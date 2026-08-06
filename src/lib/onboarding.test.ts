@@ -11,7 +11,11 @@ const ep = (over: Partial<Endpoint> = {}): Endpoint => ({
   method: 'POST', auth: 'HMAC-SHA256', enabled: true, events: [...REQUIRED_EVENTS], ...over,
 })
 const ack = (endpoint_id: string): TestCall =>
-  ({ id: 'TC-1', endpoint_id, status: 'acknowledged', called_at: '2026-07-28T10:00:00Z' })
+  ({ id: 'TC-1', endpoint_id, status: 'ok', called_at: '2026-07-28T10:00:00Z' })
+/* A call that went out and was not answered proves the opposite of a test
+   passing, so the gate must not count it. */
+const timedOut = (endpoint_id: string): TestCall =>
+  ({ id: 'TC-2', endpoint_id, status: 'timeout', called_at: '2026-07-28T10:00:00Z' })
 const passedRun: SandboxRun =
   { id: 'SR-1', partner_id: 'PTR-1004', state: 'passed', ran_at: '2026-07-28T10:00:00Z' }
 
@@ -30,6 +34,15 @@ describe('constants', () => {
 })
 
 describe('techStatus', () => {
+  it('does not count a call the endpoint never answered', () => {
+    /* The gate exists to prove the endpoint responds. A timeout is the
+       endpoint not responding, and treating it as proof would clear the
+       technical gate for an integration that is down. */
+    const s = techStatus([ep()], [timedOut('EP-01')], passedRun)
+    expect(s.checks.tested).toBe(false)
+    expect(s.untested).toHaveLength(1)
+  })
+
   it('passes all four when everything is in place', () => {
     const s = techStatus([ep()], [ack('EP-01')], passedRun)
     expect(s.checks).toEqual({ registered: true, auth: true, tested: true, sandbox: true })
@@ -49,9 +62,10 @@ describe('techStatus', () => {
     expect(s.noAuth.map(e => e.id)).toEqual(['EP-01'])
   })
 
-  it('fails tested when a call was sent but never acknowledged', () => {
-    const sent: TestCall = { id: 'TC-2', endpoint_id: 'EP-01', status: 'sent', called_at: '2026-07-28T10:00:00Z' }
-    const s = techStatus([ep()], [sent], passedRun)
+  it('fails tested when the call came back failed', () => {
+    /* Was 'sent', a status the column stopped accepting. */
+    const failed: TestCall = { id: 'TC-3', endpoint_id: 'EP-01', status: 'failed', called_at: '2026-07-28T10:00:00Z' }
+    const s = techStatus([ep()], [failed], passedRun)
     expect(s.checks.tested).toBe(false)
     expect(s.untested.map(e => e.id)).toEqual(['EP-01'])
   })

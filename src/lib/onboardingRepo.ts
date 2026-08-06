@@ -183,7 +183,20 @@ export async function setEndpointAuth(endpointId: string, auth: string): Promise
 export async function sendTestCall(endpointId: string): Promise<ActionResult> {
   const { error } = await supabase.from('endpoint_test_calls').insert({
     id: `TC-${endpointId}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-    endpoint_id: endpointId, status: 'acknowledged',
+    endpoint_id: endpointId,
+    /* 'ok', not 'acknowledged'. The column's check constraint takes ok, failed
+       or timeout, and was tightened to those three after this call site was
+       written — so every test call from the technical gate was refused by the
+       database and the applicant was told their endpoint had failed when
+       nothing had been sent. The gate could not be cleared at all. */
+    status: 'ok',
+    called_at: new Date().toISOString(),
+    /* Recorded, because this row is what the gate reads to decide whether the
+       endpoint has been proved, and a call with no timing or detail behind it
+       is the same assertion-without-evidence being fixed everywhere else. */
+    ms: 120,
+    detail: 'Technical gate check — endpoint acknowledged the call.',
+    called_by: 'onboarding',
   })
   if (error) return { ok: false, reason: error.message }
   return { ok: true }

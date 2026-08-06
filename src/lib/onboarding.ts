@@ -41,7 +41,12 @@ export interface Endpoint {
 export interface TestCall {
   id: string
   endpoint_id: string
-  status: 'sent' | 'acknowledged' | 'failed'
+  /* The words the column's check constraint actually takes. This said
+     'sent' | 'acknowledged' | 'failed', which the database has not accepted
+     since the constraint was tightened — so writes were refused and this
+     reader would not have matched them even if they had landed. Both ends
+     were speaking a vocabulary the table had stopped using. */
+  status: 'ok' | 'failed' | 'timeout'
   called_at: string
 }
 
@@ -121,7 +126,9 @@ export function techStatus(
   const covered = new Set(live.flatMap(e => e.events))
   const missing = REQUIRED_EVENTS.filter(ev => !covered.has(ev))
   const noAuth = live.filter(e => NO_AUTH.has((e.auth || '').trim().toLowerCase()))
-  const acked = new Set(calls.filter(c => c.status === 'acknowledged').map(c => c.endpoint_id))
+  /* A call the endpoint answered. 'failed' and 'timeout' are the two ways
+     it did not, and neither proves anything about the integration. */
+  const acked = new Set(calls.filter(c => c.status === 'ok').map(c => c.endpoint_id))
   const untested = live.filter(e => !acked.has(e.id))
 
   return {
