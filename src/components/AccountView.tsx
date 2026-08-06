@@ -29,6 +29,8 @@ import { loadBillBook } from '../lib/consumerBillDocRepo'
 import { billPdf, pdfNameFor, saveBlob } from '../lib/billPdf'
 import type { BillBook } from '../lib/consumerBillDoc'
 import { loadMyRefunds, requestRefund } from '../lib/refundRepo'
+import { attachRefundEvidence, attachFile } from '../lib/attachmentRepo'
+import { AttachmentPicker } from './AttachmentPicker'
 import type { RefundBook } from '../lib/refundRepo'
 import { STATES, REASONS, REASON_LIST, sla, ownership, autoApproves, thresholdFor } from '../lib/refunds'
 import type { RefundPolicy, RefundReason, RefundThreshold } from '../lib/refunds'
@@ -1385,6 +1387,7 @@ function AskForRefund({ policy, thresholds, onClose, onDone, showToast }: {
   const [reason, setReason] = useState<RefundReason>('faulty')
   const [detail, setDetail] = useState('')
   const [evidence, setEvidence] = useState('')
+  const [files, setFiles] = useState<File[]>([])
   const [err, setErr] = useState('')
   const [saving, setSaving] = useState(false)
 
@@ -1466,6 +1469,17 @@ function AskForRefund({ policy, thresholds, onClose, onDone, showToast }: {
                      placeholder={REASONS[reason].evidence} />
             </Field>
 
+            {/* The field above asks for a photograph and takes a sentence. This
+                takes the photograph. Both are kept: the line says what the file
+                is, and the seller deciding it gets to see the thing itself. */}
+            <AttachmentPicker
+              files={files}
+              onChange={setFiles}
+              disabled={saving}
+              label="Attach the photo or document"
+              onError={setErr}
+            />
+
             {chosen && auto && (
               <div style={{
                 fontSize: 'var(--text-xs)', lineHeight: 1.6, padding: '10px 12px',
@@ -1487,9 +1501,21 @@ function AskForRefund({ policy, thresholds, onClose, onDone, showToast }: {
                   if (!chosen) return
                   setSaving(true); setErr('')
                   const r = await requestRefund({ order: chosen, policy, thresholds, reason, detail, evidence })
+                  if (!r.ok) { setSaving(false); setErr(r.reason); return }
+
+                  /* The request first, then what backs it up — a file has
+                     nothing to hang off until the refund has an id. A failed
+                     upload does not unwind the request; it names the file so
+                     it can be sent again. */
+                  const failed: string[] = []
+                  for (const f of files) {
+                    const up = await attachRefundEvidence({ refundId: r.refund_id, file: f })
+                    if (!up.ok) failed.push(f.name)
+                  }
                   setSaving(false)
-                  if (!r.ok) { setErr(r.reason); return }
-                  showToast(r.note ?? 'Refund requested')
+                  showToast(failed.length
+                    ? `${r.note ?? 'Refund requested'} ${failed.length} file${failed.length === 1 ? '' : 's'} did not upload.`
+                    : r.note ?? 'Refund requested')
                   await onDone()
                 }}
                 style={{ ...btnPrimary, opacity: saving || !chosen ? 0.5 : 1 }}
@@ -1648,6 +1674,7 @@ function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerT
   const [category, setCategory] = useState('General')
   const [message, setMessage] = useState('')
   const [severity, setSeverity] = useState('P3')
+  const [files, setFiles] = useState<File[]>([])
   const [submitting, setSubmitting] = useState(false)
   const ticketsPage = usePaging(tickets, { initialSize: 10 })
 
@@ -1678,11 +1705,24 @@ function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerT
       user_id: session.user?.id ?? null,
       messages: newTicket.messages,
     })
+
+    /* The row first, then the files: an attachment is anchored to a ticket id,
+       so there is nothing to hang one off until the insert has happened. A
+       failed upload leaves the ticket standing and names the file — losing the
+       ticket to save the photograph would be the worse trade. */
+    const failed: string[] = []
+    for (const f of files) {
+      const up = await attachFile({ ticketId: id, file: f })
+      if (!up.ok) failed.push(f.name)
+    }
+
     setTickets((prev) => [newTicket, ...prev])
-    setSubject(''); setMessage(''); setCategory('General'); setSeverity('P3')
+    setSubject(''); setMessage(''); setCategory('General'); setSeverity('P3'); setFiles([])
     setShowNew(false)
     setSubmitting(false)
-    showToast(`Ticket ${id} created — we will respond within the SLA`)
+    showToast(failed.length
+      ? `Ticket ${id} created, but ${failed.length} file${failed.length === 1 ? '' : 's'} did not upload — reply on the ticket to send ${failed.length === 1 ? 'it' : 'them'} again.`
+      : `Ticket ${id} created — we will respond within the SLA`)
   }
 
   const openCount = tickets.filter((t) => t.status !== 'resolved').length
@@ -1740,6 +1780,15 @@ function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerT
                 placeholder="Describe the issue in detail"
               />
             </Field>
+
+            <AttachmentPicker
+              files={files}
+              onChange={setFiles}
+              disabled={submitting}
+              hint="A photo of the fault, a screenshot or a receipt. The first person to read this has only what you send."
+              onError={reason => reason && showToast(reason)}
+            />
+
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button onClick={() => setShowNew(false)} style={btnSecondary}>Cancel</button>
               <button onClick={createTicket} disabled={submitting} style={btnPrimary}>

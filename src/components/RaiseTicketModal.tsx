@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react'
-import { LifeBuoy, X, Paperclip, Trash2, FileText, Image as ImageIcon } from 'lucide-react'
+import { useState } from 'react'
+import { LifeBuoy, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { Order } from '../types'
 import {
@@ -7,9 +7,7 @@ import {
   type TicketCategory,
 } from '../lib/orderTickets'
 import { attachFile } from '../lib/attachmentRepo'
-import {
-  validateFile, ACCEPT_ATTRIBUTE, MAX_FILES, acceptedLabel, sizeOf, guessKind,
-} from '../lib/attachments'
+import { AttachmentPicker } from './AttachmentPicker'
 
 /* Raising a ticket against an order. The rules — which categories exist, what
    severity each carries, what counts as a usable description, what may be
@@ -32,22 +30,6 @@ export function RaiseTicketModal({ order, raisedBy, onClose, onRaised }: {
   const [saving, setSaving] = useState(false)
   const [files, setFiles] = useState<File[]>([])
   const [stage, setStage] = useState('')
-  const picker = useRef<HTMLInputElement>(null)
-
-  const pick = (chosen: FileList | null) => {
-    if (!chosen) return
-    setError('')
-    const next = [...files]
-    for (const f of Array.from(chosen)) {
-      const check = validateFile(f, next.map(x => ({ filename: x.name, bytes: x.size })))
-      if (!check.ok) { setError(check.reason); break }
-      next.push(f)
-    }
-    setFiles(next)
-    if (picker.current) picker.current.value = ''
-  }
-
-  const drop = (i: number) => setFiles(files.filter((_, n) => n !== i))
 
   const severity = severityFor(category)
   const slaHours = Math.round(slaFor(severity) / 60)
@@ -165,67 +147,15 @@ export function RaiseTicketModal({ order, raisedBy, onClose, onRaised }: {
 
           {/* Attachments. A photograph of a damaged parcel says in one glance
               what a paragraph says badly, and the desk used to have to ask for
-              it by email. */}
-          <div>
-            <label style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: '8px' }}>
-              Add a photo or document <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}>— optional</span>
-            </label>
-
-            <input
-              ref={picker}
-              type="file"
-              multiple
-              accept={ACCEPT_ATTRIBUTE}
-              onChange={e => pick(e.target.files)}
-              style={{ display: 'none' }}
-            />
-
-            {files.length > 0 && (
-              <ul style={{ listStyle: 'none', margin: '0 0 10px', padding: 0, display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {files.map((f, i) => (
-                  <li key={`${f.name}-${f.size}-${i}`} style={{
-                    display: 'flex', alignItems: 'center', gap: '10px',
-                    padding: '8px 10px', borderRadius: 'var(--radius)',
-                    background: 'var(--bg-alt)', border: '1px solid var(--border-light)',
-                  }}>
-                    <span style={{ color: 'var(--text-tertiary)', display: 'flex' }}>
-                      {f.type.startsWith('image/') ? <ImageIcon size={15} /> : <FileText size={15} />}
-                    </span>
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {f.name}
-                      </span>
-                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                        {sizeOf(f.size)} · {guessKind(f)}
-                      </span>
-                    </span>
-                    <button
-                      onClick={() => drop(i)}
-                      aria-label={`Remove ${f.name}`}
-                      disabled={saving}
-                      style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', display: 'flex', padding: '2px' }}
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-
-            <button
-              onClick={() => picker.current?.click()}
-              disabled={saving || files.length >= MAX_FILES}
-              className="btn btn-secondary btn-sm"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-            >
-              <Paperclip size={14} />
-              {files.length ? 'Add another' : 'Choose a file'}
-            </button>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '6px' }}>
-              {acceptedLabel()}, up to 10 MB each and {MAX_FILES} in total.
-              {files.length >= MAX_FILES && ' That is the lot — remove one to add another.'}
-            </div>
-          </div>
+              it by email. The markup was written here first; it now lives in
+              AttachmentPicker because the four other forms that ask for
+              evidence were offering a text box instead. */}
+          <AttachmentPicker
+            files={files}
+            onChange={setFiles}
+            disabled={saving}
+            onError={setError}
+          />
 
           {/* The promise being made, before it is made. */}
           <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', background: 'var(--bg-alt)', padding: '10px 12px', borderRadius: 'var(--radius)' }}>

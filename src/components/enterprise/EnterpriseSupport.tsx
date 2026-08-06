@@ -10,6 +10,8 @@ import { loadAccount } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
 import { loadSupport, raiseTicket, replyToTicket, closeTicket } from '../../lib/supportRepo'
 import type { SupportBook } from '../../lib/supportRepo'
+import { attachFile } from '../../lib/attachmentRepo'
+import { AttachmentPicker } from '../AttachmentPicker'
 import {
   queue, summarise, byCategory, standing, pastTarget, isOpen, duration,
   categoriesFor, priorityFor, respondTarget, waitingOn, STATE_LABEL,
@@ -279,6 +281,7 @@ function RaiseModal({ book, account, onClose, onDone }: {
   const [subject, setSubject] = useState('')
   const [note, setNote] = useState('')
   const [ref, setRef] = useState('')
+  const [files, setFiles] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
 
   const priority = priorityFor(category, book.categories)
@@ -296,9 +299,21 @@ function RaiseModal({ book, account, onClose, onDone }: {
       memberId: account.me?.id ?? null,
       channel: 'Enterprise portal',
     })
+    if (!res.ok) { setBusy(false); toast(res.reason, 'error'); return }
+
+    /* The ticket first, then what backs it up: a file needs a ticket to hang
+       off. A failed upload does not throw the ticket away — it names the files
+       so they can be sent again on the thread. */
+    const failed: string[] = []
+    for (const f of files) {
+      const up = await attachFile({ ticketId: res.ticket_id, file: f })
+      if (!up.ok) failed.push(f.name)
+    }
     setBusy(false)
-    toast(res.ok ? res.note ?? 'Raised' : res.reason, res.ok ? 'success' : 'error')
-    if (res.ok) await onDone()
+    toast(failed.length
+      ? `${res.note ?? 'Raised'} ${failed.length} file${failed.length === 1 ? '' : 's'} did not upload.`
+      : res.note ?? 'Raised', failed.length ? 'info' : 'success')
+    await onDone()
   }
 
   return (
@@ -326,6 +341,16 @@ function RaiseModal({ book, account, onClose, onDone }: {
       <FormField label="Reference" hint="An order, invoice, subscription or refund it is about — optional but it saves a round trip">
         <TextInput value={ref} onChange={e => setRef(e.target.value)} placeholder="e.g. INV-2026-0781" />
       </FormField>
+
+      <div style={{ marginBottom: '16px' }}>
+        <AttachmentPicker
+          files={files}
+          onChange={setFiles}
+          disabled={busy}
+          hint="A screenshot, a photo of the hardware or the log the device wrote. Everyone on the account can see it."
+          onError={reason => reason && toast(reason, 'error')}
+        />
+      </div>
 
       <Callout tone="info" title={`This will be raised as ${priority}`}>
         The priority comes from what it is about rather than from who is asking — otherwise everything becomes

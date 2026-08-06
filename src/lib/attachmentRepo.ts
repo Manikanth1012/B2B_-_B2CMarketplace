@@ -2,7 +2,7 @@
    Rules live in attachments.ts so they can be tested without a network. */
 
 import { supabase } from './supabase'
-import { validateFile, guessKind, storagePath, disputePath, canWithdraw } from './attachments'
+import { validateFile, guessKind, storagePath, disputePath, refundPath, canWithdraw } from './attachments'
 import type { Attachment, Check } from './attachments'
 
 export type Result = Check
@@ -205,6 +205,111 @@ export async function withdrawAttachment(
   return { ok: true, note: `${attachment.filename} removed.` }
 }
 
+/* ------------------------------------------------- what backs up a refund -- */
+
+/** Everything attached to a refund request — by the buyer or by the seller.
+    Which of those two you are decides what comes back; the policies do that,
+    not this query. */
+export async function loadRefundEvidence(refundId: string): Promise<Attachment[]> {
+  const { data } = await supabase.from('support_attachments')
+    .select('*').eq('refund_id', refundId)
+    .order('sort_order').order('uploaded_at')
+  return (data ?? []) as Attachment[]
+}
+
+/** Every attachment across a set of refunds, so a list can show a paper clip
+    against the rows that have one without a request per row. */
+export async function loadRefundEvidenceFor(refundIds: readonly string[]): Promise<Attachment[]> {
+  if (!refundIds.length) return []
+  const { data } = await supabase.from('support_attachments')
+    .select('*').in('refund_id', refundIds as string[]).order('uploaded_at')
+  return (data ?? []) as Attachment[]
+}
+
+/**
+ * Put a file on a refund request.
+ *
+ * Bytes first, row second, and the object removed again if the row is refused —
+ * the same order and the same reasoning as a ticket's. What differs is when it
+ * is allowed: the policy only accepts a write while the refund is still
+ * `requested` or `escalated`, so a photograph sent after the decision is
+ * refused by the database rather than quietly filed against a closed case.
+ */
+export async function attachRefundEvidence(
+  { refundId, file, caption }: { refundId: string; file: File; caption?: string },
+): Promise<Result & { attachment?: Attachment }> {
+  const existing = await loadRefundEvidence(refundId)
+  const check = validateFile(file, existing)
+  if (!check.ok) return check
+
+  const { data: session } = await supabase.auth.getUser()
+  const uid = session.user?.id
+  if (!uid) return { ok: false, reason: 'Sign in before attaching a file.' }
+
+  const path = refundPath(uid, refundId, file.name)
+  const up = await supabase.storage.from(BUCKET).upload(path, file, {
+    contentType: file.type || 'application/octet-stream', upsert: false,
+  })
+  if (up.error) return { ok: false, reason: friendlyRefund(up.error.message) }
+
+  const { data, error } = await supabase.from('support_attachments').insert({
+    id: `ATT-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    refund_id: refundId,
+    ticket_id: null,
+    path,
+    filename: file.name,
+    mime: file.type || 'application/octet-stream',
+    bytes: file.size,
+    kind: guessKind(file),
+    caption: caption?.trim() || null,
+    uploaded_by: session.user?.email ?? 'The customer',
+    user_id: uid,
+    sort_order: existing.length + 1,
+  }).select('*').maybeSingle()
+
+  if (error || !data) {
+    await supabase.storage.from(BUCKET).remove([path])
+    return { ok: false, reason: error ? friendlyRefund(error.message) : REFUSED }
+  }
+
+  return {
+    ok: true,
+    note: `${file.name} attached. Whoever decides this request sees it with the request.`,
+    attachment: data as Attachment,
+  }
+}
+
+/**
+ * Taking a file back off a refund request.
+ *
+ * `open` is whether the request is still `requested` or `escalated`. Once it is
+ * approved, refunded, declined or partial, what was attached is what it was
+ * decided on and it stays — the database refuses the delete either way, and
+ * this is what the screen says before it tries.
+ */
+export async function withdrawRefundEvidence(
+  { attachment, open }: { attachment: Attachment; open: boolean },
+): Promise<Result> {
+  const { data: session } = await supabase.auth.getUser()
+  if (attachment.user_id !== (session.user?.id ?? null)) {
+    return { ok: false, reason: 'You can only remove a file you attached yourself.' }
+  }
+  if (!open) {
+    return {
+      ok: false,
+      reason: 'This request has been decided, and what was attached is what it was decided on. It stays.',
+    }
+  }
+
+  const { data, error } = await supabase.from('support_attachments')
+    .delete().eq('id', attachment.id).select('id')
+  if (error) return { ok: false, reason: friendlyRefund(error.message) }
+  if (!data?.length) return { ok: false, reason: REFUSED }
+
+  if (attachment.path) await supabase.storage.from(BUCKET).remove([attachment.path])
+  return { ok: true, note: `${attachment.filename} removed and not kept.` }
+}
+
 /* --------------------------------------------------------------- helpers -- */
 
 const REFUSED = 'Nothing changed — that file was not accepted.'
@@ -222,4 +327,14 @@ function friendly(message: string): string {
   }
   if (/duplicate key|already exists/i.test(m)) return 'That file is already attached.'
   return m
+}
+
+/* The same translations, except for the one that differs. An RLS refusal on a
+   refund is almost never "that is not your refund" — the screen only offers the
+   button on your own. It is the state gate: the decision has been taken. */
+function friendlyRefund(message: string): string {
+  if (/row-level security|permission denied/i.test(message)) {
+    return 'This request has already been decided, so nothing more can be added to it. Raise a ticket if there is something else to say.'
+  }
+  return friendly(message)
 }

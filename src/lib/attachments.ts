@@ -12,9 +12,15 @@ export type Check = { ok: true; note?: string } | { ok: false; reason: string }
 export type AttachmentKind = 'evidence' | 'document' | 'screenshot' | 'other'
 export type ScanState = 'pending' | 'clean' | 'blocked'
 
+/* Exactly one of the three anchors is set on any row, and the database enforces
+   that. They are optional here rather than a discriminated union because every
+   consumer of this type reads the file's own fields — name, size, scan state —
+   and the three loaders each already know which kind of case they asked for. */
 export interface Attachment {
   id: string
-  ticket_id: string
+  ticket_id: string | null
+  dispute_id?: string | null
+  refund_id?: string | null
   path: string | null
   filename: string
   mime: string
@@ -149,6 +155,20 @@ export function storagePath(userId: string, ticketId: string, filename: string):
  */
 export function disputePath(disputeId: string, filename: string): string {
   return `${disputeId}/${Date.now()}-${safeName(filename)}`
+}
+
+/**
+ * Where a refund's evidence goes — the uploader's folder first, like a ticket's.
+ *
+ * The same shape as `storagePath` rather than a dispute's, because the storage
+ * policy on this bucket keys on the first path segment being `auth.uid()`. A
+ * refund has two sides, but each of them uploads under their own id and reads
+ * the other's through the table's policies, which is what those were written
+ * for. Putting the refund id first would need its own storage policy and would
+ * let anyone who guessed a refund id write into it.
+ */
+export function refundPath(userId: string, refundId: string, filename: string): string {
+  return `${userId}/${refundId}/${Date.now()}-${safeName(filename)}`
 }
 
 /**

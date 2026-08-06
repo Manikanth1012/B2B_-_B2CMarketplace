@@ -11,6 +11,13 @@ import type { Ticket, Sla, Category, Check, TicketMessage } from './support'
 
 export type Result = Check
 
+/* Raising a ticket returns the id it was raised as. Files can only be attached
+   once the ticket exists, so the caller needs the id it just created rather
+   than a fresh query that could pick up somebody else's. */
+export type RaiseResult =
+  | { ok: true; note?: string; ticket_id: string }
+  | { ok: false; reason: string }
+
 export interface SupportBook {
   tickets: Ticket[]
   sla: Sla[]
@@ -73,7 +80,7 @@ export async function raiseTicket(
     memberId?: string | null
     channel: string
   },
-): Promise<Result> {
+): Promise<RaiseResult> {
   const check = validateTicket(draft)
   if (!check.ok) return check
 
@@ -81,8 +88,12 @@ export async function raiseTicket(
   const { data: session } = await supabase.auth.getUser()
   const when = stamp(new Date())
 
+  /* Named before the insert, because the caller uploads any attachments
+     against this id as soon as the row lands. */
+  const ticketId = `SUP-${Math.floor(Date.now() / 1000).toString().slice(-6)}`
+
   const { error } = await supabase.from('support_tickets').insert({
-    id: `SUP-${Math.floor(Date.now() / 1000).toString().slice(-6)}`,
+    id: ticketId,
     subject: draft.subject.trim(),
     category: draft.category,
     priority,
@@ -113,6 +124,7 @@ export async function raiseTicket(
   const target = book.sla.find(s => s.priority === priority)
   return {
     ok: true,
+    ticket_id: ticketId,
     note: `Raised as ${priority}. ${target ? `Somebody answers within ${Math.round(target.respond_mins / 60)} hours` : 'Somebody will answer shortly'}, and it is resolved or escalated inside the target.`,
   }
 }

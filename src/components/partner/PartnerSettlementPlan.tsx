@@ -11,6 +11,8 @@ import { rateAt, nextTier, planSchedule } from '../../lib/partnerCommerce'
 import { toCsv } from '../../lib/ledger'
 import { saveBlob } from '../../lib/billPdf'
 import { loadSupport, raiseTicket } from '../../lib/supportRepo'
+import { attachFile } from '../../lib/attachmentRepo'
+import { AttachmentPicker } from '../AttachmentPicker'
 import { PARTNER_ORDERS } from './data'
 
 /* Reads the plan the seller actually settles on. The hard-coded one quoted a
@@ -21,6 +23,7 @@ export function PartnerSettlementPlan({ partnerId }: { partnerId: string }) {
   const [loading, setLoading] = useState(true)
   const [asking, setAsking] = useState(false)
   const [why, setWhy] = useState('')
+  const [files, setFiles] = useState<File[]>([])
   const [sending, setSending] = useState(false)
 
   useEffect(() => {
@@ -93,10 +96,21 @@ export function PartnerSettlementPlan({ partnerId }: { partnerId: string }) {
       partnerId,
       channel: 'console',
     })
+    if (!r.ok) { setSending(false); toast(r.reason, 'error'); return }
+
+    /* The ticket carries the id the files hang off, so they go up after it. */
+    const failed: string[] = []
+    for (const f of files) {
+      const up = await attachFile({ ticketId: r.ticket_id, file: f })
+      if (!up.ok) failed.push(f.name)
+    }
     setSending(false)
-    if (!r.ok) { toast(r.reason, 'error'); return }
     setAsking(false)
-    toast(r.note ?? 'Raised — it is in the marketplace queue with your other requests.')
+    setFiles([])
+    toast(failed.length
+      ? `Raised, but ${failed.length} file${failed.length === 1 ? '' : 's'} did not upload — reply on the ticket to send ${failed.length === 1 ? 'it' : 'them'} again.`
+      : r.note ?? 'Raised — it is in the marketplace queue with your other requests.',
+      failed.length ? 'info' : 'success')
   }
 
   return (
@@ -193,6 +207,19 @@ export function PartnerSettlementPlan({ partnerId }: { partnerId: string }) {
                      hint="Prefilled with your position on the ladder. Add anything the desk would otherwise have to come back for — a contract you are bidding, volume you expect, a competitor's terms.">
             <TextArea rows={6} value={why} onChange={e => setWhy(e.target.value)} />
           </FormField>
+
+          {/* A tier review is argued from documents — the contract being bid,
+              the volume forecast, the competitor's rate card. Without this the
+              seller could only describe them and the desk had to write back
+              asking for the thing itself. */}
+          <AttachmentPicker
+            files={files}
+            onChange={setFiles}
+            disabled={sending}
+            label="Attach anything that makes the case"
+            hint="A contract, a forecast, a rate card. Photos, PDFs and text logs, up to 10 MB each."
+            onError={reason => reason && toast(reason, 'error')}
+          />
         </div>
       </Modal>
     </div>

@@ -8,6 +8,8 @@ import {
 import { Callout } from '../OnboardingJourney'
 import { Pager, usePaging } from '../Pager'
 import { loadAccountRefunds, requestRefund } from '../../lib/refundRepo'
+import { attachRefundEvidence } from '../../lib/attachmentRepo'
+import { AttachmentPicker } from '../AttachmentPicker'
 import type { RefundBook } from '../../lib/refundRepo'
 import { loadAccount } from '../../lib/enterpriseRepo'
 import {
@@ -264,6 +266,7 @@ function AskForRefund({ policy, thresholds, accountId, company, currency, onClos
   const [reason, setReason] = useState<RefundReason>('faulty')
   const [detail, setDetail] = useState('')
   const [evidence, setEvidence] = useState('')
+  const [files, setFiles] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
 
   /* What a business can claim against is what it was invoiced for. Reading the
@@ -321,9 +324,21 @@ function AskForRefund({ policy, thresholds, accountId, company, currency, onClos
       order: { ...chosen, customer: company, currency },
       policy, thresholds, reason, detail, evidence, accountId,
     })
+    if (!res.ok) { setBusy(false); toast(res.reason, 'error'); return }
+
+    /* The refund first, then what backs it up: a file with no refund is
+       unreachable. A failed upload does not undo the request — it is reported
+       so somebody knows which files to send again. */
+    const failed: string[] = []
+    for (const f of files) {
+      const up = await attachRefundEvidence({ refundId: res.refund_id, file: f })
+      if (!up.ok) failed.push(f.name)
+    }
     setBusy(false)
-    toast(res.ok ? res.note ?? 'Raised' : res.reason, res.ok ? 'success' : 'error')
-    if (res.ok) await onDone()
+    toast(failed.length
+      ? `${res.note ?? 'Raised'} ${failed.length} file${failed.length === 1 ? '' : 's'} did not upload.`
+      : res.note ?? 'Raised', failed.length ? 'info' : 'success')
+    await onDone()
   }
 
   return (
@@ -366,6 +381,18 @@ function AskForRefund({ policy, thresholds, accountId, company, currency, onClos
           <FormField label="Anything that backs it up" hint={REASONS[reason].evidence}>
             <TextInput value={evidence} onChange={e => setEvidence(e.target.value)} />
           </FormField>
+
+          {/* The line above names it; this sends it. A delivery note or a photo
+              of the pallet settles in one glance what a sentence argues. */}
+          <div style={{ marginBottom: '16px' }}>
+            <AttachmentPicker
+              files={files}
+              onChange={setFiles}
+              disabled={busy}
+              label="Attach the delivery note, photo or report"
+              onError={reason => reason && toast(reason, 'error')}
+            />
+          </div>
 
           {chosen && auto && (
             <Callout tone={auto.yes ? 'success' : 'info'} title={auto.yes ? 'This one approves itself' : `${chosen.seller} has ${policy.seller_sla_hours} hours to answer`}>

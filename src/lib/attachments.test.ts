@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   ACCEPTED, ACCEPT_ATTRIBUTE, MAX_BYTES, MAX_FILES, acceptedLabel,
   validateFile, validateSet, guessKind, storagePath, safeName,
-  scanNote, canOpen, canWithdraw, sizeOf, disputePath,
+  scanNote, canOpen, canWithdraw, sizeOf, disputePath, refundPath,
 } from './attachments'
 import type { Attachment } from './attachments'
 
@@ -199,5 +199,39 @@ describe('where a dispute’s evidence goes', () => {
 
   it('defeats traversal in an evidence filename too', () => {
     expect(disputePath('DSP-2201', '../../etc/passwd')).toMatch(/^DSP-2201\/\d+-passwd$/)
+  })
+})
+
+describe('where a refund’s evidence goes', () => {
+  it('files it under the uploader, like a ticket and unlike a dispute', () => {
+    /* The storage policy on this bucket keys on the first segment being
+       auth.uid(). A refund has two sides, but each uploads under their own id
+       and reads the other's through the table's policies — putting the refund
+       id first would need its own storage policy and would let anyone who
+       guessed a refund id write into it. */
+    const uid = '11111111-2222-3333-4444-555555555555'
+    const p = refundPath(uid, 'RFN-4K2J9', 'Cracked casing.HEIC')
+    expect(p.startsWith(`${uid}/RFN-4K2J9/`)).toBe(true)
+    expect(p).toMatch(/cracked-casing\.heic$/)
+  })
+
+  it('keeps two uploads of one filename apart', () => {
+    const uid = 'abc'
+    const p = refundPath(uid, 'RFN-4K2J9', 'photo.jpg')
+    expect(p.split('/')[2]).toMatch(/^\d+-photo\.jpg$/)
+  })
+
+  it('defeats traversal in a refund filename too', () => {
+    expect(refundPath('abc', 'RFN-1', '../../etc/passwd'))
+      .toMatch(/^abc\/RFN-1\/\d+-passwd$/)
+  })
+
+  it('never lets the filename climb out of the uploader’s folder', () => {
+    /* The segment count is the invariant the storage policy depends on: three
+       parts, the first of them the uploader. A name that added a slash would
+       change which folder the object landed in. */
+    const p = refundPath('abc', 'RFN-1', 'a/b/c/evil.png')
+    expect(p.split('/')).toHaveLength(3)
+    expect(p.split('/')[0]).toBe('abc')
   })
 })

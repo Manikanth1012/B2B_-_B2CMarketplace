@@ -11,6 +11,14 @@ import { format as formatMoney, money as asMoney } from './money'
 
 export type Result = { ok: true; note?: string } | { ok: false; reason: string }
 
+/* Raising a refund returns the id it was raised as, because the files that back
+   it up cannot be uploaded until it exists. The caller needs the id in the same
+   breath — going and looking it up again would race with anyone else raising
+   one on the same account. */
+export type RaiseResult =
+  | { ok: true; note?: string; refund_id: string }
+  | { ok: false; reason: string }
+
 /**
  * A figure in the money it is actually in.
  *
@@ -275,7 +283,7 @@ export async function requestRefund(
        it next week is not the same person. */
     accountId?: string
   },
-): Promise<Result> {
+): Promise<RaiseResult> {
   if (detail.trim().split(/\s+/).filter(Boolean).length < 6) {
     return { ok: false, reason: `Say what went wrong in a line or two. "${REASONS[reason].label}" on its own gives the seller nothing to check.` }
   }
@@ -296,8 +304,12 @@ export async function requestRefund(
   const decider = auto ? 'auto' : order.first_party ? 'marketplace' : 'seller'
   const state = auto ? 'approved' : 'requested'
 
+  /* Named before the insert rather than inside it, because the caller uploads
+     the evidence against this id the moment the row lands. */
+  const refundId = `RFN-${Date.now().toString(36).slice(-5).toUpperCase()}`
+
   const { error } = await supabase.from('refunds').insert({
-    id: `RFN-${Date.now().toString(36).slice(-5).toUpperCase()}`,
+    id: refundId,
     order_ref: order.order_ref, product_id: order.product_id, item: order.item,
     category_id: order.category_id, partner_id: order.partner_id, seller: order.seller,
     first_party: order.first_party, customer: order.customer,
@@ -321,6 +333,7 @@ export async function requestRefund(
 
   return {
     ok: true,
+    refund_id: refundId,
     note: auto
       ? `Agreed on the spot. ${mny(order.amount, order.currency)} is queued back to the instrument that paid.`
       : `Raised. ${order.first_party ? 'The marketplace' : order.seller} owes you an answer by ${iso(due)}, and if none comes the marketplace takes the decision itself.`,
