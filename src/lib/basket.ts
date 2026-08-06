@@ -7,7 +7,11 @@ export interface BasketLine {
   product_id: string
   quantity: number
   saved: boolean
-  product?: { price: number; stock?: string; seller?: string } | null
+  /* `price_includes_tax` comes straight off the product row, which the cart
+     query already selects in full. Optional because a line may be read before
+     the product is joined; absent means inclusive, which is the marketplace's
+     stated policy and what every consumer product page claims. */
+  product?: { price: number; price_includes_tax?: boolean; stock?: string; seller?: string } | null
 }
 
 /* Everything below turns on one rule: a saved line is not in the basket. It is not
@@ -37,16 +41,28 @@ export function basketCount(lines: readonly BasketLine[]): number {
  *
  * The checkout used to treat it as exclusive and add eighteen percent on top, so
  * the basket promised one number and the order recorded another.
+ *
+ * This is the sum of the shelf prices. Where a line is quoted before tax it is
+ * not what the shopper pays — `basketMoney().total` is, and that is what the
+ * cart, the checkout and the order all use.
  */
 export function basketTotal(lines: readonly BasketLine[]): number {
   return activeLines(lines).reduce((sum, l) => sum + (l.product?.price ?? 0) * l.quantity, 0)
 }
 
 export interface BasketMoney {
-  /* Before tax, worked back out of the total. */
+  /* Before tax. Worked back out of the shelf price where the price contained
+     the tax, and equal to the shelf price where it did not. */
   net: number
   tax: number
+  /* What the shopper pays. */
   total: number
+  /* Whether every line's price already contained its tax — which decides how
+     the panel is worded, not what it adds up to. A basket that is entirely
+     inclusive must never be shown a subtotal-then-tax-then-larger-total layout,
+     because that is the universal shape of tax being added and a reader takes
+     it as one however correct the arithmetic is. */
+  inclusive: boolean
 }
 
 /**
@@ -58,9 +74,36 @@ export interface BasketMoney {
  * Nairobi where it is sixteen and in Dubai where it is five.
  */
 export function basketMoney(lines: readonly BasketLine[], taxRate: number): BasketMoney {
-  const total = round2(basketTotal(lines))
-  const net = round2(total / (1 + taxRate / 100))
-  return { net, tax: round2(total - net), total }
+  const rate = taxRate / 100
+  let net = 0
+  let tax = 0
+  let total = 0
+  let anyExclusive = false
+
+  for (const line of activeLines(lines)) {
+    const shelf = round2((line.product?.price ?? 0) * line.quantity)
+    if (line.product?.price_includes_tax ?? true) {
+      /* The shelf price is what they pay; the tax is inside it. */
+      const before = round2(shelf / (1 + rate))
+      net += before
+      tax += round2(shelf - before)
+      total += shelf
+    } else {
+      /* Quoted before tax, so the tax goes on top. This branch exists because
+         the flag existed and nothing read it: every consumer price is inclusive
+         today, and a single exclusive one reaching this basket would have had
+         its tax silently absorbed by the marketplace rather than charged. */
+      anyExclusive = true
+      const added = round2(shelf * rate)
+      net += shelf
+      tax += added
+      total += round2(shelf + added)
+    }
+  }
+
+  return {
+    net: round2(net), tax: round2(tax), total: round2(total), inclusive: !anyExclusive,
+  }
 }
 
 

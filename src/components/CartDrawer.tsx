@@ -230,24 +230,48 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
         {/* Footer */}
         {canCheckout(items) && (
           <div style={{ padding: '20px', borderTop: '1px solid var(--border)', background: 'var(--bg-alt)' }}>
-            {/* The shelf price includes tax, so the tax comes out of the total
-                rather than going on top of it. The drawer used to add eighteen
-                percent and show a total higher than every price the shopper had
-                just read. */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>Before {taxLabel.toLowerCase()}</span>
-              <span style={{ fontWeight: 700 }}>{fmt(money.net)}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-              <span style={{ color: 'var(--text-secondary)' }}>
-                {taxLabel}{market ? ` at ${market.tax_rate}%` : ''}
-              </span>
-              <span style={{ fontWeight: 500 }}>{fmt(money.tax)}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
-              <span style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>Total</span>
-              <span style={{ fontWeight: 800, fontSize: 'var(--text-lg)' }}>{fmt(money.total)}</span>
-            </div>
+            {/* A shelf price on this marketplace contains its tax, so the total
+                is the sum of the prices the shopper just read and the tax is a
+                component of it.
+
+                This panel used to lay that out as "Before VAT / VAT at 16% /
+                Total" — a subtotal, a tax line, then a larger number. That is
+                the universal shape of tax being *added*, and a reader takes it
+                as one however inclusive the arithmetic underneath is. The
+                figures were right and the layout said something else. */}
+            {money.inclusive ? (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px', paddingTop: '4px' }}>
+                  <span style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>Total</span>
+                  <span style={{ fontWeight: 800, fontSize: 'var(--text-lg)' }}>{fmt(money.total)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                  <span>
+                    Includes {taxLabel}{market ? ` at ${market.tax_rate}%` : ''} — nothing is added at checkout
+                  </span>
+                  <span>{fmt(money.tax)}</span>
+                </div>
+              </>
+            ) : (
+              /* Something in the basket is quoted before tax, so the tax really
+                 does go on top and the additive layout is the honest one. */
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>Before {taxLabel.toLowerCase()}</span>
+                  <span style={{ fontWeight: 700 }}>{fmt(money.net)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
+                  <span style={{ color: 'var(--text-secondary)' }}>
+                    {taxLabel}{market ? ` at ${market.tax_rate}%` : ''}
+                  </span>
+                  <span style={{ fontWeight: 500 }}>{fmt(money.tax)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px', paddingTop: '12px', borderTop: '1px solid var(--border)' }}>
+                  <span style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>Total</span>
+                  <span style={{ fontWeight: 800, fontSize: 'var(--text-lg)' }}>{fmt(money.total)}</span>
+                </div>
+              </>
+            )}
             <button onClick={onCheckout} className="btn btn-primary btn-lg" style={{ width: '100%' }}>
               Proceed to Checkout
             </button>

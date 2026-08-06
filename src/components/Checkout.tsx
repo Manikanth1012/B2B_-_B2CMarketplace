@@ -99,7 +99,7 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
   const shopCurrency = currency?.code ?? market?.currency ?? 'USD'
   const taxRate = Number(market?.tax_rate ?? 0)
   const taxLabel = market?.tax_label ?? 'Tax'
-  const { net: subtotal, tax, total } = basketMoney(cartItems, taxRate)
+  const { net: subtotal, tax, total, inclusive } = basketMoney(cartItems, taxRate)
 
   /* Who each order is against.
    *
@@ -597,19 +597,37 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                 </div>
               ))}
             </div>
+            {/* Worded the same way as the cart drawer, and for the same reason:
+                a subtotal above a tax line above a larger total reads as tax
+                being added, whatever the arithmetic did. */}
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-sm)' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>Before {taxLabel.toLowerCase()}</span>
-                <span>{fmt(subtotal)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-sm)' }}>
-                <span style={{ color: 'var(--text-secondary)' }}>{taxLabel} ({taxRate}%)</span>
-                <span>{fmt(tax)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid var(--border)', marginTop: '4px' }}>
-                <span style={{ fontWeight: 700 }}>Total</span>
-                <span style={{ fontWeight: 800, fontSize: 'var(--text-lg)' }}>{fmt(total)}</span>
-              </div>
+              {inclusive ? (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ fontWeight: 700 }}>Total</span>
+                    <span style={{ fontWeight: 800, fontSize: 'var(--text-lg)' }}>{fmt(total)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                    <span>Includes {taxLabel} ({taxRate}%) — the prices you were shown are the prices you pay</span>
+                    <span>{fmt(tax)}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-sm)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>Before {taxLabel.toLowerCase()}</span>
+                    <span>{fmt(subtotal)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-sm)' }}>
+                    <span style={{ color: 'var(--text-secondary)' }}>{taxLabel} ({taxRate}%)</span>
+                    <span>{fmt(tax)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid var(--border)', marginTop: '4px' }}>
+                    <span style={{ fontWeight: 700 }}>Total</span>
+                    <span style={{ fontWeight: 800, fontSize: 'var(--text-lg)' }}>{fmt(total)}</span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

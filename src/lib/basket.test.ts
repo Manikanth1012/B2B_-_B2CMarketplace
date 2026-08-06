@@ -189,3 +189,73 @@ describe('bySeller', () => {
     expect(bySeller([])).toEqual([])
   })
 })
+
+describe('tax, when the shelf price already contains it', () => {
+  const line = (price: number, includes?: boolean, quantity = 1) => ({
+    id: `l-${price}-${quantity}`, product_id: 'p', quantity, saved: false,
+    product: { price, ...(includes === undefined ? {} : { price_includes_tax: includes }) },
+  })
+
+  it('charges exactly the prices the shopper read', () => {
+    /* The reported case: a Travel eSIM at 14.50 and Cloud Gaming at 9.99 in a
+       16% market. The total must be 24.49 — the sum of the two shelf prices —
+       and not 28.41. */
+    const m = basketMoney([line(14.50, true), line(9.99, true)], 16)
+    expect(m.total).toBe(24.49)
+    expect(m.net).toBe(21.11)
+    expect(m.tax).toBe(3.38)
+    expect(m.net + m.tax).toBeCloseTo(m.total, 2)
+    expect(m.inclusive).toBe(true)
+  })
+
+  it('treats a line with no flag as inclusive', () => {
+    /* The marketplace's stated policy, and what every consumer product page
+       claims. A line read before its product joined must not silently start
+       adding tax. */
+    const m = basketMoney([line(100)], 16)
+    expect(m.total).toBe(100)
+    expect(m.inclusive).toBe(true)
+  })
+
+  it('adds tax on top when the price is quoted before it', () => {
+    /* The branch that did not exist. `basketMoney` ignored the flag, so an
+       exclusive price had its tax worked *out* — the marketplace paying the
+       buyer's VAT out of its own margin, with nothing on screen looking wrong. */
+    const m = basketMoney([line(100, false)], 16)
+    expect(m.net).toBe(100)
+    expect(m.tax).toBe(16)
+    expect(m.total).toBe(116)
+    expect(m.inclusive).toBe(false)
+  })
+
+  it('handles a basket with one of each, and reports it as not inclusive', () => {
+    const m = basketMoney([line(14.50, true), line(100, false)], 16)
+    expect(m.total).toBe(130.50)
+    expect(m.inclusive).toBe(false)
+    expect(m.net + m.tax).toBeCloseTo(m.total, 2)
+  })
+
+  it('multiplies by quantity before working the tax out', () => {
+    const m = basketMoney([line(9.99, true, 3)], 16)
+    expect(m.total).toBe(29.97)
+    expect(m.net + m.tax).toBeCloseTo(29.97, 2)
+  })
+
+  it('ignores saved lines, which are not being bought', () => {
+    const saved = { ...line(500, true), saved: true }
+    const m = basketMoney([line(14.50, true), saved], 16)
+    expect(m.total).toBe(14.50)
+  })
+
+  it('comes to nothing at a zero rate, without dividing by anything odd', () => {
+    const m = basketMoney([line(9.99, true), line(100, false)], 0)
+    expect(m.tax).toBe(0)
+    expect(m.total).toBe(109.99)
+    expect(m.net).toBe(109.99)
+  })
+
+  it('is empty rather than NaN for an empty basket', () => {
+    const m = basketMoney([], 16)
+    expect(m).toEqual({ net: 0, tax: 0, total: 0, inclusive: true })
+  })
+})
