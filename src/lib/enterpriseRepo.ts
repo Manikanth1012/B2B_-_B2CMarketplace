@@ -147,28 +147,42 @@ export async function decideRequisition(
     decision_note: note.trim() || (approve ? 'Approved.' : null),
     /* decided_by and decided_on are stamped by the trigger, which knows who is
        signed in. Sending them from here would be asking the client to assert
-       its own identity. */
-    order_ref: approve ? orderRefFor(req) : null,
+       its own identity.
+
+       `order_ref` used to be set here too, from a reference this file minted
+       out of the requisition id. Nothing ever created the order, so every
+       approval left a requisition pointing at an order that did not exist while
+       telling the approver it had gone to the seller. The reference now comes
+       back from the database, which writes the order in the same breath. */
   }).eq('id', req.id).select('id')
 
   if (error) return { ok: false, reason: friendly(error.message) }
   if (!data?.length) return { ok: false, reason: REFUSED }
+
+  if (!approve) {
+    return { ok: true, note: `${req.id} declined. Nothing was ordered and the requester has been told why.` }
+  }
+
+  const placed = await supabase.rpc('place_requisition_order', { p_req_id: req.id })
+  if (placed.error) {
+    /* The decision stands — it is recorded and the requester can see it. What
+       failed is the order, and saying so is better than a success message
+       beside a reference that resolves to nothing. */
+    return {
+      ok: false,
+      reason: `${req.id} is approved, but the order could not be placed: `
+        + `${friendly(placed.error.message)} Nothing has gone to the seller yet.`,
+    }
+  }
+
   return {
     ok: true,
-    note: approve
-      /* Named in the money it will actually be paid in, which is the
-         requisition's own — the conversion was for the limit test, not for the
-         seller. */
-      ? `${req.id} approved — the order has gone to the seller and ${money(req.amount, req.currency)} is committed.`
-      : `${req.id} declined. Nothing was ordered and the requester has been told why.`,
+    /* Named in the money it will actually be paid in, which is the
+       requisition's own — the conversion was for the limit test, not for the
+       seller. And it names the order, because there is now one to name. */
+    note: `${req.id} approved — ${String(placed.data)} has gone to the seller and `
+      + `${money(req.amount, req.currency)} is committed.`,
   }
-}
-
-/* Deterministic from the requisition rather than random, so re-running a
-   decision that half-failed produces the same reference instead of a second
-   order. */
-function orderRefFor(req: Requisition): string {
-  return `ORD-8821${req.id.replace(/\D/g, '').slice(-2)}`
 }
 
 export async function withdrawRequisition(req: Requisition, me: Member): Promise<Result> {

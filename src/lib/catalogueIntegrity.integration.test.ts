@@ -106,11 +106,17 @@ describe('everything that references the catalogue', () => {
       expect(l.product, `${l.id} links to a product that does not exist`).toBeTruthy()
       expect(l.partner_id, `${l.id} and its product disagree about the seller`).toBe(l.product!.partner_id)
 
-      /* Pending means waiting; approved means on sale or since taken down with
-         its seller; rejected means it never went on sale. */
+      /* Pending means waiting; approved means on sale or since taken down;
+         rejected means it never went on sale.
+
+         `paused` belongs in the approved set and was missing from it. A seller
+         pausing their own listing is an ordinary thing to do — it is how you
+         stop selling something while you restock — and it does not un-approve
+         the decision the marketplace already made. The set held only the two
+         states the seed happened to contain. */
       const p = l.product!.status
       if (l.status === 'pending') expect(p, `${l.id} is pending but its product is ${p}`).toBe('pending')
-      if (l.status === 'approved') expect(['live', 'suspended'], `${l.id} is approved but its product is ${p}`).toContain(p)
+      if (l.status === 'approved') expect(['live', 'suspended', 'paused'], `${l.id} is approved but its product is ${p}`).toContain(p)
       if (l.status === 'rejected') expect(['rejected', 'suspended'], `${l.id} is rejected but its product is ${p}`).toContain(p)
     }
 

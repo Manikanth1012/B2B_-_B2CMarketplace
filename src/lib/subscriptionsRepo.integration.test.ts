@@ -44,16 +44,17 @@ describe('the consumer subscriptions', () => {
      however many times somebody buys something. */
   it('has an order behind every subscription it did not seed', async () => {
     const subs = await load()
-    const bought = subs.filter(s => s.ref.startsWith('ORD-'))
+    const bought = subs.filter(s => s.ref?.startsWith('ORD-'))
     const { data } = await supabase.from('orders').select('order_ref')
     const orders = new Set(((data ?? []) as { order_ref: string }[]).map(o => o.order_ref))
 
     for (const s of bought) {
       /* A recurring charge whose purchase does not exist. Twelve of these
          accumulated unnoticed because nothing ever asked. */
-      const stem = s.ref.split('-').slice(0, 2).join('-')
-      expect(orders.has(s.ref) || orders.has(stem),
-        `${s.ref} bills monthly against an order that does not exist`).toBe(true)
+      const ref = s.ref!
+      const stem = ref.split('-').slice(0, 2).join('-')
+      expect(orders.has(ref) || orders.has(stem),
+        `${ref} bills monthly against an order that does not exist`).toBe(true)
     }
   })
 
