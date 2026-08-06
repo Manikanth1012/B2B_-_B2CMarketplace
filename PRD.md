@@ -1,7 +1,7 @@
 # Product Requirements Document (PRD): B2B/B2C Telecom Marketplace
 
 ## 1. Document Control
-* **Version**: 4.3  
+* **Version**: 4.4  
 * **Date**: August 2026  
 * **Status**: Draft — sections 4.8 to 4.69 and section 7 added from the working build  
 * **Author**: AI Coding Assistant (Antigravity)  
@@ -11,6 +11,7 @@
 
 | Version | Date | Change |
 |---|---|---|
+| **4.4** | **Aug 2026** | **Built both halves of the developer portal against the §4.21 schema.** A seller registers an application and collects sandbox credentials in one step, reads the endpoint reference grouped by resource, downloads the generated OpenAPI, executes a real authenticated call against their own records, and asks for production with a stated use case. The operator publishes a version that must carry endpoints, works a production-approval queue, and deprecates with a sunset date and migration note where the delete used to be. Call figures derive from a database rollup rather than a page of log rows. |
 | **4.3** | **Aug 2026** | **Rewrote the developer portal against how public portals actually work.** Extended §4.21: generated OpenAPI 3.1 per version, endpoints with scopes and worked examples, applications as the subscribable object, per-environment credentials issued once and stored hashed, rotation with a grace window, executable sandbox calls, and deprecation in place of deletion. |
 | **4.2** | **Jul 2026** | Added §4.69 Notify me on an out-of-stock product, on both buy sides. |
 | **4.1** | **Jul 2026** | Added §4.67 Product eligibility and dependency, §4.68 Plan change as a switch. Partner Documents given the full width, settlement invoice action unified across both tables. |

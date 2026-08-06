@@ -1,6 +1,6 @@
 # B2B/B2C Telecom Marketplace — EPICs & User Stories
 
-> **Version**: 1.32 · **Date**: August 2026
+> **Version**: 1.33 · **Date**: August 2026
 > **Components**: Partner Onboarding (PMP) · Catalog Management (CAT) · Order & Subscription (ORD) · Billing & Settlement (BIL) · AI & n8n (AI) · Support & Cases (SUP) · Platform Governance (ADM) · Inventory (INV) · Identity (IAM) · API Gateway (APG) · Notifications (NTF)
 
 > **v1.17 change**: added warehouse configuration and shipment provenance; a managed channel master replacing the hard-coded dunning channel list; collections ownership between marketplace and seller, with category-based ladder profiles seeded at onboarding and the operator's view of seller drift; and credit/debit notes plus partner-approved customer refunds with the `AP-ADJ` API. 1,713 automated checks across eleven suites.
@@ -27,6 +27,8 @@
 >
 > **v1.28 change**: onboarding tasks scoped to a partner and driven by that partner's gates; operator-led onboarding rebuilt as a stepped capture with real settlement fields and file attachment; settlement detail masked everywhere with an audited reveal; sellers and buyers can each see and correct what we hold about them; drawn product artwork replaced the category glyphs; consumer alert channels made selectable. 2,275 automated checks across nineteen suites.
 >
+> **v1.33 change**: both developer-portal screens built against the schema v1.32 added — the seller registers an application and collects sandbox keys in one step, reads the reference grouped by resource, downloads the generated OpenAPI, executes a real call against their own rows and asks for production with a use case; the operator publishes a version that must carry endpoints, decides the production queue, and deprecates with a sunset date in place of the red Delete. Every APG-FE-004 story marked **[P]**. Traffic figures moved onto a database rollup after the portal was found reporting percentages of the first thousand rows PostgREST would return. 3,046 automated checks across two suites.
+
 > **v1.32 change**: the developer portal rebuilt against how public portals actually work. Every published API version carries a generated OpenAPI 3.1 document and endpoint records with scopes and worked examples; applications become the subscribable object; credentials are issued per environment, returned once, stored hashed, rotatable with a grace window and revocable with a reason; sandbox calls execute against seeded data; deprecation with a sunset date and a migration note replaces deletion. Two new EPICs, 14 stories.
 
 > **v1.31 change**: Notify me is a real control on an out-of-stock product on both buy sides, creating an audited watch record with a channel on it, plus a Waiting for stock list; the enterprise catalogue stopped offering Add to requisition on what it cannot supply.
@@ -919,11 +921,11 @@ node _src/smoke.js partner.html   # render walk across every screen
 
 | Story ID | Story Title | User Story | Acceptance Criteria | Priority | SP |
 |----------|-------------|------------|---------------------|----------|----|
-| APG-FE-004-01 | Reference That Can Be Read Without Signing In | As a **developer**, I want to evaluate the API before I commit. | ✅ Endpoint reference per version with scope, request and response <br> ✅ OpenAPI document downloadable <br> ✅ Deprecated versions show sunset date and migration note prominently | P1 | 5 |
-| APG-FE-004-02 | Register an Application and Collect Sandbox Keys | As a **seller**, I want to be calling within a minute. | ✅ Register from the console; sandbox keys returned in the same step <br> ✅ **Secret displayed once, with copy, and a plain warning it cannot be shown again** <br> ✅ Afterwards only prefix, last four and dates | P1 | 5 |
-| APG-FE-004-03 | Try It, Against Real Sandbox Data | As a **developer**, I want to see a real response, not a sample. | ✅ Endpoint page executes against seeded sandbox records <br> ✅ Shows the request that was sent and the response that came back <br> ✅ The call appears in the log and counts toward volume | P1 | 8 |
-| APG-FE-004-04 | Ask for Production, and See the Answer | As a **seller**, I want to know where my request stands. | ✅ Production request states a use case <br> ✅ Pending, approved and refused are all visible with the decision and its reason <br> ✅ Sandbox access continues while a production request is pending | P1 | 5 |
-| APG-FE-004-05 | Deprecate, Never Delete | As an **operator**, I do not want to break a live integration with one click. | ✅ **The hard delete is gone** <br> ✅ Deprecation asks for a sunset date and a migration note, and names the subscribers still on that version <br> ✅ Retired versions remain readable | P1 | 5 |
+| APG-FE-004-01 | Reference That Can Be Read Without Signing In **[P]** | As a **developer**, I want to evaluate the API before I commit. | ✅ Endpoint reference per version with scope, request and response <br> ✅ OpenAPI document downloadable <br> ✅ Deprecated versions show sunset date and migration note prominently | P1 | 5 |
+| APG-FE-004-02 | Register an Application and Collect Sandbox Keys **[P]** | As a **seller**, I want to be calling within a minute. | ✅ Register from the console; sandbox keys returned in the same step <br> ✅ **Secret displayed once, with copy, and a plain warning it cannot be shown again** <br> ✅ Afterwards only prefix, last four and dates | P1 | 5 |
+| APG-FE-004-03 | Try It, Against Real Sandbox Data **[P]** | As a **developer**, I want to see a real response, not a sample. | ✅ Endpoint page executes against seeded sandbox records <br> ✅ Shows the request that was sent and the response that came back <br> ✅ The call appears in the log and counts toward volume | P1 | 8 |
+| APG-FE-004-04 | Ask for Production, and See the Answer **[P]** | As a **seller**, I want to know where my request stands. | ✅ Production request states a use case <br> ✅ Pending, approved and refused are all visible with the decision and its reason <br> ✅ Sandbox access continues while a production request is pending | P1 | 5 |
+| APG-FE-004-05 | Deprecate, Never Delete **[P]** | As an **operator**, I do not want to break a live integration with one click. | ✅ **The hard delete is gone** <br> ✅ Deprecation asks for a sunset date and a migration note, and names the subscribers still on that version <br> ✅ Retired versions remain readable | P1 | 5 |
 
 ---
 
