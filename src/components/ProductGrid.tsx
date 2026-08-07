@@ -6,6 +6,10 @@ import { categoriesFor } from '../lib/storefront'
 import { loadPriceBook, loadCopyBook, repriceAll } from '../lib/moneyRepo'
 import { useMarket } from '../lib/MarketContext'
 import { ProductCard } from './ProductCard'
+import { CompareTray, CompareTable, CompareToggle } from './CompareTray'
+import { toggleCompare, COMPARE_CAP } from '../lib/compare'
+import type { Comparable } from '../lib/compare'
+import { toast } from './operator/shared'
 
 import type { View } from '../types/view'
 
@@ -19,7 +23,7 @@ interface ProductGridProps {
 }
 
 export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyMe, watching }: ProductGridProps) {
-  const { market, currency } = useMarket()
+  const { market, currency, fmtIn } = useMarket()
   /* Named separately so the effect below depends on the code and not on the
      market object, which is rebuilt on every context render and would refetch
      the catalogue continuously. */
@@ -34,6 +38,10 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
   const [sortBy, setSortBy] = useState('featured')
   const [subFilter, setSubFilter] = useState<string | null>(null)
   const [stockFilter, setStockFilter] = useState<string | null>(null)
+  /* Held by id rather than by product, so a pick survives a filter change or a
+     reprice — the object is rebuilt on both and the id is not. */
+  const [comparing, setComparing] = useState<string[]>([])
+  const [showCompare, setShowCompare] = useState(false)
 
   useEffect(() => {
     supabase.from('categories').select('*').order('sort_order').then(({ data }) => {
@@ -80,6 +88,29 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
     const subs = new Set(products.map((p) => p.sub_category))
     return Array.from(subs).sort()
   }, [products])
+
+  /* Picks are resolved against the loaded catalogue on every render, so a
+     product that has gone off sale while the tray was open drops out of it
+     rather than being compared from a stale copy. */
+  const picks: Comparable[] = comparing
+    .map(id => products.find(p => p.id === id))
+    .filter((p): p is Product => !!p)
+    .map(p => ({
+      id: p.id, name: p.name, seller: p.seller, price: p.price,
+      currency: p.currency ?? currencyCode, was_price: p.was_price,
+      rating: p.rating, reviews: p.reviews, stock: p.stock, fulfil: p.fulfil,
+      model: p.model, unit: p.unit,
+      category_id: p.category_id, specs: p.specs as Record<string, string> | null,
+      /* Not on the client Product type; the card does not need it and the
+         comparison states it as unknown rather than guessing. */
+    }))
+
+  const pick = (id: string) => {
+    const r = toggleCompare(comparing, id)
+    setComparing(r.ids)
+    if (!r.ok) toast(r.reason, 'error')
+    else if (r.note) toast(r.note, 'info')
+  }
 
   const filtered = useMemo(() => {
     let result = products
@@ -285,10 +316,39 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
                 onAddToCart={() => onAddToCart(product)}
                 watching={watching?.has(product.id)}
                 onNotifyMe={onNotifyMe ? () => onNotifyMe(product) : undefined}
+                compare={
+                  <CompareToggle
+                    on={comparing.includes(product.id)}
+                    disabled={comparing.length >= COMPARE_CAP && !comparing.includes(product.id)}
+                    onClick={() => pick(product.id)}
+                  />
+                }
               />
             ))}
           </div>
         )}
+
+      <CompareTray
+        picks={picks}
+        onRemove={id => setComparing(comparing.filter(x => x !== id))}
+        onClear={() => { setComparing([]); setShowCompare(false) }}
+        onOpen={() => setShowCompare(true)}
+      />
+
+      {showCompare && picks.length >= 2 && (
+        <CompareTable
+          picks={picks}
+          money={(n, c) => fmtIn(n, c)}
+          actionLabel="Add to basket"
+          canAct={item => item.stock !== 'out'}
+          onAction={item => {
+            const product = products.find(p => p.id === item.id)
+            if (product) { onAddToCart(product); toast(`${product.name} added to your basket.`) }
+          }}
+          onRemove={id => setComparing(comparing.filter(x => x !== id))}
+          onClose={() => setShowCompare(false)}
+        />
+      )}
       </div>
     </section>
   )

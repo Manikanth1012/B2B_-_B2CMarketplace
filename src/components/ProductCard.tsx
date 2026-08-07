@@ -4,6 +4,9 @@ import type { Product } from '../types'
 import { getProductImage } from '../lib/images'
 
 interface ProductCardProps {
+  /* The compare toggle, passed in rather than built here: the card is used by
+     the signed-out storefront too, where there is no tray to put a pick in. */
+  compare?: React.ReactNode
   /* Set when the shopper has already asked about this one, so the card can say so
      instead of offering to sign them up twice. */
   watching?: boolean
@@ -25,7 +28,7 @@ const catColors: Record<string, string> = {
   content: '#E63946',
 }
 
-export function ProductCard({ product, onClick, onAddToCart, watching, onNotifyMe }: ProductCardProps) {
+export function ProductCard({ product, onClick, onAddToCart, watching, onNotifyMe, compare }: ProductCardProps) {
   /* The product was priced in the market's currency when it was loaded, so
      the card formats rather than converts — it prints the number it was
      given, with the right mark and the right grouping on it. */
@@ -197,6 +200,10 @@ export function ProductCard({ product, onClick, onAddToCart, watching, onNotifyM
             </button>
           )}
         </div>
+
+        {/* Below the price row, so the buy action keeps the position a shopper
+            reaches for and comparing is a second, quieter thing. */}
+        {compare && <div style={{ marginTop: '10px' }}>{compare}</div>}
       </div>
     </div>
   )

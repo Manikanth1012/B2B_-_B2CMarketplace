@@ -26,6 +26,9 @@ import { useAccountMoney } from './money'
 import { useMarket } from '../../lib/MarketContext'
 import type { Policy, Subscription } from '../../lib/enterprise'
 import { EnterpriseListingModal } from './EnterpriseListingModal'
+import { CompareTray, CompareTable, CompareToggle } from '../CompareTray'
+import { toggleCompare, COMPARE_CAP } from '../../lib/compare'
+import type { Comparable } from '../../lib/compare'
 
 export function EnterpriseBrowse() {
   const [vertical, setVertical] = useState<string | null>(null)
@@ -69,6 +72,10 @@ export function EnterpriseBrowse() {
      `toast(`Listing detail: ${p.name}`)` — the card's own title, in a bubble
      that vanished. */
   const [viewing, setViewing] = useState<EnterpriseListing | null>(null)
+  /* Held by id so a pick survives a filter change or a reprice — both rebuild
+     the listing object and neither changes the id. */
+  const [comparing, setComparing] = useState<string[]>([])
+  const [showCompare, setShowCompare] = useState(false)
   /* What the account already holds, so the detail can say "you are paying for
      twelve of these and four are idle" before somebody orders more. */
   const [subs, setSubs] = useState<Subscription[]>([])
@@ -122,6 +129,27 @@ export function EnterpriseBrowse() {
        reprice in a loop. The currency and the shelf are what this reacts to. */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currency, listings])
+
+  /* Resolved against the loaded catalogue every render, so a listing withdrawn
+     while the tray was open drops out rather than being compared from a stale
+     copy. */
+  const picks: Comparable[] = comparing
+    .map(id => (listings ?? []).find(l => l.id === id))
+    .filter((l): l is EnterpriseListing => !!l)
+    .map(l => ({
+      id: l.id, name: l.name, seller: l.seller, price: l.price,
+      currency, rating: l.rating, reviews: l.reviews,
+      stock: l.stock ?? 'in', fulfil: l.fulfil, model: l.model, unit: l.unit,
+      category_id: l.category_id, specs: l.specs,
+      price_includes_tax: l.price_includes_tax,
+    }))
+
+  const pick = (id: string) => {
+    const r = toggleCompare(comparing, id)
+    setComparing(r.ids)
+    if (!r.ok) toast(r.reason, 'error')
+    else if (r.note) toast(r.note, 'info')
+  }
 
   let results = listings ?? []
   if (vertical) results = results.filter(p => p.category_id === vertical)
@@ -253,7 +281,14 @@ export function EnterpriseBrowse() {
                       <span style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>{money(p.price)}</span>
                       {p.model === 'monthly' && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{p.unit ? ` ${p.unit}/mo` : '/mo'}</span>}
                     </div>
-                    <Btn variant="primary" size="sm" onClick={(e) => { e.stopPropagation(); addToRequisition(p) }}>Add</Btn>
+                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                      <CompareToggle
+                        on={comparing.includes(p.id)}
+                        disabled={comparing.length >= COMPARE_CAP && !comparing.includes(p.id)}
+                        onClick={() => pick(p.id)}
+                      />
+                      <Btn variant="primary" size="sm" onClick={(e) => { e.stopPropagation(); addToRequisition(p) }}>Add</Btn>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -268,6 +303,27 @@ export function EnterpriseBrowse() {
           )}
         </div>
       </div>
+
+      <CompareTray
+        picks={picks}
+        onRemove={id => setComparing(comparing.filter(x => x !== id))}
+        onClear={() => { setComparing([]); setShowCompare(false) }}
+        onOpen={() => setShowCompare(true)}
+      />
+
+      {showCompare && picks.length >= 2 && (
+        <CompareTable
+          picks={picks}
+          money={(n) => money(n)}
+          actionLabel="Add to requisition"
+          onAction={item => {
+            const listing = (listings ?? []).find(x => x.id === item.id)
+            if (listing) addToRequisition(listing)
+          }}
+          onRemove={id => setComparing(comparing.filter(x => x !== id))}
+          onClose={() => setShowCompare(false)}
+        />
+      )}
 
       <EnterpriseListingModal
         listing={viewing}

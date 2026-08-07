@@ -448,6 +448,13 @@ export interface EnterpriseListing {
   reviews: number
   stock: string
   description: string
+  /* Carried so a buyer comparing two listings sees how each is delivered and
+     what each declares. `select('*')` already fetched both; the type simply
+     dropped them, so the enterprise comparison would have been thinner than
+     the shopper's for no reason anybody chose. */
+  fulfil: string | null
+  specs: Record<string, string> | null
+  price_includes_tax: boolean | null
 }
 
 export async function loadEnterpriseCatalogue(currency: string): Promise<EnterpriseListing[]> {
@@ -462,6 +469,8 @@ export async function loadEnterpriseCatalogue(currency: string): Promise<Enterpr
     seller: string; partner_id: string | null; price: number; model: string
     unit: string | null; rating: number | null; reviews: number | null
     stock: string; description: string | null
+    fulfil: string | null; specs: Record<string, string> | null
+    price_includes_tax: boolean | null
   }
   return ((p.data ?? []) as Row[]).map(r => {
     const priced = book.get(r.id)
@@ -479,6 +488,8 @@ export async function loadEnterpriseCatalogue(currency: string): Promise<Enterpr
       /* The copy for this account's currency, falling back to the base row —
          a pooled-data overage rate is a price and is set per market. */
       description: describeIn({ id: r.id, description: r.description ?? '' }, copy, currency),
+      fulfil: r.fulfil, specs: r.specs,
+      price_includes_tax: r.price_includes_tax,
     }
   })
 }
