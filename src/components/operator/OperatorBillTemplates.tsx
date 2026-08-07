@@ -322,7 +322,7 @@ function TemplateEditor(
             </FormField>
           </SectionCard>
 
-          <SectionCard title="Sections"
+          <SectionCard pad title="Sections"
             subtitle={`${ids.length} of ${book.sections.length} on this document`}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
               {book.sections.map(s => {
@@ -483,7 +483,10 @@ function Assignments({ book, onChanged }: { book: BillTemplateBook; onChanged: (
         The override wins, and nobody else's document changes.
       </Callout>
 
-      <SectionCard title="Defaults" subtitle="What every counterparty in the audience is sent">
+      {/* `pad` because this is a form. Without it the audience labels sat hard
+          against the card's left border while the title above them was inset,
+          so the card looked like two columns that had come apart. */}
+      <SectionCard pad title="Defaults" subtitle="What every counterparty in the audience is sent">
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {defaults.map(aud => {
             const current = templateFor({ audience: aud }, book.assignments, book.templates)
@@ -535,7 +538,10 @@ function Assignments({ book, onChanged }: { book: BillTemplateBook; onChanged: (
         </Table>
         {!overrides.length && <EmptyState message="No exceptions. Every counterparty gets their audience's default." />}
 
-        <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-light)' }}>
+        {/* The table above runs edge to edge, which is right — its cells carry
+            their own inset. This form does not, so it takes the padding itself
+            rather than the whole card taking it and insetting the table too. */}
+        <div style={{ padding: '16px 20px 4px', borderTop: '1px solid var(--border-light)' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr) minmax(0,1.4fr) auto', gap: '12px', alignItems: 'end' }}>
             <FormField label="Counterparty" hint="A seller or account id, e.g. PTR-1003.">
               <TextInput value={party} onChange={e => setParty(e.target.value.toUpperCase())} placeholder="PTR-1003" />
