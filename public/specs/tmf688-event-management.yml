@@ -1,0 +1,574 @@
+openapi: 3.0.1
+info:
+  title: Event API
+  version: v0
+servers:
+  - url: http://localhost:8080
+    description: Generated server url
+tags:
+  - name: Event
+    description: APIs for managing events within topics.
+  - name: Subscription
+    description: APIs for managing event listener subscriptions.
+  - name: Hub
+    description: APIs for managing event hubs.
+  - name: Listener
+    description: APIs for receiving notifications about topic events.
+  - name: Topic
+    description: APIs for managing event topics.
+paths:
+  /tmf-api/event/v4/topic:
+    get:
+      tags:
+        - Topic
+      summary: List all topics
+      description: Retrieve a list of all available topics.
+      operationId: listTopics
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Topic'
+    post:
+      tags:
+        - Topic
+      summary: Create a new topic
+      description: Create a new event topic.
+      operationId: createTopic
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TopicCreate'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/Topic'
+  /tmf-api/event/v4/topic/{topicId}/hub:
+    get:
+      tags:
+        - Hub
+      summary: List all hubs for a topic
+      description: Retrieve a list of all hubs for a specific topic.
+      operationId: listHubs
+      parameters:
+        - name: topicId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Hub'
+    post:
+      tags:
+        - Hub
+      summary: Create a new hub for a topic
+      description: Create a new hub for a specific topic.
+      operationId: createHub
+      parameters:
+        - name: topicId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HubCreate'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/Hub'
+  /tmf-api/event/v4/topic/{topicId}/event:
+    get:
+      tags:
+        - Event
+      summary: List all events for a topic
+      description: Retrieve a list of all events for a specific topic.
+      operationId: listEvents
+      parameters:
+        - name: topicId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Event'
+    post:
+      tags:
+        - Event
+      summary: Create a new event for a topic
+      description: Create a new event for a specific topic.
+      operationId: createEvent
+      parameters:
+        - name: topicId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EventCreate'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/Event'
+  /tmf-api/event/v4/listener/topicDeleteEvent:
+    post:
+      tags:
+        - Listener
+      summary: Receive notification for topic deletion event
+      description: Endpoint to receive notifications when a topic is deleted.
+      operationId: listenToTopicDeleteEvent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/Hub'
+  /tmf-api/event/v4/listener/topicCreateEvent:
+    post:
+      tags:
+        - Listener
+      summary: Receive notification for topic creation event
+      description: Endpoint to receive notifications when a topic is created.
+      operationId: listenToTopicCreateEvent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/Hub'
+  /tmf-api/event/v4/listener/topicChangeEvent:
+    post:
+      tags:
+        - Listener
+      summary: Receive notification for topic change event
+      description: Endpoint to receive notifications when a topic is changed.
+      operationId: listenToTopicChangeEvent
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/Hub'
+  /tmf-api/event/v4/hub:
+    post:
+      tags:
+        - Subscription
+      summary: Register a listener
+      description: Register a new event listener (hub).
+      operationId: registerListener
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HubCreate'
+        required: true
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/Hub'
+  /tmf-api/event/v4/topic/{topicId}/hub/{id}:
+    get:
+      tags:
+        - Hub
+      summary: Retrieve hub by ID
+      description: Get details of a specific hub by its ID for a topic.
+      operationId: retrieveHub
+      parameters:
+        - name: topicId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+    delete:
+      tags:
+        - Hub
+      summary: Delete hub by ID
+      description: Delete a specific hub by its ID for a topic.
+      operationId: deleteHub
+      parameters:
+        - name: topicId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /tmf-api/event/v4/topic/{topicId}/event/{id}:
+    get:
+      tags:
+        - Event
+      summary: Retrieve event by ID
+      description: Get details of a specific event by its ID for a topic.
+      operationId: retrieveEvent
+      parameters:
+        - name: topicId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /tmf-api/event/v4/topic/{id}:
+    get:
+      tags:
+        - Topic
+      summary: Retrieve topic by ID
+      description: Get details of a specific topic by its ID.
+      operationId: retrieveTopic
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+    delete:
+      tags:
+        - Topic
+      summary: Delete topic by ID
+      description: Delete a specific topic by its ID.
+      operationId: deleteTopic
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+  /tmf-api/event/v4/hub/{id}:
+    delete:
+      tags:
+        - Subscription
+      summary: Unregister a listener
+      description: Unregister an event listener (hub) by its ID.
+      operationId: unregisterListener
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            '*/*':
+              schema:
+                type: object
+components:
+  schemas:
+    TopicCreate:
+      type: object
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        baseType:
+          type: string
+        schemaLocation:
+          type: string
+        type:
+          type: string
+    Topic:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        baseType:
+          type: string
+        schemaLocation:
+          type: string
+        type:
+          type: string
+    HubCreate:
+      type: object
+      properties:
+        callback:
+          type: string
+        query:
+          type: string
+        baseType:
+          type: string
+        schemaLocation:
+          type: string
+        type:
+          type: string
+    Hub:
+      type: object
+      properties:
+        id:
+          type: string
+        callback:
+          type: string
+        query:
+          type: string
+        baseType:
+          type: string
+        schemaLocation:
+          type: string
+        type:
+          type: string
+    Characteristic:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        valueType:
+          type: string
+        characteristicRelationship:
+          type: array
+          items:
+            $ref: '#/components/schemas/CharacteristicRelationship'
+        value:
+          type: object
+        baseType:
+          type: string
+        schemaLocation:
+          type: string
+        type:
+          type: string
+    CharacteristicRelationship:
+      type: object
+      properties:
+        id:
+          type: string
+        relationshipType:
+          type: string
+        baseType:
+          type: string
+        schemaLocation:
+          type: string
+        type:
+          type: string
+    EntityRef:
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+        name:
+          type: string
+        baseType:
+          type: string
+        schemaLocation:
+          type: string
+        type:
+          type: string
+        referredType:
+          type: string
+    EventCreate:
+      type: object
+      properties:
+        correlationId:
+          type: string
+        description:
+          type: string
+        domain:
+          type: string
+        eventId:
+          type: string
+        eventTime:
+          type: string
+          format: date-time
+        eventType:
+          type: string
+        priority:
+          type: string
+        timeOcurred:
+          type: string
+          format: date-time
+        title:
+          type: string
+        analyticCharacteristic:
+          type: array
+          items:
+            $ref: '#/components/schemas/Characteristic'
+        event:
+          type: object
+        relatedParty:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelatedParty'
+        reportingSystem:
+          $ref: '#/components/schemas/EntityRef'
+        source:
+          $ref: '#/components/schemas/EntityRef'
+        baseType:
+          type: string
+        schemaLocation:
+          type: string
+        type:
+          type: string
+    RelatedParty:
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        baseType:
+          type: string
+        schemaLocation:
+          type: string
+        type:
+          type: string
+    Event:
+      type: object
+      properties:
+        correlationId:
+          type: string
+        description:
+          type: string
+        domain:
+          type: string
+        eventId:
+          type: string
+        eventTime:
+          type: string
+          format: date-time
+        eventType:
+          type: string
+        priority:
+          type: string
+        timeOcurred:
+          type: string
+          format: date-time
+        title:
+          type: string
+        analyticCharacteristic:
+          type: array
+          items:
+            $ref: '#/components/schemas/Characteristic'
+        event:
+          type: object
+        relatedParty:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelatedParty'
+        reportingSystem:
+          $ref: '#/components/schemas/EntityRef'
+        source:
+          $ref: '#/components/schemas/EntityRef'
+        baseType:
+          type: string
+        schemaLocation:
+          type: string
+        type:
+          type: string
+

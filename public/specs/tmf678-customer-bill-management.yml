@@ -1,0 +1,1021 @@
+openapi: 3.0.1
+info:
+  title: Customer Bill Management API
+  description: BillingApi
+  termsOfService: billing.devgroup@6dtech.co.in
+  contact:
+    name: Billing
+    url: billing.devgroup@6dtech.co.in
+    email: info@6dtech.co.in
+  license:
+    name: 6D License
+    url: https://www.6dtechnologies.com/
+  version: v1.0.0
+servers:
+  - url: http://localhost:9080/operation-management
+    description: Generated server url
+paths:
+  /tmf/customerBillOnDemand:
+    get:
+      tags:
+        - customerBillOnDemand
+      summary: List or find CustomerBillOnDemand objects
+      description: This operation lists or finds CustomerBillOnDemand entities.
+      operationId: fetchCustomerBillOnDemand
+      parameters:
+        - name: X-Trace-Id
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: channel
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: entityId
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: action
+          in: query
+          required: false
+          schema:
+            type: string
+            default: FetchBillRunDetails
+        - name: scheduleId
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: -1
+        - name: billCycleId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+        - name: billCycleRunId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: billType
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+        - name: billRunId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: month
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+        - name: year
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+        - name: irnProcessStatus
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 10
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            default: status
+        - name: order
+          in: query
+          required: false
+          schema:
+            type: string
+            default: desc
+        - name: spec
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/SpecificationBSBillRun'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json;charset=utf-8:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CustomerBillOnDemandCreate'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                type: string
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                type: string
+        '405':
+          description: Method Not Allowed
+          content:
+            application/json:
+              schema:
+                type: string
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: string
+    post:
+      tags:
+        - customerBillOnDemand
+      summary: Creates a CustomerBillOnDemand
+      description: This operation creates a CustomerBillOnDemand entity.
+      operationId: createCustomerBillOnDemand
+      parameters:
+        - name: X-Trace-Id
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: channel
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: entityId
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: fields
+          in: query
+          description: Comma-separated properties to be provided in response
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerBillOnDemandCreate'
+        required: true
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json;charset=utf-8:
+              schema:
+                $ref: '#/components/schemas/CustomerBillOnDemandCreate'
+        '202':
+          description: Accepted
+          content:
+            application/json;charset=utf-8:
+              schema:
+                $ref: '#/components/schemas/CustomerBillOnDemandCreate'
+        '400':
+          description: Bad Request
+          content:
+            application/json;charset=utf-8:
+              schema:
+                type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json;charset=utf-8:
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json;charset=utf-8:
+              schema:
+                type: string
+        '404':
+          description: Not Found
+          content:
+            '*/*':
+              schema:
+                type: object
+        '405':
+          description: Method Not allowed
+          content:
+            application/json;charset=utf-8:
+              schema:
+                type: string
+        '409':
+          description: Conflict
+          content:
+            application/json;charset=utf-8:
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json;charset=utf-8:
+              schema:
+                type: string
+  /tmf/customerBill/{id}:
+    get:
+      tags:
+        - customerBill
+      summary: Retrieves a CustomerBill by ID
+      description: This operation retrieves a CustomerBill entity by ID. Attribute selection is enabled for all first level attributes.
+      operationId: getCustomerBillById
+      parameters:
+        - name: X-Trace-Id
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: channel
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: entityId
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerBill'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                type: string
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: string
+    patch:
+      tags:
+        - customerBill
+      summary: Updates partially a CustomerBill
+      description: This operation updates partially a CustomerBill entity.
+      operationId: patchCustomerBill
+      parameters:
+        - name: X-Trace-Id
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: channel
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: entityId
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CustomerBill'
+        required: true
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerBillResp'
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerBillResp'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                type: string
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                type: string
+        '405':
+          description: Method Not allowed
+          content:
+            application/json:
+              schema:
+                type: string
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: string
+  /tmf/customerBill:
+    get:
+      tags:
+        - customerBill
+      summary: List or find CustomerBill objects
+      description: This operation lists or finds CustomerBill entities.
+      operationId: fetchCustomerBillDetails
+      parameters:
+        - name: X-Trace-Id
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: channel
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: entityId
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: action
+          in: query
+          required: false
+          schema:
+            type: string
+            default: fetchCustomerBillDetails
+        - name: accountId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: isTestBill
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: fromBillDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: toBillDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: billId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: pendingInvoiceAmount
+          in: query
+          required: false
+          schema:
+            type: number
+        - name: totalCharges
+          in: query
+          required: false
+          schema:
+            type: number
+        - name: billDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: dueDate
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: billRunId
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: billCycleId
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+        - name: approvalStatus
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+        - name: clearStatus
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+        - name: month
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+        - name: year
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 1
+        - name: size
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+            default: 10
+        - name: sort
+          in: query
+          required: false
+          schema:
+            type: string
+            default: accountId
+        - name: order
+          in: query
+          required: false
+          schema:
+            type: string
+            default: desc
+        - name: showIrnStatus
+          in: query
+          required: false
+          schema:
+            type: boolean
+        - name: irn_status
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+        - name: spec
+          in: query
+          required: true
+          schema:
+            $ref: '#/components/schemas/SpecificationBsInvoiceDetails'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/CustomerBillResp'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                type: string
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                type: string
+        '405':
+          description: Method Not Allowed
+          content:
+            application/json:
+              schema:
+                type: string
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: string
+  /tmf/customerBillOnDemand/{id}:
+    get:
+      tags:
+        - customerBillOnDemand
+      summary: Retrieves a CustomerBillOnDemand by ID
+      description: This operation retrieves a CustomerBillOnDemand entity by ID. Attribute selection is enabled for all first level attributes.
+      operationId: fetchCustomerBillOnDemandById
+      parameters:
+        - name: X-Trace-Id
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: channel
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: entityId
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerBillOnDemandCreate'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                type: string
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                type: string
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                type: string
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                type: string
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                type: string
+components:
+  schemas:
+    BillRef:
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+        '@baseType':
+          type: string
+        '@schemaLocation':
+          type: string
+        '@type':
+          type: string
+        '@referredType':
+          type: string
+    BillingAccountRef:
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+        name:
+          type: string
+        '@baseType':
+          type: string
+        '@schemaLocation':
+          type: string
+        '@type':
+          type: string
+        '@referredType':
+          type: string
+    CustomerBillOnDemandCreate:
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+        description:
+          type: string
+        lastUpdate:
+          type: string
+        name:
+          type: string
+        billingAccount:
+          $ref: '#/components/schemas/BillingAccountRef'
+        customerBill:
+          $ref: '#/components/schemas/BillRef'
+        relatedParty:
+          $ref: '#/components/schemas/RelatedPartyRef'
+        state:
+          type: string
+        '@baseType':
+          type: string
+        '@schemaLocation':
+          type: string
+        '@type':
+          type: string
+    PartyRef:
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+        name:
+          type: string
+        '@referredType':
+          type: string
+        '@type':
+          type: string
+    RelatedPartyRef:
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        partyOrPartyRole:
+          $ref: '#/components/schemas/PartyRef'
+        '@baseType':
+          type: string
+        '@schemaLocation':
+          type: string
+        '@type':
+          type: string
+        '@referredType':
+          type: string
+    CustomerBill:
+      type: object
+      properties:
+        op:
+          type: string
+        path:
+          type: string
+        value:
+          type: string
+    AmountDue:
+      type: object
+      properties:
+        unit:
+          type: string
+        value:
+          type: number
+    Attachment:
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+        attachmentType:
+          type: string
+        content:
+          type: string
+        description:
+          type: string
+        mimeType:
+          type: string
+        size:
+          type: integer
+          format: int32
+        validfor:
+          $ref: '#/components/schemas/ValidFor'
+        '@type':
+          type: string
+    BillCycleRef:
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+        '@referredType':
+          type: string
+        '@type':
+          type: string
+    BillingPeriod:
+      type: object
+      properties:
+        startDateTime:
+          type: string
+          format: date-time
+        endDateTime:
+          type: string
+          format: date-time
+    CustomerBillResp:
+      type: object
+      properties:
+        op:
+          type: string
+        path:
+          type: string
+        value:
+          type: string
+        id:
+          type: string
+        href:
+          type: string
+        billNo:
+          type: string
+        amountDue:
+          $ref: '#/components/schemas/AmountDue'
+        billCycle:
+          $ref: '#/components/schemas/BillCycleRef'
+        billDate:
+          type: string
+          format: date-time
+        billDocument:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attachment'
+        billingAccount:
+          $ref: '#/components/schemas/BillingAccountRef'
+        financialAccount:
+          $ref: '#/components/schemas/FinancialAccountRef'
+        billingPeriod:
+          $ref: '#/components/schemas/BillingPeriod'
+        category:
+          type: string
+        lastUpdate:
+          type: string
+          format: date-time
+        nextBillDate:
+          type: string
+          format: date-time
+        paymentDueDate:
+          type: string
+          format: date-time
+        remainingAmount:
+          $ref: '#/components/schemas/RemainingAmount'
+        runType:
+          type: string
+        state:
+          type: string
+        taxExcludedAmount:
+          $ref: '#/components/schemas/TaxExcludedAmount'
+        taxIncludedAmount:
+          $ref: '#/components/schemas/TaxIncludedAmount'
+        taxItem:
+          type: array
+          items:
+            $ref: '#/components/schemas/TaxItem'
+        '@type':
+          type: string
+    FinancialAccountRef:
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+        name:
+          type: string
+        '@referredType':
+          type: string
+        '@type':
+          type: string
+    RemainingAmount:
+      type: object
+      properties:
+        unit:
+          type: string
+        value:
+          type: number
+    TaxAmount:
+      type: object
+      properties:
+        unit:
+          type: string
+        value:
+          type: number
+    TaxExcludedAmount:
+      type: object
+      properties:
+        unit:
+          type: string
+        value:
+          type: number
+    TaxIncludedAmount:
+      type: object
+      properties:
+        unit:
+          type: string
+        value:
+          type: number
+    TaxItem:
+      type: object
+      properties:
+        taxAmount:
+          $ref: '#/components/schemas/TaxAmount'
+        taxCategory:
+          type: string
+        taxRate:
+          type: number
+        '@type':
+          type: string
+    ValidFor:
+      type: object
+      properties:
+        startDateTime:
+          type: string
+          format: date-time
+        endDateTime:
+          type: string
+          format: date-time
+    SpecificationBsInvoiceDetails:
+      type: object
+    SpecificationBSBillRun:
+      type: object
+  headers:
+    request-id:
+      description: identifier for the request
+      required: true
+      schema:
+        type: string
+    transaction-id:
+      description: identifier for the transaction
+      required: false
+      schema:
+        type: string
+    session-id:
+      description: identifier for the session
+      required: false
+      schema:
+        type: string
+    channel-id:
+      description: identifier for the channel
+      required: true
+      schema:
+        type: string
+    entity-id:
+      description: MVNO id
+      required: false
+      schema:
+        type: string
+    order-id:
+      description: identifier for the order
+      required: false
+      schema:
+        type: string
+    order-type:
+      description: type of order
+      required: false
+      schema:
+        type: string
+    create-user:
+      description: user who is sending this request
+      required: false
+      schema:
+        type: string

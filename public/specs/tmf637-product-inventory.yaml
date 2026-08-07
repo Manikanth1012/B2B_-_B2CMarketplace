@@ -1,0 +1,2470 @@
+openapi: 3.0.1
+info:
+  title: Product Inventory
+  description: |+
+        **TMF API Reference : TMF 637 - Product Inventory Management**
+
+
+        The Product Inventory Management API provides standardized mechanism for product inventory management such as creation, update and retrieval of the representation of a product in the inventory. It also allows the notification of events related to product lifecycle.
+
+        **Product resource**
+        A product offering procured by a customer or other interested party playing a party role. A product is realized as one or more service(s) and/or resource(s).
+
+        Product Inventory API performs the following operations on product:
+        - Retrieval of a product or a collection of products depending on filter criteria
+        - Partial update of a product (including updating rules and for administration purpose)
+        - Creation of a product (including default values and creation rules and for administration purpose)
+        - Deletion of a product (for administration purposes)
+  version: v4.0.0
+servers:
+  - url: https://serverRoot/productInventory/v4/
+paths:
+  /product:
+    get:
+      tags:
+        - product
+      summary: List or find Product objects
+      description: 'List or find Product objects '
+      operationId: listAllPayload
+      parameters:
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+        - name: id
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: x-trace-id
+          in: header
+          required: true
+          description: The Unique Trace Id Provided by the Channel
+          schema:
+            type: string
+        - name: userid
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: username
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: channel
+          description: Channel Identifier
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: entityId
+          description: MVNO Id
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: fields
+          description:  Comma-separated properties to be provided in response
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          headers:
+            X-Result-Count:
+              description: Actual number of items returned in the response body
+              schema:
+                type: integer
+            X-Total-Count:
+              description: Total number of items matching criteria
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Product'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponseWithFieldError'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '405':
+          description: Method Not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+    post:
+      tags:
+        - product
+      summary: Creates a Product
+      description: This operation creates a Product entity.
+      operationId: createProduct
+      parameters:
+        - name: x-trace-id
+          in: header
+          required: true
+          description: The Unique Trace Id Provided by the Channel
+          schema:
+            type: string
+        - name: userid
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: username
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: channel
+          description: Channel Identifier
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: entityId
+          description: MVNO Id
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Product'
+            example:
+              description: This product is an Product Specification instance
+              isBundle: false
+              isCustomerVisible: false
+              name: Voice Over IP Basic instance for Jean
+              status: created
+              '@type': Product
+              productCharacteristic:
+                - '@type': BooleanCharacteristic
+                  id: Char1
+                  name: FixedIP
+                  valueType: boolean
+                  value: false
+                - '@type': ObjectCharacteristic
+                  id: Char5
+                  name: FiberSpeed
+                  valueType: object
+                  value:
+                    '@type': Speed
+                    volume: 90
+                    unit: Mbps
+              place:
+                - role: installationAddress
+                  place:
+                    id: '9912'
+                    href: https://host:port/geographicAddressManagement/v5/geographicAddress/9912
+                    '@referredType': GeographicAddress
+                    '@type': PlaceRef
+                  '@type': RelatedPlaceRefOrValue
+              realizingService:
+                - id: '7854'
+                  href: https://host:port/serviceInventory/v5/service/7854
+                  '@referredType': Service
+                  '@type': ServiceRef
+              productSpecification:
+                id: PS-101
+                href: https://host:port/productCatalogManagement/v5/productSpecification/PS-101
+                '@referredType': ProductSpecification
+                '@type': ProductSpecificationRef
+                version: '1'
+              relatedParty:
+                - role: User
+                  partyOrPartyRole:
+                    id: 45hj-999
+                    href: https://host:port/partyManagement/v5/individual/45hj-999
+                    name: Louise
+                    '@type': PartyRef
+                    '@referredType': Individual
+                  '@type': RelatedPartyOrPartyRole
+        required: true
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponseWithFieldError'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '405':
+          description: Method Not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+  /product/{id}:
+    get:
+      tags:
+        - product
+      summary: Retrieves a Product by ID
+      description: This operation retrieves a Product entity. Attribute selection enabled for all first level attributes
+      operationId: listProductPayload
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: x-trace-id
+          in: header
+          required: true
+          description: The Unique Trace Id Provided by the Channel
+          schema:
+            type: string
+        - name: userid
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: username
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: channel
+          description: Channel Identifier
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: entityId
+          description: MVNO Id
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: fields
+          description:  Comma-separated properties to be provided in response
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponseWithFieldError'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '405':
+          description: Method Not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+    delete:
+      tags:
+        - product
+      summary: Deletes a Product
+      description: This operation deletes a Product entity.
+      operationId: deleteProductPayload
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: x-trace-id
+          in: header
+          required: true
+          description: The Unique Trace Id Provided by the Channel
+          schema:
+            type: string
+        - name: userid
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: username
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: channel
+          description: Channel Identifier
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: entityId
+          description: MVNO Id
+          in: header
+          required: false
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponseWithFieldError'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '405':
+          description: Method Not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+    patch:
+      tags:
+        - product
+      summary: Updates partially a Product
+      description: This operation updates partially a Product entity.
+      operationId: patchProductPayload
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: x-trace-id
+          in: header
+          required: true
+          description: The Unique Trace Id Provided by the Channel
+          schema:
+            type: string
+        - name: userid
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: username
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: channel
+          description: Channel Identifier
+          in: header
+          required: false
+          schema:
+            type: string
+        - name: entityId
+          description: MVNO Id
+          in: header
+          required: false
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JsonNode'
+            example:
+              status: suspended
+              description: this is just an example
+              agreementItem:
+                - id: '778'
+                  href: https://host:port/productCatalogManagement/v4/productSpecification/PS-101
+                  version: '1'
+          application/json-patch+json:
+            schema:
+              $ref: '#/components/schemas/JsonNode'
+            example:
+              - op: replace
+                path: /productCharacteristic/0/id
+                value: Char2
+        required: true
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponseWithFieldError'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '403':
+          description: Forbidden
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '404':
+          description: Not Found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '405':
+          description: Method Not allowed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '409':
+          description: Conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+        '500':
+          description: Internal Server Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommonErrorResponse'
+components:
+  schemas:
+    CommonErrorResponseWithFieldError:
+      type: object
+      properties:
+        traceId:
+          type: string
+        timestamp:
+          type: string
+        code:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/ErrorDetail'
+    CommonErrorResponse:
+      type: object
+      properties:
+        traceId:
+          type: string
+        timestamp:
+          type: string
+        code:
+          type: string
+        status:
+          type: string
+        message:
+          type: string
+    ErrorDetail:
+      type: object
+      properties:
+        field:
+          type: string
+        message:
+          type: string
+    ExcClass:
+      type: object
+      properties:
+        type:
+          type: string
+        baseType:
+          type: string
+        schemaLocation:
+          type: string
+        code:
+          type: string
+        reason:
+          type: string
+        message:
+          type: string
+        status:
+          type: string
+        referenceError:
+          type: string
+    AdditionalParam:
+      type: object
+      properties:
+        chargeCategory:
+          type: string
+        overriddenPrice:
+          type: string
+        overriddenPriceFlag:
+          type: string
+    AgreementItemRef:
+      required:
+        - '@type'
+        - agreementId
+        - agreementItemId
+        - id
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+          description: Reference of the related entity.
+        agreementHref:
+          type: string
+          description: Reference of the related entity.
+        agreementItemId:
+          type: string
+          description: Id of an item of a Agreement
+        agreementId:
+          type: string
+          description: Id of an item of a Agreement
+        name:
+          type: string
+          description: Name of the related entity
+        '@baseType':
+          type: string
+          description: When sub-classing, this defines the super-class
+        '@schemaLocation':
+          type: string
+          description: A URI to a JSON-Schema file that defines additional attributes and relationships
+        '@type':
+          type: string
+          description: type of agreement
+        '@referredType':
+          type: string
+          description: The actual type of the target instance when needed for disambiguation.
+        agreementType:
+          type: string
+          description: type of an agreement
+        agreementPeriod:
+          type: string
+          description: period of agreement
+        agreementFrequency:
+          type: string
+          description: frequency of agreement
+      description: It's a Agreement item that has been executed previously.
+    Attachment:
+      type: object
+      properties:
+        content:
+          type: string
+        description:
+          type: string
+        id:
+          type: string
+        mimeType:
+          type: string
+        name:
+          type: string
+        url:
+          type: string
+        kycReferenceId:
+          type: string
+        createUser:
+          type: string
+        href:
+          type: string
+        modifiedDate:
+          type: string
+        modifiedUser:
+          type: string
+        type:
+          type: string
+    BSTiers:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        startRange:
+          type: string
+        endRange:
+          type: string
+        price:
+          type: string
+        factor:
+          type: string
+        frequency:
+          type: string
+    BillingAccountRef:
+      required:
+        - '@type'
+        - id
+      type: object
+      properties:
+        billCycleId:
+          type: string
+          description: Identifier for the billing cycle.
+        billingOnHold:
+          type: string
+          description: Indicates if billing is on hold.
+        chargingPattern:
+          type: string
+          description: Charging pattern applicable to the account.
+        dispatchMode:
+          type: string
+          description: Preferred mode of dispatch for bills (e.g., email, postal).
+        dunningExclusion:
+          type: string
+          description: Indicates if the account is excluded from dunning processes.
+        entityId:
+          type: string
+          description: Unique identifier for the related entity.
+        getitemizedBillRequired:
+          type: string
+          description: Indicates whether an itemized bill is required.
+        languageId:
+          type: string
+          description: Preferred language identifier for communication.
+        notificationAllowed:
+          type: string
+          description: Indicates if notifications are allowed.
+        remarks:
+          type: string
+          description: Additional remarks or comments.
+        riskcategoryId:
+          type: string
+          description: Risk category identifier for the customer.
+        status:
+          type: string
+          description: Current status of the billing account.
+        taxCode:
+          type: string
+          description: Tax code associated with the account.
+        taxExemptionCode:
+          type: string
+          description: Tax exemption code, if applicable.
+        title:
+          type: string
+          description: Title or salutation of the customer (e.g., Mr., Ms., Dr.).
+        unicodeName:
+          type: string
+          description: Unicode representation of the customer's name.
+        itemizedbillRequired:
+          type: string
+          writeOnly: true
+        id:
+          type: string
+          description: The identifier of the referred entity.
+        href:
+          type: string
+          description: The URI of the referred entity.
+        name:
+          type: string
+          description: Name of the referred entity.
+        '@baseType':
+          type: string
+          description: When sub-classing, this defines the super-class
+        '@schemaLocation':
+          type: string
+          description: A URI to a JSON-Schema file that defines additional attributes and relationships
+        '@type':
+          type: string
+          description: When sub-classing, this defines the sub-class
+        '@referredType':
+          type: string
+          description: The actual type of the target instance when needed for disambiguation
+        '@ratingType':
+          type: string
+          description: Indicates whether the account follows a specific payment option such as prepaid or postpaid
+      description: BillingAccount reference. A BillingAccount is a detailed description of a bill structure.
+    BillingChargeCategory:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    BillingChargeType:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    CFSCharacteristicRef:
+      type: object
+      properties:
+        dataType:
+          type: string
+        defaultValue:
+          type: string
+        name:
+          type: string
+        value:
+          type: string
+    CFSRef:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        href:
+          type: string
+        serviceType:
+          type: string
+        serviceClass:
+          type: string
+        transportType:
+          type: string
+        serviceCategory:
+          type: string
+        validFor:
+          $ref: '#/components/schemas/ValidFor'
+        characteristics:
+          type: array
+          items:
+            $ref: '#/components/schemas/CFSCharacteristicRef'
+        skipSom:
+          type: string
+        provisioningStatus:
+          type: string
+        type:
+          type: string
+    Characteristic:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        valueType:
+          type: string
+        value:
+          type: string
+        finalValue:
+          type: string
+    CharacteristicRelationship:
+      required:
+        - '@type'
+      type: object
+      properties:
+        id:
+          type: integer
+          description: unique identifier
+          format: int32
+        relationType:
+          type: string
+          description: The type of relationship
+        '@baseType':
+          type: string
+          description: When sub-classing, this defines the super-class
+        '@schemaLocation':
+          type: string
+          description: A URI to a JSON-Schema file that defines additional attributes and relationships
+        '@type':
+          type: string
+          description: When sub-classing, this defines the sub-class
+    Charge:
+      type: object
+      properties:
+        upcChargeName:
+          type: string
+        upcChargeId:
+          type: string
+        description:
+          type: string
+        chargeRecurranceType:
+          type: string
+        chargeCategory:
+          type: string
+        chargeFrequency:
+          type: string
+        quantity:
+          type: string
+        rate:
+          type: string
+        amount:
+          type: string
+        chargeVersion:
+          type: string
+        chargeStartDate:
+          type: string
+          format: date-time
+        chargeEndDate:
+          type: string
+          format: date-time
+        prorationFlag:
+          type: string
+        prorataEnabled:
+          type: boolean
+        chargeDesc:
+          type: string
+        chargeName:
+          type: string
+        chargeCode:
+          type: string
+        chargeType:
+          type: string
+        chargeValue:
+          type: string
+        chargeRemaining:
+          type: string
+        chargeApplied:
+          type: string
+        chargeTotal:
+          type: string
+        chargeFactor:
+          type: string
+        startDate:
+          type: string
+        endDate:
+          type: string
+        termTotal:
+          type: string
+        termInterest:
+          type: string
+        termInterestMode:
+          type: string
+        chargeMode:
+          type: string
+        planChargeId:
+          type: string
+        appliedChargeId:
+          type: string
+        chargeId:
+          type: string
+        overridden:
+          type: string
+        overriddenCharge:
+          type: string
+        overriddenCycle:
+          type: string
+        overriddenKey:
+          type: string
+        overriddenType:
+          type: string
+        noOfCycles:
+          type: string
+        billingChargeType:
+          type: string
+        upcPriceCategory:
+          type: string
+        ruleId:
+          type: string
+        ruleDescription:
+          type: string
+        attachmentLevel:
+          type: string
+        discountLevel:
+          type: string
+        discountType:
+          type: string
+        discountValue:
+          type: string
+        tierbased:
+          type: string
+        tiers:
+          type: array
+          items:
+            $ref: '#/components/schemas/BSTiers'
+        overriddenFlag:
+          type: string
+        priceCode:
+          type: string
+        chargeOverridden:
+          type: boolean
+        discountDescription:
+          type: string
+        discountName:
+          type: string
+        orderType:
+          type: string
+        split:
+          type: string
+    Contract:
+      type: object
+      properties:
+        contractCharges:
+          type: array
+          items:
+            $ref: '#/components/schemas/Charge'
+        contractDesc:
+          type: string
+        autoMethod:
+          type: string
+        contractType:
+          type: string
+        contractPlanId:
+          type: string
+        contractName:
+          type: string
+        activationDate:
+          type: string
+        expiryDate:
+          type: string
+        linkedPlanId:
+          type: string
+        totalContractAmount:
+          type: string
+        contractPeriod:
+          type: string
+        contractFrequency:
+          type: string
+        contractPlanName:
+          type: string
+        accountId:
+          type: string
+        resourceUniqueTxnId:
+          type: string
+        saleTransactionId:
+          type: string
+        transactionDate:
+          type: string
+        totalAmount:
+          type: string
+        taxAmount:
+          type: string
+        mobileNo:
+          type: string
+        emailId:
+          type: string
+        customerName:
+          type: string
+        resourceDetails:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceDetails'
+        autoStop:
+          type: string
+        createUser:
+          type: string
+        deactivationDate:
+          type: string
+        deviceType:
+          type: string
+        levels:
+          type: string
+        linkedSubscriptionId:
+          type: string
+        maxExtendedTimes:
+          type: string
+        model:
+          type: string
+        nextNotificationDate:
+          type: string
+        notifyStatus:
+          type: string
+        orderId:
+          type: string
+        planId:
+          type: string
+        promotionDesc:
+          type: string
+        remarks:
+          type: string
+        sapCode:
+          type: string
+        status:
+          type: string
+        subscriptionId:
+          type: string
+        waveOffFlag:
+          type: string
+        serviceSeqId:
+          type: string
+        serviceId:
+          type: string
+        contractFactor:
+          type: string
+        penaltyAmount:
+          type: string
+        contractId:
+          type: string
+    ContractLevel:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    ContractPeriod:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    ContractType:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    EligibilityOffers:
+      type: object
+      properties:
+        productOfferings:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductOffering'
+        eligibilityType:
+          $ref: '#/components/schemas/PoStatus'
+    EntityRef:
+      type: object
+      properties:
+        id:
+          type: string
+        '@href':
+          type: string
+        name:
+          type: string
+        '@referredType':
+          type: string
+        '@type':
+          type: string
+    EntityRelationship:
+      type: object
+      properties:
+        href:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+        validFor:
+          $ref: '#/components/schemas/TimePeriod'
+        associationSpec:
+          $ref: '#/components/schemas/EntityRef'
+        '@baseType':
+          type: string
+        '@schemaLocation':
+          type: string
+        relationshipType:
+          type: string
+        id:
+          type: string
+        '@referredType':
+          type: string
+        '@type':
+          type: string
+    Expression:
+      type: object
+      properties:
+        '@type':
+          type: string
+        expressionLanguage:
+          type: string
+          enum:
+            - TURTLE
+            - JSON_LD
+            - RDF_XML
+            - OTHER
+        iri:
+          type: string
+        expressionValue:
+          type: object
+    Intent:
+      type: object
+      properties:
+        id:
+          type: string
+        description:
+          type: string
+        validFor:
+          $ref: '#/components/schemas/TimePeriod'
+        isBundle:
+          type: boolean
+        priority:
+          type: string
+        statusChangeDate:
+          type: string
+          format: date-time
+        context:
+          type: string
+        version:
+          type: string
+        intentSpecification:
+          $ref: '#/components/schemas/EntityRef'
+        intentRelationship:
+          type: array
+          items:
+            $ref: '#/components/schemas/EntityRelationship'
+        characteristic:
+          type: array
+          items:
+            $ref: '#/components/schemas/Characteristic'
+        relatedParty:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelatedParty'
+        attachment:
+          type: array
+          items:
+            $ref: '#/components/schemas/Attachment'
+        name:
+          type: string
+        expression:
+          $ref: '#/components/schemas/Expression'
+        creationDate:
+          type: string
+          format: date-time
+        lastUpdate:
+          type: string
+          format: date-time
+        lifecycleStatus:
+          type: string
+    Money:
+      type: object
+      properties:
+        unit:
+          type: string
+        value:
+          type: number
+          format: float
+    PartyOrPartyRole:
+      required:
+        - id
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+        name:
+          type: string
+        '@type':
+          type: string
+        '@referredType':
+          type: string
+      description: Details of the related party or their role.
+    PoStatus:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    PopType:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    Price:
+      type: object
+      properties:
+        percentage:
+          type: number
+          format: float
+        taxRate:
+          type: number
+          format: float
+        dutyFreeAmount:
+          $ref: '#/components/schemas/Money'
+        taxIncludedAmount:
+          $ref: '#/components/schemas/Money'
+        '@baseType':
+          type: string
+        '@schemaLocation':
+          type: string
+        '@type':
+          type: string
+        totalAmount:
+          $ref: '#/components/schemas/Money'
+    PriceAlteration:
+      required:
+        - price
+        - priceType
+      type: object
+      properties:
+        applicationDuration:
+          type: integer
+          format: int32
+        description:
+          type: string
+        name:
+          type: string
+        priceType:
+          type: string
+        priority:
+          type: integer
+          format: int32
+        recurringChargePeriod:
+          type: string
+        unitOfMeasure:
+          type: string
+        price:
+          $ref: '#/components/schemas/Price'
+        productOfferingPrice:
+          $ref: '#/components/schemas/ProductOfferingPriceRef'
+        '@baseType':
+          type: string
+        '@schemaLocation':
+          type: string
+        '@type':
+          type: string
+    PriceCategory:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        billingChargeType:
+          $ref: '#/components/schemas/BillingChargeType'
+        billingChargeCategory:
+          $ref: '#/components/schemas/BillingChargeCategory'
+    PriceCode:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        code:
+          type: string
+    PriceEntity:
+      type: object
+      properties:
+        totalAmount:
+          $ref: '#/components/schemas/Money'
+    PriceFrequency:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    PriceMode:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    PriceType:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    Product:
+      required:
+        - '@type'
+        - isBundle
+        - isCustomerVisible
+        - realizingService
+        - relatedParty
+        - startDate
+        - status
+        - terminationDate
+      type: object
+      properties:
+        id:
+          type: string
+          description: unique Identifier
+        href:
+          type: string
+        description:
+          type: string
+          description: Is the description of the product. It could be copied from the description of the Product Offering.
+        isBundle:
+          type: boolean
+          description: If true, the product is a ProductBundle which is an instantiation of a BundledProductOffering. If false, the product is a ProductComponent which is an instantiation of a SimpleProductOffering.
+        isCustomerVisible:
+          type: boolean
+          description: If true, the product is visible by the customer.
+        name:
+          type: string
+          description: Name of the product. It could be the same as the name of the product offering
+        orderDate:
+          type: string
+          description: Is the date when the product was ordered
+          format: date-time
+        productSerialNumber:
+          type: string
+          description: Is the serial number for the product. This is typically applicable to tangible products e.g. Broadband Router.
+        startDate:
+          type: string
+          description: Is the date from which the product starts
+          format: date-time
+        terminationDate:
+          type: string
+          description: Is the date when the product was terminated
+          format: date-time
+        agreement:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgreementItemRef'
+        agreementItem:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgreementItemRef'
+        billingAccount:
+          $ref: '#/components/schemas/BillingAccountRef'
+        place:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelatedPlaceRefOrValue'
+        product:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductRefOrValue'
+        productCharacteristic:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductCharacteristic'
+        productOffering:
+          $ref: '#/components/schemas/ProductOffering'
+        productOrderItem:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelatedProductOrderItem'
+        productPrice:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductPrice'
+        productRelationship:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductRelationship'
+        productSpecification:
+          $ref: '#/components/schemas/ProductSpecificationRef'
+        productTerm:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductTerm'
+        realizingResource:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceRef'
+        realizingService:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceRef'
+        relatedParty:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelatedParty'
+        status:
+          type: string
+          enum:
+            - created
+            - pendingActive
+            - cancelled
+            - active
+            - pendingTerminate
+            - terminated
+            - suspended
+            - 'aborted '
+        intent:
+          $ref: '#/components/schemas/Intent'
+        '@baseType':
+          type: string
+          description: When sub-classing, this defines the super-class
+        '@schemaLocation':
+          type: string
+          description: A URI to a JSON-Schema file that defines additional attributes and relationships
+        '@type':
+          type: string
+          description: When sub-classing, this defines the sub-class
+        creationDate:
+          type: string
+          description: Date and time when the product was created
+          format: date-time
+      description: A product offering procured by a customer or other interested party playing a party role. A product is realized as one or more service(s) and / or resource(s).
+    ProductCharacteristic:
+      required:
+        - '@type'
+        - id
+        - value
+      type: object
+      properties:
+        id:
+          type: string
+          description: Name of the characteristic
+        name:
+          type: string
+        valueType:
+          type: string
+          description: Data type of the value of the characteristic
+        value:
+          type: object
+          description: The value of the characteristic
+        finalValue:
+          type: string
+        characteristicRelationship:
+          $ref: '#/components/schemas/CharacteristicRelationship'
+        '@baseType':
+          type: string
+          description: When sub-classing, this defines the super-class
+        '@schemaLocation':
+          type: string
+          description: A URI to a JSON-Schema file that defines additional attributes and relationships
+        '@type':
+          type: string
+          description: When sub-classing, this defines the sub-class
+    ProductFamily:
+      type: object
+      properties:
+        id:
+          type: string
+    ProductOfferGroup:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    ProductOffering:
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+        name:
+          type: string
+        versionNo:
+          type: string
+        productSpecification:
+          $ref: '#/components/schemas/ProductSpecification'
+        productOfferingPrice:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductOfferingPrice'
+        eligibilityOffers:
+          type: array
+          items:
+            $ref: '#/components/schemas/EligibilityOffers'
+        eligibilityType:
+          $ref: '#/components/schemas/PoStatus'
+        poId:
+          type: string
+        productOfferGroup:
+          $ref: '#/components/schemas/ProductOfferGroup'
+        productSpecifications:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductSpecification'
+        poStatus:
+          $ref: '#/components/schemas/PoStatus'
+        subscription:
+          $ref: '#/components/schemas/Subscription'
+        partner:
+          type: string
+        marketingDescription:
+          type: string
+        description:
+          type: string
+        factor:
+          type: string
+        price:
+          type: string
+        frequency:
+          $ref: '#/components/schemas/PoStatus'
+        priceType:
+          $ref: '#/components/schemas/PriceType'
+        contractType:
+          $ref: '#/components/schemas/ContractType'
+        contractLevel:
+          $ref: '#/components/schemas/ContractLevel'
+        contractPeriod:
+          $ref: '#/components/schemas/ContractPeriod'
+        earlyTerminationFee:
+          type: string
+        priceCategory:
+          $ref: '#/components/schemas/PriceCategory'
+        priceMode:
+          $ref: '#/components/schemas/PriceMode'
+        priceCode:
+          $ref: '#/components/schemas/PriceCode'
+        tierbased:
+          type: string
+        invoiceLevel:
+          type: string
+        tiers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tier'
+        tierType:
+          $ref: '#/components/schemas/TierType'
+        prorataEnable:
+          type: string
+        serviceProvider:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceProvider'
+        '@type':
+          type: string
+        '@referredType':
+          type: string
+        '@baseType':
+          type: string
+          description: When sub-classing, this defines the super-class
+        '@schemaLocation':
+          type: string
+          description: A URI to a JSON-Schema file that defines additional attributes and relationships
+    ProductOfferingPrice:
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        popType:
+          $ref: '#/components/schemas/PopType'
+        factor:
+          type: string
+        prorataEnable:
+          type: string
+        prorataEnabledInSuspension:
+          type: string
+        prorataEnabledInTermination:
+          type: string
+        prorataEnabledInPlanChange:
+          type: string
+        prorataEnabledInActivation:
+          type: string
+        validFor:
+          $ref: '#/components/schemas/ValidFor'
+        priceDetail:
+          $ref: '#/components/schemas/PriceEntity'
+        price:
+          type: string
+        priceCategory:
+          $ref: '#/components/schemas/PriceCategory'
+        versionNo:
+          type: string
+        priceFrequency:
+          $ref: '#/components/schemas/UpcFrequency'
+        priceType:
+          $ref: '#/components/schemas/PriceType'
+        priceMode:
+          $ref: '#/components/schemas/PriceMode'
+        priceCode:
+          $ref: '#/components/schemas/PriceCode'
+        frequency:
+          $ref: '#/components/schemas/PriceFrequency'
+        tierbased:
+          type: string
+        tiers:
+          type: array
+          items:
+            $ref: '#/components/schemas/UPCTiers'
+        split:
+          type: string
+    ProductOfferingPriceRef:
+      required:
+        - '@type'
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+        name:
+          type: string
+        chargeCategory:
+          type: string
+        chargeRecurranceType:
+          type: string
+        proRationFlag:
+          type: string
+        chargeVersion:
+          type: string
+        chargeFrequency:
+          type: string
+        chargeFactor:
+          type: string
+        chargeType:
+          type: string
+        chargeCode:
+          type: string
+        chargeEndDate:
+          type: string
+          format: date-time
+        chargeStartDate:
+          type: string
+          format: date-time
+        billingChargeType:
+          type: string
+        upcPriceCategory:
+          type: string
+        '@referredType':
+          type: string
+        '@baseType':
+          type: string
+          description: When sub-classing, this defines the super-class
+        '@schemaLocation':
+          type: string
+          description: A URI to a JSON-Schema file that defines additional attributes and relationships
+        '@type':
+          type: string
+          description: When sub-classing, this defines the sub-class
+    ProductPrice:
+      required:
+        - price
+        - priceType
+      type: object
+      properties:
+        description:
+          type: string
+        name:
+          type: string
+        priceType:
+          type: string
+        recurringChargePeriod:
+          type: string
+        unitOfMeasure:
+          type: string
+        billingAccount:
+          $ref: '#/components/schemas/BillingAccountRef'
+        price:
+          $ref: '#/components/schemas/Price'
+        productOfferingPrice:
+          $ref: '#/components/schemas/ProductOfferingPriceRef'
+        productPriceAlteration:
+          type: array
+          items:
+            $ref: '#/components/schemas/PriceAlteration'
+        '@baseType':
+          type: string
+        '@schemaLocation':
+          type: string
+        '@type':
+          type: string
+    ProductRefOrValue:
+      required:
+        - '@type'
+        - startDate
+        - terminationDate
+      type: object
+      properties:
+        id:
+          type: string
+          description: unique Identifier
+        href:
+          type: string
+        description:
+          type: string
+          description: Is the description of the product. It could be copied from the description of the Product Offering.
+        isBundle:
+          type: boolean
+          description: If true, the product is a ProductBundle which is an instantiation of a BundledProductOffering. If false, the product is a ProductComponent which is an instantiation of a SimpleProductOffering.
+        isCustomerVisible:
+          type: boolean
+          description: If true, the product is visible by the customer.
+        name:
+          type: string
+          description: Name of the product. It could be the same as the name of the product offering
+        orderDate:
+          type: string
+          description: Is the date when the product was ordered
+          format: date-time
+        productSerialNumber:
+          type: string
+          description: Is the serial number for the product. This is typically applicable to tangible products e.g. Broadband Router.
+        startDate:
+          type: string
+          description: Is the date from which the product starts
+          format: date-time
+        terminationDate:
+          type: string
+          description: Is the date when the product was terminated
+          format: date-time
+        agreement:
+          type: array
+          items:
+            $ref: '#/components/schemas/AgreementItemRef'
+        billingAccount:
+          $ref: '#/components/schemas/BillingAccountRef'
+        place:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelatedPlaceRefOrValue'
+        product:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductRefOrValue'
+        productCharacteristic:
+          type: array
+          items:
+            $ref: '#/components/schemas/Characteristic'
+        productOffering:
+          $ref: '#/components/schemas/ProductOffering'
+        productOrderItem:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelatedProductOrderItem'
+        productPrice:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductPrice'
+        productRelationship:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductRelationship'
+        productSpecification:
+          $ref: '#/components/schemas/ProductSpecificationRef'
+        productTerm:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductTerm'
+        realizingResource:
+          type: array
+          items:
+            $ref: '#/components/schemas/ResourceRef'
+        realizingService:
+          type: array
+          items:
+            $ref: '#/components/schemas/ServiceRef'
+        relatedParty:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelatedParty'
+        status:
+          type: string
+          enum:
+            - created
+            - pendingActive
+            - cancelled
+            - active
+            - pendingTerminate
+            - terminated
+            - suspended
+            - 'aborted '
+        '@baseType':
+          type: string
+          description: When sub-classing, this defines the super-class
+        '@schemaLocation':
+          type: string
+          description: A URI to a JSON-Schema file that defines additional attributes and relationships
+        '@type':
+          type: string
+          description: When sub-classing, this defines the sub-class
+        '@referredType':
+          type: string
+    ProductRelationship:
+      required:
+        - product
+        - relationshipType
+      type: object
+      properties:
+        relationshipType:
+          type: string
+        product:
+          $ref: '#/components/schemas/ProductRefOrValue'
+        '@baseType':
+          type: string
+        '@schemaLocation':
+          type: string
+        '@type':
+          type: string
+    ProductSpecification:
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        poType:
+          type: string
+        cfss:
+          type: array
+          items:
+            $ref: '#/components/schemas/CFSRef'
+        type:
+          $ref: '#/components/schemas/SpecificationType'
+        serviceType:
+          $ref: '#/components/schemas/ServiceType'
+        productFamily:
+          $ref: '#/components/schemas/ProductFamily'
+        '@type':
+          type: string
+        prs:
+          type: array
+          items:
+            $ref: '#/components/schemas/CFSRef'
+        lrs:
+          type: array
+          items:
+            $ref: '#/components/schemas/CFSRef'
+        releationships:
+          type: array
+          items:
+            $ref: '#/components/schemas/RelationShip'
+        '@baseType':
+          type: string
+          description: When sub-classing, this defines the super-class
+        '@schemaLocation':
+          type: string
+          description: A URI to a JSON-Schema file that defines additional attributes and relationships
+    ProductSpecificationRef:
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        targetProductSchema:
+          $ref: '#/components/schemas/TargetProductSchema'
+        baseType:
+          type: string
+        schemaLocation:
+          type: string
+        poType:
+          type: string
+        autoRenewal:
+          type: string
+        cfss:
+          type: array
+          items:
+            $ref: '#/components/schemas/CFSRef'
+        '@referredType':
+          type: string
+        '@type':
+          type: string
+        prs:
+          type: array
+          items:
+            $ref: '#/components/schemas/CFSRef'
+        lrs:
+          type: array
+          items:
+            $ref: '#/components/schemas/CFSRef'
+    ProductTerm:
+      type: object
+      properties:
+        description:
+          type: string
+        name:
+          type: string
+        duration:
+          $ref: '#/components/schemas/Quantity'
+        validFor:
+          $ref: '#/components/schemas/TimePeriod'
+        '@baseType':
+          type: string
+        '@schemaLocation':
+          type: string
+        '@type':
+          type: string
+    Quantity:
+      type: object
+      properties:
+        amount:
+          type: string
+        units:
+          type: string
+    RelatedParty:
+      required:
+        - id
+        - partyOrPartyRole
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier of a related entity.
+        href:
+          type: string
+          description: Reference URL of the related entity.
+        name:
+          type: string
+          description: Name of the related entity.
+        role:
+          type: string
+          description: Role played by the related party.
+        partyOrPartyRole:
+          $ref: '#/components/schemas/PartyOrPartyRole'
+        alternatePhoneNumber:
+          type: string
+          description: Alternate contact phone number.
+        city:
+          type: string
+          description: City of the related party.
+        country:
+          type: string
+          description: Country of the related party.
+        dateOfBirth:
+          type: string
+          description: Date of birth of the related party.
+        emailAddress:
+          type: string
+          description: Email address of the related party.
+        organisation:
+          type: string
+          description: Organization name if the related party is a company.
+        phoneNumber:
+          type: string
+          description: Primary phone number of the related party.
+        postCode:
+          type: string
+          description: Postal code of the related party's address.
+        stateOrProvince:
+          type: string
+          description: State or province of the related party.
+        street1:
+          type: string
+          description: Primary street address of the related party.
+        street2:
+          type: string
+          description: Secondary street address of the related party.
+        nationality:
+          type: string
+          description: Nationality of the related party.
+        identificationId:
+          type: string
+          description: Identification number of the related party.
+        identificationType:
+          type: string
+          description: Type of identification used (e.g., passport, ID card).
+        operatorName:
+          type: string
+          description: Name of the operator associated with the related party.
+        operatorId:
+          type: string
+          description: Identifier of the operator.
+        givenName:
+          type: string
+          description: Given name (first name) of the related party.
+        chargingPattern:
+          type: string
+          description: Charging pattern applicable to the related party.
+        letterOfAuthorization:
+          type: string
+          description: Letter of authorization details.
+        customerId:
+          type: string
+          description: Customer identifier.
+        customerName:
+          type: string
+          description: Customer name.
+        address:
+          $ref: '#/components/schemas/RelatedPartyAddress'
+        '@type':
+          type: string
+          description: Type of the related party.
+        '@referredType':
+          type: string
+          description: referred Type of the related party
+        '@baseType':
+          type: string
+          description: Base type of the related party.
+        '@schemaLocation':
+          type: string
+          description: Schema location of the related party definition.
+    RelatedPartyAddress:
+      type: object
+      properties:
+        phoneNumber:
+          type: string
+        emailAddress:
+          type: string
+        address1:
+          type: string
+        city:
+          type: string
+        zip:
+          type: string
+        cutomerMobileNumber:
+          type: string
+      description: Address details of the related party.
+    RelatedPlaceRefOrValue:
+      required:
+        - role
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique identifier of the related entity.
+        href:
+          type: string
+          description: Hyperlink reference to the related entity.
+        name:
+          type: string
+          description: Name of the related entity.
+        role:
+          type: string
+          description: Role played by the related entity in the context of the relationship.
+        '@baseType':
+          type: string
+          description: Base type of the related entity, defining the core classification.
+        '@schemaLocation':
+          type: string
+          description: URI pointing to the schema definition of this entity.
+        '@type':
+          type: string
+          description: Type of the related entity, specifying its category.
+        '@referredType':
+          type: string
+          description: Specific type of the related entity being referred to.
+    RelatedProductOrderItem:
+      required:
+        - orderItemId
+        - productOrderId
+      type: object
+      properties:
+        orderItemAction:
+          type: string
+        orderItemId:
+          type: string
+        productOrderHref:
+          type: string
+        productOrderId:
+          type: string
+        role:
+          type: string
+        '@baseType':
+          type: string
+        '@schemaLocation':
+          type: string
+        '@type':
+          type: string
+        '@referredType':
+          type: string
+    RelationShip:
+      type: object
+      properties:
+        targetObject:
+          $ref: '#/components/schemas/CFSRef'
+        skipSOM:
+          type: string
+    ResourceDetails:
+      type: object
+      properties:
+        resourceSerialNumber:
+          type: string
+        resourceName:
+          type: string
+        resourceType:
+          type: string
+        saleType:
+          type: string
+        status:
+          type: string
+        warrantyPeriod:
+          type: string
+        warrantyEndDate:
+          type: string
+        productCode:
+          type: string
+        shopOwnerId:
+          type: string
+        quantity:
+          type: string
+    ResourceRef:
+      required:
+        - id
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+        name:
+          type: string
+        value:
+          type: string
+        '@baseType':
+          type: string
+        '@schemaLocation':
+          type: string
+        '@type':
+          type: string
+        '@referredType':
+          type: string
+    ServiceProvider:
+      type: object
+      properties:
+        id:
+          type: string
+    ServiceRef:
+      required:
+        - id
+      type: object
+      properties:
+        id:
+          type: string
+        href:
+          type: string
+        name:
+          type: string
+        '@baseType':
+          type: string
+        '@schemaLocation':
+          type: string
+        '@type':
+          type: string
+        '@referredType':
+          type: string
+    ServiceType:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    SpecificationType:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    Subscription:
+      type: object
+      properties:
+        planDesc:
+          type: string
+        planType:
+          type: string
+        planGroupId:
+          type: string
+        planGroupName:
+          type: string
+        subscriptionId:
+          type: string
+        activationDate:
+          type: string
+        expiryDate:
+          type: string
+        charges:
+          type: array
+          items:
+            $ref: '#/components/schemas/Charge'
+        cfss:
+          type: array
+          items:
+            $ref: '#/components/schemas/CFSRef'
+        lrss:
+          type: array
+          items:
+            $ref: '#/components/schemas/CFSRef'
+        prss:
+          type: array
+          items:
+            $ref: '#/components/schemas/CFSRef'
+        eligibilityType:
+          $ref: '#/components/schemas/PoStatus'
+        autoRenewal:
+          type: string
+        autoRenewalFlag:
+          type: string
+        somCallRqd:
+          type: boolean
+        esbCallRqd:
+          type: boolean
+        externalOfferId:
+          type: string
+        cpId:
+          type: string
+        linkedPlanId:
+          type: string
+        packageType:
+          type: string
+        subscriptionType:
+          type: string
+        commonAddon:
+          type: boolean
+        contract:
+          $ref: '#/components/schemas/Contract'
+        quantity:
+          type: string
+        amount:
+          type: string
+        ocsSubscriptionId:
+          type: string
+        marketingDescription:
+          type: string
+        mandatoryAddon:
+          type: boolean
+        ocsPlanId:
+          type: string
+        lifeCycleID:
+          type: string
+        orderId:
+          type: string
+        bundlePlans:
+          type: string
+        isBundle:
+          type: string
+        parentBundleId:
+          type: string
+        familyId:
+          type: string
+        overriddenPrice:
+          type: string
+        overriddenName:
+          type: string
+        subscriptionParameters:
+          type: array
+          items:
+            $ref: '#/components/schemas/SubscriptionParameters'
+        characteristics:
+          type: array
+          items:
+            $ref: '#/components/schemas/Characteristic'
+        additionalParams:
+          type: array
+          items:
+            $ref: '#/components/schemas/AdditionalParam'
+        orderType:
+          type: string
+        planId:
+          type: string
+        planName:
+          type: string
+        upcVersion:
+          type: string
+        status:
+          type: string
+    SubscriptionParameters:
+      type: object
+      properties:
+        paramName:
+          type: string
+        paramId:
+          type: string
+        paramReferenceId:
+          type: string
+        paramSeq:
+          type: string
+        paramSystem:
+          type: string
+        paramValue:
+          type: string
+        status:
+          type: string
+    TargetProductSchema:
+      required:
+        - '@schemaLocation'
+        - '@type'
+      type: object
+      properties:
+        '@baseType':
+          type: string
+        '@schemaLocation':
+          type: string
+        '@type':
+          type: string
+    Tier:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        startRange:
+          type: string
+        endRange:
+          type: string
+        frequency:
+          $ref: '#/components/schemas/PriceFrequency'
+        price:
+          type: string
+        planId:
+          type: string
+        upcVersion:
+          type: string
+        tierType:
+          $ref: '#/components/schemas/TierType'
+    TierType:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+    TimePeriod:
+      type: object
+      properties:
+        endDateTime:
+          type: string
+          format: date-time
+        startDateTime:
+          type: string
+          format: date-time
+    UPCTiers:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        startRange:
+          type: string
+        endRange:
+          type: string
+        price:
+          type: string
+        factor:
+          type: string
+        frequency:
+          $ref: '#/components/schemas/PriceFrequency'
+    UpcFrequency:
+      type: object
+      properties:
+        id:
+          type: string
+    ValidFor:
+      type: object
+      properties:
+        startDateTime:
+          type: string
+        endDateTime:
+          type: string
+        localizedEndDateTime:
+          type: string
+        localizedStartDateTime:
+          type: string
+    JsonNode:
+      type: object
