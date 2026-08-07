@@ -37,6 +37,7 @@ import { OperatorCatalogue } from './components/operator/OperatorCatalogue'
 import { OperatorSettlement } from './components/operator/OperatorSettlement'
 import { OperatorInventory } from './components/operator/OperatorInventory'
 import { OperatorNumbers } from './components/operator/OperatorNumbers'
+import { EnterpriseNumbers } from './components/enterprise/EnterpriseNumbers'
 import { OperatorTickets } from './components/operator/OperatorTickets'
 import { OperatorDunning } from './components/operator/OperatorDunning'
 import { OperatorDeveloper } from './components/operator/OperatorDeveloper'
@@ -532,6 +533,7 @@ function AppInner() {
         {enView === 'en-approvals' && <EnterpriseApprovals />}
         {enView === 'en-orders' && <EnterpriseOrders />}
         {enView === 'en-subs' && <EnterpriseSubs />}
+        {enView === 'en-numbers' && <EnterpriseNumbers />}
         {enView === 'en-refunds' && <EnterpriseRefunds />}
         {enView === 'en-billing' && <EnterpriseBilling />}
         {enView === 'en-rewards' && <EnterpriseRewards />}

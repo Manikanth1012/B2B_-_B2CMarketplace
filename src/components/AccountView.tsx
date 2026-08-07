@@ -11,6 +11,7 @@ import { LANGUAGES, TIME_ZONES, DATA_UNITS, effectivePreferences, isAuditable } 
 import { PrivacyCard } from './PrivacyCard'
 import { NotificationPreferencesView } from './NotificationPreferencesView'
 import { AddressBookCard } from './AddressBookCard'
+import { MyNumberCard } from './MyNumberCard'
 import { StockWatchCard } from './StockWatchCard'
 import { CustomerDocuments } from './consumer/CustomerDocuments'
 import type { Viewer } from '../lib/evidence'
@@ -373,6 +374,11 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
             </p>
           </div>
         </Card>
+
+        {/* The MSISDN above this card has been a display string since the
+            screen was written. This is the allocation behind it — the SIM it
+            is paired with, the plan, and how far an eSIM profile has got. */}
+        <MyNumberCard userId={profile.user_id ?? null} />
 
         <AddressBookCard showToast={showToast} />
 
