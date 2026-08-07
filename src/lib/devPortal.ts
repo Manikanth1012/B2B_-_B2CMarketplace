@@ -492,3 +492,106 @@ export function groupEndpoints(eps: Endpoint[]): { resource: string; endpoints: 
     .map(([resource, endpoints]) => ({ resource, endpoints }))
     .sort((a, b) => a.resource.localeCompare(b.resource))
 }
+
+/* ---- Events: topics, who listens, and what actually arrived --------------- */
+
+export interface Topic {
+  id: string
+  name: string
+  title: string
+  domain: 'fulfilment' | 'catalogue' | 'finance' | 'support' | 'identity'
+  description: string
+  required: boolean
+  payload: unknown
+  retention_h: number
+}
+
+export interface Subscriber {
+  topic_id: string
+  topic: string
+  title: string
+  domain: string
+  required: boolean
+  endpoint_id: string | null
+  partner_id: string | null
+  partner_name: string | null
+  endpoint_name: string | null
+  url: string | null
+  env: string | null
+  auth: string | null
+  enabled: boolean | null
+}
+
+export interface Delivery {
+  id: number
+  topic_id: string
+  endpoint_id: string | null
+  partner_id: string | null
+  reference: string | null
+  status: 'delivered' | 'failed' | 'timeout' | 'unhandled'
+  attempts: number
+  http_status: number | null
+  ms: number | null
+  detail: string | null
+  delivered_at: string
+}
+
+export interface TopicHealth {
+  topic: Topic
+  listeners: Subscriber[]
+  delivered: number
+  failed: number
+  successRate: number | null
+  /* A required topic nobody listens to is the one line on this screen that
+     means an order is not reaching anybody. It is not a percentage problem. */
+  silent: boolean
+  warning: string | null
+}
+
+export function topicHealth(
+  topics: readonly Topic[], subs: readonly Subscriber[], deliveries: readonly Delivery[],
+): TopicHealth[] {
+  return topics.map(topic => {
+    const listeners = subs.filter(s => s.topic_id === topic.id && s.endpoint_id && s.enabled)
+    const mine = deliveries.filter(d => d.topic_id === topic.id)
+    const delivered = mine.filter(d => d.status === 'delivered').length
+    const failed = mine.filter(d => d.status === 'failed' || d.status === 'timeout').length
+    const attempted = delivered + failed
+    const silent = listeners.length === 0
+
+    return {
+      topic, listeners, delivered, failed,
+      successRate: attempted ? Math.round((delivered / attempted) * 100) : null,
+      silent,
+      warning: silent && topic.required
+        ? `${topic.name} is required and nothing is listening. It is not queued and not retried — it simply does not arrive.`
+        : silent
+          ? `Nothing subscribes to ${topic.name}. It is published and dropped.`
+          : attempted > 0 && delivered / attempted < 0.9
+            ? `${failed} of the last ${attempted} deliveries did not land.`
+            : null,
+    }
+  })
+}
+
+/* Which sellers are missing something the marketplace requires of everyone. */
+export function coverageGaps(
+  topics: readonly Topic[], subs: readonly Subscriber[],
+): { partner_id: string; partner_name: string; missing: string[] }[] {
+  const required = topics.filter(t => t.required).map(t => t.name)
+  const partners = new Map<string, string>()
+  for (const s of subs) if (s.partner_id) partners.set(s.partner_id, s.partner_name ?? s.partner_id)
+
+  return [...partners.entries()]
+    .map(([partner_id, partner_name]) => ({
+      partner_id, partner_name,
+      missing: required.filter(name =>
+        !subs.some(s => s.partner_id === partner_id && s.topic === name && s.enabled)),
+    }))
+    .filter(g => g.missing.length > 0)
+    .sort((a, b) => b.missing.length - a.missing.length)
+}
+
+export const DELIVERY_TONE: Record<Delivery['status'], 'ok' | 'bad' | 'flat'> = {
+  delivered: 'ok', failed: 'bad', timeout: 'bad', unhandled: 'flat',
+}

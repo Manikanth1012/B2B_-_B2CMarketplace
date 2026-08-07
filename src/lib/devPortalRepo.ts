@@ -9,7 +9,8 @@
  */
 import { supabase } from './supabase'
 import type {
-  Application, Credential, Version, Endpoint, Subscription, CallRecord, Rollup, Spec, Environment,
+  Application, Credential, Version, Endpoint, Subscription, CallRecord, Rollup, Spec,
+  Topic, Subscriber, Delivery, Environment,
 } from './devPortal'
 
 export interface DeveloperWorkspace {
@@ -291,3 +292,42 @@ export async function setApplicationStatus(
   }).eq('id', appId)
   return error ? { ok: false, reason: error.message } : { ok: true, data: null }
 }
+
+/* ---- The inbound side: what partners registered, and what we sent them ---- */
+
+export interface InboundView {
+  topics: Topic[]
+  subscribers: Subscriber[]
+  deliveries: Delivery[]
+  endpoints: { id: string; partner_id: string; name: string; url: string; env: string
+               auth: string; enabled: boolean; events: string[]; retry: string; timeout_ms: number }[]
+  loadError?: string
+}
+
+export async function loadInbound(): Promise<InboundView> {
+  const [t, s, d, e] = await Promise.all([
+    supabase.from('event_topics').select('*').order('sort_order'),
+    supabase.from('event_subscribers').select('*'),
+    supabase.from('event_deliveries').select('*').order('delivered_at', { ascending: false }).limit(300),
+    supabase.from('partner_endpoints').select('*').order('sort_order'),
+  ])
+  return {
+    topics: (t.data ?? []) as unknown as Topic[],
+    subscribers: (s.data ?? []) as unknown as Subscriber[],
+    deliveries: (d.data ?? []) as unknown as Delivery[],
+    endpoints: (e.data ?? []) as InboundView['endpoints'],
+    loadError: (t.error ?? s.error ?? d.error ?? e.error)?.message,
+  }
+}
+
+/* The desk issuing a key directly, for a partner it onboarded by hand. */
+export const issueCredential = (applicationId: string, environment: Environment, why: string) =>
+  callFn<IssuedCredential>('issue_credential', {
+    p_application_id: applicationId, p_environment: environment, p_why: why,
+  })
+
+/* Fans a topic out to everyone listening and records what happened to each. */
+export const publishEvent = (topic: string, reference?: string) =>
+  callFn<{ topic: string; delivered: number; unhandled: number; note: string }>('publish_event', {
+    p_topic: topic, p_reference: reference ?? null,
+  })

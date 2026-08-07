@@ -51,6 +51,10 @@ export function StatusPill({ status }: { status: string }) {
     suspended: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
     sandbox: { bg: 'var(--info-bg)', color: 'var(--info)' },
     production: { bg: 'var(--success-bg)', color: 'var(--success)' },
+    required: { bg: 'var(--warning-bg)', color: 'var(--warning)' },
+    delivered: { bg: 'var(--success-bg)', color: 'var(--success)' },
+    unhandled: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
+    timeout: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
   }
   const s = map[status] || { bg: 'var(--gray-100)', color: 'var(--text-secondary)' }
   return (

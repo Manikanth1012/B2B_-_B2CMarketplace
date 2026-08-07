@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Check, X, Ban, RefreshCw, PauseCircle, PlayCircle, ChevronDown, ChevronRight } from 'lucide-react'
+import { Plus, Check, X, Ban, RefreshCw, PauseCircle, PlayCircle, ChevronDown, ChevronRight, KeyRound, Radio, Send } from 'lucide-react'
 import { Pager, usePaging } from '../Pager'
 import { supabase } from '../../lib/supabase'
 import type { OperatorApi } from '../../types'
@@ -11,13 +11,15 @@ import { Callout } from '../OnboardingJourney'
 import {
   LIFECYCLE_LABEL, KEY_STATE_LABEL, keyNote, maskedSecret, usable, sunsetWarning,
   usageOf, statusBreakdown, productionQueue, publishable, deprecatable, LIMITS, daysUntil, specSize,
+  topicHealth, coverageGaps, DELIVERY_TONE,
 } from '../../lib/devPortal'
-import type { Version, Credential, Application, Subscription } from '../../lib/devPortal'
+import type { Version, Credential, Application, Subscription, Environment } from '../../lib/devPortal'
 import {
-  loadPortalAdmin, decideProductionAccess, publishVersion, addEndpoint,
+  loadPortalAdmin, loadInbound, decideProductionAccess, publishVersion, addEndpoint,
   setLifecycle, setApplicationStatus, revokeCredential, rotateCredential,
+  issueCredential, publishEvent,
 } from '../../lib/devPortalRepo'
-import type { PortalAdmin } from '../../lib/devPortalRepo'
+import type { PortalAdmin, InboundView } from '../../lib/devPortalRepo'
 
 /* The marketplace's half of the developer portal.
  *
@@ -38,7 +40,7 @@ import type { PortalAdmin } from '../../lib/devPortalRepo'
  * The queue is the other half. Sellers can now ask for production, so somebody
  * has to answer, and a refusal has to carry a reason the seller can act on.
  */
-type Tab = 'apis' | 'queue' | 'applications' | 'traffic'
+type Tab = 'apis' | 'queue' | 'applications' | 'inbound' | 'traffic'
 
 export function OperatorDeveloper() {
   const [admin, setAdmin] = useState<PortalAdmin | null>(null)
@@ -51,13 +53,16 @@ export function OperatorDeveloper() {
   const [deciding, setDeciding] = useState<Subscription | null>(null)
   const [minted, setMinted] = useState<{ client_id?: string; client_secret?: string; note: string } | null>(null)
   const [suspending, setSuspending] = useState<Application | null>(null)
+  const [issuing, setIssuing] = useState<Application | null>(null)
+  const [inbound, setInbound] = useState<InboundView | null>(null)
 
   const reload = useCallback(async () => {
-    const [a, list] = await Promise.all([
+    const [a, list, inb] = await Promise.all([
       loadPortalAdmin(),
       supabase.from('operator_apis').select('*').order('sort_order'),
+      loadInbound(),
     ])
-    setAdmin(a)
+    setAdmin(a); setInbound(inb)
     if (list.data) setApis(list.data as OperatorApi[])
   }, [])
 
@@ -69,6 +74,10 @@ export function OperatorDeveloper() {
   const queue = productionQueue(subscriptions)
   const liveSubs = subscriptions.filter(s => s.state === 'active')
   const undocumented = versions.filter(v => v.endpoints.length === 0)
+  /* Required topics with nobody listening. Not a percentage — an order that
+     reaches no seller. */
+  const health = inbound ? topicHealth(inbound.topics, inbound.subscribers, inbound.deliveries) : []
+  const silentRequired = health.filter(h => h.silent && h.topic.required).length
   const sandboxUse = usageOf(usage.filter(r => r.environment === 'sandbox'), LIMITS.sandbox.quota)
   const liveUse = usageOf(usage.filter(r => r.environment === 'production'), LIMITS.production.quota)
 
@@ -128,7 +137,9 @@ export function OperatorDeveloper() {
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
         {([
           ['apis', `APIs and versions`], ['queue', `Production queue${queue.length ? ` (${queue.length})` : ''}`],
-          ['applications', 'Applications and keys'], ['traffic', 'Traffic'],
+          ['applications', 'Applications and keys'],
+          ['inbound', `Inbound & events${silentRequired ? ` (${silentRequired})` : ''}`],
+          ['traffic', 'Traffic'],
         ] as [Tab, string][]).map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} style={tabStyle(tab === id)}>{label}</button>
         ))}
@@ -144,8 +155,12 @@ export function OperatorDeveloper() {
         <QueueTab subscriptions={subscriptions} applications={applications} onDecide={setDeciding} />
       )}
 
+      {tab === 'inbound' && inbound && (
+        <InboundTab inbound={inbound} health={health} onChanged={() => void reload()} />
+      )}
+
       {tab === 'applications' && (
-        <ApplicationsTab admin={admin} onSuspend={setSuspending}
+        <ApplicationsTab admin={admin} onSuspend={setSuspending} onIssue={setIssuing}
                          onChanged={() => void reload()} onMinted={setMinted} />
       )}
 
@@ -179,6 +194,12 @@ export function OperatorDeveloper() {
       {suspending && (
         <SuspendModal app={suspending} onClose={() => setSuspending(null)}
                       onDone={async () => { setSuspending(null); await reload() }} />
+      )}
+
+      {issuing && (
+        <IssueKeyModal app={issuing} subscriptions={subscriptions}
+                       onClose={() => setIssuing(null)}
+                       onDone={async (m) => { setIssuing(null); setMinted(m); await reload() }} />
       )}
     </div>
   )
@@ -405,8 +426,9 @@ function QueueTab({ subscriptions, applications, onDecide }: {
 
 /* ---- Applications and their keys ------------------------------------------ */
 
-function ApplicationsTab({ admin, onSuspend, onChanged, onMinted }: {
-  admin: PortalAdmin; onSuspend: (a: Application) => void; onChanged: () => void
+function ApplicationsTab({ admin, onSuspend, onIssue, onChanged, onMinted }: {
+  admin: PortalAdmin; onSuspend: (a: Application) => void; onIssue: (a: Application) => void
+  onChanged: () => void
   onMinted: (m: { client_id?: string; client_secret?: string; note: string }) => void
 }) {
   const { applications, credentials, subscriptions, usage, partners } = admin
@@ -447,9 +469,18 @@ function ApplicationsTab({ admin, onSuspend, onChanged, onMinted }: {
               <SectionCard key={app.id} title={`${seller?.name ?? app.partner_id} — ${app.name}`}
                 subtitle={`${app.description} · ${app.contact_name}, ${app.contact_email} · registered ${fmtDate(app.created_at)}`}
                 action={
-                  app.status === 'suspended'
-                    ? <Btn variant="secondary" size="sm" onClick={() => void lift(app)}><PlayCircle size={13} /> Lift suspension</Btn>
-                    : <Btn variant="danger" size="sm" onClick={() => onSuspend(app)}><PauseCircle size={13} /> Suspend</Btn>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    {/* The desk issuing a key directly. Every other route to a
+                        credential runs through the seller or the queue, which
+                        left an operator-onboarded partner with no way to get
+                        one at all. */}
+                    {app.status === 'active' && (
+                      <Btn size="sm" onClick={() => onIssue(app)}><KeyRound size={13} /> Issue a key</Btn>
+                    )}
+                    {app.status === 'suspended'
+                      ? <Btn variant="secondary" size="sm" onClick={() => void lift(app)}><PlayCircle size={13} /> Lift suspension</Btn>
+                      : <Btn variant="danger" size="sm" onClick={() => onSuspend(app)}><PauseCircle size={13} /> Suspend</Btn>}
+                  </div>
                 }>
                 <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
                   {app.status === 'suspended' && (
@@ -943,6 +974,233 @@ function SuspendModal({ app, onClose, onDone }: {
         <FormField label="Why?" required>
           <TextArea rows={3} value={why} onChange={e => setWhy(e.target.value)}
                     placeholder="Sustained 429s from a retry loop with no backoff, reported by the gateway team." />
+        </FormField>
+      </div>
+    </Modal>
+  )
+}
+
+/* ---- Inbound: what partners registered, and what reached them ------------- */
+
+/* The marketplace calls fifteen partner endpoints and the operator could not
+   see one of them. This is the other half of an integration — the half the
+   marketplace depends on rather than the half it offers. */
+function InboundTab({ inbound, health, onChanged }: {
+  inbound: InboundView
+  health: ReturnType<typeof topicHealth>
+  onChanged: () => void
+}) {
+  const [open, setOpen] = useState<string | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const gaps = coverageGaps(inbound.topics, inbound.subscribers)
+  const recent = inbound.deliveries.slice(0, 60)
+  const page = usePaging(recent, { initialSize: 12 })
+
+  const fire = async (topicName: string) => {
+    setBusy(topicName)
+    const r = await publishEvent(topicName, `EVT-${Date.now().toString(36).toUpperCase()}`)
+    setBusy(null)
+    toast(r.ok ? r.data.note : r.reason, r.ok && r.data.delivered > 0 ? 'success' : 'error')
+    onChanged()
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      <Callout tone="info" title="Publish and subscribe, as TMF688 describes it">
+        Every topic below is something the marketplace publishes. A seller subscribes by registering an
+        endpoint against it — that registration is the hub. Delivery is recorded per subscriber, so
+        "we sent it" is countable. <strong>Publish</strong> fans a topic out to everyone listening now
+        and writes what happened to each.
+      </Callout>
+
+      {gaps.length > 0 && (
+        <Callout tone="danger" title={`${gaps.length} seller${gaps.length === 1 ? ' is' : 's are'} not listening for something required`}>
+          {gaps.map(g => `${g.partner_name} (${g.missing.join(', ')})`).join('; ')}. A required event with
+          nothing listening is not queued and not retried — the order simply does not reach them.
+        </Callout>
+      )}
+
+      <SectionCard title="Topics" subtitle={`${inbound.topics.length} published · a seller subscribes by registering an endpoint`}>
+        <div style={{ padding: '6px 0' }}>
+          {health.map(h => {
+            const isOpen = open === h.topic.id
+            return (
+              <div key={h.topic.id} style={{ borderBottom: '1px solid var(--border)', padding: '12px 20px' }}>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <Radio size={14} style={{ color: h.silent ? 'var(--danger)' : 'var(--success)' }} />
+                  <span style={{ fontFamily: 'monospace', fontSize: 'var(--text-sm)', fontWeight: 700, minWidth: '24ch' }}>
+                    {h.topic.name}
+                  </span>
+                  <Id>{h.topic.domain}</Id>
+                  {h.topic.required && <StatusPill status="required" />}
+                  <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', flex: 1 }}>
+                    {h.topic.title}
+                  </span>
+                  <span style={{ fontSize: 'var(--text-xs)', color: h.silent ? 'var(--danger)' : 'var(--text-tertiary)' }}>
+                    {h.listeners.length} listener{h.listeners.length === 1 ? '' : 's'}
+                    {h.successRate !== null ? ` · ${h.successRate}% delivered` : ''}
+                  </span>
+                  <Btn variant="secondary" size="sm" disabled={busy === h.topic.name}
+                       onClick={() => void fire(h.topic.name)}>
+                    <Send size={12} /> {busy === h.topic.name ? 'Publishing…' : 'Publish'}
+                  </Btn>
+                  <Btn variant="secondary" size="sm" onClick={() => setOpen(isOpen ? null : h.topic.id)}>
+                    {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                  </Btn>
+                </div>
+
+                {h.warning && (
+                  <div style={{
+                    marginTop: '8px', fontSize: 'var(--text-xs)',
+                    color: h.topic.required && h.silent ? 'var(--danger)' : 'var(--warning)',
+                  }}>{h.warning}</div>
+                )}
+
+                {isOpen && (
+                  <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '84ch' }}>
+                      {h.topic.description}
+                    </p>
+                    <div>
+                      <div style={headingStyle}>Payload</div>
+                      <pre style={codeStyle}>{JSON.stringify(h.topic.payload, null, 2)}</pre>
+                    </div>
+                    <div>
+                      <div style={headingStyle}>Listening</div>
+                      {h.listeners.length === 0
+                        ? <EmptyState message="Nobody. This topic is published and dropped." />
+                        : (
+                          <Table headers={['Seller', 'Endpoint', 'URL', 'Environment', 'Auth']}>
+                            {h.listeners.map(l => (
+                              <tr key={l.endpoint_id}>
+                                <Td>{l.partner_name}</Td>
+                                <Td>{l.endpoint_name}</Td>
+                                <Td style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)' }}>
+                                  {(l.url ?? '').replace('https://', '')}
+                                </Td>
+                                <Td>{l.env}</Td>
+                                <Td><Id>{l.auth ?? ''}</Id></Td>
+                              </tr>
+                            ))}
+                          </Table>
+                        )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </SectionCard>
+
+      <SectionCard title="Registered endpoints"
+                   subtitle={`${inbound.endpoints.length} across the marketplace · ${inbound.endpoints.filter(e => !e.enabled).length} disabled`}>
+        <Table headers={['Seller', 'Endpoint', 'URL', 'Env', 'Auth', 'Subscribed to', 'Retry', 'State']}>
+          {inbound.endpoints.map(e => (
+            <tr key={e.id}>
+              <Td style={{ fontSize: 'var(--text-xs)' }}>
+                {inbound.subscribers.find(s => s.endpoint_id === e.id)?.partner_name ?? e.partner_id}
+              </Td>
+              <Td>{e.name}</Td>
+              <Td style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)' }}>{e.url.replace('https://', '')}</Td>
+              <Td>{e.env}</Td>
+              <Td><Id>{e.auth}</Id></Td>
+              <Td style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)', maxWidth: '34ch' }}>
+                {e.events.join(', ')}
+              </Td>
+              <Td style={{ fontSize: 'var(--text-xs)' }}>{e.retry} · {e.timeout_ms}ms</Td>
+              <Td right><StatusPill status={e.enabled ? 'active' : 'paused'} /></Td>
+            </tr>
+          ))}
+        </Table>
+      </SectionCard>
+
+      <SectionCard title="Recent deliveries" subtitle={`The last ${recent.length} of ${inbound.deliveries.length} recorded`}>
+        <Table headers={['When', 'Topic', 'Seller', 'Reference', 'Attempts', 'Outcome', 'Detail']}>
+          {page.rows.map(d => {
+            const tone = DELIVERY_TONE[d.status]
+            return (
+              <tr key={d.id}>
+                <Td style={{ fontSize: 'var(--text-xs)' }}>{fmtDate(d.delivered_at)}</Td>
+                <Td style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)' }}>
+                  {inbound.topics.find(t => t.id === d.topic_id)?.name ?? d.topic_id}
+                </Td>
+                <Td style={{ fontSize: 'var(--text-xs)' }}>
+                  {inbound.subscribers.find(s => s.partner_id === d.partner_id)?.partner_name ?? '—'}
+                </Td>
+                <Td style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)' }}>{d.reference ?? '—'}</Td>
+                <Td right>{d.attempts}</Td>
+                <Td>
+                  <strong style={{
+                    fontSize: 'var(--text-xs)',
+                    color: tone === 'ok' ? 'var(--success)' : tone === 'bad' ? 'var(--danger)' : 'var(--text-tertiary)',
+                  }}>
+                    {d.status}{d.http_status ? ` · ${d.http_status}` : ''}{d.ms ? ` · ${d.ms}ms` : ''}
+                  </strong>
+                </Td>
+                <Td style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', maxWidth: '40ch' }}>
+                  {d.detail}
+                </Td>
+              </tr>
+            )
+          })}
+        </Table>
+        <div style={{ padding: '0 18px 12px' }}><Pager page={page} noun="deliveries" /></div>
+      </SectionCard>
+    </div>
+  )
+}
+
+/* The desk minting a credential. Every other route runs through the seller or
+   the production queue, which left a hand-onboarded partner with none. */
+function IssueKeyModal({ app, subscriptions, onClose, onDone }: {
+  app: Application; subscriptions: Subscription[]
+  onClose: () => void
+  onDone: (m: { client_id?: string; client_secret?: string; note: string }) => void
+}) {
+  const [env, setEnv] = useState<Environment>('sandbox')
+  const [why, setWhy] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const liveOk = subscriptions.some(s =>
+    s.application_id === app.id && s.environment === 'production' && s.state === 'active')
+
+  const submit = async () => {
+    setBusy(true)
+    const r = await issueCredential(app.id, env, why)
+    setBusy(false)
+    if (!r.ok) { toast(r.reason, 'error'); return }
+    onDone({ client_id: r.data.client_id, client_secret: r.data.client_secret, note: r.data.note })
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Issue a key to ${app.name}`}
+      footer={<><Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+               <Btn disabled={busy} onClick={() => void submit()}>{busy ? 'Issuing…' : 'Issue it'}</Btn></>}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <Callout tone="info">
+          For a partner the desk onboarded rather than one who registered themselves. The secret is shown
+          once and goes to {app.contact_name} at {app.contact_email}.
+        </Callout>
+
+        <FormField label="Environment">
+          <Select value={env} onChange={e => setEnv(e.target.value as Environment)}>
+            <option value="sandbox">Sandbox</option>
+            <option value="production">Production</option>
+          </Select>
+        </FormField>
+
+        {env === 'production' && !liveOk && (
+          <Callout tone="danger" title="This application holds no approved production subscription">
+            Issuing a live key here would be granting production access around the queue. Decide their
+            request first — the database will refuse this.
+          </Callout>
+        )}
+
+        <FormField label="Why is this being issued?" required
+                   hint="Goes on the record against the key. A credential the desk minted for no stated reason is one nobody can account for later.">
+          <TextArea rows={3} value={why} onChange={e => setWhy(e.target.value)}
+                    placeholder="Onboarded at the technical gate; their team cannot reach the portal until SSO is cut over." />
         </FormField>
       </div>
     </Modal>
