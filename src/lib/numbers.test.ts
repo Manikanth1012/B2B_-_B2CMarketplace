@@ -3,6 +3,7 @@ import {
   KIND_LABEL, PURPOSE_LABEL, STATE_LABEL, ESIM_ORDER, ESIM_LABEL,
   utilisation, blockAlarm, blockLine, heldBy, reusable, lookupKind,
   purposeFits, validateAssignment, esimNext, canMoveProfile, esimStep,
+  canHoldPersonalLine,
   estate, unreachable, systemLine,
 } from './numbers'
 import type { RangeUse, HeldNumber, ResourceSystem } from './numbers'
@@ -278,5 +279,57 @@ describe('the systems behind it', () => {
     for (const st of ['reserved', 'assigned', 'suspended', 'quarantine', 'released'] as const) {
       expect(STATE_LABEL[st]).toBeTruthy()
     }
+  })
+})
+
+describe('a marketplace account is not a network subscription', () => {
+  it('refuses a personal line to somebody who is not on the network', () => {
+    /* Somebody can sign up, buy a router and never be a telco customer. A
+       number in the BSS against somebody it has never KYC'd is a regulatory
+       problem in every market this sells in. */
+    const r = canHoldPersonalLine(false, 'Wanjiru Kamau')
+    expect(r.ok).toBe(false)
+    if (!r.ok) {
+      expect(r.reason).toContain('Wanjiru Kamau')
+      expect(r.reason).toContain('not on the network')
+      expect(r.reason).toContain('identity check')
+    }
+  })
+
+  it('allows one to a subscriber', () => {
+    expect(canHoldPersonalLine(true, 'Priya Raman').ok).toBe(true)
+  })
+
+  it('reads as a sentence even without a name', () => {
+    const r = canHoldPersonalLine(false)
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toMatch(/^That customer/)
+  })
+
+  it('stops a retail allocation at validation, before anything is burned', () => {
+    const r = validateAssignment({
+      kind: 'msisdn', market: 'KE', purpose: 'retail',
+      user_id: 'u-wanjiru', on_network: false,
+    })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toContain('not on the network')
+  })
+
+  it('does not gate device connectivity on it', () => {
+    /* An M2M SIM belongs to the sensor and is sold with the product. Somebody
+       who bought a cold-chain monitor needs it to work whether or not they
+       also have a phone with us. */
+    expect(validateAssignment({
+      kind: 'iccid', market: 'IN', purpose: 'iot',
+      account_id: 'ENT-2007', stock_serial: 'SKU5007-0000012', on_network: false,
+    }).ok).toBe(true)
+  })
+
+  it('does not refuse where the caller has not looked it up', () => {
+    /* Undefined is not false. The database refuses either way, and guessing
+       here would block a real allocation or promise one it will refuse. */
+    expect(validateAssignment({
+      kind: 'msisdn', market: 'IN', purpose: 'retail', user_id: 'u1',
+    }).ok).toBe(true)
   })
 })

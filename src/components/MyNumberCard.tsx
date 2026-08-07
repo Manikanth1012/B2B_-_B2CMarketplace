@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Smartphone } from 'lucide-react'
 import { supabase } from '../lib/supabase'
-import { loadHeldBy } from '../lib/numbersRepo'
+import { loadHeldBy, onNetwork } from '../lib/numbersRepo'
 import {
   KIND_LABEL, STATE_LABEL, ESIM_ORDER, ESIM_LABEL,
 } from '../lib/numbers'
@@ -21,15 +21,47 @@ import type { HeldNumber, EsimProfile } from '../lib/numbers'
 export function MyNumberCard({ userId }: { userId: string | null }) {
   const [rows, setRows] = useState<HeldNumber[] | null>(null)
   const [profiles, setProfiles] = useState<EsimProfile[]>([])
+  /* A marketplace account is not a network subscription. Somebody can sign up,
+     buy a router and never be a telco customer, and this card vanishing without
+     a word leaves them wondering where their number went. */
+  const [subscriber, setSubscriber] = useState<boolean | null>(null)
 
   useEffect(() => {
-    if (!userId) { setRows([]); return }
+    if (!userId) { setRows([]); setSubscriber(false); return }
     void loadHeldBy({ user_id: userId }).then(setRows)
+    void onNetwork(userId).then(setSubscriber)
     void supabase.from('esim_profile').select('*').then(({ data }) =>
       setProfiles((data ?? []) as EsimProfile[]))
   }, [userId])
 
-  if (rows === null || rows.length === 0) return null
+  if (rows === null || subscriber === null) return null
+
+  /* Said rather than hidden. The marketplace sells connectivity, so "you have
+     not got any" is an answer somebody may want to act on. */
+  if (!subscriber) {
+    return (
+      <div style={{
+        background: 'white', border: '1px solid var(--border)',
+        borderRadius: 'var(--radius-md)', padding: '16px 18px',
+      }}>
+        <h3 style={{
+          fontSize: 'var(--text-base)', fontWeight: 700, color: 'var(--text)',
+          display: 'flex', gap: '8px', alignItems: 'center',
+        }}>
+          <Smartphone size={16} style={{ color: 'var(--text-tertiary)' }} />
+          No mobile number or SIM
+        </h3>
+        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: 1.5 }}>
+          This is a marketplace account. You can buy from any seller here without being an Aventa mobile
+          customer, and a number and a SIM come with a network subscription rather than with the account —
+          which starts with an identity check the marketplace does not do. The number on your details above
+          is how we contact you, not a line with us.
+        </p>
+      </div>
+    )
+  }
+
+  if (rows.length === 0) return null
 
   const msisdn = rows.filter(r => r.kind === 'msisdn')
   const sims = rows.filter(r => r.kind === 'iccid')

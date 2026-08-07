@@ -547,7 +547,10 @@ function AssignModal({ book, onClose, onDone }: {
   /* Who the number would go to, and how old they are. The database refuses a
      retail number to somebody under 18 in their own name; this is so the desk
      is told before it tries rather than after. */
-  const [who, setWho] = useState<{ name: string | null; dob: string | null; source: string | null } | null>(null)
+  const [who, setWho] = useState<{
+    name: string | null; dob: string | null; source: string | null
+    onNetwork: boolean; networkSince: string | null
+  } | null>(null)
 
   useEffect(() => {
     if (target !== 'person' || userId.trim().length < 30) { setWho(null); return }
@@ -560,6 +563,7 @@ function AssignModal({ book, onClose, onDone }: {
 
   const draft = {
     kind, market, purpose,
+    on_network: who?.onNetwork,
     user_id: target === 'person' ? userId || null : null,
     account_id: target === 'account' ? account || null : null,
     stock_serial: serial || null,
@@ -684,11 +688,21 @@ function AssignModal({ book, onClose, onDone }: {
 
       {/* The age check, shown against the person rather than only enforced. */}
       {who && purpose === 'retail' && (
-        <Callout tone={age && !age.ok ? 'danger' : who.dob ? 'info' : 'warning'}
+        <Callout tone={!who.onNetwork || (age && !age.ok) ? 'danger' : who.dob ? 'info' : 'warning'}
                  title={who.name ?? 'That customer'}>
-          {who.dob
-            ? `${dobLine(who.dob)} · ${sourceLine(who.source as DobSource | null)}`
-            : 'No date of birth on file.'}
+          {/* On the network at all, before anything about their age. A
+              marketplace account is not a subscription, and a number against
+              somebody the BSS has never KYC'd is a regulatory problem. */}
+          <div>
+            {who.onNetwork
+              ? `On the network since ${who.networkSince}.`
+              : 'A marketplace customer, not a subscriber — no telco identity is linked to this account.'}
+          </div>
+          <div style={{ marginTop: '4px' }}>
+            {who.dob
+              ? `${dobLine(who.dob)} · ${sourceLine(who.source as DobSource | null)}`
+              : 'No date of birth on file.'}
+          </div>
           {age && !age.ok && <div style={{ marginTop: '4px' }}>{age.reason}</div>}
           {age && age.ok && age.note && <div style={{ marginTop: '4px' }}>{age.note}</div>}
         </Callout>

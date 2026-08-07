@@ -75,12 +75,27 @@ export async function findNumbers(query: string, limit = 60): Promise<HeldNumber
     before anybody presses anything. */
 export async function ageCheck(userId: string): Promise<{
   name: string | null; dob: string | null; source: string | null
+  onNetwork: boolean; networkSince: string | null
 } | null> {
-  const { data } = await supabase.from('consumer_profile')
-    .select('name,dob,dob_source').eq('user_id', userId).maybeSingle()
+  const { data } = await supabase.from('customer_network_status')
+    .select('name,on_network,network_since').eq('user_id', userId).maybeSingle()
   if (!data) return null
-  const r = data as { name: string; dob: string | null; dob_source: string | null }
-  return { name: r.name, dob: r.dob, source: r.dob_source }
+  const s = data as { name: string; on_network: boolean; network_since: string | null }
+  const { data: p } = await supabase.from('consumer_profile')
+    .select('dob,dob_source').eq('user_id', userId).maybeSingle()
+  const d = (p ?? {}) as { dob?: string | null; dob_source?: string | null }
+  return {
+    name: s.name, dob: d.dob ?? null, source: d.dob_source ?? null,
+    onNetwork: s.on_network, networkSince: s.network_since,
+  }
+}
+
+/** Whether this person is a network subscriber at all, for a screen that has
+    only their id. */
+export async function onNetwork(userId: string): Promise<boolean> {
+  const { data } = await supabase.from('customer_network_status')
+    .select('on_network').eq('user_id', userId).maybeSingle()
+  return Boolean((data as { on_network?: boolean } | null)?.on_network)
 }
 
 /** Everything on one account, or one person, or one device. */

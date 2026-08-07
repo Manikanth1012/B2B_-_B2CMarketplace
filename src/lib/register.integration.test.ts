@@ -28,7 +28,11 @@ const mail = () => `shopper-${Date.now().toString(36)}-${Math.random().toString(
 function draft(over: Partial<SignUpDraft> = {}): SignUpDraft {
   return {
     name: 'Integration Shopper', email: mail(), password: 'harbour-lantern-tin',
-    msisdn: '+91 98860 41127', city: 'Kochi', market: 'IN', ...over,
+    /* Not Priya Raman's number, which this fixture used to copy — every account
+       the suite left behind carried it, so a support search for it returned
+       sixteen people. */
+    msisdn: '+91 98860 4' + Math.floor(1000 + Math.random() * 8999),
+    city: 'Kochi', market: 'IN', ...over,
   }
 }
 
@@ -68,7 +72,11 @@ describe('a shopper registers', () => {
     expect(p?.city).toBe('Kochi')
     expect(p?.market).toBe('IN')
     expect(p?.currency).toBe('INR')
-    expect(p?.msisdn).toBe('+91 98860 41127')
+    /* Their own number, not a literal. This asserted `+91 98860 41127` —
+       Priya Raman's — which is what the fixture happened to copy, so it passed
+       while every account the suite created carried the demo customer's phone
+       number. Comparing against the draft is the check that was meant. */
+    expect(p?.msisdn).toBe(d.msisdn)
     /* A new shopper starts at nothing. Inheriting the demo customer's ₹42.60
        would be the table's defaults leaking. */
     expect(Number(p?.wallet)).toBe(0)

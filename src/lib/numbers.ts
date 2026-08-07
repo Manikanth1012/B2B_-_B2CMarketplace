@@ -261,9 +261,26 @@ export function purposeFits(purpose: Purpose, target: 'person' | 'account' | 'de
 
 export type Check = { ok: true; note?: string } | { ok: false; reason: string }
 
+/* A marketplace account is not a network subscription. Somebody can sign up,
+   buy a router and never be a telco customer — and a personal number and SIM
+   belong to a subscriber, which starts with an identity check the marketplace
+   does not do. Device connectivity bought with an IoT product is a different
+   thing, sold with the product, and is not gated by this. */
+export function canHoldPersonalLine(onNetwork: boolean, name?: string | null): Check {
+  if (onNetwork) return { ok: true }
+  return {
+    ok: false,
+    reason: `${name ?? 'That customer'} is a marketplace customer and is not on the network — there is no telco identity linked to the account. A number and a SIM come with a network subscription, and that starts with an identity check the marketplace does not do.`,
+  }
+}
+
 export function validateAssignment(a: {
   kind?: NumberKind; market?: string; purpose?: Purpose
   user_id?: string | null; account_id?: string | null; stock_serial?: string | null
+  /* Undefined where the caller has not looked it up — the database refuses
+     either way, and guessing here would either block a real allocation or
+     promise one it will refuse. */
+  on_network?: boolean
 }): Check {
   if (!a.kind) return { ok: false, reason: 'Say what kind of resource this is.' }
   if (!a.market) return { ok: false, reason: 'A number is allocated in a market. Its shape depends on which.' }
@@ -284,6 +301,9 @@ export function validateAssignment(a: {
   }
   if (a.stock_serial && !purposeFits(a.purpose, 'device')) {
     return { ok: false, reason: `A ${PURPOSE_LABEL[a.purpose].toLowerCase()} block cannot be fitted to a device.` }
+  }
+  if (a.purpose === 'retail' && a.user_id && a.on_network === false) {
+    return canHoldPersonalLine(false)
   }
   if (a.purpose === 'iot' && !a.stock_serial) {
     return {
