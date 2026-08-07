@@ -1,13 +1,17 @@
 import { useState, useEffect } from 'react'
 import {
   Check, CreditCard, Wallet, Building2, Smartphone, MapPin, Landmark, Receipt,
+  CalendarClock,
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import type { CartItem } from '../types'
 import { orderedAddresses, defaultAddress, formatAddress, type Address } from '../lib/addresses'
 import { basketMoney, bySeller } from '../lib/basket'
 import { useMarket } from '../lib/MarketContext'
-import { offersIn, canHandOff, describe as describeAttempt } from '../lib/gateway'
+import {
+  offersIn, canHandOff, describe as describeAttempt,
+  financingProblem, longestTenure, instalmentOf, isFinanced,
+} from '../lib/gateway'
 import type { PaymentMethod, PaymentAttempt, MethodKind } from '../lib/gateway'
 import { loadPaymentCatalogue, startPayment, newReference } from '../lib/gatewayRepo'
 import type { PaymentCatalogue } from '../lib/gatewayRepo'
@@ -22,6 +26,10 @@ function MethodIcon({ kind }: { kind: MethodKind }) {
     : kind === 'mobile_money' ? Smartphone
     : kind === 'mobile_wallet' ? Wallet
     : kind === 'carrier_billing' ? Receipt
+    /* Financing gets its own mark. On a row that reads "from ₹2,708/mo", a
+       credit-card icon says the money leaves today, which is the one thing
+       these two do not do. */
+    : kind === 'emi' || kind === 'bnpl' ? CalendarClock
     : Building2
   return <Icon size={20} />
 }
@@ -120,7 +128,11 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
   const offers = catalogue && marketCode ? offersIn(marketCode, catalogue.methods, catalogue.links) : []
   const method = offers.find(o => o.method.id === paymentMethod)?.method ?? null
   const provider = offers.find(o => o.method.id === paymentMethod)?.provider ?? null
-  const handoff = canHandOff({ amount: total, method, offers })
+  /* Whether anything in the basket recurs. Financing refuses it: the second
+     instalment on a twelve-month plan arrives with the second month's
+     subscription charge, and the customer is now paying two of everything. */
+  const recurring = cartItems.some(i => (i.product?.model ?? 'oneoff') !== 'oneoff')
+  const handoff = canHandOff({ amount: total, method, offers, recurring, fmt })
 
   /* Everything or nothing. A basket that produced one order and then failed on
      the second would leave the shopper charged for half a purchase with no way
@@ -468,17 +480,24 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                   </div>
                 ) : (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {offers.map(({ method: m, provider: who }) => {
+                    {offers.map(({ method: m, provider: who, min_amount, max_amount }) => {
                       const on = paymentMethod === m.id
                       /* A rail the basket is too big for is shown and disabled
                          rather than hidden. A shopper who used carrier billing
-                         last week needs to know why it is not there today. */
-                      const tooBig = m.max_amount != null && total > m.max_amount
+                         last week needs to know why it is not there today.
+
+                         The limits come from the market row, so a ₹30,000
+                         carrier-billing cap is not also read as AED 30,000. */
+                      const credit = financingProblem(m, total, { min: min_amount, max: max_amount }, { recurring }, fmt)
+                      const tooBig = max_amount != null && total > max_amount
+                      const off = credit != null || tooBig
+                      const months = longestTenure(m)
+                      const each = months ? instalmentOf(total, months) : null
                       return (
                         <button
                           key={m.id}
-                          onClick={() => !tooBig && setPaymentMethod(m.id)}
-                          disabled={tooBig}
+                          onClick={() => !off && setPaymentMethod(m.id)}
+                          disabled={off}
                           style={{
                             display: 'flex',
                             alignItems: 'flex-start',
@@ -489,8 +508,8 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                             background: on ? 'rgba(0,166,166,0.05)' : 'white',
                             transition: 'all 150ms ease',
                             textAlign: 'left',
-                            opacity: tooBig ? 0.55 : 1,
-                            cursor: tooBig ? 'not-allowed' : 'pointer',
+                            opacity: off ? 0.55 : 1,
+                            cursor: off ? 'not-allowed' : 'pointer',
                           }}
                         >
                           <div style={{ color: on ? 'var(--brand-accent)' : 'var(--text-tertiary)', marginTop: '1px' }}>
@@ -502,12 +521,29 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                               <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
                                 via {who} · {m.typical}
                               </span>
+                              {/* The reason to choose it, on the row. A shopper
+                                  who has to open the option to find out what it
+                                  would cost a month does not open it. */}
+                              {!off && each != null && months != null && (
+                                <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--brand-accent)' }}>
+                                  from {fmt(each)}/mo over {months} months
+                                </span>
+                              )}
                             </div>
                             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
-                              {tooBig
-                                ? `Takes up to ${fmt(m.max_amount!)} at a time — this basket is more than that.`
-                                : m.blurb}
+                              {credit
+                                ? credit
+                                : tooBig
+                                  ? `Takes up to ${fmt(max_amount!)} at a time — this basket is more than that.`
+                                  : m.blurb}
                             </div>
+                            {/* Whose money it is, before they pick it rather
+                                than after they are on somebody else's page. */}
+                            {!off && isFinanced(m) && (
+                              <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '3px', fontStyle: 'italic' }}>
+                                Indicative — {who} sets the plan and states any interest before you confirm. You repay them, not Aventa.
+                              </div>
+                            )}
                           </div>
                           <div style={{
                             width: '20px',

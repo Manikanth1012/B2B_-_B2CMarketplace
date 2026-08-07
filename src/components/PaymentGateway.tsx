@@ -21,6 +21,7 @@ import { ShieldCheck, ArrowLeft, Smartphone } from 'lucide-react'
 import { Btn, FormField, TextInput, Select, toast } from './operator/shared'
 import {
   fieldsFor, validateFields, instrumentLabel, confirmFor, validateConfirm,
+  isFinanced, tenureOf, longestTenure, instalmentOf,
 } from '../lib/gateway'
 import type { PaymentMethod, PaymentAttempt } from '../lib/gateway'
 import { settle } from '../lib/gatewayRepo'
@@ -56,10 +57,19 @@ export function PaymentGateway({ attempt, method, savedLabel, merchant, money, o
       const instrument = outcome === 'cancelled'
         ? undefined
         : instrumentLabel(method, values, savedLabel)
+      /* The plan the financier approved travels back with the answer. Only on
+         a success — a declined application has no plan, and sending one would
+         record an agreement nobody entered into. */
+      const months = isFinanced(method) && outcome === 'succeeded'
+        ? tenureOf(values.tenure) ?? longestTenure(method)
+        : null
+      const each = months ? instalmentOf(attempt.amount, months) : null
       const res = await settle({
         attemptId: attempt.id, outcome, instrument,
         gatewayRef: `${(attempt.provider ?? 'PSP').replace(/\W/g, '').slice(0, 4).toUpperCase()}-${attempt.id.slice(-6)}`,
         reason,
+        tenure: months, instalment: each,
+        financier: months ? (attempt.provider ?? null) : null,
       })
       if (!res.ok) { toast(res.reason, 'error'); return }
       await onSettled({
@@ -68,6 +78,9 @@ export function PaymentGateway({ attempt, method, savedLabel, merchant, money, o
         instrument: instrument ?? attempt.instrument,
         failure_reason: outcome === 'failed' ? (reason ?? null) : null,
         decided_at: new Date().toISOString(),
+        tenure_months: months,
+        instalment: each,
+        financier: months ? (attempt.provider ?? null) : null,
       })
     } finally { setBusy(false) }
   }
@@ -248,5 +261,12 @@ function declineFor(kind: PaymentMethod['kind']): string {
       return 'Aventa billing refused the charge. The account may be past due, or this month’s billing limit is reached.'
     case 'bank_transfer':
       return 'The transfer was not authorised.'
+    /* A credit decline is not a payment decline, and telling somebody their
+       card failed when they were turned down for a loan sends them to the
+       wrong phone number — and to try the same card again. */
+    case 'emi':
+      return 'Your bank did not offer an instalment plan on this card. It may not be a credit card, or the available limit is short of the purchase. The card may still work as an ordinary payment.'
+    case 'bnpl':
+      return 'The provider did not approve this plan. That decision is theirs and they can tell you why; it says nothing about your card or your Aventa account.'
   }
 }

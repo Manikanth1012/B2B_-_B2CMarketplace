@@ -131,12 +131,18 @@ export async function startPayment(
  * first call's answer.
  */
 export async function settle(
-  { attemptId, outcome, instrument, gatewayRef, reason }: {
+  { attemptId, outcome, instrument, gatewayRef, reason, tenure, instalment, financier }: {
     attemptId: string
     outcome: 'succeeded' | 'failed' | 'cancelled' | 'expired'
     instrument?: string
     gatewayRef?: string
     reason?: string
+    /* What the financier approved. Required on a financed method — the
+       database refuses a financed success with no plan, because "paid by EMI"
+       with no tenure cannot be reconciled against a bank statement. */
+    tenure?: number | null
+    instalment?: number | null
+    financier?: string | null
   },
 ): Promise<Check & { state?: string }> {
   const { data, error } = await supabase.rpc('settle_payment_attempt', {
@@ -145,6 +151,9 @@ export async function settle(
     p_instrument: instrument ?? null,
     p_gateway_ref: gatewayRef ?? null,
     p_reason: reason ?? null,
+    p_tenure: tenure ?? null,
+    p_instalment: instalment ?? null,
+    p_financier: financier ?? null,
   })
   if (error) {
     const m = error.message.replace(/^.*?\bERROR:\s*/i, '').replace(/^P0001:\s*/, '').trim()

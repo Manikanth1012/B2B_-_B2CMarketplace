@@ -96,6 +96,10 @@ export interface Order {
   market: string
   tax_rate: number
   tracking_ref: string | null
+  /* The payment this order was placed against. It is how an order finds the
+     instalment plan it was financed on — the plan lives on the attempt, because
+     it is a fact about the payment rather than about the goods. */
+  payment_ref: string | null
   carrier: string | null
   placed_date: string | null
   seller: string | null

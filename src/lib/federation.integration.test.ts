@@ -29,13 +29,29 @@ describe('the federated operator catalogue', () => {
   })
 
   it('carries the whole rate card, with nothing sold at or below what it costs', () => {
-    expect(telco.length).toBe(17)
-    expect(new Set(telco.map(t => t.family)).size).toBe(8)
+    expect(telco.length).toBe(23)
+    expect(new Set(telco.map(t => t.family)).size).toBe(9)
     for (const t of telco) {
       expect(t.rc > 0 || t.nrc > 0, `${t.id} has no price at all`).toBe(true)
       if (t.rc > 0) expect(t.cost_rc, `${t.id} costs at least what it charges`).toBeLessThan(t.rc)
       if (t.nrc > 0) expect(t.cost_nrc, `${t.id} costs at least what it charges`).toBeLessThan(t.nrc)
     }
+  })
+
+  /* The rate card is the operator's whole product book and this channel sells
+     a subset of it. A withheld row that does not say why and where is worse
+     than no flag at all — the composer would hide it and nobody could find out
+     what happened to it. */
+  it('says, of everything it will not sell, why and where it is sold instead', () => {
+    const off = telco.filter(t => t.marketplace === false)
+    expect(off.length, 'nothing is withheld, so the channel rule is not being applied').toBeGreaterThan(0)
+    for (const t of off) {
+      expect(t.withheld_reason, `${t.id} is withheld with no reason`).toBeTruthy()
+      expect(t.sold_through, `${t.id} is withheld with nowhere to send the buyer`).toBeTruthy()
+    }
+    /* And no live listing is composed from one. */
+    expect(off.map(t => t.id).sort()).toEqual(
+      ['TP-FBB-1G', 'TP-FBB-300', 'TP-MOB-050', 'TP-MOB-100', 'TP-MOB-PRE', 'TP-MOB-UNL'])
   })
 
   it('prices every composed pack exactly as the rule in this repo does', async () => {

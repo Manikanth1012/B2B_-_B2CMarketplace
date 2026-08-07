@@ -80,6 +80,19 @@ export const PRODUCT_IMAGES: Record<string, string> = {
   'SKU-FP9503': `${PEXELS}/5763034/pexels-photo-5763034.jpeg${Q}`,   // a traveller at a gate
   'SKU-FP9504': `${PEXELS}/7994435/pexels-photo-7994435.jpeg${Q}`,   // a sensor gateway on a wall
   'SKU-FP9505': `${PEXELS}/3183197/pexels-photo-3183197.jpeg${Q}`,   // provisioning lines on a laptop
+  /* And the two that replaced the packs built on a new line. Same rule: these
+     are the `hero` rows `product_media` holds, not URLs chosen here — the
+     integration check reconciles the two and would fail on a guess. */
+  'SKU-FP9506': `${PEXELS}/4226140/pexels-photo-4226140.jpeg${Q}`,   // a household, phones out
+  'SKU-FP9507': `${PEXELS}/2881229/pexels-photo-2881229.jpeg${Q}`,   // a protected device
+
+  /* The add-ons and travel products that replaced the retail plans. Missing
+     from here, every one of them would have worn the same stock handset on the
+     retail storefront — the exact miss the federated packs made before. */
+  'SKU-2007': `${PEXELS}/1334597/pexels-photo-1334597.jpeg${Q}`,     // a top-up confirmed on a handset
+  'SKU-2008': `${PEXELS}/5763034/pexels-photo-5763034.jpeg${Q}`,     // a traveller at a gate
+  'SKU-2009': `${PEXELS}/3184465/pexels-photo-3184465.jpeg${Q}`,     // a family, phones between them
+  'SKU-2010': `${PEXELS}/4482900/pexels-photo-4482900.jpeg${Q}`,     // an eSIM profile on a screen
 
   // Partner
   'SKU-7001': `${PEXELS}/5380642/pexels-photo-5380642.jpeg${Q}`,

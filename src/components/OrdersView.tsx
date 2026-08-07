@@ -8,7 +8,8 @@ import { Pager, usePaging } from './Pager'
 import { useMarket } from '../lib/MarketContext'
 import { paymentLabel } from '../lib/payments'
 import { loadPaymentCatalogue } from '../lib/gatewayRepo'
-import type { PaymentMethod } from '../lib/gateway'
+import { planLine } from '../lib/gateway'
+import type { PaymentMethod, PaymentAttempt } from '../lib/gateway'
 
 /* An order is read in the money it was placed in, not in whatever market the
    shopper has the storefront set to now. Switching to Kenya does not restate
@@ -29,6 +30,11 @@ export function OrdersView() {
      table holds what to call it — the card printed the id for want of the
      join. */
   const [methods, setMethods] = useState<PaymentMethod[]>([])
+  /* The payments behind these orders, keyed by the reference the order carries.
+     Only financing needs them — "paid by EMI" without the tenure is a line
+     nobody can check against their bank statement, which is why the plan is
+     required on the payment in the first place. */
+  const [plans, setPlans] = useState<Record<string, PaymentAttempt>>({})
   /* Order cards are tall. Five of them is a screenful; twenty is a scroll with
      no sense of how far down it goes. */
   const ordersPage = usePaging(orders, { initialSize: 5 })
@@ -39,6 +45,18 @@ export function OrdersView() {
     if (data) {
       const ords = data as Order[]
       setOrders(ords)
+
+      /* RLS scopes this to the shopper's own payments, so the filter is for
+         size rather than for safety — the same arrangement everywhere else
+         here. Keyed by reference because that is what the order carries. */
+      const refs = ords.map(o => o.payment_ref).filter((r): r is string => !!r)
+      if (refs.length > 0) {
+        const { data: paid } = await supabase.from('payment_attempts')
+          .select('*').in('reference', refs).eq('state', 'succeeded')
+        setPlans(Object.fromEntries(
+          ((paid ?? []) as PaymentAttempt[]).map(a => [a.reference, a])))
+      }
+
       const itemsMap: Record<string, OrderItem[]> = {}
       await Promise.all(ords.map(async (order) => {
         const { data: items } = await supabase.from('order_items').select('*').eq('order_id', order.id)
@@ -136,6 +154,18 @@ export function OrdersView() {
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
                       {paymentLabel(order.payment_method, methods)}
                     </div>
+                    {/* The plan, where there is one. An order financed over a
+                        year that reads only "paid by EMI" is a total the
+                        customer cannot match to anything on their statement. */}
+                    {order.payment_ref && plans[order.payment_ref] && (() => {
+                      const line = planLine(plans[order.payment_ref],
+                        n => fmtIn(n, order.currency, { asOf: order.created_at?.slice(0, 10) }))
+                      return line ? (
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--brand-accent)', fontWeight: 600 }}>
+                          {line}
+                        </div>
+                      ) : null
+                    })()}
                   </div>
                 </div>
 

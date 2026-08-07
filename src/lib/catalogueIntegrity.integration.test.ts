@@ -113,10 +113,16 @@ describe('everything that references the catalogue', () => {
          pausing their own listing is an ordinary thing to do — it is how you
          stop selling something while you restock — and it does not un-approve
          the decision the marketplace already made. The set held only the two
-         states the seed happened to contain. */
+         states the seed happened to contain.
+
+         `retired` belongs there for the same reason and was missing for the
+         same reason: until the marketplace closed new lines to new business,
+         nothing had ever been withdrawn. Withdrawing a listing does not undo
+         the approval that put it on sale — the approval is why the customers
+         still on it have a contract at all. */
       const p = l.product!.status
       if (l.status === 'pending') expect(p, `${l.id} is pending but its product is ${p}`).toBe('pending')
-      if (l.status === 'approved') expect(['live', 'suspended', 'paused'], `${l.id} is approved but its product is ${p}`).toContain(p)
+      if (l.status === 'approved') expect(['live', 'suspended', 'paused', 'retired'], `${l.id} is approved but its product is ${p}`).toContain(p)
       if (l.status === 'rejected') expect(['rejected', 'suspended'], `${l.id} is rejected but its product is ${p}`).toContain(p)
     }
 
@@ -161,7 +167,7 @@ describe('everything that references the catalogue', () => {
     const { data } = await supabase.from('product_media')
       .select('product_id, url').eq('role', 'hero').like('product_id', 'SKU-FP%')
     const heroes = (data ?? []) as { product_id: string; url: string }[]
-    expect(heroes.length, 'no federated pack has a hero, so this checked nothing').toBe(5)
+    expect(heroes.length, 'no federated pack has a hero, so this checked nothing').toBe(7)
 
     for (const h of heroes) {
       expect(PRODUCT_IMAGES[h.product_id],

@@ -6,6 +6,8 @@ import {
   instrumentLabel, describe as describeAttempt, stale, inFlight, canStart,
   NET_BANKS, HANDOFF_MINUTES, marketForWallet, WALLET_BRANDS,
   confirmFor, validateConfirm, oneTimeCode, walletPin, nextBillDate, mask,
+  limitsFor, isFinanced, instalmentOf, longestTenure, financingProblem,
+  financingNote, planLine, tenureOf,
 } from './gateway'
 import type { PaymentMethod, MethodMarket, PaymentAttempt, SavedInstrument } from './gateway'
 import { isExpired } from './payments'
@@ -291,7 +293,7 @@ describe('the two rails a telecom marketplace ought to have', () => {
   it('refuses a carrier-billed purchase over the ceiling, and names a way to pay', () => {
     /* A monthly telecom bill is not a credit line. Refusing here beats the
        operator's billing refusing it three days later. */
-    const offers = [{ method: carrier, provider: 'Aventa Telecom billing' }]
+    const offers = [{ method: carrier, provider: 'Aventa Telecom billing', min_amount: null, max_amount: 30000 }]
     const r = canHandOff({ amount: 66098, method: carrier, offers })
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.reason).toMatch(/Pay by card or from your bank instead/)
@@ -398,5 +400,186 @@ describe('the provider\u2019s second step', () => {
   it('needs nothing typed where the confirmation happens elsewhere', () => {
     const s = step(method({ kind: 'upi' }), { vpa: 'priya@okhdfcbank' })
     expect(validateConfirm(s, {}, REF).ok).toBe(true)
+  })
+})
+
+/* ------------------------------------------------------------ financing ---- */
+
+const emi = method({
+  id: 'emi', label: 'EMI on your card', kind: 'emi', sort_order: 8,
+  asks_for: 'Your card, then the plan your bank offers you',
+  typical: 'two or three minutes',
+  financed: true, one_off_only: true, tenures: [3, 6, 9, 12, 18, 24],
+  credit_note: 'The instalment agreement is with your card issuer, not with Aventa.',
+})
+const bnpl = method({
+  id: 'bnpl', label: 'Pay in instalments', kind: 'bnpl', sort_order: 9,
+  asks_for: 'Your mobile number and a one-time code',
+  typical: 'about two minutes',
+  financed: true, one_off_only: true, tenures: [3, 4, 6],
+  credit_note: 'The instalment agreement is with the provider, not with Aventa.',
+})
+const emiOffer = { method: emi, provider: 'Razorpay · HDFC and ICICI credit cards', min_amount: 3000, max_amount: 500000 }
+
+describe('limitsFor', () => {
+  /* The bug this fixes: `payment_methods.max_amount` is one number applied to
+     three currencies, so carrier billing capped India at ₹30,000, the Emirates
+     at AED 30,000 — six times a sane monthly bill — and Kenya at KSh 30,000. */
+  it('prefers the market row, because that is where the currency is known', () => {
+    const carrierMethod = method({ id: 'carrier_billing', kind: 'carrier_billing', max_amount: 30000 })
+    expect(limitsFor(carrierMethod, { min_amount: null, max_amount: 1500 }).max).toBe(1500)
+  })
+
+  it('falls back to the method for anything with no market row', () => {
+    const carrierMethod = method({ id: 'carrier_billing', kind: 'carrier_billing', max_amount: 30000 })
+    expect(limitsFor(carrierMethod, undefined).max).toBe(30000)
+    expect(limitsFor(carrierMethod, undefined).min).toBeNull()
+  })
+
+  it('has no ceiling where neither says one', () => {
+    expect(limitsFor(method(), undefined)).toEqual({ min: null, max: null })
+  })
+})
+
+describe('instalmentOf and longestTenure', () => {
+  it('divides, and says so — the provider states any interest', () => {
+    expect(instalmentOf(64999, 12)).toBe(5416.58)
+    expect(instalmentOf(9000, 3)).toBe(3000)
+  })
+
+  it('refuses a plan that is not a plan', () => {
+    expect(instalmentOf(1000, 1)).toBeNull()
+    expect(instalmentOf(1000, 0)).toBeNull()
+    expect(instalmentOf(0, 12)).toBeNull()
+    expect(instalmentOf(1000, 6.5)).toBeNull()
+  })
+
+  /* The longest plan gives the smallest monthly figure, which is the one worth
+     showing beside the method — it is what makes the option worth choosing. */
+  it('takes the longest the provider lists', () => {
+    expect(longestTenure(emi)).toBe(24)
+    expect(longestTenure(bnpl)).toBe(6)
+    expect(longestTenure(method())).toBeNull()
+  })
+})
+
+describe('financingProblem', () => {
+  it('says nothing about a method that is not financing', () => {
+    expect(financingProblem(method(), 10, { min: 3000, max: null })).toBeNull()
+  })
+
+  /* Ahead of the amount, because it is the one that does not go away by
+     changing the amount. */
+  it('refuses a recurring basket before it mentions any limit', () => {
+    const r = financingProblem(emi, 10, { min: 3000, max: 500000 }, { recurring: true })
+    expect(r).toMatch(/subscription cannot be spread/)
+    expect(r).not.toMatch(/starts at/)
+  })
+
+  it('refuses below the floor and above the ceiling, naming the figure', () => {
+    expect(financingProblem(emi, 1200, { min: 3000, max: 500000 })).toMatch(/starts at 3,000/)
+    expect(financingProblem(emi, 900000, { min: 3000, max: 500000 })).toMatch(/goes up to 500,000/)
+  })
+
+  it('passes a one-off basket inside the band', () => {
+    expect(financingProblem(emi, 64999, { min: 3000, max: 500000 })).toBeNull()
+  })
+})
+
+describe('financingNote', () => {
+  it('names who is owed, who decides, and an indicative figure', () => {
+    const n = financingNote(emi, 'Razorpay · HDFC and ICICI credit cards', 64999)!
+    expect(n).toMatch(/Up to 24 months/)
+    expect(n).toMatch(/2,708\.29/)
+    expect(n).toMatch(/decides whether you are approved/)
+    expect(n).toMatch(/agreement is with your card issuer/)
+  })
+
+  it('says nothing for a method that is not financing', () => {
+    expect(financingNote(method(), 'Razorpay', 100)).toBeNull()
+  })
+})
+
+describe('canHandOff with financing', () => {
+  it('hands a one-off basket over, and the note is the credit note', () => {
+    const r = canHandOff({ amount: 64999, method: emi, offers: [emiOffer] })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.note).toMatch(/not with Aventa/)
+  })
+
+  it('refuses a subscription basket, whatever the amount', () => {
+    const r = canHandOff({ amount: 64999, method: emi, offers: [emiOffer], recurring: true })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toMatch(/cannot be spread/)
+  })
+
+  it('refuses a basket under the financier’s floor', () => {
+    const r = canHandOff({ amount: 900, method: emi, offers: [emiOffer] })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toMatch(/starts at 3,000/)
+  })
+})
+
+describe('the financing page', () => {
+  it('asks for the plan, which is the field that makes it financing', () => {
+    expect(fieldsFor(emi, null).map(f => f.key)).toEqual(['number', 'expiry', 'cvv', 'tenure'])
+    expect(fieldsFor(bnpl, null).map(f => f.key)).toEqual(['msisdn', 'tenure'])
+    expect(fieldsFor(emi, null).find(f => f.key === 'tenure')!.options)
+      .toEqual(['3 months', '6 months', '9 months', '12 months', '18 months', '24 months'])
+  })
+
+  it('will not go on without one', () => {
+    const good = { number: '4111 1111 1111 1111', expiry: '11/29', cvv: '123' }
+    expect(validateFields(emi, good).ok).toBe(false)
+    expect(validateFields(emi, { ...good, tenure: '12 months' }).ok).toBe(true)
+  })
+
+  /* The select stores the label, so the integer that reaches the attempt row
+     has to be read back out of it rather than assumed. */
+  it('reads the months back out of the label', () => {
+    expect(tenureOf('12 months')).toBe(12)
+    expect(tenureOf('3 months')).toBe(3)
+    expect(tenureOf('')).toBeNull()
+    expect(tenureOf('monthly')).toBeNull()
+    expect(tenureOf('1 month')).toBeNull()
+    expect(tenureOf('999 months')).toBeNull()
+  })
+
+  it('shows the agreement rather than the payment', () => {
+    const step = confirmFor({
+      method: emi, values: { number: '4111111111111111', expiry: '11/29', cvv: '123', tenure: '12 months' },
+      reference: 'PAY-260807-9A1B', amount: 64999, savedLabel: null,
+      money: n => `₹${n.toLocaleString()}`,
+    })
+    const labels = step.facts.map(f => f.label)
+    expect(labels).toContain('Plan')
+    expect(labels).toContain('Each month')
+    /* Stated, not implied — a plan shown without it is the complaint. */
+    expect(labels).toContain('Interest')
+    expect(step.facts.find(f => f.label === 'You owe')!.value).toMatch(/not Aventa/)
+    expect(step.action).toBe('Confirm 12 months')
+  })
+})
+
+describe('planLine', () => {
+  it('reads back what the customer agreed to', () => {
+    expect(planLine({ tenure_months: 12, instalment: 5645.75, financier: 'HDFC Bank', state: 'succeeded' },
+      n => `₹${n.toLocaleString()}`)).toBe('12 months at ₹5,645.75 a month with HDFC Bank.')
+  })
+
+  /* Not yet decided is a different thing from no plan, and the difference
+     matters to somebody refreshing an order page. */
+  it('distinguishes waiting from not financed', () => {
+    expect(planLine({ tenure_months: null, instalment: null, financier: null, state: 'initiated' }))
+      .toMatch(/Waiting for the financier/)
+    expect(planLine({ tenure_months: null, instalment: null, financier: null, state: 'succeeded' }))
+      .toBeNull()
+  })
+})
+
+describe('isFinanced', () => {
+  it('is false for everything that takes the money today', () => {
+    expect(isFinanced(method())).toBe(false)
+    expect(isFinanced(emi)).toBe(true)
   })
 })

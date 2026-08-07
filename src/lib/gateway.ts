@@ -16,7 +16,7 @@ import type { Check } from './enterprise'
 
 export type MethodKind =
   | 'card' | 'netbanking' | 'upi' | 'mobile_money' | 'bank_transfer'
-  | 'mobile_wallet' | 'carrier_billing'
+  | 'mobile_wallet' | 'carrier_billing' | 'emi' | 'bnpl'
 
 export interface PaymentMethod {
   id: string
@@ -27,9 +27,22 @@ export interface PaymentMethod {
   asks_for: string
   typical: string
   sort_order: number
-  /* A ceiling per payment, in the market's currency, or null for none. Carrier
-     billing has one because a monthly telecom bill is not a credit line. */
+  /* Legacy: one ceiling for every market, which is the same figure standing for
+     three different amounts of money. Kept only as a fallback for a method with
+     no per-market row — `limitsFor` prefers the market's own. */
   max_amount?: number | null
+
+  /* Financing. The marketplace is paid in full on the day and the customer owes
+     the financier, so `financed` is not a payment style — it is a statement
+     about who carries the credit and whose terms the customer is agreeing to. */
+  financed?: boolean
+  /* What the financier typically offers. Indicative: the plan somebody is
+     actually approved for is decided there and comes back on the attempt. */
+  tenures?: number[] | null
+  credit_note?: string | null
+  /* You cannot take twelve months to pay a monthly subscription — the second
+     instalment lands with next month's charge. */
+  one_off_only?: boolean
 }
 
 export interface MethodMarket {
@@ -37,6 +50,9 @@ export interface MethodMarket {
   market_code: string
   provider: string
   sort_order: number
+  /* Both in this market's own currency. */
+  min_amount?: number | null
+  max_amount?: number | null
 }
 
 export type AttemptState = 'initiated' | 'succeeded' | 'failed' | 'cancelled' | 'expired'
@@ -45,6 +61,12 @@ export interface PaymentAttempt {
   id: string
   reference: string
   purpose?: 'wallet_topup' | 'order'
+  /* What the financier approved, or null on everything that is not financing.
+     Null on a financed attempt still in flight, which is a different thing from
+     no plan — hence null rather than 0. */
+  tenure_months?: number | null
+  instalment?: number | null
+  financier?: string | null
   wallet_id: string | null
   order_ref?: string | null
   amount: number
@@ -65,6 +87,10 @@ export interface PaymentAttempt {
 export interface Offer {
   method: PaymentMethod
   provider: string
+  /* Carried through from the market row so callers do not have to go back to
+     `links` to find out what this method takes here. In the market's currency. */
+  min_amount: number | null
+  max_amount: number | null
 }
 
 /**
@@ -83,7 +109,9 @@ export function offersIn(
     .sort((a, b) => a.sort_order - b.sort_order)
     .flatMap(l => {
       const method = methods.find(m => m.id === l.method_id)
-      return method ? [{ method, provider: l.provider }] : []
+      if (!method) return []
+      const { min, max } = limitsFor(method, l)
+      return [{ method, provider: l.provider, min_amount: min, max_amount: max }]
     })
 }
 
@@ -139,12 +167,135 @@ export function savedFor(
     .sort((a, b) => Number(b.is_primary) - Number(a.is_primary))
 }
 
+/* ------------------------------------------------------------- financing ---- */
+
+/**
+ * The floor and the ceiling for a method in a market, in that market's money.
+ *
+ * The per-market row wins. `payment_methods.max_amount` is one number applied
+ * to three currencies — 30,000 is a sane monthly carrier-bill cap in rupees, an
+ * absurd one in dirhams and a tight one in shillings — so it is only a fallback
+ * for a method nobody has given a market row.
+ */
+export function limitsFor(
+  method: PaymentMethod,
+  offer: { min_amount?: number | null; max_amount?: number | null } | undefined,
+): { min: number | null; max: number | null } {
+  return {
+    min: offer?.min_amount ?? null,
+    max: offer?.max_amount ?? method.max_amount ?? null,
+  }
+}
+
+/** Whether a method spreads the cost rather than taking it. */
+export function isFinanced(method: PaymentMethod): boolean {
+  return method.financed === true
+}
+
+/**
+ * An indicative monthly figure, for the checkout to show beside the method.
+ *
+ * Straight division, and labelled as indicative wherever it is printed, because
+ * a real plan may carry interest and the financier states it. Showing a figure
+ * that turns out lower than the one on the agreement is the single most
+ * complained-about thing in consumer credit, so this is never presented as the
+ * amount somebody will pay.
+ */
+export function instalmentOf(amount: number, months: number): number | null {
+  if (!Number.isFinite(amount) || amount <= 0) return null
+  if (!Number.isInteger(months) || months < 2) return null
+  return Math.round((amount / months) * 100) / 100
+}
+
+/** The longest plan the provider lists, which is the one that gives the
+    smallest monthly figure — the one worth showing on the method row. */
+export function longestTenure(method: PaymentMethod): number | null {
+  const t = method.tenures ?? []
+  return t.length > 0 ? Math.max(...t) : null
+}
+
+/**
+ * Why this basket cannot be financed, or null when it can.
+ *
+ * Kept apart from `canHandOff` so the checkout can grey a method out and say
+ * why beside it, rather than letting somebody pick it and be refused on the
+ * next screen.
+ */
+export function financingProblem(
+  method: PaymentMethod,
+  amount: number,
+  limits: { min: number | null; max: number | null },
+  basket: { recurring: boolean } = { recurring: false },
+  fmt: (n: number) => string = n => n.toLocaleString(),
+): string | null {
+  if (!isFinanced(method)) return null
+
+  /* First, because it is the one that does not go away by changing the amount.
+     A monthly subscription financed over twelve months bills the customer twice
+     from month two. */
+  if (method.one_off_only && basket.recurring) {
+    return 'A subscription cannot be spread — the instalments would run alongside the monthly charge. Pay for the subscription separately.'
+  }
+  if (limits.min != null && amount < limits.min) {
+    return `${method.label} starts at ${fmt(limits.min)}. This basket is under that.`
+  }
+  if (limits.max != null && amount > limits.max) {
+    return `${method.label} goes up to ${fmt(limits.max)}. This basket is over that.`
+  }
+  return null
+}
+
+/**
+ * What the customer is told before they are handed over.
+ *
+ * The three things they need and are least likely to be told: who they will owe,
+ * that the marketplace is paid today either way, and that approval is not ours
+ * to give.
+ */
+export function financingNote(
+  method: PaymentMethod, provider: string, amount: number,
+  fmt: (n: number) => string = n => n.toLocaleString(),
+): string | null {
+  if (!isFinanced(method)) return null
+  const months = longestTenure(method)
+  const each = months ? instalmentOf(amount, months) : null
+  const indicative = each != null && months != null
+    ? `Up to ${months} months — around ${fmt(each)} a month before any interest they charge. `
+    : ''
+  return `${indicative}${provider} decides whether you are approved and on what terms, and shows you those before you confirm. ${method.credit_note ?? ''}`.trim()
+}
+
+/**
+ * How an order records that it was financed.
+ *
+ * "Paid by EMI" on its own is a line nobody — customer, support or auditor —
+ * can reconcile against a bank statement, which is why the plan is required on
+ * a succeeded financed attempt in the first place.
+ */
+export function planLine(
+  attempt: Pick<PaymentAttempt, 'tenure_months' | 'instalment' | 'financier' | 'state'>,
+  fmt: (n: number) => string = n => n.toLocaleString(),
+): string | null {
+  if (attempt.tenure_months == null) {
+    return attempt.state === 'initiated' ? 'Waiting for the financier to decide the plan.' : null
+  }
+  const each = attempt.instalment != null ? `${fmt(attempt.instalment)} a month` : 'monthly instalments'
+  const who = attempt.financier ? ` with ${attempt.financier}` : ''
+  return `${attempt.tenure_months} months at ${each}${who}.`
+}
+
 /* ------------------------------------------------------------- the handoff -- */
 
 export interface Handoff {
   amount: number
   method: PaymentMethod | null
   offers: readonly Offer[]
+  /* Whether anything in the basket recurs. Financing refuses it. */
+  recurring?: boolean
+  /* How to write money. Passed in rather than assumed, because these notes
+     quote figures — "around 2,708.29 a month" beside a page of ₹ amounts reads
+     as a different currency, and on this screen it would be a credit figure. */
+  fmt?: (n: number) => string
 }
 
 /**
@@ -154,7 +305,9 @@ export interface Handoff {
  * this; what is left is whether there is anywhere to send them. The refusals
  * name what to do rather than what is missing.
  */
-export function canHandOff({ amount, method, offers }: Handoff): Check {
+export function canHandOff(
+  { amount, method, offers, recurring = false, fmt = n => n.toLocaleString() }: Handoff,
+): Check {
   if (offers.length === 0) {
     return {
       ok: false,
@@ -162,21 +315,40 @@ export function canHandOff({ amount, method, offers }: Handoff): Check {
     }
   }
   if (!method) return { ok: false, reason: 'Choose how you want to pay.' }
-  if (!offers.some(o => o.method.id === method.id)) {
+  const offer = offers.find(o => o.method.id === method.id)
+  if (!offer) {
     return { ok: false, reason: `${method.label} is not offered here. Pick one of the others.` }
   }
   if (amount <= 0) return { ok: false, reason: 'Enter an amount first.' }
 
+  /* Financing first, because its refusals are about what is in the basket
+     rather than how much it comes to, and "this is over the limit" is an
+     unhelpful thing to be told about a subscription that could never have been
+     financed at any price. */
+  const credit = financingProblem(method, amount, limitsFor(method, offer), { recurring }, fmt)
+  if (credit) return { ok: false, reason: credit }
+
   /* A carrier bill is not a credit line, so the ceiling is refused here rather
-     than by the operator's billing three days later. */
-  if (method.max_amount != null && amount > method.max_amount) {
+     than by the operator's billing three days later. The market's own figure,
+     because the method-level one is the same number for three currencies. */
+  const { min, max } = limitsFor(method, offer)
+  if (max != null && amount > max) {
     return {
       ok: false,
-      reason: `${method.label} takes up to ${method.max_amount.toLocaleString()} at a time, and this is more than that. Pay by card or from your bank instead.`,
+      reason: `${method.label} takes up to ${fmt(max)} at a time, and this is more than that. Pay by card or from your bank instead.`,
     }
   }
+  if (min != null && amount < min) {
+    return { ok: false, reason: `${method.label} starts at ${fmt(min)}.` }
+  }
 
-  const provider = offers.find(o => o.method.id === method.id)!.provider
+  const provider = offer.provider
+  if (isFinanced(method)) {
+    return {
+      ok: true,
+      note: `You will be handed to ${provider}, who will ask for ${lowerFirst(method.asks_for)}. ${financingNote(method, provider, amount, fmt)}`,
+    }
+  }
   return {
     ok: true,
     note: method.redirects
@@ -254,6 +426,28 @@ export function fieldsFor(method: PaymentMethod, savedLabel: string | null): Fie
         { key: 'msisdn', label: 'Your Aventa mobile number', kind: 'text',
           hint: 'It has to be a number billed by Aventa. Another operator’s number cannot be charged here.' },
       ]
+    /* The plan is the field. Everything else on an EMI page is a card page,
+       which is why financing gets its own kind rather than reusing 'card' —
+       a plan chooser bolted onto a CVV box is how a customer ends up agreeing
+       to twenty-four months without noticing they chose it. */
+    case 'emi':
+      return [
+        { key: 'number', label: 'Credit card number', kind: 'text',
+          hint: 'It has to be a credit card. A debit card cannot carry an instalment plan.' },
+        { key: 'expiry', label: 'Expiry', kind: 'text', hint: 'MM/YY' },
+        { key: 'cvv', label: 'CVV', kind: 'password' },
+        { key: 'tenure', label: 'Over how long', kind: 'select',
+          options: (method.tenures ?? []).map(t => `${t} months`),
+          hint: 'Your bank decides which of these it will offer you, and states any interest before you confirm.' },
+      ]
+    case 'bnpl':
+      return [
+        { key: 'msisdn', label: 'Mobile number', kind: 'text',
+          hint: 'The provider texts a code to it and runs its eligibility check against it.' },
+        { key: 'tenure', label: 'How many instalments', kind: 'select',
+          options: (method.tenures ?? []).map(t => `${t} months`),
+          hint: 'Subject to what they approve you for.' },
+      ]
   }
 }
 
@@ -318,7 +512,34 @@ export function validateFields(method: PaymentMethod, values: Record<string, str
       if (n.length < 9 || n.length > 12) return { ok: false, reason: 'Give the mobile number Aventa bills you on.' }
       return { ok: true }
     }
+    case 'emi': {
+      const pan = digits(values.number ?? '')
+      if (pan.length < 15 || pan.length > 19) return { ok: false, reason: 'A card number is 15 to 19 digits.' }
+      if (!luhn(pan)) return { ok: false, reason: 'That card number does not check out. Read it off the card again.' }
+      const exp = /^(\d{2})\s*\/\s*(\d{2})$/.exec((values.expiry ?? '').trim())
+      if (!exp) return { ok: false, reason: 'Give the expiry as MM/YY.' }
+      if (Number(exp[1]) < 1 || Number(exp[1]) > 12) return { ok: false, reason: `There is no month ${exp[1]}.` }
+      if (digits(values.cvv ?? '').length < 3) return { ok: false, reason: 'A CVV is three digits, or four on an Amex.' }
+      if (!tenureOf(values.tenure)) return { ok: false, reason: 'Choose how long you want to spread it over.' }
+      return { ok: true }
+    }
+    case 'bnpl': {
+      const n = digits(values.msisdn ?? '')
+      if (n.length < 9 || n.length > 12) return { ok: false, reason: 'That is not a mobile number we can text a code to.' }
+      if (!tenureOf(values.tenure)) return { ok: false, reason: 'Choose how many instalments.' }
+      return { ok: true }
+    }
   }
+}
+
+/** The months out of "12 months", or null if there is no number in it. The
+    select stores the label rather than the integer, so the integer that reaches
+    the attempt row has to be recovered rather than assumed. */
+export function tenureOf(value: string | null | undefined): number | null {
+  const m = /^(\d+)\s*month/.exec((value ?? '').trim())
+  if (!m) return null
+  const n = Number(m[1])
+  return Number.isInteger(n) && n >= 2 && n <= 60 ? n : null
 }
 
 /* The check a card issuer does before anything leaves the building. Here so a
@@ -350,6 +571,8 @@ export function instrumentLabel(
     case 'bank_transfer': return `bank transfer from ${digits(values.account ?? '').slice(-4)}`
     case 'mobile_wallet': return `${values.wallet} wallet ${mask(values.msisdn ?? '')}`
     case 'carrier_billing': return `the Aventa bill for ${mask(values.msisdn ?? '')}`
+    case 'emi': return `EMI on the card ending ${digits(values.number ?? '').slice(-4)}`
+    case 'bnpl': return `instalments on ${mask(values.msisdn ?? '')}`
   }
 }
 
@@ -635,6 +858,54 @@ export function confirmFor(
         ],
         action: 'I have authorised it',
       }
+
+    /* The two financing steps show the agreement rather than the payment. The
+       thing a customer must be able to read before confirming is not "₹64,999
+       to AVENTA TELECOM" — they know that — it is how many months, how much
+       each, and who they will owe. */
+    case 'emi': {
+      const months = tenureOf(values.tenure) ?? longestTenure(method) ?? 12
+      const each = instalmentOf(amount, months)
+      const pan = `•••• ${(values.number ?? '').replace(/\D/g, '').slice(-4)}`
+      return {
+        title: 'Your bank’s instalment offer',
+        blurb: `Your bank has approved this purchase over ${months} months. Confirming converts the charge to instalments on ${pan} and sends a one-time code to the number registered against it.`,
+        fields: [{ key: 'otp', label: 'One-time code', kind: 'text', hint: 'Six digits' }],
+        shown: code,
+        facts: [
+          { label: 'Card', value: pan },
+          { label: 'Purchase', value: money(amount) },
+          { label: 'Plan', value: `${months} months` },
+          { label: 'Each month', value: each != null ? money(each) : '—' },
+          /* Stated, not implied. A plan shown without this is the complaint. */
+          { label: 'Interest', value: 'As stated by your bank on this screen' },
+          { label: 'You owe', value: 'Your card issuer, not Aventa' },
+          { label: 'Reference', value: reference },
+        ],
+        action: `Confirm ${months} months`,
+      }
+    }
+
+    case 'bnpl': {
+      const months = tenureOf(values.tenure) ?? longestTenure(method) ?? 3
+      const each = instalmentOf(amount, months)
+      return {
+        title: 'Approved — confirm your plan',
+        blurb: `You are approved for ${months} instalments. We have texted a code to ${target}; entering it accepts the agreement.`,
+        fields: [{ key: 'otp', label: 'Code we texted you', kind: 'text', hint: 'Six digits' }],
+        shown: code,
+        facts: [
+          { label: 'Phone', value: target },
+          { label: 'Purchase', value: money(amount) },
+          { label: 'Plan', value: `${months} instalments` },
+          { label: 'Each month', value: each != null ? money(each) : '—' },
+          { label: 'First payment', value: 'Today' },
+          { label: 'You owe', value: 'The provider, not Aventa' },
+          { label: 'Reference', value: reference },
+        ],
+        action: `Accept ${months} instalments`,
+      }
+    }
   }
 }
 
