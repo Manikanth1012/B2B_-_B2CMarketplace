@@ -210,6 +210,58 @@ export function blockLine(u: RangeUse): string {
     + `Free is the remainder, not a list held here.`
 }
 
+/* ---- How a number reads ---------------------------------------------------- */
+
+/* The allocation holds the national number, which is what the BSS deals in.
+   The customer knows it with a country code and spacing, and showing them
+   `711306442` beside their own `+254 711 306 442` reads as two numbers rather
+   than one. Formatted from the allocation so there is still only one source. */
+const DIAL: Record<string, { code: string; groups: number[] }> = {
+  IN: { code: '+91', groups: [5, 5] },
+  KE: { code: '+254', groups: [3, 3, 3] },
+  AE: { code: '+971', groups: [2, 3, 4] },
+  UG: { code: '+256', groups: [3, 3, 3] },
+}
+
+export function formatMsisdn(value: string, market: string): string {
+  const d = DIAL[market]
+  const digits = value.replace(/\D/g, '')
+  if (!d) return digits
+
+  const planned = d.groups.reduce((a, b) => a + b, 0)
+  if (digits.length !== planned) {
+    /* A dialling plan describes the retail series. An M2M number is longer —
+       thirteen digits in India — and forcing it through a ten-digit grouping
+       produces `98123 45600 000`, which is not how anybody writes it. Fours,
+       which is what a machine identifier is read in, with a trailing stub of
+       one or two folded back rather than left dangling as `0000 0`. */
+    const parts = digits.match(/.{1,4}/g) ?? [digits]
+    if (parts.length > 1 && parts[parts.length - 1].length <= 2) {
+      const stub = parts.pop()!
+      parts[parts.length - 1] += stub
+    }
+    return `${d.code} ${parts.join(' ')}`
+  }
+
+  let at = 0
+  const parts: string[] = []
+  for (const n of d.groups) {
+    parts.push(digits.slice(at, at + n))
+    at += n
+  }
+  return `${d.code} ${parts.join(' ')}`
+}
+
+/** Digits only, for comparing what a screen shows against what was allocated.
+    Two strings for the same number is how they come to disagree. */
+export const msisdnDigits = (s: string): string => s.replace(/\D/g, '')
+
+export function sameNumber(shown: string, allocated: string): boolean {
+  const a = msisdnDigits(shown)
+  const b = msisdnDigits(allocated)
+  return a.endsWith(b) || b.endsWith(a)
+}
+
 /* ---- Reading a number ------------------------------------------------------ */
 
 /** Who or what has this number. A person, an account, or a device on an order —

@@ -279,7 +279,6 @@ export interface ConsumerProfile {
      than nullable, so every screen has an effective answer without inventing one. */
   preferred_language: string
   time_zone: string
-  data_units: string
   /* Closure is scheduled, not immediate — 30 days' notice, withdrawable until then. */
   closure_requested_at: string | null
   closure_effective: string | null

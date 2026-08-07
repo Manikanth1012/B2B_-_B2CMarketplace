@@ -3,7 +3,7 @@ import {
   KIND_LABEL, PURPOSE_LABEL, STATE_LABEL, ESIM_ORDER, ESIM_LABEL,
   utilisation, blockAlarm, blockLine, heldBy, reusable, lookupKind,
   purposeFits, validateAssignment, esimNext, canMoveProfile, esimStep,
-  canHoldPersonalLine,
+  canHoldPersonalLine, formatMsisdn, msisdnDigits, sameNumber,
   estate, unreachable, systemLine,
 } from './numbers'
 import type { RangeUse, HeldNumber, ResourceSystem } from './numbers'
@@ -331,5 +331,42 @@ describe('a marketplace account is not a network subscription', () => {
     expect(validateAssignment({
       kind: 'msisdn', market: 'IN', purpose: 'retail', user_id: 'u1',
     }).ok).toBe(true)
+  })
+})
+
+describe('how a number reads', () => {
+  it('shows it the way the customer knows it, not as bare national digits', () => {
+    /* The screen showed `711300001` beside the customer's own
+       `+254 711 306 442`, which reads as two numbers rather than one. */
+    expect(formatMsisdn('711306442', 'KE')).toBe('+254 711 306 442')
+    expect(formatMsisdn('9886041127', 'IN')).toBe('+91 98860 41127')
+    expect(formatMsisdn('551200001', 'AE')).toBe('+971 55 120 0001')
+  })
+
+  it('folds a trailing stub back rather than leaving it dangling', () => {
+    /* Thirteen digits in fours ends `0000 0`, which reads as a typo. */
+    expect(formatMsisdn('8912345600000', 'IN')).toBe('+91 8912 3456 00000')
+    expect(formatMsisdn('89123456000', 'IN')).toBe('+91 8912 3456 000')
+  })
+
+  it('does not force an M2M number through a retail dialling plan', () => {
+    /* A dialling plan describes the retail series. An Indian M2M number is
+       thirteen digits, and the ten-digit grouping renders it as
+       `98123 45600 000`, which is not how anybody writes it. */
+    const out = formatMsisdn('8912345600001', 'IN')
+    expect(msisdnDigits(out)).toContain('8912345600001')
+    expect(out).toBe('+91 8912 3456 00001')
+  })
+
+  it('leaves a market it has no dialling plan for as digits', () => {
+    expect(formatMsisdn('123456', 'ZZ')).toBe('123456')
+  })
+
+  it('compares a shown number against an allocated one by its digits', () => {
+    /* Two strings for the same number is how a profile and an allocation come
+       to disagree on screen while agreeing in fact. */
+    expect(sameNumber('+254 711 306 442', '711306442')).toBe(true)
+    expect(sameNumber('+91 98860 41127', '9886041127')).toBe(true)
+    expect(sameNumber('+254 711 306 442', '711300001')).toBe(false)
   })
 })

@@ -22,21 +22,19 @@ export const TIME_ZONES = [
   'Europe/London (GMT)',
 ] as const
 
-export const DATA_UNITS = ['GB', 'MB'] as const
+/* Data units were a preference between showing a figure in GB or MB. Withdrawn
+   — the right unit is decided by the size of the figure, not by a setting:
+   nobody wants 0.0004 GB and nobody wants 4,096,000 MB. A preference that
+   cannot improve any screen is one more thing on a page and one more column to
+   keep in step. */
 
 export type Language = typeof LANGUAGES[number]['value']
-export type DataUnit = typeof DATA_UNITS[number]
 
 export const DEFAULT_LANGUAGE: Language = 'English'
 export const DEFAULT_TIME_ZONE = TIME_ZONES[0]
-export const DEFAULT_DATA_UNIT: DataUnit = 'GB'
 
 export function isLanguage(v: string): v is Language {
   return LANGUAGES.some(l => l.value === v)
-}
-
-export function isDataUnit(v: string): v is DataUnit {
-  return (DATA_UNITS as readonly string[]).includes(v)
 }
 
 export function isTimeZone(v: string): boolean {
@@ -57,22 +55,19 @@ export function languageLabel(value: string): string {
 export function effectivePreferences(profile: {
   preferred_language?: string | null
   time_zone?: string | null
-  data_units?: string | null
-}): { language: Language; timeZone: string; units: DataUnit } {
+}): { language: Language; timeZone: string } {
   const language = profile.preferred_language
   const timeZone = profile.time_zone
-  const units = profile.data_units
 
   return {
     language: language && isLanguage(language) ? language : DEFAULT_LANGUAGE,
     timeZone: timeZone && isTimeZone(timeZone) ? timeZone : DEFAULT_TIME_ZONE,
-    units: units && isDataUnit(units) ? units : DEFAULT_DATA_UNIT,
   }
 }
 
-/** Whether changing this preference is worth writing to the audit log. Language is:
-    it changes what the customer is sent, and a support agent needs to know when it
-    changed. Data units are cosmetic. */
-export function isAuditable(field: 'language' | 'timeZone' | 'units'): boolean {
+/** Whether changing this preference is worth writing to the audit log. Both of
+    the remaining two are: each changes what the customer is sent or when, and a
+    support agent needs to know when it changed. */
+export function isAuditable(field: 'language' | 'timeZone'): boolean {
   return field === 'language' || field === 'timeZone'
 }

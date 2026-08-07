@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest'
 import {
-  LANGUAGES, TIME_ZONES, DATA_UNITS,
-  isLanguage, isDataUnit, isTimeZone, languageLabel,
+  LANGUAGES, TIME_ZONES,
+  isLanguage, isTimeZone, languageLabel,
   effectivePreferences, isAuditable,
-  DEFAULT_LANGUAGE, DEFAULT_TIME_ZONE, DEFAULT_DATA_UNIT,
+  DEFAULT_LANGUAGE, DEFAULT_TIME_ZONE, 
 } from './preferences'
 
 describe('the option lists', () => {
@@ -27,17 +27,12 @@ describe('the option lists', () => {
     expect(TIME_ZONES).toContain('Africa/Nairobi (EAT)')
   })
 
-  it('keeps data units to what the prototype had', () => {
-    expect(DATA_UNITS).toEqual(['GB', 'MB'])
-  })
 })
 
 describe('validation', () => {
   it('accepts what the pickers offer and nothing else', () => {
     expect(isLanguage('English')).toBe(true)
     expect(isLanguage('Klingon')).toBe(false)
-    expect(isDataUnit('GB')).toBe(true)
-    expect(isDataUnit('TB')).toBe(false)
     expect(isTimeZone('Africa/Nairobi (EAT)')).toBe(true)
     expect(isTimeZone('Mars/Olympus')).toBe(false)
   })
@@ -50,22 +45,21 @@ describe('validation', () => {
 describe('effectivePreferences', () => {
   it('reads what the profile stores', () => {
     expect(effectivePreferences({
-      preferred_language: 'Kiswahili', time_zone: 'Africa/Nairobi (EAT)', data_units: 'MB',
-    })).toEqual({ language: 'Kiswahili', timeZone: 'Africa/Nairobi (EAT)', units: 'MB' })
+      preferred_language: 'Kiswahili', time_zone: 'Africa/Nairobi (EAT)',
+    })).toEqual({ language: 'Kiswahili', timeZone: 'Africa/Nairobi (EAT)' })
   })
 
   /* Every screen needs an effective answer. Without one, each invents its own
      fallback and they disagree. */
   it('falls back to the defaults for missing values', () => {
     expect(effectivePreferences({})).toEqual({
-      language: DEFAULT_LANGUAGE, timeZone: DEFAULT_TIME_ZONE, units: DEFAULT_DATA_UNIT,
+      language: DEFAULT_LANGUAGE, timeZone: DEFAULT_TIME_ZONE,
     })
   })
 
   it('falls back rather than passing through something unrenderable', () => {
-    const p = effectivePreferences({ preferred_language: 'Klingon', time_zone: null, data_units: 'TB' })
+    const p = effectivePreferences({ preferred_language: 'Klingon', time_zone: null })
     expect(p.language).toBe(DEFAULT_LANGUAGE)
-    expect(p.units).toBe(DEFAULT_DATA_UNIT)
   })
 })
 
@@ -78,6 +72,5 @@ describe('isAuditable', () => {
   })
 
   it('does not log the cosmetic one', () => {
-    expect(isAuditable('units')).toBe(false)
   })
 })

@@ -7,7 +7,7 @@ import { securityOptions } from '../lib/sso'
 import { WalletCard } from './WalletCard'
 import { checkNewPassword, strengthOf, isDemoAccount, MIN_LENGTH } from '../lib/password'
 import { paymentSummary } from '../lib/payments'
-import { LANGUAGES, TIME_ZONES, DATA_UNITS, effectivePreferences, isAuditable } from '../lib/preferences'
+import { LANGUAGES, TIME_ZONES, effectivePreferences, isAuditable } from '../lib/preferences'
 import { PrivacyCard } from './PrivacyCard'
 import { NotificationPreferencesView } from './NotificationPreferencesView'
 import { AddressBookCard } from './AddressBookCard'
@@ -257,7 +257,6 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
   const prefs = effectivePreferences(profile)
   const [language, setLanguage] = useState(prefs.language)
   const [timeZone, setTimeZone] = useState(prefs.timeZone)
-  const [units, setUnits] = useState(prefs.units)
 
   const loadCards = useCallback(async () => {
     const { data } = await supabase.from('consumer_payment_methods').select('*')
@@ -294,16 +293,15 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
   /* Preferences save on change rather than behind the button — a picker that needs a
      separate Save is the commonest way a setting silently fails to stick. */
   const savePreference = async (
-    field: 'language' | 'timeZone' | 'units',
+    field: 'language' | 'timeZone',
     value: string,
     label: string,
   ) => {
-    const column = field === 'language' ? 'preferred_language' : field === 'timeZone' ? 'time_zone' : 'data_units'
+    const column = field === 'language' ? 'preferred_language' : 'time_zone'
     await supabase.from('consumer_profile').update({ [column]: value }).eq('user_id', profile.user_id)
 
     /* Language and time zone change what the customer is sent and when, so an agent
-       looking at a "why did I get this in English" complaint needs the date. Data
-       units are cosmetic and are not worth a log line. */
+       looking at a "why did I get this in English" complaint needs the date. */
     if (isAuditable(field)) {
       const now = new Date()
       await supabase.from('consumer_audit_log').insert({
@@ -382,15 +380,6 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
                 onChange={(e) => { setTimeZone(e.target.value); savePreference('timeZone', e.target.value, 'Time zone') }}
               >
                 {TIME_ZONES.map(t => <option key={t} value={t}>{t}</option>)}
-              </select>
-            </Field>
-            <Field label="Data units" icon={<Info size={14} />}>
-              <select
-                style={inputStyle}
-                value={units}
-                onChange={(e) => { setUnits(e.target.value as typeof units); savePreference('units', e.target.value, 'Data units') }}
-              >
-                {DATA_UNITS.map(u => <option key={u} value={u}>{u}</option>)}
               </select>
             </Field>
             <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: 0, lineHeight: 1.5 }}>

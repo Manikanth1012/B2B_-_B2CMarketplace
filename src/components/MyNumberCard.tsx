@@ -3,7 +3,7 @@ import { Smartphone } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { loadHeldBy, onNetwork } from '../lib/numbersRepo'
 import {
-  KIND_LABEL, STATE_LABEL, ESIM_ORDER, ESIM_LABEL,
+  STATE_LABEL, ESIM_ORDER, ESIM_LABEL, formatMsisdn,
 } from '../lib/numbers'
 import type { HeldNumber, EsimProfile } from '../lib/numbers'
 
@@ -63,8 +63,14 @@ export function MyNumberCard({ userId }: { userId: string | null }) {
 
   if (rows.length === 0) return null
 
-  const msisdn = rows.filter(r => r.kind === 'msisdn')
-  const sims = rows.filter(r => r.kind === 'iccid')
+  /* The personal line only. A sensor's M2M SIM is also a number in this
+     customer's name, and listing it here made the screen show three mobile
+     numbers where the customer has one — with the device's activation date
+     standing in for the date their line started. Device connectivity is a
+     property of the thing they bought, and it gets its own list below. */
+  const msisdn = rows.filter(r => r.kind === 'msisdn' && r.purpose === 'retail')
+  const sims = rows.filter(r => r.kind === 'iccid' && r.purpose === 'retail')
+  const devices = rows.filter(r => r.kind === 'iccid' && r.stock_serial)
 
   return (
     <div style={{
@@ -94,8 +100,11 @@ export function MyNumberCard({ userId }: { userId: string | null }) {
               padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '6px',
             }}>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'baseline', flexWrap: 'wrap' }}>
+                {/* With its country code, the way the customer knows it. The
+                    bare national number beside their own contact number reads
+                    as two numbers rather than one. */}
                 <span style={{ fontSize: 'var(--text-lg)', fontWeight: 800, fontFamily: 'ui-monospace, monospace' }}>
-                  {m.value}
+                  {formatMsisdn(m.value, m.market)}
                 </span>
                 <span style={{
                   padding: '2px 10px', borderRadius: '999px', fontSize: 'var(--text-xs)', fontWeight: 700,
@@ -108,7 +117,7 @@ export function MyNumberCard({ userId }: { userId: string | null }) {
               </div>
 
               <Row label="SIM" value={sim?.value ?? null} mono />
-              <Row label={KIND_LABEL.msisdn + ' in service since'} value={m.activated_on} />
+              <Row label="In service since" value={m.activated_on} />
               {/* The reference the network gave back. Support asks for it. */}
               <Row label="Network reference" value={m.bss_ref} />
 
@@ -160,6 +169,36 @@ export function MyNumberCard({ userId }: { userId: string | null }) {
             with a number.
           </div>
         ))}
+
+        {/* What is in the things they bought. Named separately because it is
+            not their phone number and reading it as one is what the screen
+            used to invite. */}
+        {devices.length > 0 && (
+          <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '12px' }}>
+            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: '6px' }}>
+              Connectivity in devices you bought
+            </div>
+            {devices.map(d => {
+              const line = rows.find(r => r.kind === 'msisdn' && r.stock_serial === d.stock_serial)
+              return (
+                <div key={d.id} style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                  {d.device ?? 'A device'}
+                  {' — '}
+                  <span style={{ fontFamily: 'ui-monospace, monospace' }}>{d.stock_serial}</span>
+                  {line && (
+                    <>
+                      {' · '}
+                      <span style={{ fontFamily: 'ui-monospace, monospace' }}>{formatMsisdn(line.value, line.market)}</span>
+                    </>
+                  )}
+                  {d.device_order && (
+                    <span style={{ color: 'var(--text-tertiary)' }}>{' · from '}{d.device_order}</span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: 0 }}>
           Changing or giving up a number is done through support. A number that is given back is held for
