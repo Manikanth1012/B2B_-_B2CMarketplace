@@ -8,6 +8,8 @@ import { Callout } from '../OnboardingJourney'
 import { useAccountMoney } from './money'
 import { loadAccount, payInvoice, disputeInvoice, invoiceCsv } from '../../lib/enterpriseRepo'
 import { loadDocumentSetup } from '../../lib/documentRepo'
+import { loadClearanceFor } from '../../lib/einvoiceRepo'
+import { ClearanceStamp } from '../ClearanceStamp'
 import { taxLabelFor } from '../../lib/billTemplate'
 import { useMarket } from '../../lib/MarketContext'
 import type { DocumentSetup } from '../../lib/documentRepo'
@@ -320,6 +322,16 @@ function InvoiceDetail({ invoice, book }: { invoice: Invoice; book: AccountBook 
      guard sees to that — but a document is read in the money it was issued in,
      and a reprint of an old one must not follow the account somewhere else. */
   const { money } = useAccountMoney(invoice.currency)
+  /* The statutory registration. On a B2B invoice this is the field the
+     customer's own finance team looks for first: without an IRN an Indian
+     invoice cannot be claimed against, and finding that out from an auditor is
+     the expensive way. */
+  const [stamp, setStamp] = useState<Awaited<ReturnType<typeof loadClearanceFor>> | null>(null)
+  useEffect(() => {
+    let live = true
+    void loadClearanceFor('enterprise_invoice', invoice.id).then(r => { if (live) setStamp(r) })
+    return () => { live = false }
+  }, [invoice.id])
   const lines = book.invoiceLines.filter(l => l.invoice_id === invoice.id)
   const check = reconcileInvoice(invoice, book.invoiceLines)
   return (
@@ -352,6 +364,7 @@ function InvoiceDetail({ invoice, book }: { invoice: Invoice; book: AccountBook 
       {invoice.po_ref && (
         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>Against purchase order {invoice.po_ref}.</div>
       )}
+      {stamp && <ClearanceStamp regime={stamp.regime} record={stamp.record} />}
     </div>
   )
 }

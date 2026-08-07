@@ -7,6 +7,7 @@ import {
 } from './shared'
 import { Callout } from '../OnboardingJourney'
 import { BillDocument } from '../BillDocument'
+import { OperatorClearance } from './OperatorClearance'
 import {
   loadBillTemplates, saveTemplate, duplicateTemplate, deleteTemplate,
   assignTemplate, removeOverride, saveIssuer,
@@ -38,7 +39,7 @@ const AUDIENCES: (Audience | 'any')[] = ['consumer', 'enterprise', 'partner', 'a
 export function OperatorBillTemplates() {
   const [book, setBook] = useState<BillTemplateBook | null>(null)
   const [editing, setEditing] = useState<Template | 'new' | null>(null)
-  const [tab, setTab] = useState<'templates' | 'assignments' | 'identity'>('templates')
+  const [tab, setTab] = useState<'templates' | 'assignments' | 'identity' | 'clearance'>('templates')
 
   const reload = useCallback(async () => setBook(await loadBillTemplates()), [])
   useEffect(() => { void reload() }, [reload])
@@ -80,6 +81,10 @@ export function OperatorBillTemplates() {
           ['templates', 'Templates'],
           ['assignments', 'Who gets what'],
           ['identity', 'Billing identity'],
+          /* A template decides how a document looks; the regime decides whether
+             it may be shown to anybody at all. The two belong on one screen
+             because they are two answers to "what is on this invoice". */
+          ['clearance', 'Statutory clearance'],
         ] as const).map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} style={{
             padding: '8px 14px', border: 'none', background: 'none', cursor: 'pointer',
@@ -94,6 +99,7 @@ export function OperatorBillTemplates() {
       {tab === 'templates' && <TemplateList book={book} onEdit={setEditing} onChanged={reload} />}
       {tab === 'assignments' && <Assignments book={book} onChanged={reload} />}
       {tab === 'identity' && <BillingIdentity book={book} onChanged={reload} />}
+      {tab === 'clearance' && <OperatorClearance />}
     </div>
   )
 }

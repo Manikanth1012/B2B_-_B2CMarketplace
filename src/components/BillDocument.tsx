@@ -1,5 +1,7 @@
 import type { Template, BillFacts } from '../lib/billTemplate'
 import { blocksFor, money } from '../lib/billTemplate'
+import { ClearanceStamp } from './ClearanceStamp'
+import type { Regime, ClearanceRecord } from '../lib/einvoice'
 
 /* A bill, drawn from the sections its template carries.
  *
@@ -16,7 +18,7 @@ import { blocksFor, money } from '../lib/billTemplate'
  */
 
 export function BillDocument(
-  { template, ids, facts, reference }: {
+  { template, ids, facts, reference, clearance }: {
     /* No 'currency': the document is denominated by the row it is raised from,
        which `facts` carries. The template only decides how it looks. */
     template: Pick<Template, 'doc_title' | 'accent' | 'tax_label' | 'logo' |
@@ -28,6 +30,13 @@ export function BillDocument(
        editor is actively changing, so showing the old bill's would be showing
        the one thing the operator did not ask about. */
     reference?: string
+    /* The statutory registration, where the market has one. Not a section and
+       not switchable: a template decides how the document looks, and no
+       template gets to leave an IRN off an Indian invoice — without it the
+       document is not a tax invoice and the customer cannot claim against it.
+       Absent (or null) where nothing has been registered, which the stamp
+       itself renders as a warning rather than as silence. */
+    clearance?: { regime: Regime | null; record: ClearanceRecord | null }
   },
 ) {
   if (!facts) {
@@ -145,6 +154,10 @@ export function BillDocument(
       )}
 
       {on('payments') && <Line label="Paid this period" amount={-facts.paid} mark={facts.currencyMark} />}
+
+      {clearance && (
+        <ClearanceStamp regime={clearance.regime} record={clearance.record} compact />
+      )}
 
       {on('howtopay') && (
         <div style={blockStyle}>

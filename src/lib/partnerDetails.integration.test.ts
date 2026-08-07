@@ -183,29 +183,42 @@ describe('a seller reading their own record', () => {
     expect(other.golive).toEqual([])
   })
 
-  it('has the demo seller inside the certificate renewal window', async () => {
-    /* Deliberate: a certificate expiring in eight months demonstrates nothing.
-       If this ever goes quiet, the tax panel is being shown against nothing. */
+  /* The demo seller is an Indian company paid by the Indian entity. A treaty
+     governs a payment that crosses a border, so there is nothing here for one
+     to do, and the panel has to say that rather than show a countdown against a
+     certificate that was never relevant. The renewal window itself is
+     demonstrated by a payee that genuinely is cross-border — see
+     `withholding.integration.test.ts`. */
+  it('shows the demo seller a domestic position, not a treaty it cannot claim', async () => {
     const snap = await loadMyDetails(DEMO)
-    expect(taxPosition(snap.bank, new Date()).level).toBe('expiring')
+    const pos = taxPosition(snap.bank, new Date())
+    expect(pos.level).toBe('none')
+    expect(pos.daysLeft).toBeNull()
+    expect(snap.bank!.treaty_on_file, 'a treaty certificate is back on a domestic payment').toBe(false)
+    expect(pos.detail, 'the panel does not say the deduction cannot be waived')
+      .toMatch(/cannot be waived/)
   })
 
-  it('agrees with the finance gate submission about when the certificate expires', async () => {
+  it('agrees with the finance gate submission about where the seller is taxed', async () => {
+    /* The gate record is the evidence the operator approved this seller on. It
+       was seeded independently of `partner_bank` and said Deutsche Bank,
+       Germany, against a settlement record saying HDFC Bank, India — an
+       approver reading one and a settlement run reading the other. */
     const [snap, { data }] = await Promise.all([
       loadMyDetails(DEMO),
       supabase.from('onboarding_submissions').select('fields')
         .eq('partner_id', DEMO).eq('gate_key', 'finance').maybeSingle(),
     ])
     const fields = ((data?.fields ?? []) as [string, string][])
-    const quoted = fields.find(f => f[0] === 'Treaty certificate')?.[1] ?? ''
-    /* Built from the parts rather than toLocaleDateString: Node's en-GB renders
-       September as "Sept" and Postgres renders it "Sep", and a test that fails
-       on that is testing ICU rather than the data. */
-    const [y, m, d] = snap.bank!.treaty_expires!.split('-')
-    const month = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][Number(m) - 1]
-    expect(quoted, 'the gate record and the live tax position disagree')
-      .toContain(`${d} ${month} ${y}`)
+    const at = (label: string) => fields.find(f => f[0] === label)?.[1] ?? ''
+
+    expect(at('Tax residency'), 'the gate and the bank record disagree about residency')
+      .toBe(snap.bank!.residency)
+    expect(at('Settlement bank')).toBe(snap.bank!.bank)
+    expect(at('Account (masked)'), 'the gate quotes a different account')
+      .toContain(snap.bank!.account.slice(-4))
+    expect(at('Treaty certificate'), 'the gate still claims a certificate the seller does not hold')
+      .toMatch(/Not applicable/)
   })
 
   it('is open in a marketplace it has published nothing in', async () => {

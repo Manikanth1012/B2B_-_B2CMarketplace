@@ -24,6 +24,7 @@ import type {
   ConsumerBill, ConsumerTicket, TicketMessage,
 } from '../types'
 import { BillDocument } from './BillDocument'
+import { loadClearanceFor } from '../lib/einvoiceRepo'
 import { Pager, usePaging } from './Pager'
 import { useMarket } from '../lib/MarketContext'
 import { byCurrency, money } from '../lib/money'
@@ -1579,6 +1580,18 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
   const billsPage = usePaging(bills, { initialSize: 5 })
   useEffect(() => { void loadBillBook().then(setBook) }, [])
 
+  /* The statutory registration on the bill being read. Fetched per document
+     rather than for the whole list: it is only ever shown on the one open in
+     front of somebody, and in India it is the difference between a tax invoice
+     and a piece of paper. */
+  const [stamp, setStamp] = useState<Awaited<ReturnType<typeof loadClearanceFor>> | null>(null)
+  useEffect(() => {
+    if (!viewing) { setStamp(null); return }
+    let live = true
+    void loadClearanceFor('consumer_bill', viewing.id).then(r => { if (live) setStamp(r) })
+    return () => { live = false }
+  }, [viewing])
+
   const template = book ? templateForBill(book) : null
   const ids = book ? sectionIds(book, template) : []
 
@@ -1665,7 +1678,8 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
 
       {viewing && book && template && (
         <Modal title={`${template.doc_title} — ${viewing.period}`} onClose={() => setViewing(null)} wide>
-          <BillDocument template={template} ids={ids} facts={factsFor(viewing, book)} />
+          <BillDocument template={template} ids={ids} facts={factsFor(viewing, book)}
+            clearance={stamp ?? undefined} />
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '20px' }}>
             <button onClick={() => setViewing(null)} style={billBtn}>Close</button>
             <button onClick={() => downloadBill(viewing, 'txt')} style={billBtn}>Plain text</button>

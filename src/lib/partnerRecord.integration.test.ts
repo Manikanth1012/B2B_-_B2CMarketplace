@@ -403,21 +403,78 @@ describe('settlement statements', () => {
   })
 
   /* Two screens quoting different gross values for the same month, neither of
-     them wrong, is the failure this pins shut. */
-  it('sums each period to the month the operator dashboard shows', async () => {
+     them wrong, is the failure this pins shut.
+   *
+   * It used to be pinned by matching a statement's period label against the
+   * dashboard's month. That check died the day partners started settling on
+   * the cycle they contracted for, and its death is not a weakening: three
+   * sellers settle quarterly, one half-yearly and one yearly, so "Q1 2026" and
+   * "H1 2026" are labels no monthly series will ever carry — and two partners
+   * can both call a period "Q1 2026" and mean different three months, because
+   * a quarterly cycle aligned to February closes in April.
+   *
+   * What survives is stronger for being independent of the labels. Every month
+   * a statement covers is a month the dashboard reports; no month is billed for
+   * more than the dashboard says the marketplace took; and where a month is
+   * billed for less, there is a partner on a longer cycle covering it whose
+   * money has not yet been cut into months. That last one is the only
+   * legitimate reason for the two to differ, so anything else fails. */
+  it('bills no month for more than the operator dashboard reports', async () => {
     const [{ data: st }, { data: months }] = await Promise.all([
-      supabase.from('settlement_statements').select('period,gross'),
-      supabase.from('operator_monthly').select('month,gross'),
+      supabase.from('settlement_statements').select('period,period_start,period_end,frequency,gross'),
+      supabase.from('operator_monthly').select('month,month_start,gross'),
     ])
-    const byPeriod = new Map<string, number>()
-    for (const s of (st ?? []) as { period: string; gross: number }[]) {
-      byPeriod.set(s.period, (byPeriod.get(s.period) ?? 0) + Number(s.gross))
+    const series = ((months ?? []) as { month: string; month_start: string; gross: number }[])
+      .sort((a, b) => a.month_start < b.month_start ? -1 : 1)
+    const statements = (st ?? []) as
+      { period: string; period_start: string; period_end: string; frequency: string; gross: number }[]
+    expect(series.length).toBeGreaterThan(1)
+    expect(statements.length).toBeGreaterThan(1)
+
+    /* The first of every month a period touches, inclusive at both ends. */
+    const monthsOf = (from: string, to: string): string[] => {
+      const out: string[] = []
+      const end = new Date(to + 'T00:00:00Z')
+      for (let d = new Date(from.slice(0, 8) + '01T00:00:00Z'); d <= end;
+           d.setUTCMonth(d.getUTCMonth() + 1)) {
+        out.push(d.toISOString().slice(0, 10))
+      }
+      return out
     }
-    expect(byPeriod.size).toBeGreaterThan(1)
-    for (const [period, billed] of byPeriod) {
-      const month = ((months ?? []) as { month: string; gross: number }[]).find(m => m.month === period)
-      expect(month, `${period} is billed but is not on the dashboard series`).toBeTruthy()
-      expect(Math.abs(billed - Number(month!.gross)), `${period} disagrees with the dashboard`).toBeLessThan(0.02)
+
+    const reported = new Set(series.map(m => m.month_start))
+    const lastReported = series[series.length - 1].month_start
+    /* Money the statements attribute to each month. A period longer than a
+       month is spread flat across it — the statement holds one figure for the
+       whole period and no month-level truth to split it by, so flat is the
+       only split that invents nothing. */
+    const billed = new Map<string, number>()
+    for (const s of statements) {
+      const span = monthsOf(s.period_start, s.period_end)
+      for (const m of span) {
+        if (!reported.has(m)) {
+          /* An open period running past the end of the reported series is
+             legitimate; a settled month the dashboard has never heard of is
+             not. */
+          expect(m > lastReported,
+            `${s.period} covers ${m}, which is not on the dashboard series at all`).toBe(true)
+          continue
+        }
+        billed.set(m, (billed.get(m) ?? 0) + Number(s.gross) / span.length)
+      }
+    }
+    expect(billed.size).toBeGreaterThan(1)
+
+    for (const m of series) {
+      const b = billed.get(m.month_start) ?? 0
+      expect(b, `${m.month} is billed ${b.toFixed(2)} against ${Number(m.gross).toFixed(2)} on the dashboard`)
+        .toBeLessThanOrEqual(Number(m.gross) + 0.02)
+      if (b > 0 && b < Number(m.gross) - 0.02) {
+        const longCycle = statements.some(s =>
+          s.frequency !== 'monthly' && monthsOf(s.period_start, s.period_end).includes(m.month_start))
+        expect(longCycle,
+          `${m.month} is short against the dashboard and no partner on a longer cycle explains it`).toBe(true)
+      }
     }
   })
 
