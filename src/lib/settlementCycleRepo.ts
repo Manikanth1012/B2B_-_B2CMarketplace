@@ -8,6 +8,7 @@
 
 import { supabase } from './supabase'
 import type { Terms } from './settlementCycle'
+import type { Rule, Certificate } from './withholding'
 
 export interface DueRow {
   partner_id: string
@@ -161,5 +162,67 @@ export async function runSettlements(
       ? `Nothing to settle — ${run.considered} contracts checked and every closed period is already settled.`
       : `${run.settled} of ${run.considered} settled as ${run.run_id}.`,
     run,
+  }
+}
+
+/* ---------------------------------------------------- tax deducted at source */
+
+export interface WithholdingBook {
+  rules: Rule[]
+  certificates: Certificate[]
+  loadError?: string
+}
+
+/** The seller's own deductions, with the statute and the document they claim
+    each one back with. RLS scopes it; the filter is for size. */
+export async function loadMyWithholding(partnerId: string): Promise<WithholdingBook> {
+  const [r, c] = await Promise.all([
+    supabase.from('withholding_rule').select('*').order('sort_order'),
+    supabase.from('my_tax_deducted').select('*').eq('partner_id', partnerId)
+      .order('period_start', { ascending: false }),
+  ])
+  const errors: string[] = []
+  if (r.error) errors.push(`the rules: ${r.error.message}`)
+  if (c.error) errors.push(`what was deducted: ${c.error.message}`)
+  return {
+    rules: ((r.data ?? []) as Rule[]).map(x =>
+      num(x, ['resident_rate', 'non_resident_rate', 'treaty_rate', 'threshold_amount', 'sort_order'])),
+    certificates: ((c.data ?? []) as Certificate[]).map(x => num(x, ['amount'])),
+    ...(errors.length ? { loadError: `Some of the tax detail did not load (${errors.join('; ')}).` } : {}),
+  }
+}
+
+/** Every partner's position, for the operator. */
+export async function loadWithholdingPositions(): Promise<{
+  rules: Rule[]
+  payees: {
+    partner_id: string; partner_name: string; market: string
+    tax_residence: string | null; treaty_on_file: boolean
+    treaty_expires: string | null; tax_id: string | null; tax_label: string | null
+  }[]
+  loadError?: string
+}> {
+  const [r, b] = await Promise.all([
+    supabase.from('withholding_rule').select('*').order('sort_order'),
+    supabase.from('partner_bank')
+      .select('partner_id, tax_residence, treaty_on_file, treaty_expires, tax_id, tax_label'),
+  ])
+  const { data: partners } = await supabase.from('partners').select('id, name, market')
+  const byId = new Map((partners ?? []).map(p => [(p as { id: string }).id, p as { id: string; name: string; market: string }]))
+  const errors: string[] = []
+  if (r.error) errors.push(`the rules: ${r.error.message}`)
+  if (b.error) errors.push(`the payees: ${b.error.message}`)
+  return {
+    rules: ((r.data ?? []) as Rule[]).map(x =>
+      num(x, ['resident_rate', 'non_resident_rate', 'treaty_rate', 'threshold_amount', 'sort_order'])),
+    payees: ((b.data ?? []) as {
+      partner_id: string; tax_residence: string | null; treaty_on_file: boolean
+      treaty_expires: string | null; tax_id: string | null; tax_label: string | null
+    }[]).map(x => ({
+      ...x,
+      partner_name: byId.get(x.partner_id)?.name ?? x.partner_id,
+      market: byId.get(x.partner_id)?.market ?? '—',
+    })),
+    ...(errors.length ? { loadError: `Some of the tax position did not load (${errors.join('; ')}).` } : {}),
   }
 }

@@ -102,6 +102,10 @@ export interface Statement {
   payout_currency: string
   payout_net: number
   fx_rate: number
+  /* The day the period closed, which is the day the payable is recognised.
+     The GL period is a month and a statement is no longer necessarily one —
+     a quarterly seller's statement closes in March and covers January. */
+  closed_on?: string | null
   fx_as_of: string
 }
 
@@ -463,8 +467,16 @@ export function reconcileLedgerToSettlement(
   const posted = money(postingsIn(postings, period.id)
     .filter(p => p.charge_id === 'settle.approved')
     .reduce((a, p) => a + n(p.amount), 0))
+  /* Matched on the day the period CLOSED, not on the label. A payable is
+     recognised when the statement is approved, and a quarterly statement
+     labelled "Q1 2026" is approved on 31 March — parsing the label put it in no
+     month at all, so its postings sat in March against nothing and the
+     reconciliation reported fifty-seven thousand of variance that was really a
+     vocabulary mismatch. `periodIdOf` remains the fallback for a row with no
+     close date on it. */
   const owed = money(statements
-    .filter(s => periodIdOf(s.period) === period.id && ['approved', 'paid'].includes(s.status))
+    .filter(s => (s.closed_on ? s.closed_on.slice(0, 7) : periodIdOf(s.period)) === period.id
+      && ['approved', 'paid'].includes(s.status))
     .reduce((a, s) => a + n(s.net), 0))
 
   const v = variance('Settlement approved', owed, posted)

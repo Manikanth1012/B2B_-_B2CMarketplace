@@ -25,8 +25,9 @@ import {
   FREQUENCY_LABEL, cycleLine, holdLine, minimumLine, nextClose, periodLabel,
 } from '../../lib/settlementCycle'
 import type { Terms } from '../../lib/settlementCycle'
-import { loadMyTerms, loadMyAccrual } from '../../lib/settlementCycleRepo'
-import type { AccruingRow } from '../../lib/settlementCycleRepo'
+import { loadMyTerms, loadMyAccrual, loadMyWithholding } from '../../lib/settlementCycleRepo'
+import type { AccruingRow, WithholdingBook } from '../../lib/settlementCycleRepo'
+import { byStatute, certificateLine } from '../../lib/withholding'
 
 /* What the seller is owed, how it was worked out, and when it lands.
  *
@@ -296,6 +297,7 @@ export function PartnerSettlement({ partnerId }: { partnerId: string }) {
           scheduled from. "When am I paid" is the commonest question a partner
           desk gets and the answer was prose. */}
       <MyCycle partnerId={partnerId} planName={plan?.name ?? null} fees={plan?.fees ?? null} />
+      <MyTaxDeducted partnerId={partnerId} />
       {plan && (
         <SectionCard title="How your commission works" subtitle={plan.name}>
           <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
@@ -449,6 +451,89 @@ function MyCycle({ partnerId, planName, fees }: {
             </p>
           </div>
         )}
+      </div>
+    </SectionCard>
+  )
+}
+
+/* Tax deducted at source, and the document to claim it back with.
+ *
+ * The deduction already showed on the statement as a line in the gross-to-net
+ * stack. What it did not have was a reason a seller could act on: which
+ * statute, on what basis, and where the certificate is. Without the last of
+ * those the money is simply gone from the seller's point of view, and that is
+ * a dispute the marketplace loses.
+ */
+function MyTaxDeducted({ partnerId }: { partnerId: string }) {
+  const { fmtIn } = useMarket()
+  const [book, setBook] = useState<WithholdingBook | null>(null)
+
+  useEffect(() => {
+    let live = true
+    void loadMyWithholding(partnerId).then(b => { if (live) setBook(b) })
+    return () => { live = false }
+  }, [partnerId])
+
+  if (!book) return null
+
+  const totals = byStatute(book.certificates)
+  /* Nothing deducted is a real answer — a UAE seller is deducted from nowhere —
+     and it is worth saying rather than rendering an empty card or none. */
+  if (book.certificates.length === 0) {
+    return (
+      <SectionCard title="Tax deducted at source">
+        <div style={{ padding: '18px 20px', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
+          Nothing has been deducted from your settlements. Whether anything is depends on where you are tax
+          resident and where the paying entity is — if that changes, this card will show what was taken and
+          the certificate to claim it back with.
+        </div>
+      </SectionCard>
+    )
+  }
+
+  return (
+    <SectionCard
+      title="Tax deducted at source"
+      subtitle="Taken out of your settlement and paid to the authority against your own tax account. You claim it back when you file.">
+      <div style={{ padding: '16px 20px 6px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
+        {totals.map(t => (
+          <div key={t.statute}>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{t.statute}</div>
+            <div style={{ fontSize: 'var(--text-lg)', fontWeight: 800 }}>{fmtIn(t.amount, 'USD')}</div>
+            <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+              across {t.count} {t.count === 1 ? 'quarter' : 'quarters'}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <Table headers={['Quarter', 'Statute', 'On', 'Deducted', 'Document', 'Where it is']}>
+        {book.certificates.map(c => (
+          <tr key={c.id}>
+            <Td>
+              <div style={{ fontWeight: 600 }}>{c.period_start} to {c.period_end}</div>
+            </Td>
+            <Td style={{ fontSize: 'var(--text-xs)' }}>{c.statute ?? c.rule_id}</Td>
+            {/* The basis, because a seller reconciling 1% of something needs to
+                know 1% of what. India deducts on the whole sale, not the
+                commission. */}
+            <Td right style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+              {c.basis === 'gross' ? 'the whole sale'
+                : c.basis === 'commission' ? 'our commission'
+                : 'the net supply'}
+            </Td>
+            <Td right style={{ fontWeight: 700 }}>{fmtIn(c.amount, c.currency)}</Td>
+            <Td right style={{ fontSize: 'var(--text-xs)' }}>{c.form}</Td>
+            <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '320px', color: 'var(--text-secondary)' }}>
+              {certificateLine(c)}
+            </Td>
+          </tr>
+        ))}
+      </Table>
+
+      <div style={{ padding: '12px 20px 16px', fontSize: '11px', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
+        This is not a cost. It is your own tax, paid early and on your behalf — the certificate is what turns
+        it back into a credit on your return.
       </div>
     </SectionCard>
   )

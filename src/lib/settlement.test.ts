@@ -32,11 +32,26 @@ describe('periodEnd', () => {
     expect(periodEnd('February 2026')).toBe('2026-02-28')
   })
 
+  /* Four vocabularies, because partners settle on four cycles and each names
+     its periods its own way. "Q1 2026" used to be refused, correctly — nothing
+     produced it. Eleven statements were labelled that way the moment the
+     contracted cycles went in, and refusing them left half the book undatable. */
+  it('dates a quarter, a half and a year as well as a month', () => {
+    expect(periodEnd('Q1 2026')).toBe('2026-03-31')
+    expect(periodEnd('Q2 2026')).toBe('2026-06-30')
+    expect(periodEnd('Q4 2026')).toBe('2026-12-31')
+    expect(periodEnd('H1 2026')).toBe('2026-06-30')
+    expect(periodEnd('H2 2026')).toBe('2026-12-31')
+    expect(periodEnd('2026')).toBe('2026-12-31')
+  })
+
   it('refuses rather than guessing', () => {
     /* Guessing a date here silently picks a rate, which is the failure with no
        symptom — the figure comes out, it is just the wrong one. */
-    expect(periodEnd('Q1 2026')).toBeNull()
     expect(periodEnd('2026-02')).toBeNull()
+    expect(periodEnd('Q5 2026')).toBeNull()
+    expect(periodEnd('H3 2026')).toBeNull()
+    expect(periodEnd('first quarter')).toBeNull()
     expect(periodEnd('')).toBeNull()
   })
 })
@@ -80,10 +95,18 @@ describe('payoutFor', () => {
   })
 
   it('refuses a period it cannot date', () => {
-    const r = payoutFor({ ...base, to: 'INR', period: 'Q2 2026' })
+    const r = payoutFor({ ...base, to: 'INR', period: 'second half' })
     expect(r.ok).toBe(false)
     if (r.ok) return
     expect(r.reason).toMatch(/Aug 2026/)
+  })
+
+  it('converts a quarterly statement at the rate in force when the quarter closed', () => {
+    const r = payoutFor({ ...base, to: 'INR', period: 'Q2 2026' })
+    expect(r.ok).toBe(true)
+    if (!r.ok) return
+    /* 30 June, not whichever rate happens to be latest. */
+    expect(r.payout.asOf <= '2026-06-30').toBe(true)
   })
 
   it('handles a pegged rate like any other', () => {

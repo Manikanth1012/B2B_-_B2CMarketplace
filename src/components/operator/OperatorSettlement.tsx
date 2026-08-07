@@ -6,13 +6,13 @@ import { useMarket } from '../../lib/MarketContext'
 import { byCurrency, formatGroups, money } from '../../lib/money'
 import { payoutFor } from '../../lib/settlement'
 import { Pager, usePaging } from '../Pager'
-import { SettlementCycles, SettlementRuns } from './OperatorSettlementCycles'
+import { SettlementCycles, SettlementRuns, WithholdingPositions } from './OperatorSettlementCycles'
 
 /* `focus` is a statement id handed over from the dashboard. Opening it here
    rather than making the operator find the row again is the whole point of a
    dashboard listing work: the list says what needs doing and this is where it
    gets done. */
-type Tab = 'statements' | 'cycles' | 'runs'
+type Tab = 'statements' | 'cycles' | 'runs' | 'tax'
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'statements', label: 'Statements' },
@@ -21,6 +21,9 @@ const TABS: { id: Tab; label: string }[] = [
      so this screen could only ever show one cadence. */
   { id: 'cycles', label: 'Agreed cycles' },
   { id: 'runs', label: 'Runs' },
+  /* `partner_bank.withholding` was free text and said "Nil under treaty" on
+     seven domestic Indian payments. The position belongs on a screen. */
+  { id: 'tax', label: 'Tax at source' },
 ]
 
 export function OperatorSettlement({ focus = null }: { focus?: string | null } = {}) {
@@ -125,6 +128,7 @@ export function OperatorSettlement({ focus = null }: { focus?: string | null } =
 
       {tab === 'cycles' && <SettlementCycles />}
       {tab === 'runs' && <SettlementRuns />}
+      {tab === 'tax' && <WithholdingPositions />}
 
       {tab === 'statements' && <>
       <div style={{ display: 'flex', gap: '8px' }}>

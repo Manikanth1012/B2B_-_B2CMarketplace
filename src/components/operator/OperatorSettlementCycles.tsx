@@ -11,7 +11,8 @@ import {
   termsProblem, termsWarnings, periodLabel,
 } from '../../lib/settlementCycle'
 import type { Terms, Frequency, Align } from '../../lib/settlementCycle'
-import { loadCycleBook, saveTerms, runSettlements } from '../../lib/settlementCycleRepo'
+import { loadCycleBook, saveTerms, runSettlements, loadWithholdingPositions } from '../../lib/settlementCycleRepo'
+import { positionLine, payeeWarnings } from '../../lib/withholding'
 import type { CycleBook, DueRow, AccruingRow, Run } from '../../lib/settlementCycleRepo'
 
 /* The contracted cycle, and the runs that follow it.
@@ -391,5 +392,101 @@ function TermsEditor({ terms, onClose, onSaved }: {
       ))}
       {problem && <Callout tone="danger" title="Not ready to save">{problem}</Callout>}
     </Modal>
+  )
+}
+
+/* ---- Tax deducted at source --------------------------------------------------- */
+
+/* Who is deducted from, at what rate, and why.
+ *
+ * `partner_bank.withholding` was free text and said "Nil under treaty" for all
+ * thirteen sellers — including seven Indian companies paid by an Indian
+ * company, where no treaty applies and section 194-O does. This is the position
+ * derived from where the payee is, which is the question that column was
+ * reaching for.
+ */
+export function WithholdingPositions() {
+  const { fmtIn } = useMarket()
+  const [book, setBook] = useState<Awaited<ReturnType<typeof loadWithholdingPositions>> | null>(null)
+  const today = new Date().toISOString().slice(0, 10)
+
+  useEffect(() => { void loadWithholdingPositions().then(setBook) }, [])
+  if (!book) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+
+  const byMarket = [...new Set(book.rules.filter(r => r.applies_to === 'partner-payout').map(r => r.market))]
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {book.loadError && <Callout tone="danger" title="Some of this did not load">{book.loadError}</Callout>}
+
+      <SectionCard
+        title="What each jurisdiction takes"
+        subtitle="Residence decides the rate. A treaty reduces a non-resident rate and never a domestic one.">
+        <Table headers={['Market', 'Statute', 'On', 'Resident', 'Non-resident', 'With a treaty', 'From']}>
+          {book.rules.filter(r => r.applies_to === 'partner-payout').map(r => (
+            <tr key={r.id}>
+              <Td style={{ fontWeight: 600 }}>{r.market}</Td>
+              <Td style={{ fontSize: 'var(--text-xs)' }}>
+                <div style={{ fontWeight: 600 }}>{r.label}</div>
+                <div style={{ color: 'var(--text-tertiary)' }}>{r.statute}</div>
+              </Td>
+              <Td right style={{ fontSize: 'var(--text-xs)' }}>
+                {r.basis === 'gross' ? 'the whole sale'
+                  : r.basis === 'commission' ? 'our commission'
+                  : 'the net supply'}
+              </Td>
+              <Td right style={{ fontWeight: 700 }}>{r.resident_rate}%</Td>
+              <Td right>{r.non_resident_rate}%</Td>
+              <Td right>
+                {r.treaty_rate != null
+                  ? `${r.treaty_rate}%`
+                  : <span style={{ color: 'var(--text-tertiary)' }}>no relief published</span>}
+              </Td>
+              <Td right style={{ fontSize: 'var(--text-xs)' }}>{r.effective_from}</Td>
+            </tr>
+          ))}
+        </Table>
+      </SectionCard>
+
+      <SectionCard
+        title="Where each seller is, and what that means"
+        subtitle={`${byMarket.length} jurisdictions configured. A market with no rule is not a nil rate — it is a question nobody has answered.`}>
+        <Table headers={['Seller', 'Paid from', 'Resident in', 'Tax id', 'Position']}>
+          {book.payees.map(p => {
+            const payee = { residence: p.tax_residence ?? p.market, treaty_on_file: p.treaty_on_file }
+            const warnings = payeeWarnings(
+              { ...payee, tax_id: p.tax_id, treaty_expires: p.treaty_expires }, p.market, today)
+            return (
+              <tr key={p.partner_id}>
+                <Td>
+                  <div style={{ fontWeight: 600 }}>{p.partner_name}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono, monospace)' }}>
+                    {p.partner_id}
+                  </div>
+                </Td>
+                <Td right>{p.market}</Td>
+                <Td right>
+                  {p.tax_residence ?? '—'}
+                  {p.tax_residence === p.market && (
+                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>domestic</div>
+                  )}
+                </Td>
+                <Td right style={{ fontSize: 'var(--text-xs)' }}>
+                  {p.tax_id
+                    ? <>{p.tax_label} {p.tax_id}</>
+                    : <span style={{ color: 'var(--warning)' }}>none on file</span>}
+                </Td>
+                <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '460px', color: 'var(--text-secondary)' }}>
+                  {positionLine(book.rules, p.market, payee, today)}
+                  {warnings.map(w => (
+                    <div key={w} style={{ color: 'var(--warning)', marginTop: '3px' }}>{w}</div>
+                  ))}
+                </Td>
+              </tr>
+            )
+          })}
+        </Table>
+      </SectionCard>
+    </div>
   )
 }

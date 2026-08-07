@@ -33,23 +33,45 @@ export type PayoutResult =
   | { ok: false; reason: string }
 
 /**
- * The last day of a period written as "Feb 2026".
+ * The last day of a period from its label.
  *
  * A settlement is converted at the fix in force when the period closed, not at
  * the fix in force when somebody opens the screen. Returns null on anything it
  * cannot read, because guessing a date here would silently pick a rate.
+ *
+ * Four vocabularies, because partners settle on four cycles and each names its
+ * periods its own way — "Q2 2026" is what a quarterly seller calls it, and
+ * parsing only "Feb 2026" left eleven statements undatable the moment the
+ * contracted cycles went in.
+ *
+ * Prefer `period_end` off the row where you have it. This exists for the case
+ * where all you have is what was printed.
  */
 export function periodEnd(period: string): string | null {
-  const m = /^([A-Za-z]{3})[a-z]*\s+(\d{4})$/.exec(period.trim())
-  if (!m) return null
-  const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
-  const i = months.indexOf(m[1].toLowerCase())
-  if (i < 0) return null
-  const year = Number(m[2])
-  /* Day 0 of the next month is the last day of this one, and it handles
-     February in a leap year without anybody writing down which years those are. */
-  const d = new Date(Date.UTC(year, i + 1, 0))
-  return d.toISOString().slice(0, 10)
+  const s = period.trim()
+  const utcEnd = (y: number, monthAfter: number) =>
+    /* Day 0 of the next month is the last day of this one, and it handles
+       February in a leap year without anybody writing down which years those
+       are. */
+    new Date(Date.UTC(y, monthAfter, 0)).toISOString().slice(0, 10)
+
+  const month = /^([A-Za-z]{3})[a-z]*\s+(\d{4})$/.exec(s)
+  if (month) {
+    const months = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec']
+    const i = months.indexOf(month[1].toLowerCase())
+    return i < 0 ? null : utcEnd(Number(month[2]), i + 1)
+  }
+
+  const quarter = /^Q([1-4])\s+(\d{4})$/i.exec(s)
+  if (quarter) return utcEnd(Number(quarter[2]), Number(quarter[1]) * 3)
+
+  const half = /^H([12])\s+(\d{4})$/i.exec(s)
+  if (half) return utcEnd(Number(half[2]), Number(half[1]) * 6)
+
+  const year = /^(\d{4})$/.exec(s)
+  if (year) return `${year[1]}-12-31`
+
+  return null
 }
 
 /**
@@ -108,7 +130,13 @@ export function payoutAgrees(
   statement: { net: number; payout_net: number; fx_rate: number },
   tolerance = 0.01,
 ): boolean {
-  return Math.abs(Number(statement.payout_net) - round2(Number(statement.net) * Number(statement.fx_rate))) <= tolerance
+  const drift = Math.abs(
+    Number(statement.payout_net) - round2(Number(statement.net) * Number(statement.fx_rate)))
+  /* The epsilon is not slack in the tolerance — it is the tolerance surviving
+     binary. A row exactly one cent out computes a drift of
+     0.010000000002037268 and would be reported as drifted on some statements
+     and not others depending on nothing anybody can see. */
+  return drift <= tolerance + 1e-9
 }
 
 /** Whether a statement's own arithmetic holds, before any currency is involved. */
