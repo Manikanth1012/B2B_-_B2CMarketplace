@@ -7,6 +7,10 @@ import {
   stockBadge, stockLabel, lineValue, totalValue, attentionOrder, canStock,
 } from '../../lib/inventory'
 import { Callout } from '../OnboardingJourney'
+import { StockLineDetail, SerialSearch } from './StockLineDetail'
+import { loadRollups } from '../../lib/serialsRepo'
+import { driftLine } from '../../lib/serials'
+import type { UnitRollup, Drift } from '../../lib/serials'
 import { useMarket } from '../../lib/MarketContext'
 import {
   SectionCard, Table, Td, StatusPill, EmptyState, fmtInt, fmtDate,
@@ -32,7 +36,16 @@ export function OperatorInventory() {
   const [products, setProducts] = useState<Product[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
-  const [tab, setTab] = useState<'stock' | 'warehouses'>('stock')
+  const [tab, setTab] = useState<'stock' | 'serials' | 'warehouses'>('stock')
+  /* The counts under every line, aggregated in the database. One row per stock
+     line, not one per unit — there are four thousand units and counting them
+     in the browser would report a percentage of the first thousand PostgREST
+     is willing to return. */
+  const [rollups, setRollups] = useState<UnitRollup[]>([])
+  const [drift, setDrift] = useState<Drift[]>([])
+  /* The line somebody clicked. The decision panel used to say "48 available
+     against a reorder point of 60" and stop there, with nothing to click. */
+  const [viewing, setViewing] = useState<OperatorInventory | null>(null)
   const [editModal, setEditModal] = useState<OperatorInventory | null>(null)
   const [addModal, setAddModal] = useState(false)
   const [whModal, setWhModal] = useState<OperatorWarehouse | null>(null)
@@ -49,6 +62,12 @@ export function OperatorInventory() {
     setInventory((data ?? []) as OperatorInventory[])
   }, [])
 
+  const refreshUnits = useCallback(async () => {
+    const { rollups: r, drift: d } = await loadRollups()
+    setRollups(r)
+    setDrift(d)
+  }, [])
+
   const refreshWh = useCallback(async () => {
     const { data } = await supabase.from('operator_warehouses').select('*').order('sort_order')
     if (data) setWarehouses(data as OperatorWarehouse[])
@@ -58,8 +77,9 @@ export function OperatorInventory() {
     Promise.all([
       refreshInv(),
       refreshWh(),
+      refreshUnits(),
       supabase.from('products').select('*').eq('fulfil', 'shipped').order('id'),
-    ]).then(([, , prod]) => {
+    ]).then(([, , , prod]) => {
       /* Only shippable products can hold warehouse stock, so only those are
          offerable when adding a line. A count of an eSIM is not a number
          anybody can take. */
@@ -74,7 +94,7 @@ export function OperatorInventory() {
       const byId = Object.fromEntries(((prods ?? []) as Product[]).map(p => [p.id, p]))
       setDemand(counts.filter(c => byId[c.productId]).map(c => ({ product: byId[c.productId], waiting: c.waiting })))
     })
-  }, [refreshInv, refreshWh])
+  }, [refreshInv, refreshWh, refreshUnits])
 
   /* Above the loading guard: `usePaging` is a hook, and a hook after an
      early return runs on some renders and not others. */
@@ -114,8 +134,21 @@ export function OperatorInventory() {
 
       {loadError && <Callout tone="danger" title="This did not load">{loadError}</Callout>}
 
+      {/* A stored count that disagrees with the units under it is the bug the
+          unit table exists to prevent, so it is reported rather than assumed
+          away. Silence here would only mean nobody ever checked. */}
+      {drift.length > 0 && (
+        <Callout tone="danger" title={`${drift.length} stock lines disagree with the units under them`}>
+          {drift.map(d => <div key={d.line_id} style={{ marginTop: '4px' }}>{driftLine(d)}</div>)}
+        </Callout>
+      )}
+
       <div style={{ display: 'flex', gap: '8px' }}>
-        {[{ id: 'stock' as const, label: 'Stock ledger' }, { id: 'warehouses' as const, label: 'Warehouses' }].map(t => (
+        {[
+          { id: 'stock' as const, label: 'Stock ledger' },
+          { id: 'serials' as const, label: 'Serial numbers' },
+          { id: 'warehouses' as const, label: 'Warehouses' },
+        ].map(t => (
           <button key={t.id} onClick={() => setTab(t.id)} style={{
             padding: '8px 16px', borderRadius: 'var(--radius)', fontSize: 'var(--text-sm)', fontWeight: 600,
             background: tab === t.id ? 'var(--brand-navy)' : 'white',
@@ -141,11 +174,22 @@ export function OperatorInventory() {
           })()}
         >
           <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {/* Clickable, because "48 available against a reorder point of 60"
+                is where the conversation starts rather than where it ends. The
+                units behind it say which twenty are reserved and against what. */}
             {attention.map(({ line, attention: a }) => (
-              <div key={line.id} style={{
+              <div key={line.id}
+                onClick={() => setViewing(line)}
+                onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setViewing(line) } }}
+                role="button" tabIndex={0}
+                title="Open this stock line"
+                onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--brand-accent)'}
+                onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--border)'}
+                style={{
                 display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap',
                 padding: '10px 12px', borderRadius: 'var(--radius-md)',
-                border: '1px solid var(--border)',
+                border: '1px solid var(--border)', cursor: 'pointer',
+                transition: 'border-color 150ms ease',
                 background: a.covered ? 'white' : a.kind === 'out' ? 'var(--danger-bg)' : 'var(--warning-bg)',
               }}>
                 <div style={{ flex: 1, minWidth: '200px' }}>
@@ -212,7 +256,7 @@ export function OperatorInventory() {
           subtitle="Available is on hand minus reserved, computed by the database rather than stored beside them"
         >
           {inventory.length === 0 ? <EmptyState message="No stock lines" /> : (
-            <><Table headers={['Product', 'Seller', 'Warehouse', 'On hand', 'Reserved', 'Available', 'Reorder', 'Inbound', 'Unit cost', 'Value', '']}>
+            <><Table headers={['Product', 'Seller', 'Warehouse', 'On hand', 'Reserved', 'Available', 'Reorder', 'Inbound', 'Gone out', 'Value', '']}>
               {stockPage.rows.map(i => {
                 const badge = stockBadge(i.available, i.reorder_point)
                 return (
@@ -231,10 +275,23 @@ export function OperatorInventory() {
                     }}>{fmtInt(i.available)}</Td>
                     <Td right>{fmtInt(i.reorder_point)}</Td>
                     <Td right>{i.inbound > 0 ? `${fmtInt(i.inbound)} (${fmtDate(i.inbound_due)})` : '—'}</Td>
-                    <Td right>{cost(i.unit_cost)}</Td>
+                    {/* What has left this line, by unit. A stock screen that
+                        only shows what is still here cannot answer where the
+                        rest went. */}
+                    <Td right style={{ fontSize: 'var(--text-xs)' }}>
+                      {(() => {
+                        const r = rollups.find(x => x.product_id === i.product_id && x.warehouse_id === i.warehouse_id)
+                        if (!r) return '—'
+                        const out = r.despatched + r.delivered
+                        return out === 0 ? '—' : `${fmtInt(out)} on orders`
+                      })()}
+                    </Td>
                     <Td right>{cost(lineValue(i))}</Td>
                     <Td right>
-                      <Btn variant="secondary" size="sm" onClick={() => setEditModal(i)}>Edit</Btn>
+                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                        <Btn variant="secondary" size="sm" onClick={() => setViewing(i)}>Units</Btn>
+                        <Btn variant="secondary" size="sm" onClick={() => setEditModal(i)}>Edit</Btn>
+                      </div>
                     </Td>
                   </tr>
                 )
@@ -250,6 +307,17 @@ export function OperatorInventory() {
             </p>
           </div>
         </SectionCard>
+      )}
+
+      {tab === 'serials' && (
+        <>
+          <Callout tone="info" title="Every unit on the shelf has an identity">
+            The ledger counts these rows rather than holding a number beside them. A serial says where it
+            came from, which batch it was in, which order took it and who has it — none of which a count
+            can answer, and all of which somebody rings up and asks.
+          </Callout>
+          <SerialSearch />
+        </>
       )}
 
       {tab === 'warehouses' && (
@@ -287,6 +355,15 @@ export function OperatorInventory() {
             </p>
           </div>
         </SectionCard>
+      )}
+
+      {viewing && (
+        <StockLineDetail
+          line={viewing}
+          rollup={rollups.find(r => r.product_id === viewing.product_id && r.warehouse_id === viewing.warehouse_id) ?? null}
+          onClose={() => setViewing(null)}
+          onChanged={async () => { await refreshInv(); await refreshUnits() }}
+        />
       )}
 
       {(editModal || addModal) && (

@@ -21,7 +21,11 @@ export function fmtDateTime(s: string | null): string {
   return d.toLocaleDateString('en-US', { day: 'numeric', month: 'short' }) + ', ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
 }
 
-export function StatusPill({ status }: { status: string }) {
+/* `status` picks the colour; `label` is what it reads, where the two differ.
+   The stock unit states borrow this palette — a despatched unit is coloured
+   like anything else in flight — and without the override the pill printed the
+   colour token instead of the state: "current" where it meant "Despatched". */
+export function StatusPill({ status, label }: { status: string; label?: string }) {
   const map: Record<string, { bg: string; color: string }> = {
     pending: { bg: 'var(--warning-bg)', color: 'var(--warning)' },
     approved: { bg: 'var(--success-bg)', color: 'var(--success)' },
@@ -73,7 +77,7 @@ export function StatusPill({ status }: { status: string }) {
       fontSize: 'var(--text-xs)', fontWeight: 600,
       background: s.bg, color: s.color,
     }}>
-      {status.replace(/_/g, ' ')}
+      {(label ?? status).replace(/_/g, ' ')}
     </span>
   )
 }
