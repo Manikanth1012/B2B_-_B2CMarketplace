@@ -84,8 +84,29 @@ export interface LogEntry {
   sent_at: string
   state: LogState
   detail: string | null
+  /* Priced by the database from the rate card, never by whoever wrote the row.
+     `cost_currency` is null only where nothing carried the message — in-app —
+     and a cost without a currency is a number nobody can add up. */
   cost: number
+  cost_currency: string | null
+  /* Where it went, and how many segments the carrier billed. A 300-character
+     SMS is three of them, which is why a channel's bill cannot be read off a
+     message count. */
+  destination: string | null
+  segments: number | null
   ref: string | null
+}
+
+/** Who a preference or a log line belongs to, by name, from the
+    `notification_recipient` view. A preference keyed on a partner belongs to
+    the whole seller account; one keyed on a user belongs to a person. */
+export interface Recipient {
+  scope: 'user' | 'partner'
+  key: string
+  name: string
+  persona: Persona
+  ref: string | null
+  detail: string | null
 }
 
 /** A gateway from `operator_channels`, only the parts notifications care about. */
@@ -95,6 +116,74 @@ export interface Gateway {
   kind: KindId | null
   enabled: boolean
   transport?: string | null
+  has_receipt?: boolean
+  sender?: string | null
+}
+
+/* ---- The integration behind the name --------------------------------------
+ *
+ * A channel used to say "Route Mobile, SMPP 3.4" and hold nothing else. That is
+ * a label on a box with no wiring in it: no host, no bind credential, no sender
+ * registration, no receipt callback, no retry policy, no failover target. The
+ * screen's own note promised "failover is automatic after a defined number of
+ * attempts" while nothing anywhere defined a number or a target.
+ */
+
+export type AuthMode = 'none' | 'basic' | 'api_key' | 'oauth2' | 'smpp_bind' | 'mtls'
+export type IntegrationStatus = 'not_configured' | 'configured' | 'verified' | 'failing'
+
+export interface Integration {
+  channel_id: string
+  endpoint: string | null
+  port: number | null
+  auth_mode: AuthMode
+  auth_user: string | null
+  /* The last four characters of the credential and the day it was set. The
+     credential itself is not here and is not fetchable — the database keeps a
+     hash so a test can prove one was set, and nothing that can be shown. */
+  secret_hint: string | null
+  secret_set_on: string | null
+  sender_registry: string | null
+  sender_ref: string | null
+  sender_ok: boolean
+  dlr_url: string | null
+  timeout_ms: number
+  retry_attempts: number
+  retry_backoff: 'none' | 'fixed' | 'exponential'
+  retry_after_ms: number
+  failover_id: string | null
+  status: IntegrationStatus
+  last_test_at: string | null
+  last_test_ms: number | null
+  last_test_note: string | null
+  note: string | null
+}
+
+export interface Rate {
+  id: string
+  channel_id: string
+  /* A market code, or 'default' for everywhere the carrier has not quoted
+     separately. */
+  destination: string
+  currency: string
+  unit_rate: number
+  segment_chars: number | null
+  multipart_chars: number | null
+  min_charge: number
+  effective_from: string
+  effective_to: string | null
+  note: string | null
+}
+
+export interface ChannelTest {
+  id: string
+  channel_id: string
+  ran_at: string
+  ran_by: string
+  ok: boolean
+  ms: number | null
+  detail: string
+  checks: string[]
 }
 
 export type Check = { ok: true; note?: string } | { ok: false; reason: string }
@@ -123,6 +212,59 @@ export interface Effective {
      showing, because "I turned that off" is the first answer to "why did I not
      get it". */
   customised: boolean
+}
+
+/* ---- Naming a recipient ---------------------------------------------------
+ *
+ * "Who chose what" listed `e5b3c7a1…`, which answers nothing. The screen is
+ * there so support can settle "why was I not told?", and that conversation is
+ * about Otieno Odhiambo, not about a foreign key.
+ */
+
+/** A preference belongs to a seller account or to a person, never to both. */
+export function ownerKey(p: Pick<Preference, 'partner_id' | 'user_id'>): string | null {
+  return p.partner_id ?? p.user_id ?? null
+}
+
+export interface NamedRecipient {
+  name: string
+  ref: string | null
+  detail: string | null
+  persona: Persona | null
+  /* False where the directory has no row. The label still has to read as a
+     sentence rather than as a truncated id, because an unresolvable owner is
+     itself a finding worth showing. */
+  known: boolean
+}
+
+const UNKNOWN: NamedRecipient = {
+  name: 'Not in the directory', ref: null, detail: null, persona: null, known: false,
+}
+
+export function nameRecipient(
+  key: string | null, directory: readonly Recipient[],
+): NamedRecipient {
+  if (!key) return { ...UNKNOWN, name: 'Nobody in particular' }
+  const r = directory.find(d => d.key === key)
+  if (!r) {
+    /* Say what could not be resolved, but shortened — a full UUID in a table
+       cell pushes every other column off the screen. */
+    return { ...UNKNOWN, ref: key.length > 12 ? `${key.slice(0, 8)}…` : key }
+  }
+  return { name: r.name, ref: r.ref, detail: r.detail, persona: r.persona, known: true }
+}
+
+/** One line for a table cell: the name, and the reference that tells two people
+    of the same name apart. */
+export function recipientLine(n: NamedRecipient): string {
+  return n.ref && n.ref !== n.name ? `${n.name} · ${n.ref}` : n.name
+}
+
+/** A seller preference covers everybody at that seller; a user preference
+    covers one person. Support needs to know which before it explains why a
+    colleague did get the message. */
+export function scopeLine(scope: Preference['scope']): string {
+  return scope === 'partner' ? 'the whole seller account' : 'one person'
 }
 
 export function effective(rule: Rule, pref: Preference | null): Effective {
@@ -414,7 +556,7 @@ export function filterLog(log: LogEntry[], f: LogFilter): LogEntry[] {
     failures would read as a broken platform rather than a working preference. */
 export function deliverySummary(log: LogEntry[]): {
   total: number; delivered: number; failed: number; suppressed: number
-  attempted: number; rate: number | null; cost: number
+  attempted: number; rate: number | null; spend: Spend[]
 } {
   const delivered = log.filter((e) => e.state === 'delivered' || e.state === 'sent').length
   const failed = log.filter((e) => e.state === 'failed').length
@@ -427,15 +569,58 @@ export function deliverySummary(log: LogEntry[]): {
     suppressed,
     attempted,
     rate: attempted ? round2((delivered / attempted) * 100) : null,
-    cost: round4(log.reduce((s, e) => s + Number(e.cost || 0), 0)),
+    spend: spendByCurrency(log),
   }
+}
+
+/* ---- What the messages cost -----------------------------------------------
+ *
+ * This used to be one number and one dollar sign. Route Mobile bills Kenyan
+ * termination in shillings and Indian termination in rupees; SES bills in
+ * dollars. Adding those three together produces a figure that is not money in
+ * any currency, and printing it with a `$` in front makes the claim worse
+ * rather than better. So spend is per currency, always, and a caller that wants
+ * one total has to say what it converted and at which rate.
+ */
+
+export interface Spend {
+  currency: string
+  amount: number
+  messages: number
+  /* Carriers bill per segment. A count of messages is not a count of what was
+     paid for. */
+  segments: number
+}
+
+export function spendByCurrency(log: readonly LogEntry[]): Spend[] {
+  const m = new Map<string, Spend>()
+  for (const e of log) {
+    /* A row with no currency cost nothing to carry — in-app. Counting it as a
+       zero in some arbitrary currency would invent a currency. */
+    if (!e.cost_currency) continue
+    const s = m.get(e.cost_currency) ?? { currency: e.cost_currency, amount: 0, messages: 0, segments: 0 }
+    s.amount += Number(e.cost || 0)
+    s.messages += 1
+    s.segments += Number(e.segments || 1)
+    m.set(e.cost_currency, s)
+  }
+  return [...m.values()]
+    .map((s) => ({ ...s, amount: round4(s.amount) }))
+    .sort((a, b) => b.amount - a.amount || a.currency.localeCompare(b.currency))
+}
+
+/** "INR 0.90 and KES 2.40" — the sentence a tile can hold without pretending
+    the two add up. */
+export function spendLine(spend: readonly Spend[], money: (n: number, c: string) => string): string {
+  if (spend.length === 0) return 'Nothing — every message so far went out on a channel that charges nothing'
+  return spend.map((s) => money(s.amount, s.currency)).join(' · ')
 }
 
 /** Per channel, because "delivery is at 92%" is never actionable and "SMS is at
     60% and everything else is fine" always is. */
 export function byKind(log: LogEntry[], kinds: Kind[]): {
   kind: KindId; label: string; sent: number; failed: number; suppressed: number
-  rate: number | null; cost: number
+  rate: number | null; spend: Spend[]
 }[] {
   return kinds
     .slice()
@@ -445,7 +630,7 @@ export function byKind(log: LogEntry[], kinds: Kind[]): {
       const s = deliverySummary(mine)
       return {
         kind: k.id, label: k.label, sent: s.delivered, failed: s.failed,
-        suppressed: s.suppressed, rate: s.rate, cost: s.cost,
+        suppressed: s.suppressed, rate: s.rate, spend: s.spend,
       }
     })
     .filter((r) => r.sent + r.failed + r.suppressed > 0)
@@ -467,18 +652,172 @@ export function silentRules(rules: Rule[], log: LogEntry[]): Rule[] {
 /** What the operator is spending to talk to people, by gateway. Push and in-app
     are free, which is exactly why the expensive channels deserve a number. */
 export function costByGateway(log: LogEntry[], gateways: Gateway[]): {
-  id: string; name: string; kind: KindId | null; messages: number; cost: number
+  id: string; name: string; kind: KindId | null; messages: number
+  segments: number; spend: Spend[]
 }[] {
   return gateways
     .map((g) => {
       const mine = log.filter((e) => e.channel_id === g.id)
       return {
         id: g.id, name: g.name, kind: g.kind, messages: mine.length,
-        cost: round4(mine.reduce((s, e) => s + Number(e.cost || 0), 0)),
+        segments: mine.reduce((s, e) => s + Number(e.segments || 1), 0),
+        spend: spendByCurrency(mine),
       }
     })
     .filter((r) => r.messages > 0)
-    .sort((a, b) => b.cost - a.cost)
+    /* Most-used first. Sorting by cost would rank a rupee above a dollar. */
+    .sort((a, b) => b.messages - a.messages || a.name.localeCompare(b.name))
+}
+
+/* ---- Reading an integration ------------------------------------------------
+ *
+ * Four states, and the distance between the middle two is the whole point.
+ * `configured` says every field a send needs is filled in. `verified` says
+ * somebody ran the check and it passed. A console that only has "enabled" makes
+ * the second claim with the evidence for neither.
+ */
+
+export const INTEGRATION_LABEL: Record<IntegrationStatus, string> = {
+  not_configured: 'Nothing configured',
+  configured: 'Configured, never tested',
+  verified: 'Tested and ready',
+  failing: 'Last test failed',
+}
+
+/** Everything about this channel that would make a real send fail. The same
+    list the database check produces, computed here so the screen can show it
+    before anybody presses Test — a form that only tells you what is missing
+    after you submit it is a form that wastes a round trip. */
+export function configGaps(gw: Gateway, ci: Integration | null, rates: readonly Rate[]): string[] {
+  const gaps: string[] = []
+  if (!ci) return ['Nothing is configured for this channel']
+  if (!ci.endpoint?.trim()) gaps.push('No endpoint to connect to')
+  if (ci.auth_mode !== 'none' && !ci.secret_hint) {
+    gaps.push(`Auth is ${ci.auth_mode} and no credential has been set`)
+  }
+  /* Claiming receipts with nowhere to receive them is how a channel reports
+     delivery of messages nobody got. */
+  if (gw.has_receipt && !ci.dlr_url?.trim()) {
+    gaps.push('This channel claims delivery receipts and has no callback URL')
+  }
+  if (ci.sender_registry && !ci.sender_ok) {
+    gaps.push(`Sender ${gw.sender ?? '?'} is not registered with ${ci.sender_registry}`)
+  }
+  if (!rates.some(r => r.channel_id === gw.id && !r.effective_to)) {
+    gaps.push('No rate on file, so every message would be costed at nothing')
+  }
+  return gaps
+}
+
+/** A channel that is switched on and cannot send is the state worth shouting
+    about — it is live, and every message routed to it is lost. */
+export function liveButBroken(
+  gateways: readonly Gateway[], integrations: readonly Integration[], rates: readonly Rate[],
+): { gateway: Gateway; gaps: string[] }[] {
+  return gateways
+    .filter(g => g.enabled)
+    .map(g => ({
+      gateway: g,
+      gaps: configGaps(g, integrations.find(i => i.channel_id === g.id) ?? null, rates),
+    }))
+    .filter(r => r.gaps.length > 0)
+}
+
+/** Where a message goes after this channel has been tried and refused. Follows
+    the chain rather than reporting one hop, because two hops is what a desk
+    needs to know before it disables anything. */
+export function failoverChain(id: string, integrations: readonly Integration[]): string[] {
+  const chain: string[] = [id]
+  let at = id
+  /* The database refuses a two-way loop, but a longer one written across
+     several edits would still hang this. */
+  for (let i = 0; i < 6; i++) {
+    const next = integrations.find(x => x.channel_id === at)?.failover_id
+    if (!next || chain.includes(next)) break
+    chain.push(next)
+    at = next
+  }
+  return chain
+}
+
+/* ---- Reading a rate card --------------------------------------------------- */
+
+/** Segments, not messages. 160 GSM-7 characters in one, 153 once it has to be
+    concatenated — so a 300-character SMS is two segments and a 400-character
+    one is three. Anything not billed by length is charged once. */
+export function segmentsFor(chars: number, seg: number | null, multi: number | null): number {
+  if (seg === null) return 1
+  if (chars <= 0) return 1
+  if (chars <= seg) return 1
+  return Math.ceil(chars / (multi ?? seg))
+}
+
+/** The live rate for a destination, falling back to the carrier's default
+    quote. Null where the channel has never been priced — which is a real state
+    and not a zero. */
+export function rateFor(
+  rates: readonly Rate[], channelId: string, destination: string | null,
+): Rate | null {
+  const live = rates.filter(r => r.channel_id === channelId && !r.effective_to)
+  return live.find(r => r.destination === (destination ?? 'default'))
+      ?? live.find(r => r.destination === 'default')
+      ?? null
+}
+
+export type Quote =
+  | { priced: true; rate: Rate; segments: number; amount: number; currency: string; fellBack: boolean }
+  | { priced: false; why: string }
+
+export function quote(
+  rates: readonly Rate[], channelId: string, destination: string | null, chars: number,
+): Quote {
+  const r = rateFor(rates, channelId, destination)
+  if (!r) return { priced: false, why: 'No rate on file for this channel and destination' }
+  const segments = segmentsFor(chars, r.segment_chars, r.multipart_chars)
+  return {
+    priced: true, rate: r, segments,
+    amount: round4(Math.max(r.unit_rate * segments, r.min_charge)),
+    currency: r.currency,
+    /* Worth saying out loud — a desk quoting a customer off the default rate
+       when the carrier has a separate price for that market will be wrong. */
+    fellBack: r.destination === 'default' && (destination ?? 'default') !== 'default',
+  }
+}
+
+/** Which markets a channel has actually been quoted for. A default rate covers
+    everywhere, but covering and being quoted are different things and a desk
+    negotiating a contract wants to see the gap. */
+export function rateCoverage(
+  rates: readonly Rate[], channelId: string, markets: readonly string[],
+): { destination: string; rate: Rate | null; onDefault: boolean }[] {
+  return markets.map(m => {
+    const own = rates.find(r => r.channel_id === channelId && !r.effective_to && r.destination === m)
+    const fallback = rates.find(r => r.channel_id === channelId && !r.effective_to && r.destination === 'default')
+    return { destination: m, rate: own ?? fallback ?? null, onDefault: !own && !!fallback }
+  })
+}
+
+/** A rate is being replaced, not edited. Ending the old one and starting a new
+    one keeps last month's bill reconcilable against last month's rate. */
+export function validateRate(r: Partial<Rate>): Check {
+  if (!r.destination?.trim()) return { ok: false, reason: 'A rate has to say what it covers' }
+  if (!r.currency?.trim()) return { ok: false, reason: 'A rate with no currency is a number' }
+  if (r.unit_rate == null || Number.isNaN(r.unit_rate) || r.unit_rate < 0) {
+    return { ok: false, reason: 'A rate cannot be negative' }
+  }
+  if (r.segment_chars != null && r.segment_chars <= 0) {
+    return { ok: false, reason: 'A segment of zero characters would divide by nothing' }
+  }
+  if (r.multipart_chars != null && r.segment_chars != null && r.multipart_chars > r.segment_chars) {
+    return {
+      ok: false,
+      reason: 'A concatenated segment carries fewer characters than a single one, not more — the header takes the difference.',
+    }
+  }
+  if (r.unit_rate === 0) {
+    return { ok: true, note: 'Zero is a rate — this channel will report as costing nothing, which is right for push and wrong for anything else.' }
+  }
+  return { ok: true }
 }
 
 /** Why a given message was not sent, in the recipient's terms. The log already
@@ -496,8 +835,15 @@ export function explain(entry: LogEntry): string {
 export { round2 }
 export function round4(n: number): number { return Math.round(n * 10000) / 10000 }
 
-export function money(n: number): string {
-  return n < 1 && n > 0 ? `$${n.toFixed(4)}` : `$${n.toFixed(2)}`
+/* Carrier money, which is not consumer money. A rate is 0.0001 of a dollar or
+   0.18 of a rupee, so two decimal places round most of them to nothing and a
+   currency symbol in front of a figure that small reads as a shelf price. The
+   code goes in front instead, and it comes from the row rather than from
+   whoever wrote the component — the old version printed a dollar sign on a
+   number that might have been shillings. */
+export function money(n: number, currency: string): string {
+  const digits = n !== 0 && Math.abs(n) < 1 ? 4 : 2
+  return `${currency} ${n.toFixed(digits)}`
 }
 
 /** "31 Jul, 07:12" — enough to line a message up against an order, without a

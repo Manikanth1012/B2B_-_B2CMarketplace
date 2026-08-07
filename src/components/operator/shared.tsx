@@ -55,6 +55,15 @@ export function StatusPill({ status }: { status: string }) {
     delivered: { bg: 'var(--success-bg)', color: 'var(--success)' },
     unhandled: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
     timeout: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
+    /* Gateway integration. `configured` is not `verified` — one says every
+       field is filled in, the other says somebody proved it works — so they
+       carry different colours as well as different words. */
+    not_configured: { bg: 'var(--gray-100)', color: 'var(--text-secondary)' },
+    configured: { bg: 'var(--info-bg)', color: 'var(--info)' },
+    verified: { bg: 'var(--success-bg)', color: 'var(--success)' },
+    failing: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
+    passed: { bg: 'var(--success-bg)', color: 'var(--success)' },
+    failed: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
   }
   const s = map[status] || { bg: 'var(--gray-100)', color: 'var(--text-secondary)' }
   return (
@@ -64,7 +73,7 @@ export function StatusPill({ status }: { status: string }) {
       fontSize: 'var(--text-xs)', fontWeight: 600,
       background: s.bg, color: s.color,
     }}>
-      {status}
+      {status.replace(/_/g, ' ')}
     </span>
   )
 }

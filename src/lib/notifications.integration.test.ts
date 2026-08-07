@@ -9,11 +9,13 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { supabase } from './supabase'
 import { signIn, signOut } from './authRepo'
-import { loadConfiguration, loadMine, savePreference, resetPreference } from './notificationRepo'
+import {
+  loadConfiguration, loadMine, savePreference, resetPreference, testGateway,
+} from './notificationRepo'
 import type { NotificationBook } from './notificationRepo'
 import {
   myRules, effective, missingTemplates, deliverySummary, notDelivered, byKind,
-  validatePreference, orderKinds,
+  validatePreference, orderKinds, quote, liveButBroken, nameRecipient, ownerKey,
 } from './notifications'
 import type { Rule, Persona } from './notifications'
 
@@ -95,7 +97,23 @@ describe('the configuration, read by the marketplace', () => {
   it('only bills for the channels that cost money', () => {
     for (const row of byKind(book.log, book.kinds)) {
       if (row.kind === 'inapp' || row.kind === 'push') {
-        expect(row.cost, `${row.kind} should be free`).toBe(0)
+        for (const s of row.spend) {
+          expect(s.amount, `${row.kind} should be free`).toBe(0)
+        }
+      }
+    }
+  })
+
+  it('never reports one spend figure across two currencies', () => {
+    /* Route Mobile bills Kenya in shillings and India in rupees. A single
+       total across those is not money in any currency. */
+    for (const row of byKind(book.log, book.kinds)) {
+      const seen = new Set(row.spend.map(s => s.currency))
+      expect(seen.size).toBe(row.spend.length)
+    }
+    for (const e of book.log) {
+      if (e.cost > 0) {
+        expect(e.cost_currency, `${e.id} is priced and says in what`).toBeTruthy()
       }
     }
   })
@@ -333,5 +351,166 @@ describe('going back to the marketplace default', () => {
       rule: target, current: e, enabled: saved.enabled, kinds: saved.kinds as never, scope: 'user',
     })
     expect(restore.ok).toBe(true)
+  })
+})
+
+/* ---- The gateway behind the name ------------------------------------------
+ *
+ * Six channels were "enabled" and none of them was integrated: a transport name
+ * and a protocol string, and no host, credential, sender registration, receipt
+ * callback, retry policy or failover target anywhere. These check that the
+ * records now exist, that the check refuses a half-configured one, and that a
+ * credential cannot be read back by anybody, including the desk that set it.
+ */
+describe('the gateways, from the marketplace desk', () => {
+  let book: NotificationBook
+
+  beforeAll(async () => {
+    await signIn(OPERATOR.email, OPERATOR.password)
+    book = await loadConfiguration()
+  })
+
+  afterAll(async () => { await signOut() })
+
+  it('has an integration record for every channel', () => {
+    for (const g of book.gateways) {
+      expect(book.integrations.some(i => i.channel_id === g.id), `${g.name} has wiring`).toBe(true)
+    }
+  })
+
+  it('prices every enabled gateway, in the currency its carrier bills in', () => {
+    for (const g of book.gateways.filter(x => x.enabled)) {
+      const mine = book.rates.filter(r => r.channel_id === g.id && !r.effective_to)
+      expect(mine.length, `${g.name} has a rate`).toBeGreaterThan(0)
+      for (const r of mine) expect(r.currency).toMatch(/^[A-Z]{3}$/)
+    }
+  })
+
+  it('quotes a Kenyan SMS in shillings and an Indian one in rupees', () => {
+    const ke = quote(book.rates, 'ch-001', 'KE', 45)
+    const inr = quote(book.rates, 'ch-001', 'IN', 45)
+    expect(ke.priced && ke.currency).toBe('KES')
+    expect(inr.priced && inr.currency).toBe('INR')
+  })
+
+  it('never hands back a credential, only its last four characters', () => {
+    for (const i of book.integrations) {
+      /* If this ever returns a secret, the reveal is the leak. */
+      expect(Object.keys(i)).not.toContain('secret_hash')
+      if (i.secret_hint) expect(i.secret_hint.length).toBeLessThanOrEqual(4)
+    }
+  })
+
+  it('refuses to call a half-configured channel healthy', async () => {
+    /* ch-006 has no access token loaded and ch-002 claims delivery receipts
+       with nowhere for them to arrive. Both are states a real desk hits. */
+    const wa = await testGateway('ch-006', 'Integration test')
+    expect(wa.ok).toBe(false)
+    if (!wa.ok) expect(wa.reason).toMatch(/credential/i)
+
+    const failover = await testGateway('ch-002', 'Integration test')
+    expect(failover.ok).toBe(false)
+    if (!failover.ok) expect(failover.reason).toMatch(/callback/i)
+  })
+
+  it('passes the one that is actually wired, and says what it checked', async () => {
+    const r = await testGateway('ch-001', 'Integration test')
+    expect(r.ok).toBe(true)
+    if (r.ok) {
+      expect(r.checks?.join(' ')).toMatch(/routemobile/i)
+      expect(r.checks?.join(' ')).toMatch(/DLT/)
+    }
+  })
+
+  it('refuses a failover target that is not a real alternative', async () => {
+    /* Same kind, enabled, not itself, no loop — the database holds all four
+       rules and the screen only offers what it would accept. */
+    const { error: itself } = await supabase.from('channel_integration')
+      .update({ failover_id: 'ch-003' }).eq('channel_id', 'ch-003')
+    expect(itself?.message ?? '').toMatch(/itself/i)
+
+    const { error: wrongKind } = await supabase.from('channel_integration')
+      .update({ failover_id: 'ch-001' }).eq('channel_id', 'ch-003')
+    expect(wrongKind?.message ?? '').toMatch(/same kind/i)
+  })
+
+  it('prices the log itself rather than trusting the number on it', async () => {
+    const { data } = await supabase.from('notification_log')
+      .select('id,cost,cost_currency,segments,destination,channel_id,body')
+      .eq('id', 'NL-K002').single()
+    expect(data).toBeTruthy()
+    /* 168 characters on a 160/153 rate card is two segments, at 0.8 KES each. */
+    expect(data!.segments).toBe(2)
+    expect(data!.cost_currency).toBe('KES')
+    expect(Number(data!.cost)).toBe(1.6)
+  })
+
+  it('spends in more than one currency and never adds them together', () => {
+    const spend = deliverySummary(book.log).spend
+    expect(spend.length).toBeGreaterThan(1)
+    expect(new Set(spend.map(s => s.currency)).size).toBe(spend.length)
+  })
+
+  it('has no enabled gateway that cannot send', () => {
+    /* Two are deliberately incomplete and both are meant to be visible as such,
+       so this asserts the report exists rather than that it is empty. */
+    const broken = liveButBroken(book.gateways, book.integrations, book.rates)
+    for (const b of broken) expect(b.gaps.length).toBeGreaterThan(0)
+    expect(broken.map(b => b.gateway.id)).toContain('ch-006')
+  })
+})
+
+describe('the gateways, from everybody else', () => {
+  afterAll(async () => { await signOut() })
+
+  it('are not readable by a seller', async () => {
+    await signIn(PARTNER.email, PARTNER.password)
+    const { data } = await supabase.from('channel_integration').select('*')
+    expect(data ?? []).toHaveLength(0)
+  })
+
+  it('are not readable by a customer, and a rate is not either', async () => {
+    await signIn(CONSUMER.email, CONSUMER.password)
+    const [{ data: ci }, { data: cr }] = await Promise.all([
+      supabase.from('channel_integration').select('*'),
+      supabase.from('channel_rate').select('*'),
+    ])
+    expect(ci ?? []).toHaveLength(0)
+    expect(cr ?? []).toHaveLength(0)
+  })
+})
+
+/* ---- Who chose what ------------------------------------------------------- */
+
+describe('the recipient directory', () => {
+  let book: NotificationBook
+
+  beforeAll(async () => {
+    await signIn(OPERATOR.email, OPERATOR.password)
+    book = await loadConfiguration()
+  })
+
+  afterAll(async () => { await signOut() })
+
+  it('names the owner of every preference on file', () => {
+    /* The screen listed `e5b3c7a1…` in the recipient column, which answers
+       nothing about why somebody was not told. */
+    for (const p of book.preferences) {
+      const who = nameRecipient(ownerKey(p), book.recipients)
+      expect(who.known, `${ownerKey(p)} resolves`).toBe(true)
+      expect(who.name).not.toMatch(/^[0-9a-f]{8}/)
+    }
+  })
+
+  it('names the seller account by its name rather than its code', () => {
+    const who = nameRecipient(DEMO_PARTNER, book.recipients)
+    expect(who.known).toBe(true)
+    expect(who.name).not.toBe(DEMO_PARTNER)
+    expect(who.ref).toBe(DEMO_PARTNER)
+  })
+
+  it('covers all four personas, because a preference can belong to any of them', () => {
+    const personas = new Set(book.recipients.map(r => r.persona))
+    expect([...personas].sort()).toEqual(['consumer', 'enterprise', 'operator', 'partner'])
   })
 })

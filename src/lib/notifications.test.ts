@@ -5,8 +5,14 @@ import {
   missingTemplates, placeholdersIn, validateTemplate, remaining, preview, SAMPLE,
   newestFirst, filterLog, deliverySummary, byKind, notDelivered, silentRules,
   costByGateway, explain, money, when, KIND_ORDER, PERSONA_LABEL, STATE_LABEL,
+  spendByCurrency, spendLine, configGaps, liveButBroken, failoverChain,
+  segmentsFor, rateFor, quote, rateCoverage, validateRate, INTEGRATION_LABEL,
+  ownerKey, nameRecipient, recipientLine, scopeLine,
 } from './notifications'
-import type { Rule, Preference, Kind, NotificationEvent, Template, LogEntry, Gateway, KindId } from './notifications'
+import type {
+  Rule, Preference, Kind, NotificationEvent, Template, LogEntry, Gateway, KindId,
+  Recipient, Integration, Rate,
+} from './notifications'
 
 const kinds: Kind[] = [
   { id: 'inapp', label: 'In-app', max_chars: 240, needs: 'none', note: '', sort_order: 1 },
@@ -44,7 +50,8 @@ function entry(over: Partial<LogEntry> = {}): LogEntry {
     id: 'NL-1', rule_id: 'NR-C1', kind_id: 'push', channel_id: 'ch-005', persona: 'consumer',
     recipient: 'Priya Raman', user_id: 'u1', partner_id: null, subject: 'Out for delivery',
     body: 'On its way.', sent_at: '2026-07-31T07:12:00Z', state: 'delivered', detail: null,
-    cost: 0, ref: 'ORD-881044', ...over,
+    cost: 0, cost_currency: 'USD', destination: 'IN', segments: 1,
+    ref: 'ORD-881044', ...over,
   }
 }
 
@@ -458,7 +465,49 @@ describe('deliverySummary', () => {
   })
 
   it('adds up fractional per-message costs without losing them', () => {
-    expect(deliverySummary(log).cost).toBe(0.0047)
+    expect(deliverySummary(log).spend).toEqual([
+      { currency: 'USD', amount: 0.0047, messages: 4, segments: 4 },
+    ])
+  })
+
+  it('never adds one currency to another', () => {
+    /* Route Mobile bills Kenya in shillings and India in rupees. A single
+       "spent on messages" figure across those is not money in any currency,
+       and the screen printed one with a dollar sign in front of it. */
+    const mixed = [
+      entry({ id: 'k', cost: 0.8, cost_currency: 'KES', destination: 'KE' }),
+      entry({ id: 'i', cost: 0.18, cost_currency: 'INR', destination: 'IN' }),
+      entry({ id: 'i2', cost: 0.18, cost_currency: 'INR', destination: 'IN' }),
+    ]
+    expect(deliverySummary(mixed).spend).toEqual([
+      { currency: 'KES', amount: 0.8, messages: 1, segments: 1 },
+      { currency: 'INR', amount: 0.36, messages: 2, segments: 2 },
+    ])
+  })
+
+  it('leaves out what nothing carried, rather than calling it zero dollars', () => {
+    /* In-app costs nothing because no carrier is involved. Counting it as a
+       zero in some currency invents the currency. */
+    const s = deliverySummary([entry({ kind_id: 'inapp', channel_id: null, cost: 0, cost_currency: null })])
+    expect(s.spend).toEqual([])
+  })
+
+  it('counts segments, because that is what a carrier bills', () => {
+    const s = deliverySummary([
+      entry({ id: 'long', cost: 1.6, cost_currency: 'KES', segments: 2 }),
+    ])
+    expect(s.spend[0].segments).toBe(2)
+    expect(s.spend[0].messages).toBe(1)
+  })
+
+  it('says the spend as a sentence without adding the currencies up', () => {
+    const money = (n: number, c: string) => `${c} ${n.toFixed(2)}`
+    const line = spendLine(deliverySummary([
+      entry({ id: 'k', cost: 0.8, cost_currency: 'KES' }),
+      entry({ id: 'i', cost: 0.18, cost_currency: 'INR' }),
+    ]).spend, money)
+    expect(line).toBe('KES 0.80 · INR 0.18')
+    expect(spendLine([], money)).toContain('charges nothing')
   })
 })
 
@@ -472,7 +521,9 @@ describe('byKind', () => {
     const out = byKind(log, kinds)
     expect(out.map((r) => r.kind)).toEqual(['push', 'sms'])
     expect(out.find((r) => r.kind === 'sms')!.rate).toBe(50)
-    expect(out.find((r) => r.kind === 'sms')!.cost).toBe(0.009)
+    expect(out.find((r) => r.kind === 'sms')!.spend).toEqual([
+      { currency: 'USD', amount: 0.009, messages: 2, segments: 2 },
+    ])
   })
 })
 
@@ -496,7 +547,7 @@ describe('silentRules', () => {
 })
 
 describe('costByGateway', () => {
-  it('ranks the expensive gateways first and drops the unused ones', () => {
+  it('ranks the busiest gateways first and drops the unused ones', () => {
     const gateways: Gateway[] = [
       { id: 'ch-001', name: 'SMS Primary', kind: 'sms', enabled: true },
       { id: 'ch-003', name: 'Email Primary', kind: 'email', enabled: true },
@@ -508,8 +559,11 @@ describe('costByGateway', () => {
       entry({ channel_id: 'ch-003', kind_id: 'email', cost: 0.0001 }),
     ]
     const out = costByGateway(log, gateways)
-    expect(out.map((r) => r.id)).toEqual(['ch-001', 'ch-003'])
-    expect(out[1].messages).toBe(2)
+    /* By message count, not by cost. Sorting on cost ranks a rupee above a
+       dollar and calls it the expensive one. */
+    expect(out.map((r) => r.id)).toEqual(['ch-003', 'ch-001'])
+    expect(out[0].messages).toBe(2)
+    expect(out[0].spend).toEqual([{ currency: 'USD', amount: 0.0002, messages: 2, segments: 2 }])
   })
 })
 
@@ -531,12 +585,19 @@ describe('explain', () => {
 
 describe('money', () => {
   it('keeps four places on a fraction of a cent, where SMS pricing lives', () => {
-    expect(money(0.0045)).toBe('$0.0045')
+    expect(money(0.0045, 'USD')).toBe('USD 0.0045')
   })
 
   it('uses two places once there is real money', () => {
-    expect(money(12.5)).toBe('$12.50')
-    expect(money(0)).toBe('$0.00')
+    expect(money(12.5, 'USD')).toBe('USD 12.50')
+    expect(money(0, 'USD')).toBe('USD 0.00')
+  })
+
+  it('prints the currency it was given rather than a dollar sign', () => {
+    /* The old version hard-coded `$` on a figure that might have been
+       shillings — Route Mobile bills Kenya in KES. */
+    expect(money(0.8, 'KES')).toBe('KES 0.8000')
+    expect(money(184220, 'KES')).toBe('KES 184220.00')
   })
 })
 
@@ -559,5 +620,266 @@ describe('shared vocabulary', () => {
   it('labels every persona and every log state', () => {
     expect(Object.keys(PERSONA_LABEL)).toHaveLength(4)
     expect(STATE_LABEL.suppressed).toBe('Not sent')
+  })
+})
+
+describe('naming a recipient', () => {
+  /* "Who chose what" printed `e5b3c7a1…` in the recipient column, which does
+     not answer the one question the screen exists for. */
+  const directory: Recipient[] = [
+    { scope: 'user', key: 'e5b3c7a1-9d42-4f68-b015-7c3e9a2b4d81', name: 'Otieno Odhiambo',
+      persona: 'consumer', ref: 'CUS-450031', detail: 'Kisumu' },
+    { scope: 'user', key: 'e0e1d692-0b9e-4d31-a418-aa7461911b82', name: 'Vikram Shah',
+      persona: 'enterprise', ref: 'USR-2007-01', detail: 'Procurement Lead · SmartBuild Ltd' },
+    { scope: 'partner', key: 'PTR-1004', name: 'Nimbus Sensors',
+      persona: 'partner', ref: 'PTR-1004', detail: 'Gold · Kenya' },
+  ]
+
+  it('takes the partner before the user, because that is the scope', () => {
+    expect(ownerKey({ partner_id: 'PTR-1004', user_id: null })).toBe('PTR-1004')
+    expect(ownerKey({ partner_id: null, user_id: 'e5b3c7a1-9d42-4f68-b015-7c3e9a2b4d81' }))
+      .toBe('e5b3c7a1-9d42-4f68-b015-7c3e9a2b4d81')
+    expect(ownerKey({ partner_id: null, user_id: null })).toBeNull()
+  })
+
+  it('names a person the marketplace already holds', () => {
+    const who = nameRecipient('e5b3c7a1-9d42-4f68-b015-7c3e9a2b4d81', directory)
+    expect(who.name).toBe('Otieno Odhiambo')
+    expect(who.ref).toBe('CUS-450031')
+    expect(who.known).toBe(true)
+    expect(recipientLine(who)).toBe('Otieno Odhiambo · CUS-450031')
+  })
+
+  it('names a seller account by its name, not its code', () => {
+    expect(nameRecipient('PTR-1004', directory).name).toBe('Nimbus Sensors')
+    /* The code stays as the reference — support quotes it. */
+    expect(recipientLine(nameRecipient('PTR-1004', directory))).toBe('Nimbus Sensors · PTR-1004')
+  })
+
+  it('says an unresolvable owner is unresolvable rather than printing an id', () => {
+    const who = nameRecipient('11111111-2222-3333-4444-555555555555', directory)
+    expect(who.known).toBe(false)
+    expect(who.name).toBe('Not in the directory')
+    /* Shortened, because a full UUID in a cell pushes the table sideways. */
+    expect(who.ref).toBe('11111111…')
+  })
+
+  it('does not print a ref twice when it is the name', () => {
+    const who = nameRecipient('PTR-9', [
+      { scope: 'partner', key: 'PTR-9', name: 'PTR-9', persona: 'partner', ref: 'PTR-9', detail: null },
+    ])
+    expect(recipientLine(who)).toBe('PTR-9')
+  })
+
+  it('handles a preference belonging to nobody', () => {
+    expect(nameRecipient(null, directory).name).toBe('Nobody in particular')
+  })
+
+  it('says whether a choice covers one person or the whole account', () => {
+    expect(scopeLine('partner')).toContain('whole seller account')
+    expect(scopeLine('user')).toContain('one person')
+  })
+})
+
+/* ---- The gateway behind the name ----------------------------------------- */
+
+const integ = (over: Partial<Integration> = {}): Integration => ({
+  channel_id: 'ch-001', endpoint: 'smpp.routemobile.com', port: 2775,
+  auth_mode: 'smpp_bind', auth_user: 'aventa_tx', secret_hint: 'c91', secret_set_on: '2026-01-01',
+  sender_registry: 'TRAI DLT', sender_ref: '1101234567890123456', sender_ok: true,
+  dlr_url: 'https://api.aventa.com/hooks/dlr/route-mobile',
+  timeout_ms: 5000, retry_attempts: 2, retry_backoff: 'exponential', retry_after_ms: 2000,
+  failover_id: null, status: 'verified', last_test_at: null, last_test_ms: null,
+  last_test_note: null, note: null, ...over,
+})
+
+const rate = (over: Partial<Rate> = {}): Rate => ({
+  id: 'RATE-001', channel_id: 'ch-001', destination: 'IN', currency: 'INR',
+  unit_rate: 0.18, segment_chars: 160, multipart_chars: 153, min_charge: 0,
+  effective_from: '2026-01-01', effective_to: null, note: null, ...over,
+})
+
+const sms: Gateway = {
+  id: 'ch-001', name: 'SMS Primary', kind: 'sms', enabled: true,
+  transport: 'Route Mobile', has_receipt: true, sender: 'AVENTA',
+}
+
+describe('what would stop a channel sending', () => {
+  it('says nothing is wrong with a channel that is actually configured', () => {
+    expect(configGaps(sms, integ(), [rate()])).toEqual([])
+  })
+
+  it('names a channel with no integration record at all', () => {
+    expect(configGaps(sms, null, [rate()])[0]).toContain('Nothing is configured')
+  })
+
+  it('refuses a credential that was never loaded', () => {
+    const gaps = configGaps(sms, integ({ auth_mode: 'api_key', secret_hint: null }), [rate()])
+    expect(gaps.join(' ')).toContain('no credential has been set')
+  })
+
+  it('refuses delivery receipts with nowhere to receive them', () => {
+    /* This is how a channel reports 100% delivery of messages nobody got. */
+    const gaps = configGaps(sms, integ({ dlr_url: null }), [rate()])
+    expect(gaps.join(' ')).toContain('callback URL')
+  })
+
+  it('refuses an unregistered sender', () => {
+    const gaps = configGaps(sms, integ({ sender_ok: false }), [rate()])
+    expect(gaps.join(' ')).toContain('not registered with TRAI DLT')
+  })
+
+  it('refuses a channel nobody has priced', () => {
+    expect(configGaps(sms, integ(), []).join(' ')).toContain('costed at nothing')
+  })
+
+  it('does not ask for a credential where none is used', () => {
+    expect(configGaps(sms, integ({ auth_mode: 'none', secret_hint: null }), [rate()])).toEqual([])
+  })
+
+  it('shouts about the ones that are switched on and cannot send', () => {
+    const broken = liveButBroken(
+      [sms, { id: 'ch-009', name: 'Off', kind: 'sms', enabled: false }],
+      [integ({ dlr_url: null })], [rate()])
+    expect(broken).toHaveLength(1)
+    expect(broken[0].gateway.id).toBe('ch-001')
+  })
+
+  it('keeps the four states apart, because configured is not verified', () => {
+    expect(INTEGRATION_LABEL.configured).toContain('never tested')
+    expect(INTEGRATION_LABEL.verified).not.toBe(INTEGRATION_LABEL.configured)
+  })
+})
+
+describe('where a message goes when the first channel refuses it', () => {
+  it('follows the chain rather than reporting one hop', () => {
+    const chain = failoverChain('ch-001', [
+      integ({ channel_id: 'ch-001', failover_id: 'ch-002' }),
+      integ({ channel_id: 'ch-002', failover_id: 'ch-007' }),
+    ])
+    expect(chain).toEqual(['ch-001', 'ch-002', 'ch-007'])
+  })
+
+  it('stops rather than looping forever', () => {
+    const chain = failoverChain('a', [
+      integ({ channel_id: 'a', failover_id: 'b' }),
+      integ({ channel_id: 'b', failover_id: 'a' }),
+    ])
+    expect(chain).toEqual(['a', 'b'])
+  })
+
+  it('is just the channel itself when nothing catches it', () => {
+    expect(failoverChain('ch-001', [integ()])).toEqual(['ch-001'])
+  })
+})
+
+describe('what a message costs', () => {
+  it('bills a short SMS as one segment', () => {
+    expect(segmentsFor(45, 160, 153)).toBe(1)
+    expect(segmentsFor(160, 160, 153)).toBe(1)
+  })
+
+  it('bills a long SMS as more than one, at the concatenated size', () => {
+    /* 161 characters no longer fit in one, and each part then carries 153. */
+    expect(segmentsFor(161, 160, 153)).toBe(2)
+    expect(segmentsFor(300, 160, 153)).toBe(2)
+    expect(segmentsFor(307, 160, 153)).toBe(3)
+  })
+
+  it('charges once for anything not billed by length', () => {
+    expect(segmentsFor(4000, null, null)).toBe(1)
+  })
+
+  it('prices a destination at its own rate, in the carrier’s currency', () => {
+    const rates = [rate(), rate({ id: 'R2', destination: 'KE', currency: 'KES', unit_rate: 0.8 })]
+    const q = quote(rates, 'ch-001', 'KE', 45)
+    expect(q.priced && q.currency).toBe('KES')
+    expect(q.priced && q.amount).toBe(0.8)
+    expect(q.priced && q.fellBack).toBe(false)
+  })
+
+  it('falls back to the default quote and says that it did', () => {
+    const rates = [rate({ id: 'R3', destination: 'default', currency: 'USD', unit_rate: 0.0045 })]
+    const q = quote(rates, 'ch-001', 'KE', 45)
+    expect(q.priced && q.currency).toBe('USD')
+    expect(q.priced && q.fellBack).toBe(true)
+  })
+
+  it('multiplies by segments, so a long message is not billed as a short one', () => {
+    const q = quote([rate({ currency: 'KES', unit_rate: 0.8 })], 'ch-001', 'IN', 300)
+    expect(q.priced && q.segments).toBe(2)
+    expect(q.priced && q.amount).toBe(1.6)
+  })
+
+  it('honours a minimum charge', () => {
+    const q = quote([rate({ unit_rate: 0.01, min_charge: 0.05 })], 'ch-001', 'IN', 10)
+    expect(q.priced && q.amount).toBe(0.05)
+  })
+
+  it('says a channel is unpriced rather than free', () => {
+    /* Zero is a price. "We have not been quoted" is not, and the difference is
+       a channel whose traffic silently bills at nothing. */
+    const q = quote([], 'ch-009', 'IN', 10)
+    expect(q.priced).toBe(false)
+    expect(!q.priced && q.why).toContain('No rate on file')
+  })
+
+  it('ignores a rate that has been superseded', () => {
+    const rates = [
+      rate({ id: 'old', unit_rate: 0.10, effective_to: '2026-06-30' }),
+      rate({ id: 'new', unit_rate: 0.18 }),
+    ]
+    expect(rateFor(rates, 'ch-001', 'IN')!.id).toBe('new')
+  })
+
+  it('shows which markets are quoted and which are riding the default', () => {
+    const rates = [rate(), rate({ id: 'D', destination: 'default', currency: 'USD', unit_rate: 0.0045 })]
+    const cover = rateCoverage(rates, 'ch-001', ['IN', 'KE', 'AE'])
+    expect(cover.find(c => c.destination === 'IN')!.onDefault).toBe(false)
+    expect(cover.find(c => c.destination === 'KE')!.onDefault).toBe(true)
+    expect(cover.every(c => c.rate !== null)).toBe(true)
+  })
+
+  it('reports a market with nothing behind it at all', () => {
+    const cover = rateCoverage([rate()], 'ch-001', ['IN', 'KE'])
+    expect(cover.find(c => c.destination === 'KE')!.rate).toBeNull()
+  })
+})
+
+describe('authoring a rate', () => {
+  it('refuses a rate with no currency on it', () => {
+    const r = validateRate({ destination: 'IN', currency: '', unit_rate: 1 })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toContain('no currency')
+  })
+
+  it('refuses a negative rate', () => {
+    expect(validateRate({ destination: 'IN', currency: 'INR', unit_rate: -1 }).ok).toBe(false)
+  })
+
+  it('refuses a concatenated segment larger than a single one', () => {
+    const r = validateRate({
+      destination: 'IN', currency: 'INR', unit_rate: 1, segment_chars: 153, multipart_chars: 160,
+    })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toContain('header takes the difference')
+  })
+
+  it('allows zero but says what it means', () => {
+    const r = validateRate({ destination: 'default', currency: 'USD', unit_rate: 0 })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.note).toContain('right for push')
+  })
+
+  it('accepts an ordinary rate without comment', () => {
+    const r = validateRate({ destination: 'IN', currency: 'INR', unit_rate: 0.18, segment_chars: 160, multipart_chars: 153 })
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.note).toBeUndefined()
+  })
+})
+
+describe('spendByCurrency on its own', () => {
+  it('is empty for an empty log rather than a zero', () => {
+    expect(spendByCurrency([])).toEqual([])
   })
 })

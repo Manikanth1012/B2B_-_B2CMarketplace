@@ -691,7 +691,10 @@ export interface OperatorChannel {
   protocol: string
   sender: string
   throughput: number
-  unit_cost: number
+  /* What a message costs is not one number. It is a rate per destination in the
+     currency the carrier bills in, and it lives in `channel_rate` — see the
+     Rates action on this screen. A `unit_cost` column here would be a second
+     answer to the same question. */
   success_rate: number
   region: string
   has_receipt: boolean

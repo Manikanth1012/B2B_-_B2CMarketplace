@@ -5,19 +5,25 @@ import {
 } from 'lucide-react'
 import {
   SectionCard, StatCard, Btn, Modal, FormField, TextInput, TextArea, Select,
-  Table, Td, EmptyState, toast, fmtInt,
+  Table, Td, EmptyState, toast, fmtInt, StatusPill,
 } from './shared'
 import { Callout } from '../OnboardingJourney'
-import { loadConfiguration, saveRule, setRuleEnabled, deleteRule, saveTemplate } from '../../lib/notificationRepo'
+import {
+  loadConfiguration, saveRule, setRuleEnabled, deleteRule, saveTemplate,
+  saveIntegration, setGatewaySecret, testGateway, saveRate,
+} from '../../lib/notificationRepo'
 import type { NotificationBook } from '../../lib/notificationRepo'
 import {
   KIND_ORDER, PERSONA_LABEL, STATE_LABEL, orderKinds, availableEvents, validateRule,
   ruleChangeImpact, missingTemplates, remaining, preview, SAMPLE, validateTemplate,
   filterLog, deliverySummary, byKind, notDelivered, silentRules, costByGateway,
   explain, money, when, effective, placeholdersIn, PLACEHOLDERS,
+  ownerKey, nameRecipient, recipientLine, scopeLine,
+  spendLine, configGaps, liveButBroken, failoverChain, quote,
 } from '../../lib/notifications'
 import type {
-  Rule, Template, Persona, KindId, Kind, LogState, Preference,
+  Rule, Template, Persona, KindId, Kind, LogState, Preference, NamedRecipient,
+  Gateway, Integration, Rate,
 } from '../../lib/notifications'
 
 /* Notifications, from the only console that configures them.
@@ -106,8 +112,16 @@ export function OperatorNotifications() {
         <StatCard label="Reached its recipient" value={summary.rate === null ? '—' : `${summary.rate}%`}
                   sublabel={`${fmtInt(summary.delivered)} of ${fmtInt(summary.attempted)} attempted · ${fmtInt(summary.suppressed)} deliberately not sent`}
                   color={summary.rate !== null && summary.rate < 95 ? 'var(--warning)' : 'var(--success)'} />
-        <StatCard label="Spent on messages" value={money(summary.cost)}
-                  sublabel="In-app and push cost nothing; SMS is the whole bill" />
+        {/* Per currency, never one number. Route Mobile bills Kenya in
+            shillings and India in rupees; adding those together produces a
+            figure that is not money anywhere. */}
+        <StatCard label="Spent on messages"
+                  value={summary.spend.length === 0 ? '—'
+                    : summary.spend.length === 1 ? money(summary.spend[0].amount, summary.spend[0].currency)
+                    : `${summary.spend.length} currencies`}
+                  sublabel={summary.spend.length > 1
+                    ? spendLine(summary.spend, money)
+                    : 'In-app costs nothing to carry; SMS is the whole bill'} />
         <StatCard label="Nothing written" value={fmtInt(gaps.length)}
                   sublabel={gaps.length ? 'Rules that would fire and say nothing' : 'Every rule can say something on every channel it uses'}
                   color={gaps.length ? 'var(--danger)' : 'var(--success)'} />
@@ -137,7 +151,7 @@ export function OperatorNotifications() {
                   onReload={reload} silent={silent} />
       )}
       {tab === 'wording' && <WordingTab book={book} onEdit={setWording} />}
-      {tab === 'channels' && <ChannelsTab book={book} />}
+      {tab === 'channels' && <ChannelsTab book={book} onReload={reload} />}
       {tab === 'recipients' && <RecipientsTab book={book} />}
       {tab === 'history' && <HistoryTab book={book} />}
 
@@ -561,17 +575,135 @@ function WordingModal({ book, template, onClose, onSaved }: {
 
 /* -------------------------------------------------------------- channels -- */
 
-function ChannelsTab({ book }: { book: NotificationBook }) {
+function ChannelsTab({ book, onReload }: { book: NotificationBook; onReload: () => Promise<void> }) {
   const perKind = byKind(book.log, book.kinds)
-  const gatewayCost = costByGateway(book.log, book.gateways)
+  const gatewayUse = costByGateway(book.log, book.gateways)
+  const broken = liveButBroken(book.gateways, book.integrations, book.rates)
+  const [wiring, setWiring] = useState<Gateway | null>(null)
+  const [pricing, setPricing] = useState<Gateway | null>(null)
+  const [testing, setTesting] = useState<string | null>(null)
+
+  const integrationOf = (id: string) => book.integrations.find(i => i.channel_id === id) ?? null
+  const ratesOf = (id: string) => book.rates.filter(r => r.channel_id === id && !r.effective_to)
+  const nameOf = (id: string) => book.gateways.find(g => g.id === id)?.name ?? id
+
+  const runTest = async (id: string) => {
+    setTesting(id)
+    const r = await testGateway(id, ACTOR)
+    setTesting(null)
+    toast(r.ok ? r.note ?? 'Connected' : r.reason, r.ok ? 'success' : 'error')
+    await onReload()
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <Callout tone="info" title="A channel is what the recipient experiences; a gateway is what carries it">
         Every channel below except in-app needs at least one enabled gateway behind it, or a rule using it sends
-        into nothing. Gateways themselves — throughput, sender identity, cost per message — are configured on the
-        Channels screen.
+        into nothing. A gateway needs more than a name: an address, a credential, a registered sender where the
+        market demands one, somewhere to receive delivery receipts, and a rate — a gateway nobody has priced
+        reports every message it carries as costing nothing.
       </Callout>
+
+      {/* Switched on and unable to send is the state worth shouting about: it is
+          live, and every message routed to it is lost. */}
+      {broken.length > 0 && (
+        <Callout tone="danger" title={`${broken.length} enabled gateway${broken.length === 1 ? '' : 's'} cannot send`}>
+          {broken.map(b => (
+            <div key={b.gateway.id} style={{ marginTop: '4px' }}>
+              <strong>{b.gateway.name}</strong> — {b.gaps.join('; ')}.
+            </div>
+          ))}
+        </Callout>
+      )}
+
+      <SectionCard title="What is behind each gateway"
+                   subtitle="The address, the credential and the sender registration a real send needs — and whether anybody has proved it works.">
+        <Table headers={['Gateway', 'Carries', 'Address', 'Credential', 'Receipts', 'Falls over to', 'Checked', 'Actions']}>
+          {book.gateways.map(g => {
+            const ci = integrationOf(g.id)
+            const gaps = configGaps(g, ci, book.rates)
+            const chain = failoverChain(g.id, book.integrations).slice(1)
+            return (
+              <tr key={g.id}>
+                <Td>
+                  <div style={{ fontWeight: 600 }}>{g.name}</div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                    {g.transport ?? 'no transport named'} · {g.enabled ? 'enabled' : 'disabled'}
+                  </div>
+                </Td>
+                <Td right>{g.kind ? <KindChip kind={g.kind} /> : <span style={{ color: 'var(--warning)' }}>not mapped</span>}</Td>
+                <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '220px', wordBreak: 'break-all' }}>
+                  {ci?.endpoint
+                    ? `${ci.endpoint}${ci.port && !ci.endpoint.startsWith('http') ? `:${ci.port}` : ''}`
+                    : <span style={{ color: 'var(--danger)' }}>none</span>}
+                </Td>
+                <Td right style={{ fontSize: 'var(--text-xs)' }}>
+                  {!ci ? '—' : ci.auth_mode === 'none' ? 'none needed'
+                    : ci.secret_hint
+                      /* The last four and the date, because a credential you can
+                         read back is a credential you have leaked. */
+                      ? `${ci.auth_mode} · ends ${ci.secret_hint}${ci.secret_set_on ? ` · set ${ci.secret_set_on}` : ''}`
+                      : <span style={{ color: 'var(--danger)' }}>{ci.auth_mode}, none loaded</span>}
+                </Td>
+                <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '180px', wordBreak: 'break-word' }}>
+                  {!g.has_receipt ? 'none claimed'
+                    : ci?.dlr_url ? ci.dlr_url
+                    : <span style={{ color: 'var(--danger)' }}>claimed, nowhere to arrive</span>}
+                </Td>
+                <Td right style={{ fontSize: 'var(--text-xs)' }}>
+                  {chain.length === 0 ? '—'
+                    : `${chain.map(nameOf).join(' → ')} · after ${ci?.retry_attempts ?? 0} ${ci?.retry_backoff ?? ''} retries`}
+                </Td>
+                <Td right style={{ fontSize: 'var(--text-xs)' }}>
+                  <StatusPill status={ci?.status ?? 'not_configured'} />
+                  <div style={{ color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                    {ci?.last_test_at
+                      ? `${when(ci.last_test_at)}${ci.last_test_ms ? ` · ${ci.last_test_ms}ms` : ''}`
+                      : 'never'}
+                  </div>
+                  {gaps.length > 0 && (
+                    <div style={{ color: 'var(--danger)', marginTop: '2px', maxWidth: '200px' }}>{gaps[0]}</div>
+                  )}
+                </Td>
+                <Td right>
+                  <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                    <Btn variant="secondary" size="sm" onClick={() => setWiring(g)}>Configure</Btn>
+                    <Btn variant="secondary" size="sm" onClick={() => setPricing(g)}>Rates</Btn>
+                    <Btn variant="secondary" size="sm" disabled={testing === g.id}
+                         onClick={() => void runTest(g.id)}>
+                      {testing === g.id ? 'Checking…' : 'Check'}
+                    </Btn>
+                  </div>
+                </Td>
+              </tr>
+            )
+          })}
+        </Table>
+      </SectionCard>
+
+      <SectionCard title="What each gateway charges"
+                   subtitle="Per destination, in the currency the carrier bills in. One rate for everywhere is not how any of these are sold.">
+        <Table headers={['Gateway', 'Destination', 'Rate', 'Billed by', 'From', 'Note']}>
+          {book.rates.filter(r => !r.effective_to).map(r => (
+            <tr key={r.id}>
+              <Td>{nameOf(r.channel_id)}</Td>
+              <Td right style={{ fontSize: 'var(--text-xs)' }}>
+                {r.destination === 'default'
+                  ? <span style={{ color: 'var(--text-tertiary)' }}>anywhere not quoted</span>
+                  : r.destination}
+              </Td>
+              <Td right>{money(r.unit_rate, r.currency)}</Td>
+              <Td right style={{ fontSize: 'var(--text-xs)' }}>
+                {r.segment_chars
+                  ? `segment of ${r.segment_chars} chars (${r.multipart_chars ?? r.segment_chars} concatenated)`
+                  : 'the message'}
+              </Td>
+              <Td right style={{ fontSize: 'var(--text-xs)' }}>{r.effective_from}</Td>
+              <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '240px' }}>{r.note ?? '—'}</Td>
+            </tr>
+          ))}
+        </Table>
+      </SectionCard>
 
       <SectionCard title="Channels" subtitle="What each one is for, what it costs, and what is behind it.">
         <Table headers={['Channel', 'Limit', 'Needs', 'Gateways behind it', 'Rules using it', 'Sent', 'Failed', 'Not sent', 'Cost']}>
@@ -596,28 +728,387 @@ function ChannelsTab({ book }: { book: NotificationBook }) {
                 <Td right>{stats ? fmtInt(stats.sent) : 0}</Td>
                 <Td right style={{ color: stats && stats.failed ? 'var(--danger)' : undefined }}>{stats ? fmtInt(stats.failed) : 0}</Td>
                 <Td right>{stats ? fmtInt(stats.suppressed) : 0}</Td>
-                <Td right>{money(stats?.cost ?? 0)}</Td>
+                <Td right style={{ fontSize: 'var(--text-xs)' }}>
+                  {stats && stats.spend.length ? spendLine(stats.spend, money) : '—'}
+                </Td>
               </tr>
             )
           })}
         </Table>
       </SectionCard>
 
-      <SectionCard title="What each gateway has carried" subtitle="Push and in-app are free, which is exactly why the rest deserve a number.">
-        {gatewayCost.length === 0 ? <EmptyState message="Nothing has been sent through a gateway yet" /> : (
-          <Table headers={['Gateway', 'Carries', 'Messages', 'Cost']}>
-            {gatewayCost.map(g => (
+      <SectionCard title="What each gateway has carried" subtitle="Counted in segments, because that is what a carrier bills.">
+        {gatewayUse.length === 0 ? <EmptyState message="Nothing has been sent through a gateway yet" /> : (
+          <Table headers={['Gateway', 'Carries', 'Messages', 'Segments', 'Cost']}>
+            {gatewayUse.map(g => (
               <tr key={g.id}>
                 <Td>{g.name}</Td>
                 <Td right>{g.kind ? <KindChip kind={g.kind} /> : <span style={{ color: 'var(--warning)' }}>not mapped</span>}</Td>
                 <Td right>{fmtInt(g.messages)}</Td>
-                <Td right>{money(g.cost)}</Td>
+                <Td right>{fmtInt(g.segments)}</Td>
+                <Td right style={{ fontSize: 'var(--text-xs)' }}>
+                  {g.spend.length ? spendLine(g.spend, money) : '—'}
+                </Td>
               </tr>
             ))}
           </Table>
         )}
       </SectionCard>
+
+      <SectionCard title="Every check that has been run"
+                   subtitle="A pass says what it checked. Green with nothing behind it is what this screen used to show.">
+        {book.tests.length === 0 ? <EmptyState message="No gateway has been checked yet" /> : (
+          <Table headers={['When', 'Gateway', 'By', 'Result', 'What it found']}>
+            {book.tests.slice(0, 24).map(t => (
+              <tr key={t.id}>
+                <Td style={{ fontSize: 'var(--text-xs)', whiteSpace: 'nowrap' }}>{when(t.ran_at)}</Td>
+                <Td right style={{ fontSize: 'var(--text-xs)' }}>{nameOf(t.channel_id)}</Td>
+                <Td right style={{ fontSize: 'var(--text-xs)' }}>{t.ran_by}</Td>
+                <Td right>
+                  <StatusPill status={t.ok ? 'passed' : 'failed'} />
+                  {t.ms != null && (
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{t.ms}ms</div>
+                  )}
+                </Td>
+                <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '420px' }}>
+                  {(t.checks ?? []).map((c, i) => <div key={i}>{t.ok ? '✓' : '✗'} {c}</div>)}
+                </Td>
+              </tr>
+            ))}
+          </Table>
+        )}
+      </SectionCard>
+
+      {wiring && (
+        <IntegrationModal gateway={wiring} book={book}
+                          onClose={() => setWiring(null)} onSaved={onReload} />
+      )}
+      {pricing && (
+        <RatesModal gateway={pricing} book={book}
+                    onClose={() => setPricing(null)} onSaved={onReload} />
+      )}
     </div>
+  )
+}
+
+/* The wiring itself. Nothing here reveals a credential — the field sets a new
+   one and the record shows only its last four characters afterwards. */
+function IntegrationModal({ gateway, book, onClose, onSaved }: {
+  gateway: Gateway; book: NotificationBook; onClose: () => void; onSaved: () => Promise<void>
+}) {
+  const existing = book.integrations.find(i => i.channel_id === gateway.id) ?? null
+  const [form, setForm] = useState<Integration>(existing ?? {
+    channel_id: gateway.id, endpoint: null, port: null, auth_mode: 'none', auth_user: null,
+    secret_hint: null, secret_set_on: null, sender_registry: null, sender_ref: null, sender_ok: false,
+    dlr_url: null, timeout_ms: 5000, retry_attempts: 2, retry_backoff: 'exponential',
+    retry_after_ms: 2000, failover_id: null, status: 'not_configured',
+    last_test_at: null, last_test_ms: null, last_test_note: null, note: null,
+  })
+  const [secret, setSecret] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const set = <K extends keyof Integration>(k: K, v: Integration[K]) => setForm({ ...form, [k]: v })
+  const gaps = configGaps(gateway, form, book.rates)
+
+  const save = async () => {
+    setBusy(true)
+    const r = await saveIntegration(form)
+    if (!r.ok) { setBusy(false); toast(r.reason, 'error'); return }
+    if (secret.trim()) {
+      const s = await setGatewaySecret(gateway.id, secret.trim())
+      if (!s.ok) { setBusy(false); toast(s.reason, 'error'); return }
+      toast(s.note ?? 'Credential set', 'success')
+    } else {
+      toast(r.note ?? 'Saved', 'success')
+    }
+    setBusy(false)
+    await onSaved()
+    onClose()
+  }
+
+  /* Only a channel of the same kind is a real alternative, and the database
+     refuses anything else — so the picker offers only what it would accept. */
+  const failoverOptions = book.gateways.filter(g =>
+    g.id !== gateway.id && g.kind === gateway.kind && g.enabled)
+
+  return (
+    <Modal open onClose={onClose} title={`${gateway.name} — how it is reached`}
+           footer={<>
+             <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
+             <Btn size="sm" disabled={busy} onClick={() => void save()}>{busy ? 'Saving…' : 'Save'}</Btn>
+           </>}>
+      {gaps.length > 0 && (
+        <Callout tone="warning" title="This would not send yet">
+          {gaps.join('; ')}.
+        </Callout>
+      )}
+
+      <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ flex: 2 }}>
+          <FormField label="Endpoint" hint="A host for an SMPP bind, a URL for a REST gateway">
+            <TextInput value={form.endpoint ?? ''} onChange={e => set('endpoint', e.target.value)}
+                       placeholder="smpp.routemobile.com" />
+          </FormField>
+        </div>
+        <div style={{ flex: 1 }}>
+          <FormField label="Port">
+            <TextInput type="number" value={form.port ?? ''}
+                       onChange={e => set('port', e.target.value ? parseInt(e.target.value) : null)} />
+          </FormField>
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ flex: 1 }}>
+          <FormField label="Authentication">
+            <Select value={form.auth_mode} onChange={e => set('auth_mode', e.target.value as Integration['auth_mode'])}>
+              <option value="none">None</option>
+              <option value="basic">Basic</option>
+              <option value="api_key">API key</option>
+              <option value="oauth2">OAuth 2</option>
+              <option value="smpp_bind">SMPP bind</option>
+              <option value="mtls">Mutual TLS</option>
+            </Select>
+          </FormField>
+        </div>
+        <div style={{ flex: 1 }}>
+          <FormField label="User or key id">
+            <TextInput value={form.auth_user ?? ''} onChange={e => set('auth_user', e.target.value)} />
+          </FormField>
+        </div>
+      </div>
+
+      <FormField label="Credential"
+                 hint={form.secret_hint
+                   ? `One is loaded, ending ${form.secret_hint}${form.secret_set_on ? `, set on ${form.secret_set_on}` : ''}. It is stored hashed and cannot be read back — typing here replaces it.`
+                   : 'Stored hashed. It is never shown again, here or anywhere.'}>
+        <TextInput type="password" value={secret} onChange={e => setSecret(e.target.value)}
+                   placeholder={form.secret_hint ? 'Leave blank to keep the current one' : 'At least eight characters'} />
+      </FormField>
+
+      <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ flex: 1 }}>
+          <FormField label="Sender registry" hint="DLT in India, a sender-ID application in Kenya">
+            <TextInput value={form.sender_registry ?? ''} onChange={e => set('sender_registry', e.target.value)}
+                       placeholder="TRAI DLT" />
+          </FormField>
+        </div>
+        <div style={{ flex: 1 }}>
+          <FormField label="Registration reference">
+            <TextInput value={form.sender_ref ?? ''} onChange={e => set('sender_ref', e.target.value)} />
+          </FormField>
+        </div>
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-sm)', cursor: 'pointer' }}>
+        <input type="checkbox" checked={form.sender_ok} onChange={e => set('sender_ok', e.target.checked)} />
+        Sender {gateway.sender ?? ''} is registered and approved
+      </label>
+
+      <FormField label="Delivery receipt callback"
+                 hint={gateway.has_receipt
+                   ? 'This channel claims delivery receipts, so it needs somewhere for them to arrive — otherwise it reports delivery of messages nobody got.'
+                   : 'This channel does not claim receipts, so this can stay empty.'}>
+        <TextInput value={form.dlr_url ?? ''} onChange={e => set('dlr_url', e.target.value)}
+                   placeholder="https://api.aventa.com/hooks/dlr/…" />
+      </FormField>
+
+      <div style={{ display: 'flex', gap: '12px' }}>
+        <div style={{ flex: 1 }}>
+          <FormField label="Timeout (ms)">
+            <TextInput type="number" value={form.timeout_ms}
+                       onChange={e => set('timeout_ms', parseInt(e.target.value) || 5000)} />
+          </FormField>
+        </div>
+        <div style={{ flex: 1 }}>
+          <FormField label="Retries">
+            <TextInput type="number" value={form.retry_attempts}
+                       onChange={e => set('retry_attempts', parseInt(e.target.value) || 0)} />
+          </FormField>
+        </div>
+        <div style={{ flex: 1 }}>
+          <FormField label="Backoff">
+            <Select value={form.retry_backoff} onChange={e => set('retry_backoff', e.target.value as Integration['retry_backoff'])}>
+              <option value="none">None</option>
+              <option value="fixed">Fixed</option>
+              <option value="exponential">Exponential</option>
+            </Select>
+          </FormField>
+        </div>
+        <div style={{ flex: 1 }}>
+          <FormField label="Wait (ms)">
+            <TextInput type="number" value={form.retry_after_ms}
+                       onChange={e => set('retry_after_ms', parseInt(e.target.value) || 2000)} />
+          </FormField>
+        </div>
+      </div>
+
+      <FormField label="Falls over to"
+                 hint="Only an enabled channel carrying the same kind — anything else sends the retry somewhere it cannot go.">
+        <Select value={form.failover_id ?? ''} onChange={e => set('failover_id', e.target.value || null)}>
+          <option value="">Nothing — a refusal here is the end of the road</option>
+          {failoverOptions.map(g => <option key={g.id} value={g.id}>{g.name}</option>)}
+        </Select>
+      </FormField>
+
+      <FormField label="Note">
+        <TextArea value={form.note ?? ''} onChange={e => set('note', e.target.value)} />
+      </FormField>
+    </Modal>
+  )
+}
+
+/* The rate card for one gateway, plus what a message would actually cost — a
+   number a desk can check against a carrier invoice before it signs one. */
+function RatesModal({ gateway, book, onClose, onSaved }: {
+  gateway: Gateway; book: NotificationBook; onClose: () => void; onSaved: () => Promise<void>
+}) {
+  const markets = Array.from(new Set(book.rates.map(r => r.destination).filter(d => d !== 'default'))).sort()
+  const live = book.rates.filter(r => r.channel_id === gateway.id && !r.effective_to)
+  const [adding, setAdding] = useState(false)
+  const [form, setForm] = useState<Rate>({
+    id: '', channel_id: gateway.id, destination: markets[0] ?? 'default', currency: 'USD',
+    unit_rate: 0, segment_chars: gateway.kind === 'sms' ? 160 : null,
+    multipart_chars: gateway.kind === 'sms' ? 153 : null, min_charge: 0,
+    effective_from: new Date().toISOString().slice(0, 10), effective_to: null, note: null,
+  })
+  const [chars, setChars] = useState(160)
+  const [where, setWhere] = useState(markets[0] ?? 'default')
+  const [busy, setBusy] = useState(false)
+
+  const q = quote(book.rates, gateway.id, where, chars)
+  const replacing = live.find(r => r.destination === form.destination) ?? null
+
+  const add = async () => {
+    setBusy(true)
+    const r = await saveRate(form, replacing)
+    setBusy(false)
+    toast(r.ok ? r.note ?? 'Saved' : r.reason, r.ok ? 'success' : 'error')
+    if (r.ok) { setAdding(false); await onSaved() }
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`${gateway.name} — what it charges`}
+           footer={<Btn variant="secondary" size="sm" onClick={onClose}>Close</Btn>}>
+      <Callout tone="info" title="A rate is replaced, not edited">
+        Changing a price ends the old rate and starts a new one, so a message sent last month still reconciles
+        against the rate that was live when it went.
+      </Callout>
+
+      <Table headers={['Destination', 'Rate', 'Billed by', 'From', 'Note']}>
+        {live.map(r => (
+          <tr key={r.id}>
+            <Td>{r.destination === 'default' ? 'anywhere not quoted' : r.destination}</Td>
+            <Td right>{money(r.unit_rate, r.currency)}</Td>
+            <Td right style={{ fontSize: 'var(--text-xs)' }}>
+              {r.segment_chars ? `${r.segment_chars} char segment` : 'the message'}
+            </Td>
+            <Td right style={{ fontSize: 'var(--text-xs)' }}>{r.effective_from}</Td>
+            <Td right style={{ fontSize: 'var(--text-xs)' }}>{r.note ?? '—'}</Td>
+          </tr>
+        ))}
+      </Table>
+      {live.length === 0 && (
+        <EmptyState message="Nothing priced — every message on this gateway currently costs nothing" />
+      )}
+
+      {/* The calculator, because a rate card is only checkable against a real
+          message. */}
+      <SectionCard title="What a message would cost" subtitle="Type a length and pick a destination.">
+        <div style={{ display: 'flex', gap: '12px', padding: '12px 16px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: '120px' }}>
+            <FormField label="Characters">
+              <TextInput type="number" value={chars} onChange={e => setChars(parseInt(e.target.value) || 0)} />
+            </FormField>
+          </div>
+          <div style={{ flex: 1, minWidth: '120px' }}>
+            <FormField label="Destination">
+              <Select value={where} onChange={e => setWhere(e.target.value)}>
+                {[...markets, 'default'].map(m => (
+                  <option key={m} value={m}>{m === 'default' ? 'Anywhere else' : m}</option>
+                ))}
+              </Select>
+            </FormField>
+          </div>
+          <div style={{ flex: 2, minWidth: '220px', paddingBottom: '10px' }}>
+            {q.priced ? (
+              <div style={{ fontSize: 'var(--text-sm)' }}>
+                <strong>{money(q.amount, q.currency)}</strong>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                  {q.segments} segment{q.segments === 1 ? '' : 's'} at {money(q.rate.unit_rate, q.currency)}
+                  {q.fellBack && ' · on the default rate, not a quote for this market'}
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: 'var(--text-sm)', color: 'var(--danger)' }}>{q.why}</div>
+            )}
+          </div>
+        </div>
+      </SectionCard>
+
+      {!adding ? (
+        <Btn size="sm" onClick={() => setAdding(true)}><Plus size={14} /> Add or replace a rate</Btn>
+      ) : (
+        <SectionCard title={replacing ? `Replace the ${form.destination} rate` : `New rate for ${form.destination}`}
+                     subtitle={replacing ? `The current one started on ${replacing.effective_from} and will be closed the day before this starts.` : undefined}>
+          <div style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <FormField label="Destination">
+                  <Select value={form.destination} onChange={e => setForm({ ...form, destination: e.target.value })}>
+                    {[...markets, 'default'].map(m => (
+                      <option key={m} value={m}>{m === 'default' ? 'Anywhere not quoted' : m}</option>
+                    ))}
+                  </Select>
+                </FormField>
+              </div>
+              <div style={{ flex: 1 }}>
+                <FormField label="Currency" hint="What the carrier bills in, not what the marketplace reports in">
+                  <Select value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value })}>
+                    {Array.from(new Set(book.rates.map(r => r.currency))).sort().map(c => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </Select>
+                </FormField>
+              </div>
+              <div style={{ flex: 1 }}>
+                <FormField label="Rate">
+                  <TextInput type="number" step="0.000001" value={form.unit_rate}
+                             onChange={e => setForm({ ...form, unit_rate: parseFloat(e.target.value) || 0 })} />
+                </FormField>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div style={{ flex: 1 }}>
+                <FormField label="Segment chars" hint="Blank where the carrier bills per message">
+                  <TextInput type="number" value={form.segment_chars ?? ''}
+                             onChange={e => setForm({ ...form, segment_chars: e.target.value ? parseInt(e.target.value) : null })} />
+                </FormField>
+              </div>
+              <div style={{ flex: 1 }}>
+                <FormField label="Concatenated chars">
+                  <TextInput type="number" value={form.multipart_chars ?? ''}
+                             onChange={e => setForm({ ...form, multipart_chars: e.target.value ? parseInt(e.target.value) : null })} />
+                </FormField>
+              </div>
+              <div style={{ flex: 1 }}>
+                <FormField label="Starts">
+                  <TextInput type="date" value={form.effective_from}
+                             onChange={e => setForm({ ...form, effective_from: e.target.value })} />
+                </FormField>
+              </div>
+            </div>
+            <FormField label="Note">
+              <TextInput value={form.note ?? ''} onChange={e => setForm({ ...form, note: e.target.value })}
+                         placeholder="Transactional SMPP rate, per segment" />
+            </FormField>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <Btn size="sm" disabled={busy} onClick={() => void add()}>{busy ? 'Saving…' : 'Save rate'}</Btn>
+              <Btn variant="secondary" size="sm" onClick={() => setAdding(false)}>Cancel</Btn>
+            </div>
+          </div>
+        </SectionCard>
+      )}
+    </Modal>
   )
 }
 
@@ -629,20 +1120,27 @@ function RecipientsTab({ book }: { book: NotificationBook }) {
   /* Grouped by whoever the preference belongs to, because "what has this account
      turned off" is the question support actually asks. */
   const groups = useMemo(() => {
-    const m = new Map<string, { key: string; label: string; scope: string; prefs: Preference[] }>()
+    const m = new Map<string, {
+      key: string; label: string; who: NamedRecipient; scope: string; prefs: Preference[]
+    }>()
     for (const p of book.preferences) {
-      const key = p.partner_id ?? p.user_id ?? 'unknown'
+      const key = ownerKey(p) ?? 'unknown'
+      const who = nameRecipient(ownerKey(p), book.recipients)
       const g = m.get(key) ?? {
         key,
-        label: p.partner_id ?? `${(p.user_id ?? '').slice(0, 8)}…`,
-        scope: p.scope === 'partner' ? 'whole seller account' : 'one person',
+        label: recipientLine(who),
+        who,
+        scope: scopeLine(p.scope),
         prefs: [],
       }
       g.prefs.push(p)
       m.set(key, g)
     }
-    return [...m.values()]
-  }, [book.preferences])
+    /* Named people first, then whatever the directory could not place — an
+       unresolvable owner belongs at the bottom, not scattered through. */
+    return [...m.values()].sort((a, b) =>
+      a.who.known === b.who.known ? a.label.localeCompare(b.label) : a.who.known ? -1 : 1)
+  }, [book.preferences, book.recipients])
 
   const off = book.preferences.filter(p => !p.enabled)
 
@@ -660,11 +1158,21 @@ function RecipientsTab({ book }: { book: NotificationBook }) {
           <Table headers={['Recipient', 'Rule', 'Who they are', 'Changed']}>
             {off.map(p => {
               const r = rules.get(p.rule_id)
+              const who = nameRecipient(ownerKey(p), book.recipients)
               return (
                 <tr key={p.id}>
-                  <Td>{p.partner_id ?? `${(p.user_id ?? '').slice(0, 8)}…`}</Td>
+                  <Td>
+                    <span style={{ color: who.known ? undefined : 'var(--text-tertiary)' }}>{who.name}</span>
+                    {who.ref && (
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                        {who.ref}{p.scope === 'partner' ? ' · whole account' : ''}
+                      </div>
+                    )}
+                  </Td>
                   <Td right>{r?.name ?? p.rule_id}</Td>
-                  <Td right style={{ fontSize: 'var(--text-xs)' }}>{r ? PERSONA_LABEL[r.persona] : '—'}</Td>
+                  <Td right style={{ fontSize: 'var(--text-xs)' }}>
+                    {who.detail || (r ? PERSONA_LABEL[r.persona] : '—')}
+                  </Td>
                   <Td right style={{ fontSize: 'var(--text-xs)' }}>{p.updated_on ?? '—'}</Td>
                 </tr>
               )
@@ -675,7 +1183,11 @@ function RecipientsTab({ book }: { book: NotificationBook }) {
 
       {groups.map(g => (
         <SectionCard key={g.key} title={g.label}
-                     subtitle={`${g.prefs.length} choices · ${g.scope}`}>
+                     subtitle={[
+                       g.who.detail,
+                       `${g.prefs.length} choices`,
+                       g.scope,
+                     ].filter(Boolean).join(' · ')}>
           <Table headers={['Rule', 'On', 'Channels', 'The rule allows', 'Changed']}>
             {g.prefs
               .map(p => ({ p, r: rules.get(p.rule_id) }))
@@ -782,7 +1294,16 @@ function HistoryTab({ book }: { book: NotificationBook }) {
                   <Td right style={{ maxWidth: '260px' }}>{e.subject}</Td>
                   <Td right style={{ fontSize: 'var(--text-xs)' }}>{rules.get(e.rule_id ?? '')?.name ?? '—'}</Td>
                   <Td right><OutcomePill state={e.state} /></Td>
-                  <Td right style={{ fontSize: 'var(--text-xs)' }}>{e.cost > 0 ? money(e.cost) : '—'}</Td>
+                  <Td right style={{ fontSize: 'var(--text-xs)' }}>
+                    {e.cost > 0 && e.cost_currency ? (
+                      <>
+                        {money(e.cost, e.cost_currency)}
+                        {(e.segments ?? 1) > 1 && (
+                          <div style={{ color: 'var(--text-tertiary)' }}>{e.segments} segments</div>
+                        )}
+                      </>
+                    ) : '—'}
+                  </Td>
                 </tr>
                 {open === e.id && (
                   <tr key={`${e.id}-body`}>

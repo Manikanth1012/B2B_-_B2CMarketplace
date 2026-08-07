@@ -3,27 +3,33 @@ import { Pager, usePaging } from '../Pager'
 import { supabase } from '../../lib/supabase'
 import type { OperatorChannel } from '../../types'
 import { SectionCard, Table, Td, StatusPill, EmptyState, Btn, Modal, FormField, TextInput, Select, TextArea, toast, ConfirmDialog } from './shared'
-import { useMarket } from '../../lib/MarketContext'
+import { money } from '../../lib/notifications'
+import type { Rate } from '../../lib/notifications'
 
 export function OperatorChannels() {
-  /* What the marketplace pays a carrier per message. It buys these centrally,
-     in its own reporting currency — so this is not a per-market figure and does
-     not want grouping. It wants the mark to come from the currency table
-     instead of being typed, which is the difference between "this is dollars"
-     and "somebody wrote a dollar sign". */
-  const { book: moneyBook, fmtIn } = useMarket()
-  const cost = (n: number) =>
-    fmtIn(Number(n), moneyBook.currencies.find(c => c.is_reporting)?.code ?? 'USD')
+  /* What the marketplace pays a carrier is not one number and not one currency.
+     Route Mobile bills Indian termination in rupees and Kenyan termination in
+     shillings; SES bills in dollars. This screen used to hold a single
+     `unit_cost` column and render it in the reporting currency by assumption,
+     which is the same class of bug as a price that is "dollars because somebody
+     typed a dollar sign". The rates live in `channel_rate`, one per channel and
+     destination, each carrying the currency it is quoted in. */
+  const [rates, setRates] = useState<Rate[]>([])
   const [channels, setChannels] = useState<OperatorChannel[]>([])
   const [loading, setLoading] = useState(true)
   const [editModal, setEditModal] = useState<OperatorChannel | null>(null)
   const [addModal, setAddModal] = useState(false)
 
   useEffect(() => {
-    supabase.from('operator_channels').select('*').order('sort_order').then(({ data }) => {
-      if (data) setChannels(data as OperatorChannel[])
+    void (async () => {
+      const [c, r] = await Promise.all([
+        supabase.from('operator_channels').select('*').order('sort_order'),
+        supabase.from('channel_rate').select('*').is('effective_to', null).order('destination'),
+      ])
+      if (c.data) setChannels(c.data as OperatorChannel[])
+      if (r.data) setRates(r.data as Rate[])
       setLoading(false)
-    })
+    })()
   }, [])
 
   /* Above the loading guard: `usePaging` is a hook, and a hook after an
@@ -80,7 +86,7 @@ export function OperatorChannels() {
           primary is part of its status rather than a column of dashes beside it. */}
       <SectionCard title="Channel Master" subtitle="A channel is what the customer experiences; a provider is what carries it.">
         {channels.length === 0 ? <EmptyState message="No channels configured" /> : (
-          <><Table headers={['Name', 'Type', 'Transport', 'Sender', 'Throughput', 'Cost', 'Success', 'Receipt', 'Status', 'Actions']}>
+          <><Table headers={['Name', 'Type', 'Transport', 'Sender', 'Throughput', 'Rates', 'Success', 'Receipt', 'Status', 'Actions']}>
             {page.rows.map(c => (
               <tr key={c.id}>
                 <Td>{c.name}</Td>
@@ -91,7 +97,20 @@ export function OperatorChannels() {
                 </Td>
                 <Td right>{c.sender}</Td>
                 <Td right>{c.throughput}/s</Td>
-                <Td right>{cost(c.unit_cost)}</Td>
+                <Td right style={{ fontSize: 'var(--text-xs)' }}>
+                  {(() => {
+                    /* Per destination, in the carrier's own currency. One
+                       number here used to stand for all three markets and was
+                       printed in the reporting currency by assumption. */
+                    const mine = rates.filter(r => r.channel_id === c.id && !r.effective_to)
+                    if (mine.length === 0) return <span style={{ color: 'var(--danger)' }}>not priced</span>
+                    return mine.map(r => (
+                      <div key={r.id}>
+                        {r.destination === 'default' ? 'else' : r.destination} {money(r.unit_rate, r.currency)}
+                      </div>
+                    ))
+                  })()}
+                </Td>
                 <Td right>{c.success_rate > 0 ? `${c.success_rate}%` : '—'}</Td>
                 <Td right>{c.has_receipt ? 'Yes' : <span style={{ color: 'var(--warning)', fontWeight: 600 }}>No</span>}</Td>
                 <Td right>
@@ -120,7 +139,8 @@ export function OperatorChannels() {
             <li style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>Push success rate is <strong>not averaged</strong> into the platform-wide delivery figure.</li>
             <li style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>Hard rejections (invalid number, unsubscribed, blocked) are <strong>never retried</strong>.</li>
             <li style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>Failover is automatic after a defined number of attempts on the primary.</li>
-            <li style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>Cost is reported per channel, per message and per thousand.</li>
+            <li style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>Cost is <strong>per destination and per segment</strong>, in the currency the carrier bills in — a 300-character SMS is two segments and is billed as two.</li>
+            <li style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>Rates, credentials, sender registration and failover are configured under <strong>Notifications → Channels</strong>, where a check can be run against them.</li>
           </ul>
         </div>
       </SectionCard>
@@ -133,7 +153,7 @@ export function OperatorChannels() {
 function ChannelModal({ channel, onClose, onSave }: { channel: OperatorChannel | null; onClose: () => void; onSave: (c: OperatorChannel) => void }) {
   const [form, setForm] = useState<OperatorChannel>(channel || {
     id: '', name: '', type: 'digital', transport: '', protocol: 'REST', sender: '', throughput: 100,
-    unit_cost: 0, success_rate: 0, region: 'global', has_receipt: true, is_primary: false, enabled: true, note: '', sort_order: 0,
+    success_rate: 0, region: 'global', has_receipt: true, is_primary: false, enabled: true, note: '', sort_order: 0,
   })
   useEffect(() => { if (channel) setForm(channel) }, [channel])
 
@@ -157,7 +177,6 @@ function ChannelModal({ channel, onClose, onSave }: { channel: OperatorChannel |
       <FormField label="Sender identity"><TextInput value={form.sender} onChange={(e) => setForm({ ...form, sender: e.target.value })} placeholder="e.g. AVENTA, noreply@aventa.com" /></FormField>
       <div style={{ display: 'flex', gap: '12px' }}>
         <div style={{ flex: 1 }}><FormField label="Throughput (msg/s)"><TextInput type="number" value={form.throughput} onChange={(e) => setForm({ ...form, throughput: parseInt(e.target.value) || 0 })} /></FormField></div>
-        <div style={{ flex: 1 }}><FormField label="Unit cost"><TextInput type="number" step="0.0001" value={form.unit_cost} onChange={(e) => setForm({ ...form, unit_cost: parseFloat(e.target.value) || 0 })} /></FormField></div>
         <div style={{ flex: 1 }}><FormField label="Success rate %"><TextInput type="number" step="0.1" value={form.success_rate} onChange={(e) => setForm({ ...form, success_rate: parseFloat(e.target.value) || 0 })} /></FormField></div>
       </div>
       <FormField label="Region"><TextInput value={form.region} onChange={(e) => setForm({ ...form, region: e.target.value })} /></FormField>
