@@ -15,8 +15,10 @@ import type {
 } from '../../lib/numbers'
 import {
   loadNumberBook, loadRangeNumbers, findNumbers, loadEstate,
-  assignNumber, releaseNumber, suspendNumber, resumeNumber, moveProfile,
+  assignNumber, releaseNumber, suspendNumber, resumeNumber, moveProfile, ageCheck,
 } from '../../lib/numbersRepo'
+import { canHoldANumber, dobLine, sourceLine } from '../../lib/dob'
+import type { DobSource } from '../../lib/dob'
 import type { NumberBook } from '../../lib/numbersRepo'
 
 /* Numbers and SIMs.
@@ -542,6 +544,19 @@ function AssignModal({ book, onClose, onDone }: {
   const [order, setOrder] = useState('')
   const [plan, setPlan] = useState('')
   const [busy, setBusy] = useState(false)
+  /* Who the number would go to, and how old they are. The database refuses a
+     retail number to somebody under 18 in their own name; this is so the desk
+     is told before it tries rather than after. */
+  const [who, setWho] = useState<{ name: string | null; dob: string | null; source: string | null } | null>(null)
+
+  useEffect(() => {
+    if (target !== 'person' || userId.trim().length < 30) { setWho(null); return }
+    let live = true
+    void ageCheck(userId.trim()).then(r => { if (live) setWho(r) })
+    return () => { live = false }
+  }, [target, userId])
+
+  const age = who ? canHoldANumber(who.dob) : null
 
   const draft = {
     kind, market, purpose,
@@ -569,7 +584,9 @@ function AssignModal({ book, onClose, onDone }: {
     <Modal open onClose={onClose} title="Assign a number"
            footer={<>
              <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
-             <Btn size="sm" disabled={busy || !check.ok || usable.length === 0} onClick={() => void go()}>
+             <Btn size="sm"
+                  disabled={busy || !check.ok || usable.length === 0 || (age ? !age.ok : false)}
+                  onClick={() => void go()}>
                {busy ? 'Allocating…' : 'Allocate'}
              </Btn>
            </>}>
@@ -664,6 +681,18 @@ function AssignModal({ book, onClose, onDone }: {
           </FormField>
         </div>
       </div>
+
+      {/* The age check, shown against the person rather than only enforced. */}
+      {who && purpose === 'retail' && (
+        <Callout tone={age && !age.ok ? 'danger' : who.dob ? 'info' : 'warning'}
+                 title={who.name ?? 'That customer'}>
+          {who.dob
+            ? `${dobLine(who.dob)} · ${sourceLine(who.source as DobSource | null)}`
+            : 'No date of birth on file.'}
+          {age && !age.ok && <div style={{ marginTop: '4px' }}>{age.reason}</div>}
+          {age && age.ok && age.note && <div style={{ marginTop: '4px' }}>{age.note}</div>}
+        </Callout>
+      )}
 
       {!check.ok && <Callout tone="danger" title="This cannot be allocated yet">{check.reason}</Callout>}
       {check.ok && check.note && <Callout tone="warning" title="Worth checking">{check.note}</Callout>}

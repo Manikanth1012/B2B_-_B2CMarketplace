@@ -50,6 +50,9 @@ export const REQUEST_IMPACT: readonly string[] = [
   `We have ${RESPONSE_DAYS} days to answer, and usually take under five.`,
   'It arrives as a download link to your registered email, valid for 7 days.',
   'The copy covers what the marketplace holds. Each seller you have bought from keeps their own record, and the copy lists who they are so you can ask them directly.',
+  /* Named because the marketplace now holds one. A field it holds and the
+     copy omits is an export lying by omission. */
+  'It includes your date of birth where we hold one, and says whether you told us or it came off your ID.',
   'Requesting a copy changes nothing about your account.',
 ]
 

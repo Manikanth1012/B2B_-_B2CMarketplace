@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { User, Bell, History, Users, RotateCcw, Check, X, Plus, CircleAlert as AlertCircle, Info, Shield, Wallet, Star, Phone, Mail, MapPin, CreditCard, Clock, ChevronRight, Lock, Trash2, FileText, LifeBuoy, MessageSquare, Send, Download, Globe, Eye, FolderOpen, KeyRound, ShieldCheck } from 'lucide-react'
+import { User, Bell, History, Users, RotateCcw, Check, X, Plus, CircleAlert as AlertCircle, Info, Shield, Wallet, Star, Phone, Mail, MapPin, CreditCard, Clock, ChevronRight, Lock, Trash2, FileText, LifeBuoy, MessageSquare, Send, Download, Globe, Eye, FolderOpen, KeyRound, ShieldCheck, Cake } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { changePassword, currentEmail, SignInError } from '../lib/authRepo'
 import { myLink } from '../lib/ssoRepo'
@@ -12,6 +12,8 @@ import { PrivacyCard } from './PrivacyCard'
 import { NotificationPreferencesView } from './NotificationPreferencesView'
 import { AddressBookCard } from './AddressBookCard'
 import { MyNumberCard } from './MyNumberCard'
+import { validateDob, dobLine, sourceLine, ADULT } from '../lib/dob'
+import type { DobSource } from '../lib/dob'
 import { StockWatchCard } from './StockWatchCard'
 import { CustomerDocuments } from './consumer/CustomerDocuments'
 import type { Viewer } from '../lib/evidence'
@@ -237,6 +239,9 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
   const [email, setEmail] = useState(profile.email)
   const [phone, setPhone] = useState(profile.msisdn)
   const [city, setCity] = useState(profile.city)
+  /* Date of birth. Not decoration — a mobile number cannot be issued to
+     somebody under 18 in their own name, and the allocation refuses on it. */
+  const [dob, setDob] = useState(profile.dob ?? '')
   const [saving, setSaving] = useState(false)
   const [modal, setModal] = useState<null | 'password' | 'mfa' | 'payments' | 'sessions'>(null)
   /* Counted from the table rather than written into the markup. This row said
@@ -270,11 +275,20 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
 
   const save = async () => {
     setSaving(true)
+    /* Checked here so the refusal reads in the customer's words, and again by
+       a trigger so it cannot be skipped by talking to the API directly. */
+    const check = validateDob(dob)
+    if (!check.ok) { setSaving(false); showToast(check.reason); return }
+
     await supabase.from('consumer_profile').update({
       name, email, msisdn: phone, city,
+      dob: dob || null,
+      /* Typed in here means self-declared. Only a KYC check may claim more,
+         and this screen is not one. */
+      ...(dob && dob !== profile.dob ? { dob_source: 'self' } : {}),
     }).eq('user_id', profile.user_id)
     setSaving(false)
-    showToast('Your details have been saved')
+    showToast(check.note ?? 'Your details have been saved')
   }
 
   /* Preferences save on change rather than behind the button — a picker that needs a
@@ -321,6 +335,16 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
             </Field>
             <Field label="City" icon={<MapPin size={14} />}>
               <input style={inputStyle} value={city} onChange={(e) => setCity(e.target.value)} />
+            </Field>
+            <Field label="Date of birth" icon={<Cake size={14} />}>
+              <input style={inputStyle} type="date" value={dob}
+                     max={new Date().toISOString().slice(0, 10)}
+                     onChange={(e) => setDob(e.target.value)} />
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+                {dob
+                  ? `${dobLine(dob)} · ${sourceLine((profile.dob_source ?? 'self') as DobSource)}`
+                  : `Optional. We ask because a mobile number cannot be issued in your own name until you are ${ADULT}.`}
+              </p>
             </Field>
             <button
               onClick={save}

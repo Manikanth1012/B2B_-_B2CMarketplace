@@ -70,6 +70,19 @@ export async function findNumbers(query: string, limit = 60): Promise<HeldNumber
   return (data ?? []) as HeldNumber[]
 }
 
+/** Who a retail number would go to, and whether they are old enough. The
+    allocation refuses on it in the database; this is so the screen can say why
+    before anybody presses anything. */
+export async function ageCheck(userId: string): Promise<{
+  name: string | null; dob: string | null; source: string | null
+} | null> {
+  const { data } = await supabase.from('consumer_profile')
+    .select('name,dob,dob_source').eq('user_id', userId).maybeSingle()
+  if (!data) return null
+  const r = data as { name: string; dob: string | null; dob_source: string | null }
+  return { name: r.name, dob: r.dob, source: r.dob_source }
+}
+
 /** Everything on one account, or one person, or one device. */
 export async function loadHeldBy(
   by: { account_id?: string; user_id?: string; stock_serial?: string },

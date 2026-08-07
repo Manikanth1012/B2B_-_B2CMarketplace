@@ -261,6 +261,11 @@ export interface ConsumerProfile {
   currency: string
   payment_method: string
   email: string
+  /* Date of birth, and where it came from. Nullable — "not given" is a real
+     state and is different from "under age". Age is derived from it and is
+     never stored: a stored age is wrong the day after it is written. */
+  dob: string | null
+  dob_source: 'self' | 'kyc' | 'import' | null
   mfa_enabled: boolean
   active_sessions: number
   pwd_changed: string
