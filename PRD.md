@@ -1,7 +1,7 @@
 # Product Requirements Document (PRD): B2B/B2C Telecom Marketplace
 
 ## 1. Document Control
-* **Version**: 4.6  
+* **Version**: 4.7  
 * **Date**: August 2026  
 * **Status**: Draft — sections 4.8 to 4.69 and section 7 added from the working build  
 * **Author**: AI Coding Assistant (Antigravity)  
@@ -11,6 +11,7 @@
 
 | Version | Date | Change |
 |---|---|---|
+| **4.7** | **Aug 2026** | **Product comparison built, on both buy sides.** §4.23 had been specified since v2.0 and never built — no toggle on any card, no tray, no table. Shoppers and enterprise buyers now compare up to three side by side through one shared set of rules. Two rules came from using it rather than from writing it: prices are not compared across payment models any more than across currencies, and a row no column can fill in is dropped rather than printed as "Not stated" across the width. §4.23 rewritten to describe what is built. |
 | **4.6** | **Aug 2026** | **Closed the inbound half of the portal.** The desk can issue a credential directly for a partner it onboarded by hand, with a stated reason and a refusal on production without an approved subscription. The operator gains a view of every partner endpoint the marketplace calls — URL, auth, retry, subscriptions, state — which was previously visible only to the seller. Publish/subscribe becomes real: nine event topics with worked payloads, subscription checked against the catalogue, a delivery recorded per subscriber, and a publish action that fans a topic out and reports what landed. Sellers not listening for a required event are named. |
 | **4.5** | **Aug 2026** | **Published the TM Forum specifications themselves.** The seven Swagger/OpenAPI files from the 6D reference library ship with the app and are downloadable byte-for-byte; the reference renders every operation each declares (146 across the seven) marked live-here or spec-only, with a coverage figure. Versions now come from the files, moving five APIs to 4.0 or above. Inventory's TMF685 corrected to TMF687 Stock Management. Settlement and Party publish TM Forum's own TMF678 CustomerBill 5.0.0 and TMF632 Party Management 5.0.0, retrieved from the version folders beneath the library's top level, so every published API carries the standard it names at 4.0 or above. |
 | **4.4** | **Aug 2026** | **Built both halves of the developer portal against the §4.21 schema.** A seller registers an application and collects sandbox credentials in one step, reads the endpoint reference grouped by resource, downloads the generated OpenAPI, executes a real authenticated call against their own records, and asks for production with a stated use case. The operator publishes a version that must carry endpoints, works a production-approval queue, and deprecates with a sunset date and migration note where the delete used to be. Call figures derive from a database rollup rather than a page of log rows. |
@@ -483,10 +484,15 @@ Everything above describes *what* is published. This is what a developer receive
 
 ### 4.23 Product Comparison (CAT)
 
-- Buyers may compare up to **three** products side by side — price, rating, availability, fulfilment, seller and term.
-- **Three is a deliberate cap.** A comparison table wide enough to need scrolling stops being a comparison.
-- The most favourable cell in each row is highlighted, and the table **states that the highlight is not a recommendation** — it is arithmetic on one dimension, and the dimension that matters is the buyer's to choose.
-- Each column can be added to the basket directly, so the comparison ends in a decision rather than a dead end.
+- Buyers may compare up to **three** products side by side — price, was-price, tax treatment, rating, availability, fulfilment, payment model, seller, and the union of every specification any of them declares.
+- **Both buy sides get the same comparison.** The retail storefront and the enterprise catalogue ask the same question and answer it with one set of rules and one table; each supplies its own money formatter and its own verb — a shopper adds to the basket, a buyer adds to a requisition.
+- **Three is a deliberate cap.** A comparison table wide enough to need scrolling stops being a comparison. A fourth pick is refused with the reason and never swaps one out silently, and the room remaining is stated from the first pick rather than only when the cap is reached.
+- **Picks are held by identity, not by copy.** A filter change, a currency change or a reprice keeps the picks; a listing withdrawn while the tray is open drops out rather than being compared from a stale row.
+- The most favourable cell is highlighted **only on the rows where "best" is arithmetic on a single number** — price and rating. Availability, fulfilment, seller, tax and specifications are not contests and are never marked. The table names the rows it judged and **states that the highlight is not a recommendation** — it is arithmetic on one dimension, and the dimension that matters is the buyer's to choose. Where every column ties, or the figure is missing for any of them, nothing is highlighted and the table says so.
+- **A number is not compared where the comparison would be false.** Two prices in different currencies have no cheaper one, and neither do a recurring charge and a one-off purchase: ₹1,099 a month is a smaller number than ₹64,999 once and is not the cheaper thing. In both cases the price row states why it was not judged.
+- **Missing data is declared, never rendered as zero.** A product nobody has rated is not a product rated nought, and a rating carrying no reviews is no rating. A row no column can fill in is dropped rather than printed blank across every column.
+- "Only what differs" hides the rows that read the same everywhere, and says how many those are.
+- Each column can be acted on directly, so the comparison ends in a decision rather than a dead end.
 
 ### 4.24 Warehouse System Integration (INV)
 
@@ -1172,7 +1178,7 @@ Entry point: `index.html`. Design contract: **nim-ui-design-system-v2** (6D ONE 
 | §4.20 | `partner.html` → Branding | `journeys_ops.js` |
 | §4.21 | `operator.html` → Developer portal | `journeys_platform.js` |
 | §4.22 | `partner.html` → Listings (versions); `enterprise.html` → Contracts | `journeys_platform.js` |
-| §4.23 | `consumer.html` → Browse (compare tray) | `journeys_platform.js` |
+| §4.23 | `consumer.html` → Browse (compare tray); `enterprise.html` → Browse Catalogue | `journeys_platform.js` |
 | §4.26 | `operator.html` → Collections; `consumer.html` → My details | `journeys_platform.js` |
 | §4.27 | Dashboard of all four portals | `journeys_platform.js` |
 | §4.28 | Sign-in gate and Sign-in and sessions, all portals | `journeys_final.js` |

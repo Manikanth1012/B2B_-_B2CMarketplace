@@ -1,6 +1,6 @@
 # B2B/B2C Telecom Marketplace — EPICs & User Stories
 
-> **Version**: 1.35 · **Date**: August 2026
+> **Version**: 1.36 · **Date**: August 2026
 > **Components**: Partner Onboarding (PMP) · Catalog Management (CAT) · Order & Subscription (ORD) · Billing & Settlement (BIL) · AI & n8n (AI) · Support & Cases (SUP) · Platform Governance (ADM) · Inventory (INV) · Identity (IAM) · API Gateway (APG) · Notifications (NTF)
 
 > **v1.17 change**: added warehouse configuration and shipment provenance; a managed channel master replacing the hard-coded dunning channel list; collections ownership between marketplace and seller, with category-based ladder profiles seeded at onboarding and the operator's view of seller drift; and credit/debit notes plus partner-approved customer refunds with the `AP-ADJ` API. 1,713 automated checks across eleven suites.
@@ -27,6 +27,8 @@
 >
 > **v1.28 change**: onboarding tasks scoped to a partner and driven by that partner's gates; operator-led onboarding rebuilt as a stepped capture with real settlement fields and file attachment; settlement detail masked everywhere with an audited reveal; sellers and buyers can each see and correct what we hold about them; drawn product artwork replaced the category glyphs; consumer alert channels made selectable. 2,275 automated checks across nineteen suites.
 >
+> **v1.36 change**: CAT-FE-007 built. It had been marked **[P]** since v1.12 with nothing behind it — no toggle on any card, no tray, no table. Both buy sides now compare up to three side by side, the shopper's storefront and the enterprise catalogue sharing one set of rules and one table, each passing in its own money and its own verb. Two rules came out of using it rather than out of writing it: a subscription and a one-off purchase have no cheaper one, so ₹1,099 a month is no longer ticked as beating a ₹64,999 handset; and a row no column can fill in is dropped rather than printed as "Not stated" three times across. 3,077 automated checks across two suites.
+
 > **v1.35 change**: the inbound half. The desk can issue a credential directly — for a partner it onboarded by hand — with a stated reason, refused on production where no subscription was approved. The operator can see the fifteen partner endpoints the marketplace calls, previously visible only on the seller's own screen. Publish/subscribe is built rather than merely specified: nine `event_topics` with worked payloads in this marketplace's shapes, endpoint subscriptions validated against the catalogue, `event_deliveries` recording every fan-out per subscriber, and `publish_event` sending a topic to everyone listening now. A required topic nobody listens to is reported as an order reaching nobody, not as a percentage.
 
 > **v1.34 change**: the published TM Forum specifications are in the product. Seven Swagger/OpenAPI files from the 6D reference library (Reference_Documents/TMForum/Open_APIs) ship with the app and download byte-for-byte; `api_specs` records what each is — format, size, checksum, provenance — and every operation it declares. The reference renders all 146 against the 20 this marketplace serves, each marked live-here or spec-only with a coverage figure, so the gap is read rather than discovered from a 404. Versions come from the files: TMF620 5.0.0, TMF622/637/687/688 4.0.0. Inventory claimed TMF685 (Resource Pool Management) and is corrected to TMF687 Stock Management. Two files are 6D implementations at v1.0.0 rather than TM Forum standards and are flagged on both screens rather than renumbered. 3,051 automated checks.
@@ -370,15 +372,16 @@ node _src/smoke.js partner.html   # render walk across every screen
 | CAT-BE-005-04 | Account Contract Price **[P]** | As an **operator**, I want a negotiated price to apply to the account it was negotiated with and to nobody else. | ✅ Contract price binds account, SKU, price, minimum quantity, term start and term end <br> ✅ Resolution for any other account returns list <br> ✅ Below-cost contract prices are rejected at authoring against the CAT-BE-002-03 floor <br> ✅ An expired term stops resolving without deleting the record | P1 | 8 |
 | CAT-BE-005-05 | Unsigned Prices Are Recorded, Not Applied **[P]** | As a **buyer**, I do not want to be charged a price nobody has signed. | ✅ A contract record in draft or pending state never participates in price resolution <br> ✅ It remains visible to the buyer with its status <br> ✅ The rule is stated on the buyer's screen, whether or not they currently have an unsigned record | P1 | 3 |
 
-### EPIC CAT-FE-007: Product Comparison (Frontend) — *added v1.12*
-**Description**: Side-by-side comparison that ends in a decision rather than a spreadsheet.
+### EPIC CAT-FE-007: Product Comparison (Frontend) — *added v1.12, built v1.36*
+**Description**: Side-by-side comparison that ends in a decision rather than a spreadsheet. One set of rules (`compare.ts`) and one table (`CompareTray.tsx`) serve both buy sides; each persona supplies its own money formatter and its own verb — a shopper adds to the basket, a buyer adds to a requisition.
 
 | Story ID | Story Title | User Story | Acceptance Criteria | Priority | SP |
 |----------|-------------|------------|---------------------|----------|----|
-| CAT-FE-007-01 | Compare Tray **[P]** | As a **buyer**, I want to collect candidates while I browse. | ✅ Compare toggle on every product card, reflecting selected state <br> ✅ Persistent tray shows current picks and allows removal <br> ✅ Selection survives filtering and category changes within the session | P2 | 5 |
-| CAT-FE-007-02 | Three-Item Cap **[P]** | As a **buyer**, I want a comparison I can read without scrolling sideways. | ✅ Cap of three enforced; a fourth pick is refused with the reason stated <br> ✅ The cap is visible before it is hit, not only when it is | P2 | 3 |
-| CAT-FE-007-03 | Comparison Table **[P]** | As a **buyer**, I want the differences that matter, not a specification dump. | ✅ Rows for price, rating, availability, fulfilment, seller and term <br> ✅ Availability reads from the stock ledger, not from a static field <br> ✅ Missing data is declared, never rendered as zero | P2 | 5 |
-| CAT-FE-007-04 | Highlight Without Recommending **[P]** | As a **buyer**, I want to know the marketplace is not steering me. | ✅ Best value per row highlighted <br> ✅ Table states that the highlight is arithmetic on one dimension and not a recommendation <br> ✅ Every column can be added to the basket directly | P2 | 3 |
+| CAT-FE-007-01 | Compare Tray **[P]** | As a **buyer**, I want to collect candidates while I browse. | ✅ Compare toggle on every product card on both the storefront and the enterprise catalogue, reflecting selected state <br> ✅ Persistent tray shows current picks and allows removal, per pick and all at once <br> ✅ Picks are held by id and resolved against the catalogue each render, so a filter change, a currency change or a reprice does not lose them — and a listing withdrawn while the tray is open drops out rather than being compared from a stale copy | P2 | 5 |
+| CAT-FE-007-02 | Three-Item Cap **[P]** | As a **buyer**, I want a comparison I can read without scrolling sideways. | ✅ Cap of three enforced; a fourth pick is refused with the reason stated and names what to remove <br> ✅ A refusal never silently drops one to make room <br> ✅ The room remaining is stated from the first pick, not only when the cap is hit <br> ✅ Removing still works at the cap | P2 | 3 |
+| CAT-FE-007-03 | Comparison Table **[P]** | As a **buyer**, I want the differences that matter, not a specification dump. | ✅ Rows for price, was-price, tax treatment, rating, availability, fulfilment, payment model and seller, plus the union of every specification any of them declares, so a feature one has and another lacks shows as a gap rather than being dropped <br> ✅ Availability reads the product's own stock state, and an out-of-stock column offers "Unavailable" rather than the action <br> ✅ Missing data is declared as "Not stated", never rendered as zero — a product nobody has rated is not a product rated nought, and a rating with no reviews behind it is no rating <br> ✅ Rows no column can fill in are dropped rather than printed blank across <br> ✅ "Only what differs" hides the rows that read the same in every column, and says how many those are | P2 | 5 |
+| CAT-FE-007-04 | Highlight Without Recommending **[P]** | As a **buyer**, I want to know the marketplace is not steering me. | ✅ Best highlighted only on the rows where best is arithmetic on one number — price and rating — and never on availability, fulfilment, seller, tax or a specification <br> ✅ The table names which rows it judged and states that the highlight is arithmetic, not a recommendation <br> ✅ Nothing is highlighted where every column ties, or where the figure is missing for any of them, and the table says which <br> ✅ Every column can be acted on directly: added to the basket by a shopper, added to a requisition by a buyer | P2 | 3 |
+| CAT-FE-007-05 | Prices That Are Not Comparable Are Not Compared **[P]** | As a **buyer**, I do not want a tick beside the smaller number when the smaller number is not the cheaper thing. | ✅ No cheapest is marked across two currencies — 999 KES against 1,299 INR is two numbers, not a saving <br> ✅ No cheapest is marked across payment models — ₹1,099 a month is a smaller number than ₹64,999 once, and it is not cheaper <br> ✅ In both cases the Price row states why it was not judged instead of leaving the absence unexplained <br> ✅ A monthly or annual price is labelled as such wherever it is printed | P2 | 3 |
 
 ---
 ### EPIC CAT-BE-006: Listing Rule Catalogue (Backend) — *added v1.14*
@@ -1109,13 +1112,13 @@ The last five build gaps, plus forecasting. Every story below is demonstrated in
 | APG-BE-003 | Marketplace API Products & Access Plans | 4 | APG |
 | APG-FE-003 | Developer Portal Console | 4 | APG |
 | CAT-BE-005 | Listing Versioning & Contract Pricing | 5 | CAT |
-| CAT-FE-007 | Product Comparison | 4 | CAT |
+| CAT-FE-007 | Product Comparison | 5 | CAT |
 | INV-BE-002 | Warehouse System Integration | 4 | INV |
 | ADM-BE-003 | Audit Integrity & SIEM Export | 4 | ADM |
 | ADM-FE-005 | Revenue & Spend Projection | 4 | ADM |
 | ORD-BE-004 | Dunning & Collections Ladder | 4 | ORD |
 | ORD-FE-003 | Collections Console & Customer Notice | 3 | ORD |
-| | **Total** | **36** | |
+| | **Total** | **37** | |
 
 ### Design positions taken in v1.12
 
