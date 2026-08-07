@@ -3,8 +3,9 @@ import {
   keyNote, usable, maskedSecret, daysUntil, sunsetWarning, usageOf, statusBreakdown, LIMITS,
   curlFor, endpointUrl, scopesHeld, callability, productionQueue,
   publishable, deprecatable, statusTone, groupEndpoints, KEY_STATE_LABEL,
+  groupOperations, coverage, specSize,
 } from './devPortal'
-import type { Credential, Version, Endpoint, Subscription, Rollup } from './devPortal'
+import type { Credential, Version, Endpoint, Subscription, Rollup, Spec, SpecOperation } from './devPortal'
 
 const NOW = new Date('2026-08-06T12:00:00Z')
 
@@ -351,6 +352,57 @@ describe('deprecation, which replaced deletion', () => {
   it('will not deprecate what is already retired', () => {
     expect(deprecatable({ lifecycle: 'retired' }, '2027-01-01',
       'v3 replaces price with prices[], one entry per market.', NOW).ok).toBe(false)
+  })
+})
+
+const op = (over: Partial<SpecOperation> = {}): SpecOperation => ({
+  method: 'GET', path: '/productOffering', summary: 'List offerings',
+  description: '', operationId: 'listProductOffering', tag: 'productOffering', ...over,
+})
+
+const spec = (over: Partial<Spec> = {}): Spec => ({
+  id: 'AP-CAT-spec', api_id: 'AP-CAT', version_id: 'AP-CAT@5.0.0', tmf: 'TMF620',
+  title: 'Product Catalog Management', declared_version: '5.0.0', spec_format: 'OpenAPI 3.0.1',
+  servers: ['http://127.0.0.1:8620/tmf-api/productCatalogManagement/v5'],
+  file_path: '/specs/tmf620-product-catalog-management.yaml', file_bytes: 809595,
+  sha256: 'abc123', source_file: '6d_TMF-620.yaml', retrieved_on: '2026-08-07',
+  operation_count: 60, is_tmf_standard: true, note: null, operations: [op()], ...over,
+})
+
+describe('the published specification', () => {
+  it('groups by the tag the document itself uses, busiest first', () => {
+    const g = groupOperations([
+      op({ tag: 'category', path: '/category' }),
+      op({ tag: 'productOffering', path: '/productOffering' }),
+      op({ tag: 'productOffering', path: '/productOffering/{id}' }),
+    ])
+    expect(g.map(x => x.tag)).toEqual(['productOffering', 'category'])
+  })
+
+  it('falls back to the path when an operation carries no tag', () => {
+    expect(groupOperations([op({ tag: null, path: '/tmf-api/event/v4/topic' })])[0].tag).toBe('topic')
+  })
+
+  it('says how much of the specification actually answers here', () => {
+    /* Sixty operations documented and four served is the fact a developer most
+       needs and is least likely to be told. */
+    const c = coverage(spec({ operation_count: 60 }), [ep(), ep({ id: '2' }), ep({ id: '3' }), ep({ id: '4' })])
+    expect(c.ours).toBe(4)
+    expect(c.theirs).toBe(60)
+    expect(c.pct).toBe(7)
+    expect(c.note).toContain('404')
+  })
+
+  it('does not claim coverage when nothing is exposed', () => {
+    const c = coverage(spec(), [])
+    expect(c.pct).toBe(0)
+    expect(c.note).toContain('None of')
+  })
+
+  it('sizes a file in the unit a person reads', () => {
+    expect(specSize(13765)).toBe('13 KB')
+    expect(specSize(809595)).toBe('791 KB')
+    expect(specSize(2_500_000)).toBe('2.4 MB')
   })
 })
 

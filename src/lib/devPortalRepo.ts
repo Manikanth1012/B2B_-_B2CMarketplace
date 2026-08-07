@@ -9,7 +9,7 @@
  */
 import { supabase } from './supabase'
 import type {
-  Application, Credential, Version, Endpoint, Subscription, CallRecord, Rollup, Environment,
+  Application, Credential, Version, Endpoint, Subscription, CallRecord, Rollup, Spec, Environment,
 } from './devPortal'
 
 export interface DeveloperWorkspace {
@@ -38,12 +38,17 @@ const RECENT_LIMIT = 200
    documentation nobody can read before they sign up is documentation nobody
    reads. */
 export async function loadPublishedApis(): Promise<Version[]> {
-  const [vs, es, as] = await Promise.all([
+  const [vs, es, as, sp] = await Promise.all([
     supabase.from('api_versions').select('*').order('sort_order'),
     supabase.from('api_endpoints').select('*').order('sort_order'),
     supabase.from('operator_apis').select('id, name, standard, description, scopes, audience'),
+    /* The published specification. Metadata and its operation list only — the
+       document itself is a static file, so a page load does not drag 1.4 MB of
+       TM Forum schemas through the browser to render a heading. */
+    supabase.from('api_specs').select('*'),
   ])
   if (vs.error || es.error || as.error) return []
+  const specs = (sp.data ?? []) as unknown as Spec[]
 
   type ApiRow = { id: string; name: string; standard: string; description: string; scopes: string[]; audience: string }
   const apis = (as.data ?? []) as ApiRow[]
@@ -66,6 +71,7 @@ export async function loadPublishedApis(): Promise<Version[]> {
       standard: api?.standard ?? '',
       description: api?.description ?? '',
       endpoints: endpoints.filter(e => e.version_id === v.id),
+      spec: specs.find(x => x.version_id === v.id),
     }
   })
 }

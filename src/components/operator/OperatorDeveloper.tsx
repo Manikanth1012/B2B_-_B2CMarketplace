@@ -10,7 +10,7 @@ import {
 import { Callout } from '../OnboardingJourney'
 import {
   LIFECYCLE_LABEL, KEY_STATE_LABEL, keyNote, maskedSecret, usable, sunsetWarning,
-  usageOf, statusBreakdown, productionQueue, publishable, deprecatable, LIMITS, daysUntil,
+  usageOf, statusBreakdown, productionQueue, publishable, deprecatable, LIMITS, daysUntil, specSize,
 } from '../../lib/devPortal'
 import type { Version, Credential, Application, Subscription } from '../../lib/devPortal'
 import {
@@ -93,6 +93,15 @@ export function OperatorDeveloper() {
           {queue[0].sub.consumer_name} has been waiting {queue[0].waitingDays} day
           {queue[0].waitingDays === 1 ? '' : 's'} on {queue[0].sub.api_name} {queue[0].sub.version}.{' '}
           <button onClick={() => setTab('queue')} style={linkStyle}>Decide it</button>
+        </Callout>
+      )}
+
+      {versions.some(v => v.spec && !v.spec.is_tmf_standard) && (
+        <Callout tone="warning" title="Two published APIs carry a file that is not the standard they name">
+          {versions.filter(v => v.spec && !v.spec.is_tmf_standard)
+                   .map(v => `${v.api_name} (${v.spec!.tmf} — ${v.spec!.title} ${v.spec!.declared_version})`)
+                   .join(', ')}. A developer looking up the standard will find a different document from
+          the one published here. Replace the file, or change what the API claims to implement.
         </Callout>
       )}
 
@@ -233,7 +242,7 @@ function ApisTab({ apis, versions, subscriptions, onEdit, onPublishVersion, onDe
                     {vs.length === 0 ? (
                       <EmptyState message="No versions. Nobody can call this API until one is published with endpoints." />
                     ) : (
-                      <Table headers={['Version', 'Lifecycle', 'Base path', 'Endpoints', 'Callers', 'Sunset', 'Actions']}>
+                      <Table headers={['Version', 'Lifecycle', 'Base path', 'Specification', 'Live here', 'Callers', 'Sunset', 'Actions']}>
                         {vs.map(v => {
                           const callers = subscriptions.filter(s => s.version_id === v.id && s.state === 'active')
                           const warn = sunsetWarning(v)
@@ -245,6 +254,23 @@ function ApisTab({ apis, versions, subscriptions, onEdit, onPublishVersion, onDe
                                   under a version that was deprecated. */}
                               <Td><StatusPill status={v.lifecycle} /></Td>
                               <Td style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)' }}>{v.base_path}</Td>
+                              {/* The published document, which is the thing a
+                                  developer asks for and the operator had no
+                                  way of seeing was missing. */}
+                              <Td style={{ fontSize: 'var(--text-xs)' }}>
+                                {v.spec ? (
+                                  <a href={v.spec.file_path} download
+                                     style={{ color: 'var(--info)', textDecoration: 'none' }}>
+                                    {v.spec.tmf} {v.spec.declared_version}
+                                    <span style={{ color: 'var(--text-tertiary)' }}>
+                                      {' · '}{v.spec.operation_count} ops · {specSize(v.spec.file_bytes)}
+                                    </span>
+                                    {!v.spec.is_tmf_standard && (
+                                      <span style={{ color: 'var(--warning)' }}> · not the standard</span>
+                                    )}
+                                  </a>
+                                ) : <span style={{ color: 'var(--danger)', fontWeight: 600 }}>none published</span>}
+                              </Td>
                               <Td right>
                                 {v.endpoints.length === 0
                                   ? <span style={{ color: 'var(--danger)', fontWeight: 600 }}>none</span>

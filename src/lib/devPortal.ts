@@ -53,7 +53,76 @@ export interface Version {
   standard: string
   description: string
   endpoints: Endpoint[]
+  /* The published specification, where one has been loaded. */
+  spec?: Spec
 }
+
+/* The specification the marketplace publishes for an API — TM Forum's own
+   document, as retrieved, not one we assembled. `operations` is every
+   operation it declares, which is what makes the reference worth reading:
+   there are 146 across the seven files against the 20 the sandbox exposes. */
+export interface Spec {
+  id: string
+  api_id: string
+  version_id: string
+  tmf: string
+  title: string
+  declared_version: string
+  spec_format: string
+  servers: string[]
+  file_path: string
+  file_bytes: number
+  sha256: string
+  source_file: string
+  retrieved_on: string
+  operation_count: number
+  is_tmf_standard: boolean
+  note: string | null
+  operations: SpecOperation[]
+}
+
+export interface SpecOperation {
+  method: string
+  path: string
+  summary: string
+  description: string
+  operationId: string | null
+  tag: string | null
+}
+
+/* Grouped by the tag the specification itself uses, which is how its authors
+   organised it — better than re-deriving groups from path segments and getting
+   a different answer from the document we are claiming to render. */
+export function groupOperations(ops: readonly SpecOperation[]): { tag: string; operations: SpecOperation[] }[] {
+  const groups = new Map<string, SpecOperation[]>()
+  for (const o of ops) {
+    const key = o.tag ?? o.path.split('/').filter(Boolean).pop() ?? 'Operations'
+    if (!groups.has(key)) groups.set(key, [])
+    groups.get(key)!.push(o)
+  }
+  return [...groups.entries()]
+    .map(([tag, operations]) => ({ tag, operations }))
+    .sort((a, b) => b.operations.length - a.operations.length || a.tag.localeCompare(b.tag))
+}
+
+/* How much of a published API this marketplace actually implements. A portal
+   that shows sixty TM Forum operations and can execute four should say so
+   rather than let a developer discover it one 404 at a time. */
+export function coverage(spec: Spec, ours: readonly Endpoint[]): {
+  ours: number; theirs: number; pct: number; note: string
+} {
+  const pct = spec.operation_count ? Math.round((ours.length / spec.operation_count) * 100) : 0
+  return {
+    ours: ours.length, theirs: spec.operation_count, pct,
+    note: ours.length === 0
+      ? `None of ${spec.tmf}'s ${spec.operation_count} operations are exposed here yet.`
+      : `${ours.length} of ${spec.tmf}'s ${spec.operation_count} operations are live on this marketplace. `
+        + `The rest are in the specification and will answer 404 until they are.`,
+  }
+}
+
+export const specSize = (bytes: number): string =>
+  bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} MB` : `${Math.round(bytes / 1024)} KB`
 
 export interface Endpoint {
   id: string

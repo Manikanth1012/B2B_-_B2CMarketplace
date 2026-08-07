@@ -10,10 +10,10 @@ import { Callout } from '../OnboardingJourney'
 import {
   KEY_STATE_LABEL, LIFECYCLE_LABEL, LIMITS, keyNote, usable, maskedSecret,
   sunsetWarning, usageOf, curlFor, endpointUrl, scopesHeld, callability,
-  groupEndpoints, statusTone, daysUntil,
+  groupEndpoints, groupOperations, coverage, specSize, statusTone, daysUntil,
 } from '../../lib/devPortal'
 import type {
-  Application, Credential, Version, Endpoint, Subscription, Environment,
+  Application, Credential, Version, Endpoint, Subscription, Environment, Spec,
 } from '../../lib/devPortal'
 import {
   loadWorkspace, registerApplication, subscribeApplication, rotateCredential,
@@ -306,30 +306,50 @@ function ReferenceTab({ versions, subscriptions, applications, onSubscribe }: {
   applications: Application[]; onSubscribe: (v: Version) => void
 }) {
   const [open, setOpen] = useState<string | null>(versions[0]?.id ?? null)
+  /* Two things are worth reading and they are not the same thing: the TM Forum
+     specification, and the subset of it this marketplace answers. The screen
+     used to show only the second and call it the spec. */
+  const [showing, setShowing] = useState<'spec' | 'live'>('spec')
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-      <Callout tone="info" title="Everything published, whether or not you hold it">
-        Read the reference before you subscribe. Each endpoint says which scope it needs, so you can see
-        what you would be asking for. The specification you download is generated from these same rows —
-        the page and the file cannot disagree.
+      <Callout tone="info" title="The published specification, and what we answer of it">
+        <strong>Specification</strong> is the TM Forum document as published — every operation it defines,
+        and the file itself to download. <strong>Live here</strong> is the subset this marketplace serves
+        today, with worked examples and a scope on each, and those are the ones the sandbox console can
+        execute. An operation in the specification but not in the live list will answer 404 until it is
+        built, which is better learned here than from your own logs.
       </Callout>
+
+      <div style={{ display: 'flex', gap: '8px' }}>
+        {([['spec', 'Specification'], ['live', 'Live here']] as const).map(([id, label]) => (
+          <button key={id} onClick={() => setShowing(id)} style={tabStyle(showing === id)}>{label}</button>
+        ))}
+      </div>
 
       {versions.map(v => {
         const isOpen = open === v.id
         const held = subscriptions.filter(s => s.version_id === v.id && s.state === 'active')
         const warn = sunsetWarning(v)
+        const spec = v.spec
+        const cover = spec ? coverage(spec, v.endpoints) : null
 
         return (
           <SectionCard key={v.id}
             title={`${v.api_name} ${v.version}`}
-            subtitle={`${v.standard} · ${v.endpoints.length} endpoint${v.endpoints.length === 1 ? '' : 's'} · base path ${v.base_path}${
-              held.length ? ` · you hold it on ${held.map(s => s.environment).join(' and ')}` : ''}`}
+            subtitle={`${v.standard}${spec ? ` · ${spec.title} · ${spec.spec_format} · ${spec.operation_count} operations in the spec` : ''}`
+              + ` · ${v.endpoints.length} live here · base path ${v.base_path}`
+              + (held.length ? ` · you hold it on ${held.map(s => s.environment).join(' and ')}` : '')}
             action={
               <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                 <StatusPill status={v.lifecycle} />
-                <Btn variant="secondary" size="sm" onClick={() => void download(v)}>
-                  <Download size={13} /> OpenAPI
+                {spec && (
+                  <Btn variant="secondary" size="sm" onClick={() => downloadSpec(spec)}>
+                    <Download size={13} /> {spec.tmf} spec ({specSize(spec.file_bytes)})
+                  </Btn>
+                )}
+                <Btn variant="secondary" size="sm" onClick={() => void downloadProfile(v)}>
+                  <Download size={13} /> Our profile
                 </Btn>
                 {applications.length > 0 && v.lifecycle !== 'retired' && (
                   <Btn size="sm" onClick={() => onSubscribe(v)}>Subscribe</Btn>
@@ -343,11 +363,74 @@ function ReferenceTab({ versions, subscriptions, applications, onSubscribe }: {
               <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 {warn && <Callout tone={warn.tone === 'info' ? 'info' : warn.tone} title={warn.headline}>{warn.detail}</Callout>}
 
+                {spec && !spec.is_tmf_standard && (
+                  <Callout tone="warning" title={`This file is not the TM Forum ${spec.tmf} standard`}>
+                    {spec.note}
+                  </Callout>
+                )}
+
                 <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.7, maxWidth: '76ch' }}>
                   {v.description}
                 </p>
 
-                {groupEndpoints(v.endpoints).map(g => (
+                {showing === 'spec' && spec && (
+                  <>
+                    <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap', fontSize: 'var(--text-sm)' }}>
+                      <Figure label="Document" value={`${spec.title} ${spec.declared_version}`} />
+                      <Figure label="Format" value={spec.spec_format} />
+                      <Figure label="Operations" value={String(spec.operation_count)} />
+                      <Figure label="File" value={`${spec.source_file} · ${specSize(spec.file_bytes)}`} />
+                      <Figure label="Checksum" value={spec.sha256} />
+                    </div>
+
+                    {cover && (
+                      <Callout tone={cover.pct >= 50 ? 'info' : 'warning'}
+                               title={`${cover.ours} of ${cover.theirs} operations answer here`}>
+                        {cover.note}
+                      </Callout>
+                    )}
+
+                    {spec.servers.length > 0 && (
+                      <div>
+                        <Heading>Servers named in the document</Heading>
+                        <Code>{spec.servers.join('\n')}</Code>
+                      </div>
+                    )}
+
+                    {groupOperations(spec.operations).map(g => (
+                      <div key={g.tag}>
+                        <Heading>{g.tag} · {g.operations.length}</Heading>
+                        <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
+                          {g.operations.map((o, i) => {
+                            const mine = v.endpoints.some(e => e.method === o.method && e.path === o.path)
+                            return (
+                              <div key={`${o.method}${o.path}${i}`} style={{
+                                display: 'flex', gap: '12px', alignItems: 'baseline', padding: '8px 14px',
+                                borderTop: i ? '1px solid var(--border)' : 'none',
+                              }}>
+                                <span style={{
+                                  fontFamily: 'monospace', fontSize: 'var(--text-xs)', fontWeight: 800, minWidth: '52px',
+                                  color: o.method === 'GET' ? 'var(--info)' : o.method === 'DELETE' ? 'var(--danger)' : 'var(--success)',
+                                }}>{o.method}</span>
+                                <span style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)', minWidth: '30ch' }}>{o.path}</span>
+                                <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', flex: 1 }}>{o.summary}</span>
+                                {mine
+                                  ? <Id>live here</Id>
+                                  : <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>spec only</span>}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {showing === 'spec' && !spec && (
+                  <EmptyState message="No specification has been published for this version yet." />
+                )}
+
+                {showing === 'live' && groupEndpoints(v.endpoints).map(g => (
                   <div key={g.resource}>
                     <Heading>/{g.resource}</Heading>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
@@ -861,16 +944,30 @@ function RevokeModal({ credential, onClose, onDone }: {
 
 /* ---- Small pieces --------------------------------------------------------- */
 
-async function download(v: Version) {
-  const spec = await loadSpec(v.id)
-  if (!spec) { toast('The specification did not load.', 'error'); return }
-  const blob = new Blob([JSON.stringify(spec, null, 2)], { type: 'application/json' })
+/* The published file itself, byte for byte. It used to serialise the document
+   `api_spec()` assembles from our own endpoint rows — which is a real thing but
+   is not the specification a developer came for, and calling it "OpenAPI" made
+   the difference invisible. */
+function downloadSpec(spec: Spec) {
+  const a = document.createElement('a')
+  a.href = spec.file_path
+  a.download = spec.file_path.split('/').pop() ?? 'specification'
+  a.click()
+  toast(`${spec.tmf} ${spec.declared_version} — ${spec.source_file}`)
+}
+
+/* What the marketplace itself exposes, assembled from the endpoint rows the
+   sandbox can actually execute. Kept, and named for what it is. */
+async function downloadProfile(v: Version) {
+  const doc = await loadSpec(v.id)
+  if (!doc) { toast('The marketplace profile did not load.', 'error'); return }
+  const blob = new Blob([JSON.stringify(doc, null, 2)], { type: 'application/json' })
   const a = document.createElement('a')
   a.href = URL.createObjectURL(blob)
-  a.download = `${v.api_id.toLowerCase()}-${v.version}-openapi.json`
+  a.download = `${v.api_id.toLowerCase()}-${v.version}-aventa-profile.json`
   a.click()
   URL.revokeObjectURL(a.href)
-  toast(`OpenAPI 3.1 for ${v.api_name} ${v.version} downloaded.`)
+  toast(`Aventa's profile of ${v.api_name} ${v.version} — the ${v.endpoints.length} operations this marketplace answers.`)
 }
 
 function tabStyle(on: boolean): React.CSSProperties {
