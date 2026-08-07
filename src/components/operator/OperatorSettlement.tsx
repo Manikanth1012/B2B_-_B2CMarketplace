@@ -6,12 +6,25 @@ import { useMarket } from '../../lib/MarketContext'
 import { byCurrency, formatGroups, money } from '../../lib/money'
 import { payoutFor } from '../../lib/settlement'
 import { Pager, usePaging } from '../Pager'
+import { SettlementCycles, SettlementRuns } from './OperatorSettlementCycles'
 
 /* `focus` is a statement id handed over from the dashboard. Opening it here
    rather than making the operator find the row again is the whole point of a
    dashboard listing work: the list says what needs doing and this is where it
    gets done. */
+type Tab = 'statements' | 'cycles' | 'runs'
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: 'statements', label: 'Statements' },
+  /* The contract, which is what the run follows. It sat in
+     `commission_plans.cycle` as the string "Monthly, net 30" for every plan,
+     so this screen could only ever show one cadence. */
+  { id: 'cycles', label: 'Agreed cycles' },
+  { id: 'runs', label: 'Runs' },
+]
+
 export function OperatorSettlement({ focus = null }: { focus?: string | null } = {}) {
+  const [tab, setTab] = useState<Tab>('statements')
   const { book: moneyBook, fmtIn } = useMarket()
   /* The reporting currency, which is what every statement is computed in. */
   const bookCurrency = moneyBook.currencies.find(c => c.is_reporting)?.code ?? 'USD'
@@ -95,9 +108,25 @@ export function OperatorSettlement({ focus = null }: { focus?: string | null } =
             {pendingCount} pending · {book(totalPending)} net payable, remitting {formatGroups(payableBy, fmtIn, 'nothing')} · {approvedCount} approved
           </p>
         </div>
-        <Btn onClick={() => setAddModal(true)}>New statement</Btn>
+        {tab === 'statements' && <Btn onClick={() => setAddModal(true)}>New statement</Btn>}
       </div>
 
+      <div style={{ display: 'flex', gap: '4px', borderBottom: '1px solid var(--border)' }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)} style={{
+            padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer',
+            fontSize: 'var(--text-sm)', fontWeight: tab === t.id ? 700 : 500,
+            color: tab === t.id ? 'var(--brand-navy)' : 'var(--text-secondary)',
+            borderBottom: tab === t.id ? '2px solid var(--brand-navy)' : '2px solid transparent',
+            marginBottom: '-1px',
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      {tab === 'cycles' && <SettlementCycles />}
+      {tab === 'runs' && <SettlementRuns />}
+
+      {tab === 'statements' && <>
       <div style={{ display: 'flex', gap: '8px' }}>
         {[{ id: 'all', label: 'All', count: statements.length }, { id: 'pending', label: 'Pending', count: pendingCount }, { id: 'approved', label: 'Approved', count: approvedCount }].map(f => (
           <button key={f.id} onClick={() => setFilter(f.id)} style={{ padding: '8px 16px', borderRadius: 'var(--radius)', fontSize: 'var(--text-sm)', fontWeight: 600, background: filter === f.id ? 'var(--brand-navy)' : 'white', color: filter === f.id ? 'white' : 'var(--text-secondary)', border: '1px solid var(--border)', cursor: 'pointer' }}>{f.label} ({f.count})</button>
@@ -143,6 +172,7 @@ export function OperatorSettlement({ focus = null }: { focus?: string | null } =
         )}
         <Pager page={page} noun="statements" />
       </SectionCard>
+      </>}
 
       {/* Detail modal */}
       <Modal open={!!detailModal} onClose={() => setDetailModal(null)} title="Settlement Detail"
