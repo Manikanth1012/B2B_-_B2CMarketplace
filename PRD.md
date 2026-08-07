@@ -1,7 +1,7 @@
 # Product Requirements Document (PRD): B2B/B2C Telecom Marketplace
 
 ## 1. Document Control
-* **Version**: 4.4  
+* **Version**: 4.5  
 * **Date**: August 2026  
 * **Status**: Draft — sections 4.8 to 4.69 and section 7 added from the working build  
 * **Author**: AI Coding Assistant (Antigravity)  
@@ -11,6 +11,7 @@
 
 | Version | Date | Change |
 |---|---|---|
+| **4.5** | **Aug 2026** | **Published the TM Forum specifications themselves.** The seven Swagger/OpenAPI files from the 6D reference library ship with the app and are downloadable byte-for-byte; the reference renders every operation each declares (146 across the seven) marked live-here or spec-only, with a coverage figure. Versions now come from the files, moving five APIs to 4.0 or above. Inventory's TMF685 corrected to TMF687 Stock Management. Two files that are 6D implementations rather than TM Forum standards are flagged as such on both screens. |
 | **4.4** | **Aug 2026** | **Built both halves of the developer portal against the §4.21 schema.** A seller registers an application and collects sandbox credentials in one step, reads the endpoint reference grouped by resource, downloads the generated OpenAPI, executes a real authenticated call against their own records, and asks for production with a stated use case. The operator publishes a version that must carry endpoints, works a production-approval queue, and deprecates with a sunset date and migration note where the delete used to be. Call figures derive from a database rollup rather than a page of log rows. |
 | **4.3** | **Aug 2026** | **Rewrote the developer portal against how public portals actually work.** Extended §4.21: generated OpenAPI 3.1 per version, endpoints with scopes and worked examples, applications as the subscribable object, per-environment credentials issued once and stored hashed, rotation with a grace window, executable sandbox calls, and deprecation in place of deletion. |
 | **4.2** | **Jul 2026** | Added §4.69 Notify me on an out-of-stock product, on both buy sides. |
