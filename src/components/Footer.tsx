@@ -47,7 +47,7 @@ export function Footer({ onNavigate }: FooterProps) {
           <div>
             <img src="/assets/brand/6d-logo-white.png" alt="6D Marketplace" style={{ height: '32px', marginBottom: '16px' }} />
             <p style={{ fontSize: 'var(--text-sm)', lineHeight: 1.6, maxWidth: '280px' }}>
-              A unified telecom marketplace bringing together plans, devices, security, IoT and
+              A unified telecom marketplace bringing together devices, add-ons, security, IoT and
               digital content{markets && ` across ${markets}`}.
             </p>
           </div>

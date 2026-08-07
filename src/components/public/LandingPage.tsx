@@ -58,7 +58,7 @@ export function LandingPage({ onNavigate }: { onNavigate: (p: PublicPage) => voi
               One marketplace.<br />Every kind of buyer.
             </h1>
             <p style={{ fontSize: 'var(--text-lg)', color: 'rgba(255,255,255,0.75)', marginTop: '20px', maxWidth: '460px' }}>
-              Plans, devices, security and IoT — sold by verified partners, settled by the marketplace,
+              Devices, add-ons, security and IoT — sold by verified partners, settled by the marketplace,
               {markets ? ` across ${markets}` : ''}.
             </p>
             <div style={{ display: 'flex', gap: '12px', marginTop: '32px', flexWrap: 'wrap' }}>

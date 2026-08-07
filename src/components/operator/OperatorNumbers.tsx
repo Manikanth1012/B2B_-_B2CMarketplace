@@ -17,6 +17,8 @@ import {
   loadNumberBook, loadRangeNumbers, findNumbers, loadEstate,
   assignNumber, releaseNumber, suspendNumber, resumeNumber, moveProfile, ageCheck,
 } from '../../lib/numbersRepo'
+import { withheld, allowed, permits, refusal, shortAnswer, incomplete } from '../../lib/channelRules'
+import type { ChannelRule } from '../../lib/channelRules'
 import { canHoldANumber, dobLine, sourceLine } from '../../lib/dob'
 import type { DobSource } from '../../lib/dob'
 import type { NumberBook } from '../../lib/numbersRepo'
@@ -494,6 +496,8 @@ function EsimTab({ book, onChanged }: { book: NumberBook; onChanged: () => Promi
 
 function SystemsTab({ book }: { book: NumberBook }) {
   return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <ChannelPolicy rules={book.rules} />
     <SectionCard title="Where these resources come from"
                  subtitle="Each system is authoritative for what it declares and for nothing else.">
       <Table headers={['System', 'Owns', 'Interface', 'State', 'Last heard from']}>
@@ -521,6 +525,52 @@ function SystemsTab({ book }: { book: NumberBook }) {
               )}
             </Td>
             <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '280px' }}>{systemLine(s)}</Td>
+          </tr>
+        ))}
+      </Table>
+    </SectionCard>
+    </div>
+  )
+}
+
+/* What this channel does with numbers, and what it leaves to another one.
+ *
+ * Here rather than in a document because this is the screen somebody is on when
+ * the question comes up, and because `assign_number` refuses out of these same
+ * rows — the policy and the enforcement are one fact, printed once. */
+function ChannelPolicy({ rules }: { rules: ChannelRule[] }) {
+  const no = withheld(rules)
+  const yes = allowed(rules)
+  if (rules.length === 0) return null
+
+  return (
+    <SectionCard
+      title="What this channel does with numbers"
+      subtitle="Read by the allocation function as well as by you — a refusal here is the refusal a customer meets.">
+      <Table headers={['', 'What', 'Where it is done', 'Why']}>
+        {[...no, ...yes].map(r => (
+          <tr key={r.id}>
+            <Td>
+              <StatusPill status={r.decision === 'sold here' ? 'healthy' : 'rejected'}
+                          label={r.decision === 'sold here' ? 'here' : 'not here'} />
+            </Td>
+            <Td>
+              <div style={{ fontWeight: 600 }}>{r.label}</div>
+              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono, monospace)' }}>
+                {r.id}
+              </div>
+            </Td>
+            <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '200px' }}>
+              {shortAnswer(r)}
+            </Td>
+            <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '420px', color: 'var(--text-secondary)' }}>
+              {r.reason}
+              {/* A rule nobody agreed is one that gets reversed by whoever
+                  complains loudest, so the desk gets told rather than the log. */}
+              {incomplete(r) && (
+                <div style={{ color: 'var(--warning)', marginTop: '3px' }}>{incomplete(r)}</div>
+              )}
+            </Td>
           </tr>
         ))}
       </Table>
@@ -570,6 +620,13 @@ function AssignModal({ book, onClose, onDone }: {
   }
   const check = validateAssignment(draft)
 
+  /* And before any of that: is allocating this kind of number something this
+     channel does? `assign_number` refuses a retail allocation out of the same
+     rows, so the desk finds out here rather than after filling the form in. */
+  const barred = purpose === 'retail' && !permits(book.rules, 'retail-line-onboarding')
+    ? refusal(book.rules, 'retail-line-onboarding')
+    : null
+
   /* Only the blocks that could actually serve this request. Offering one that
      cannot is offering a number that will not register. */
   const usable = book.use.filter(u =>
@@ -589,7 +646,7 @@ function AssignModal({ book, onClose, onDone }: {
            footer={<>
              <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
              <Btn size="sm"
-                  disabled={busy || !check.ok || usable.length === 0 || (age ? !age.ok : false)}
+                  disabled={busy || !!barred || !check.ok || usable.length === 0 || (age ? !age.ok : false)}
                   onClick={() => void go()}>
                {busy ? 'Allocating…' : 'Allocate'}
              </Btn>
@@ -625,7 +682,16 @@ function AssignModal({ book, onClose, onDone }: {
         </div>
       </div>
 
-      {usable.length === 0 ? (
+      {barred ? (
+        /* Ahead of the block check, because "no block can serve that" would
+           send somebody off to reserve a block for something this channel is
+           not going to sell either way. */
+        <Callout tone="danger" title="Not allocated through the marketplace">
+          {barred}
+          {' '}An existing line can still be recorded against a customer — that is a number self-care already
+          gave them, not one issued here.
+        </Callout>
+      ) : usable.length === 0 ? (
         <Callout tone="danger" title="No block can serve that">
           Nothing is reserved for {PURPOSE_LABEL[purpose].toLowerCase()} {KIND_LABEL[kind].toLowerCase()}s in
           {' '}{market}, or what is reserved is exhausted. Claim a block from the owning system first.

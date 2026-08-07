@@ -84,7 +84,10 @@ export function Hero({ onNavigate }: HeroProps) {
             marginBottom: '20px',
             letterSpacing: '-0.02em',
           }}>
-            Plans, devices, security<br />and IoT — all in one place
+            {/* Not "plans". A new line is onboarded in self-care, retail POS or
+                CRM, where the identity check is — promising one here is the
+                first thing a shopper would find untrue. */}
+            Devices, add-ons, security<br />and IoT — all in one place
           </h1>
           <p style={{
             fontSize: 'var(--text-lg)',
@@ -92,12 +95,12 @@ export function Hero({ onNavigate }: HeroProps) {
             marginBottom: '32px',
             maxWidth: '480px',
           }}>
-            Browse mobile plans, stream entertainment, protect your business, and deploy IoT fleets.
-            Powered by Aventa Telecom{markets && ` across ${markets}`}.
+            Top up the line you already have, stream entertainment, protect your business, and deploy
+            IoT fleets. Powered by Aventa Telecom{markets && ` across ${markets}`}.
           </p>
           <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
             <button onClick={() => onNavigate('category', { category: 'consumer' })} className="btn btn-primary btn-lg">
-              Shop Plans
+              Shop add-ons
             </button>
             <button onClick={() => onNavigate('category', { category: 'device' })} className="btn btn-secondary btn-lg" style={{ background: 'rgba(255,255,255,0.1)', color: 'white', borderColor: 'rgba(255,255,255,0.2)' }}>
               Browse Devices
@@ -108,7 +111,7 @@ export function Hero({ onNavigate }: HeroProps) {
         {/* Hero visual */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
           {[
-            { label: 'Mobile Plans', cat: 'consumer', color: '#00A6A6' },
+            { label: 'Add-ons & Travel', cat: 'consumer', color: '#00A6A6' },
             { label: 'Streaming', cat: 'content', color: '#F5A623' },
             { label: 'Security', cat: 'security', color: '#2563EB' },
             { label: 'IoT Fleet', cat: 'iot', color: '#16A34A' },

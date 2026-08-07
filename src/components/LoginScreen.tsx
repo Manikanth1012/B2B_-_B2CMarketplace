@@ -76,7 +76,7 @@ const DEMO_CREDENTIALS: Record<Persona, { email: string; password: string }> = {
 const PERSONA_META: Record<Persona, { label: string; sub: string; user: string; icon: React.ReactNode; accentBg: string; accentFg: string; accentColor: string }> = {
   consumer: {
     label: 'Consumer',
-    sub: 'Browse plans, devices & services',
+    sub: 'Browse add-ons, devices & services',
     user: 'Priya Raman · Gold member',
     icon: <ShoppingBag size={24} />,
     accentBg: 'rgba(0,166,166,0.2)',

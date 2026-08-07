@@ -123,7 +123,7 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, children }: {
           <div style={{ minWidth: '220px' }}>
             <img src="/assets/brand/6d-logo-white.png" alt="" style={{ height: '28px', opacity: 0.9 }} />
             <p style={{ fontSize: 'var(--text-sm)', margin: '12px 0 0', maxWidth: '280px', lineHeight: 1.6 }}>
-              Plans, devices, security and IoT from verified partners — one marketplace,
+              Devices, add-ons, security and IoT from verified partners — one marketplace,
               one checkout, one settlement cycle.
             </p>
           </div>

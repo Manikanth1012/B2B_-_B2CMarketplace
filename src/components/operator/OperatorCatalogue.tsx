@@ -25,7 +25,10 @@ import { publishDue, approveProposal, rejectProposal } from '../../lib/listingLi
 import { changesIn, STATE_MEANING, stateOf, untilLive } from '../../lib/listingLifecycle'
 import type { ProductVersion } from '../../lib/listingLifecycle'
 import type { CatalogueSnapshot, BundleDraft, PackDraft } from '../../lib/catalogueRepo'
-import { compose, compositionProblem, compositionWarnings, maxComponentDiscount, priceBasis } from '../../lib/federation'
+import {
+  compose, compositionProblem, compositionWarnings, maxComponentDiscount, priceBasis,
+  sellableHere, withheldNote,
+} from '../../lib/federation'
 import { checkBundleAgainstFloors, bundleRoom, bases, headroom } from '../../lib/pricing'
 import type { ComponentPick, TelcoItem } from '../../lib/federation'
 import { canApprove, summarise, bundleView, rulesFor, applyPolicy, policyFailures, splitOf } from '../../lib/catalogue'
@@ -1479,11 +1482,16 @@ function RateCard({ telco, rule, used }: {
 
   const families = [...new Set(telco.map(t => t.family))]
   const inUse = new Set(used.map(u => u.telco_id))
+  /* The BSS sells more than this channel does. Counted separately rather than
+     filtered away, because an operator who cannot find Freedom Unlimited on
+     their own rate card raises a bug about the federation. */
+  const off = telco.filter(t => !sellableHere(t))
 
   return (
     <SectionCard
       title="Operator rate card"
-      subtitle={`${telco.length} tariff items across ${families.length} families · ${inUse.size} of them in a listing`}
+      subtitle={`${telco.length} tariff items across ${families.length} families · ${inUse.size} of them in a listing`
+        + (off.length > 0 ? ` · ${off.length} not sold through this channel` : '')}
       action={<Btn size="sm" variant="secondary" onClick={() => setOpen(o => !o)}>{open ? 'Hide' : 'Show'} the rate card</Btn>}>
       <div style={{ padding: '14px 20px' }}>
         <Callout tone="info">
@@ -1502,10 +1510,22 @@ function RateCard({ telco, rule, used }: {
                   <span style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>{fam}</span>
                 </div>
                 {telco.filter(t => t.family === fam).map(t => (
-                  <div key={t.id} style={{ display: 'flex', gap: '10px', alignItems: 'baseline', padding: '7px 12px', borderBottom: '1px solid var(--border-light)', flexWrap: 'wrap' }}>
+                  <div key={t.id} style={{
+                    display: 'flex', gap: '10px', alignItems: 'baseline', padding: '7px 12px',
+                    borderBottom: '1px solid var(--border-light)', flexWrap: 'wrap',
+                    /* Dimmed, not hidden. It is still the operator's product. */
+                    opacity: sellableHere(t) ? 1 : 0.62,
+                  }}>
                     <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, minWidth: '150px' }}>{t.name}</span>
                     <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono, monospace)' }}>{t.id}</span>
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', flex: 1, minWidth: '180px' }}>{t.spec}</span>
+                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', flex: 1, minWidth: '180px' }}>
+                      {sellableHere(t) ? t.spec : withheldNote(t)}
+                    </span>
+                    {!sellableHere(t) && (
+                      <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--warning)', padding: '1px 6px', borderRadius: 'var(--radius-full)', background: 'var(--warning-bg)' }}>
+                        not this channel
+                      </span>
+                    )}
                     {inUse.has(t.id) && (
                       <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--success)', padding: '1px 6px', borderRadius: 'var(--radius-full)', background: 'var(--success-bg)' }}>in a listing</span>
                     )}
@@ -1610,9 +1630,17 @@ function PackComposer({ snap, onClose, onCreate }: {
   const warnings = compositionWarnings(composition)
 
   const q = search.trim().toLowerCase()
-  const available = snap.telco.filter(t =>
+  /* Withheld items are out of the picker entirely, unlike the rate card above.
+     There the operator is reading their own product book and the withheld rows
+     are information; here every row is a button, and offering one that the
+     composer, the trigger and the channel rule all refuse is offering a dead
+     end. The count below says how many were left out, so it does not read as
+     the rate card failing to load. */
+  const sellable = snap.telco.filter(sellableHere)
+  const available = sellable.filter(t =>
     !picks.some(p => p.telcoId === t.id) &&
     (!q || `${t.name} ${t.family} ${t.spec} ${t.id}`.toLowerCase().includes(q)))
+  const offChannel = snap.telco.length - sellable.length
   const families = [...new Set(available.map(t => t.family))]
 
   const setQty = (id: string, d: number) =>
@@ -1704,8 +1732,16 @@ function PackComposer({ snap, onClose, onCreate }: {
         <div>
           <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: '6px' }}>
             Pull from the operator catalogue
-            <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}> · {snap.telco.length} items</span>
+            <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}> · {sellable.length} items</span>
           </div>
+          {offChannel > 0 && (
+            <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', margin: '0 0 6px', lineHeight: 1.45 }}>
+              {offChannel} more {offChannel === 1 ? 'item is' : 'items are'} on the operator's rate card and not
+              sold through the marketplace — new lines and fixed-line access go through self-care, retail POS and
+              CRM, where the identity check and the serviceability check are. They are listed on the rate card
+              above with the reason on each.
+            </p>
+          )}
           <input value={search} onChange={e => setSearch(e.target.value)}
                  placeholder="Search a plan, add-on or piece of equipment"
                  style={{ width: '100%', padding: '7px 10px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', fontSize: 'var(--text-xs)', outline: 'none', marginBottom: '6px' }} />

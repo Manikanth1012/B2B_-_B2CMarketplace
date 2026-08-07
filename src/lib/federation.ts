@@ -27,6 +27,13 @@ export interface TelcoItem {
   spec: string
   cost_rc: number
   cost_nrc: number
+  /* Whether this channel may sell it. The rate card is a federated copy of the
+     BSS catalogue, so an item the marketplace does not sell is still an item the
+     operator sells — `sold_through` says where, because "unavailable" with no
+     destination sends the customer back to us. */
+  marketplace?: boolean
+  withheld_reason?: string | null
+  sold_through?: string | null
 }
 
 export interface BundleRule {
@@ -117,13 +124,34 @@ export function packModel(picks: readonly ComponentPick[], items: readonly Telco
   return chosen.some(i => i.rc > 0) ? 'monthly' : 'oneoff'
 }
 
+/**
+ * Whether an item may be composed into a marketplace listing at all.
+ *
+ * Absent on an item means yes: the column was added after the rate card, and a
+ * row that predates the flag is one nobody has withheld. Defaulting the other
+ * way would empty the composer the first time this ran against an older copy.
+ */
+export function sellableHere(item: TelcoItem): boolean {
+  return item.marketplace !== false
+}
+
+/** Why an item is not on this channel's shelf, and where the buyer goes
+    instead. Null when it is sellable, so a caller cannot print half of it. */
+export function withheldNote(item: TelcoItem): string | null {
+  if (sellableHere(item)) return null
+  const why = item.withheld_reason ?? 'It is not sold through this channel.'
+  const where = item.sold_through
+  return where ? `${why} Sold through ${where}.` : why
+}
+
 /** How a pack gets to the buyer, inferred from what is in it. Equipment ships;
-    a travel eSIM is a profile; connectivity is provisioned. */
+    an eSIM is a profile; connectivity — retail or wholesale — is provisioned by
+    the network before anybody can use it. */
 export function guessFulfil(picks: readonly ComponentPick[], items: readonly TelcoItem[]): string {
   const families = picks.flatMap(p => items.filter(i => i.id === p.telcoId)).map(i => i.family)
   if (families.includes('Equipment')) return 'shipped'
   if (families.includes('eSIM')) return 'esim'
-  if (families.includes('Fixed broadband') || families.includes('IoT connectivity')) return 'provisioned'
+  if (families.includes('IoT connectivity') || families.includes('Wholesale')) return 'provisioned'
   return 'instant'
 }
 
@@ -207,6 +235,20 @@ export function compositionProblem(
   composition: Composition,
 ): string | null {
   if (!name.trim()) return 'Give the pack a name buyers will recognise.'
+
+  /* Before anything about shape or price: is every part of this something the
+     marketplace is allowed to sell? Checked first because the other messages
+     all assume a pack that could exist, and "your discount is too deep" is a
+     confusing thing to be told about a fibre line nobody here can sell. The
+     database refuses this too — this is so the operator finds out while they
+     are composing rather than when they press publish. */
+  const withheld = picks
+    .flatMap(p => items.filter(i => i.id === p.telcoId))
+    .filter(i => !sellableHere(i))
+  if (withheld.length > 0) {
+    const first = withheld[0]
+    return `${first.name} is not sold through this marketplace. ${withheldNote(first)}`
+  }
 
   if (picks.length < rule.min_components) {
     return `A pack is ${rule.min_components} or more components sold together. With ${picks.length === 1 ? 'one' : 'none'} it is just the product.`

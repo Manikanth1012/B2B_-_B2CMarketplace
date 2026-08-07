@@ -11,6 +11,7 @@ import type {
   NumberKind, Purpose, EsimState, Check,
 } from './numbers'
 import { validateAssignment, canMoveProfile } from './numbers'
+import type { ChannelRule } from './channelRules'
 
 export type Result = Check
 
@@ -19,17 +20,23 @@ export interface NumberBook {
   ranges: NumberRange[]
   use: RangeUse[]
   esim: EsimProfile[]
+  /* What this channel does and does not do with numbers. Carried with the book
+     because `assign_number` refuses from the same rows — a screen that offered
+     an allocation the function refuses would be describing a different product
+     from the one running. */
+  rules: ChannelRule[]
   loadError?: string
 }
 
 /** The blocks and the systems behind them. Not the allocations — there are
     thousands and the console asks for them a question at a time. */
 export async function loadNumberBook(): Promise<NumberBook> {
-  const [s, r, u, e] = await Promise.all([
+  const [s, r, u, e, c] = await Promise.all([
     supabase.from('resource_system').select('*').order('sort_order'),
     supabase.from('number_range').select('*').order('sort_order'),
     supabase.from('range_use').select('*'),
     supabase.from('esim_profile').select('*').order('iccid'),
+    supabase.from('channel_rule').select('*').order('sort_order'),
   ])
   const errors: string[] = []
   const grab = <T>(res: { data: unknown; error: { message: string } | null }, what: string): T[] => {
@@ -41,6 +48,7 @@ export async function loadNumberBook(): Promise<NumberBook> {
     ranges: grab<NumberRange>(r, 'ranges'),
     use: grab<RangeUse>(u, 'utilisation'),
     esim: grab<EsimProfile>(e, 'eSIM profiles'),
+    rules: grab<ChannelRule>(c, 'the channel rules'),
     ...(errors.length ? { loadError: `Some of this did not load (${errors.join('; ')}).` } : {}),
   }
 }

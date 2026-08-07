@@ -123,7 +123,7 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut, currentV
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search for plans, devices, services..."
+                placeholder="Search for add-ons, devices, services..."
                 style={{
                   width: '100%',
                   padding: '10px 16px 10px 44px',

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   compose, compositionProblem, compositionWarnings, maxComponentDiscount,
-  packModel, guessFulfil, priceBasis,
+  packModel, guessFulfil, priceBasis, sellableHere, withheldNote,
 } from './federation'
 import type { TelcoItem, BundleRule, ComponentPick } from './federation'
 
@@ -19,10 +19,25 @@ const VASINS = item({ id: 'TP-VAS-INS', name: 'Device protection', family: 'Valu
 const ADDROM = item({ id: 'TP-ADD-ROM', name: 'Roaming day pass', family: 'Add-on', kind: 'Add-on', nrc: 5, cost_nrc: 2.25 })
 const ADDDAT = item({ id: 'TP-ADD-DAT', name: 'Data top-up 10 GB', family: 'Add-on', kind: 'Add-on', nrc: 7, cost_nrc: 3.15 })
 const EQPRTR = item({ id: 'TP-EQP-RTR', name: 'Wi-Fi 6 mesh router', family: 'Equipment', kind: 'Hardware', nrc: 79, cost_nrc: 63.2 })
-const FBB300 = item({ id: 'TP-FBB-300', name: 'Fibre 300 Mbps', family: 'Fixed broadband', rc: 26, nrc: 35, cost_rc: 15.08, cost_nrc: 20.3 })
+/* Withheld from this channel, and still on the rate card — the BSS sells fibre
+   every day. Kept in ITEMS on purpose: the composer has to meet it and refuse
+   it, which it cannot do if the fixture quietly drops it. */
+const FBB300 = item({
+  id: 'TP-FBB-300', name: 'Fibre 300 Mbps', family: 'Fixed broadband',
+  rc: 26, nrc: 35, cost_rc: 15.08, cost_nrc: 20.3,
+  marketplace: false, sold_through: 'Aventa field sales and CRM',
+  withheld_reason: 'Fixed access needs a serviceability check against a street address.',
+})
 const ESMTRV = item({ id: 'TP-ESM-TRV', name: 'Travel eSIM — 10 GB', family: 'eSIM', rc: 14, cost_rc: 8.12 })
+const WHLDAT = item({ id: 'TP-WHL-DATA', name: 'Wholesale data capacity — per line', family: 'Wholesale', rc: 7.8, cost_rc: 4.52 })
+/* One item carrying a monthly charge AND a connection fee. The single-item
+   version of the recurring/one-off clash, and the harder one to spot. */
+const IOTSIM = item({
+  id: 'TP-IOT-SIM', name: 'IoT data SIM — 500 MB', family: 'IoT connectivity',
+  rc: 1.1, nrc: 2, cost_rc: 0.64, cost_nrc: 1.16,
+})
 
-const ITEMS = [MOB050, MOBUNL, VASSEC, VASCLD, VASINS, ADDROM, ADDDAT, EQPRTR, FBB300, ESMTRV]
+const ITEMS = [MOB050, MOBUNL, VASSEC, VASCLD, VASINS, ADDROM, ADDDAT, EQPRTR, FBB300, ESMTRV, WHLDAT, IOTSIM]
 const RULE: BundleRule = { per_component: 4, max_discount: 18, min_components: 2, max_components: 6 }
 
 const pick = (telcoId: string, quantity = 1, discount = 0): ComponentPick => ({ telcoId, quantity, discount })
@@ -154,8 +169,35 @@ describe('packModel and guessFulfil', () => {
 
   it('reads eSIM, then provisioning, then falls back to instant', () => {
     expect(guessFulfil([pick('TP-ESM-TRV'), pick('TP-VAS-SEC')], ITEMS)).toBe('esim')
-    expect(guessFulfil([pick('TP-FBB-300')], ITEMS)).toBe('provisioned')
+    /* Wholesale capacity has to be turned on by the network before the
+       reseller's own subscriber can use it — provisioned, not instant. */
+    expect(guessFulfil([pick('TP-WHL-DATA')], ITEMS)).toBe('provisioned')
     expect(guessFulfil([pick('TP-VAS-SEC'), pick('TP-VAS-CLD')], ITEMS)).toBe('instant')
+  })
+})
+
+describe('sellableHere', () => {
+  it('withholds what the channel does not sell', () => {
+    expect(sellableHere(FBB300)).toBe(false)
+    expect(sellableHere(VASSEC)).toBe(true)
+  })
+
+  /* The flag arrived after the rate card. An older copy with no column on it
+     is not a rate card somebody emptied. */
+  it('treats an item with no flag as sellable', () => {
+    expect(sellableHere(item({ id: 'TP-OLD', rc: 1 }))).toBe(true)
+  })
+
+  it('says why and where, or says nothing at all', () => {
+    expect(withheldNote(VASSEC)).toBeNull()
+    const note = withheldNote(FBB300)
+    expect(note).toContain('serviceability check')
+    expect(note).toContain('Aventa field sales and CRM')
+  })
+
+  it('still answers when the reason was never filled in', () => {
+    const bare = item({ id: 'TP-X', rc: 1, marketplace: false, sold_through: 'CRM' })
+    expect(withheldNote(bare)).toContain('CRM')
   })
 })
 
@@ -165,6 +207,23 @@ describe('compositionProblem', () => {
   it('wants a name first', () => {
     expect(compositionProblem('  ', [pick('TP-MOB-050'), pick('TP-VAS-SEC')], ITEMS, RULE, c([pick('TP-MOB-050'), pick('TP-VAS-SEC')])))
       .toMatch(/name/i)
+  })
+
+  /* Ahead of every other complaint, deliberately. Told that their discount is
+     too deep on a fibre line, an operator fixes the discount and tries again. */
+  it('refuses a withheld component before it complains about anything else', () => {
+    const picks = [pick('TP-FBB-300'), pick('TP-VAS-SEC')]
+    const said = compositionProblem('Broadband bundle', picks, ITEMS, RULE, c(picks))
+    expect(said).toContain('Fibre 300 Mbps')
+    expect(said).toContain('Aventa field sales and CRM')
+  })
+
+  it('names the withheld component even when the pack is also the wrong shape', () => {
+    /* One component AND a withheld one. The shape complaint would otherwise
+       win and send the operator off to add a second fibre line. */
+    const picks = [pick('TP-FBB-300')]
+    expect(compositionProblem('Just fibre', picks, ITEMS, RULE, c(picks)))
+      .toContain('Fibre 300 Mbps')
   })
 
   it('refuses one component, and says why it is not a pack', () => {
@@ -184,11 +243,11 @@ describe('compositionProblem', () => {
     expect(problem).toContain('Wi-Fi 6 mesh router')
   })
 
-  it('refuses fibre with an install fee for the same reason', () => {
+  it('refuses a SIM with a connection fee for the same reason', () => {
     /* One item carrying both charges is the same clash as two items carrying
        one each, and it is the easier one to miss. */
-    const picks = [pick('TP-FBB-300'), pick('TP-VAS-CLD')]
-    expect(compositionProblem('Fibre and backup', picks, ITEMS, RULE, c(picks)))
+    const picks = [pick('TP-IOT-SIM'), pick('TP-VAS-CLD')]
+    expect(compositionProblem('SIM and backup', picks, ITEMS, RULE, c(picks)))
       .toMatch(/either monthly or once/)
   })
 
