@@ -36,6 +36,7 @@ import { OperatorPartners } from './components/operator/OperatorPartners'
 import { OperatorCatalogue } from './components/operator/OperatorCatalogue'
 import { OperatorSettlement } from './components/operator/OperatorSettlement'
 import { OperatorInventory } from './components/operator/OperatorInventory'
+import { OperatorNumbers } from './components/operator/OperatorNumbers'
 import { OperatorTickets } from './components/operator/OperatorTickets'
 import { OperatorDunning } from './components/operator/OperatorDunning'
 import { OperatorDeveloper } from './components/operator/OperatorDeveloper'
@@ -439,6 +440,7 @@ function AppInner() {
         {opView === 'op-catalogue' && <OperatorCatalogue focus={opFocus} />}
         {opView === 'op-settlement' && <OperatorSettlement focus={opFocus} />}
         {opView === 'op-inventory' && <OperatorInventory />}
+        {opView === 'op-numbers' && <OperatorNumbers />}
         {opView === 'op-tickets' && <OperatorTickets focus={opFocus} />}
         {opView === 'op-dunning' && <OperatorDunning />}
         {opView === 'op-developer' && <OperatorDeveloper />}

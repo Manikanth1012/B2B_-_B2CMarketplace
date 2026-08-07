@@ -7,6 +7,7 @@ export type OperatorView =
   | 'op-catalogue'
   | 'op-settlement'
   | 'op-inventory'
+  | 'op-numbers'
   | 'op-tickets'
   | 'op-dunning'
   | 'op-developer'

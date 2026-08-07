@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Package, DollarSign, Warehouse, Ticket,
   Shield, Code, Megaphone, Tag, TrendingUp, Settings,
   Search, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store, Wallet as WalletIcon, MessageSquareWarning, RotateCcw, Gift, Scale, BookText, Radio, Receipt, LibraryBig, Globe,
-  User, KeyRound, Monitor
+  User, KeyRound, Monitor, Smartphone
 } from 'lucide-react'
 import type { OperatorView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
@@ -34,6 +34,7 @@ const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; i
     items: [
       { id: 'op-settlement', label: 'Settlement Runs', icon: <DollarSign size={18} /> },
       { id: 'op-inventory', label: 'Inventory & WMS', icon: <Warehouse size={18} /> },
+      { id: 'op-numbers', label: 'Numbers & SIMs', icon: <Smartphone size={18} /> },
       { id: 'op-tickets', label: 'Tickets & SLA', icon: <Ticket size={18} /> },
       { id: 'op-dunning', label: 'Collections', icon: <TrendingUp size={18} /> },
       { id: 'op-wallets', label: 'Wallets', icon: <WalletIcon size={18} /> },
