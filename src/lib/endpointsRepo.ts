@@ -5,6 +5,7 @@
  * that really calls.
  */
 import { supabase } from './supabase'
+import type { Topic, Delivery } from './devPortal'
 import { nextCallId, nextEndpointId } from './endpoints'
 import type { Endpoint, TestCall, EndpointDraft, TestResult, Check } from './endpoints'
 
@@ -15,6 +16,26 @@ export interface EndpointBook {
 }
 
 const REFUSED = 'Nothing changed — you are not allowed to make that change.'
+
+/* The topic catalogue and this seller's own delivery history.
+ *
+ * `EVENTS` in endpoints.ts was a hard-coded list of seven names with no payload
+ * behind any of them, and the seller had no way to see whether anything had
+ * ever actually been delivered to their endpoints. Both now come from the
+ * tables the operator publishes and writes. */
+export async function loadEventBook(partnerId: string): Promise<{
+  topics: Topic[]; deliveries: Delivery[]
+}> {
+  const [t, d] = await Promise.all([
+    supabase.from('event_topics').select('*').order('sort_order'),
+    supabase.from('event_deliveries').select('*').eq('partner_id', partnerId)
+      .order('delivered_at', { ascending: false }).limit(120),
+  ])
+  return {
+    topics: (t.data ?? []) as unknown as Topic[],
+    deliveries: (d.data ?? []) as unknown as Delivery[],
+  }
+}
 
 export async function loadEndpoints(partnerId: string): Promise<EndpointBook> {
   const eps = await supabase.from('partner_endpoints').select('*')

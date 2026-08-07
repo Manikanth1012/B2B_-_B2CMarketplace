@@ -15,9 +15,11 @@ import {
 } from '../../lib/endpoints'
 import type { Endpoint, EndpointDraft } from '../../lib/endpoints'
 import {
-  loadEndpoints, addEndpoint, updateEndpoint, setEnabled, removeEndpoint, sendTestCall,
+  loadEndpoints, loadEventBook, addEndpoint, updateEndpoint, setEnabled, removeEndpoint, sendTestCall,
 } from '../../lib/endpointsRepo'
 import type { EndpointBook } from '../../lib/endpointsRepo'
+import { topicHealth, DELIVERY_TONE } from '../../lib/devPortal'
+import type { Topic, Delivery } from '../../lib/devPortal'
 import { loadApiAccess } from '../../lib/apiAccessRepo'
 import type { ApiAccess } from '../../lib/apiAccessRepo'
 
@@ -28,6 +30,9 @@ import type { ApiAccess } from '../../lib/apiAccessRepo'
    told it was up. */
 export function PartnerIntegrations({ partnerId }: { partnerId: string }) {
   const [book, setBook] = useState<EndpointBook>({ endpoints: [], calls: [] })
+  const [topics, setTopics] = useState<Topic[]>([])
+  const [deliveries, setDeliveries] = useState<Delivery[]>([])
+  const [openTopic, setOpenTopic] = useState<string | null>(null)
   const [access, setAccess] = useState<ApiAccess | null>(null)
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<{ endpoint: Endpoint | null; draft: EndpointDraft } | null>(null)
@@ -36,8 +41,10 @@ export function PartnerIntegrations({ partnerId }: { partnerId: string }) {
   const [testing, setTesting] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
-    const [b, a] = await Promise.all([loadEndpoints(partnerId), loadApiAccess(partnerId)])
-    setBook(b); setAccess(a); setLoading(false)
+    const [b, a, ev] = await Promise.all([
+      loadEndpoints(partnerId), loadApiAccess(partnerId), loadEventBook(partnerId),
+    ])
+    setBook(b); setAccess(a); setTopics(ev.topics); setDeliveries(ev.deliveries); setLoading(false)
   }, [partnerId])
 
   useEffect(() => { void reload() }, [reload])
@@ -90,6 +97,22 @@ export function PartnerIntegrations({ partnerId }: { partnerId: string }) {
   const live = book.endpoints.filter(e => e.enabled)
   const failing = live.filter(e => healthOf(book.calls, e.id) === 'failing')
   const uncovered = eventsUncovered(book.endpoints)
+  /* Driven by the topic catalogue the operator publishes rather than by a list
+     compiled into this bundle. The two disagreed the moment a topic was added
+     — and two were, which nobody here would have seen. */
+  const subscribed = new Set(book.endpoints.filter(e => e.enabled).flatMap(e => e.events))
+  const missingRequired = topics.filter(t => t.required && !subscribed.has(t.name))
+  const health = topicHealth(
+    topics,
+    topics.flatMap(t => book.endpoints
+      .filter(e => e.events.includes(t.name))
+      .map(e => ({
+        topic_id: t.id, topic: t.name, title: t.title, domain: t.domain, required: t.required,
+        endpoint_id: e.id, partner_id: partnerId, partner_name: null,
+        endpoint_name: e.name, url: e.url, env: e.env, auth: e.auth, enabled: e.enabled,
+      }))),
+    deliveries,
+  )
   const sandboxOnly = live.length > 0 && live.every(e => e.env === 'Sandbox')
 
   /* One figure over every call the seller has made, rather than the per-endpoint
@@ -147,10 +170,11 @@ export function PartnerIntegrations({ partnerId }: { partnerId: string }) {
 
       {/* What nothing is listening for. A gap here is why an order never
           reaches the seller's own system, and it was not being checked. */}
-      {uncovered.length > 0 && (
-        <Callout tone="warning" title="Nothing is listening for every event the marketplace sends">
-          No enabled endpoint subscribes to {uncovered.map(id => EVENTS.find(e => e.id === id)?.id ?? id).join(' or ')}.
-          Until one does, {uncovered.includes('order.created')
+      {missingRequired.length > 0 && (
+        <Callout tone="danger" title="Nothing is listening for an event the marketplace requires">
+          No enabled endpoint subscribes to {missingRequired.map(t => t.name).join(' or ')}.
+          A required event with nothing listening is <strong>not queued and not retried</strong> — it simply
+          does not arrive, so {missingRequired.some(t => t.name === 'order.created')
             ? 'orders will not reach your own systems'
             : 'a cancelled order will still be shipped'}.
         </Callout>
@@ -197,6 +221,89 @@ export function PartnerIntegrations({ partnerId }: { partnerId: string }) {
         <StatCard label="Average round trip" value={avgMs === null ? '—' : `${avgMs}ms`}
                   sublabel={latencies.length ? `Over ${latencies.length} calls` : 'Nothing timed yet'} />
       </div>
+
+      {/* The events themselves. The seller could see which of their endpoints
+          were healthy and never what the marketplace actually publishes, what a
+          payload looks like, or whether anything had ever been delivered. */}
+      <SectionCard title="What the marketplace publishes"
+                   subtitle={`${topics.length} topics · you are subscribed to ${subscribed.size}`}>
+        <div style={{ padding: '4px 0' }}>
+          {topics.length === 0 ? <EmptyState message="The topic catalogue did not load." /> : health.map(h => {
+            const isOpen = openTopic === h.topic.id
+            const mine = h.listeners.length > 0
+            return (
+              <div key={h.topic.id} style={{ borderBottom: '1px solid var(--border-light)', padding: '10px 20px' }}>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{
+                    fontFamily: 'monospace', fontSize: 'var(--text-sm)', fontWeight: 700, minWidth: '22ch',
+                    color: mine ? 'var(--text)' : 'var(--text-tertiary)',
+                  }}>{h.topic.name}</span>
+                  {h.topic.required && <StatusPill status="required" />}
+                  <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', flex: 1 }}>
+                    {h.topic.title}
+                  </span>
+                  {mine
+                    ? <span style={{ fontSize: 'var(--text-xs)', color: 'var(--success)' }}>
+                        {h.listeners.map(l => l.endpoint_name).join(', ')}
+                        {h.successRate !== null ? ` · ${h.successRate}% delivered` : ' · nothing sent yet'}
+                      </span>
+                    : <span style={{ fontSize: 'var(--text-xs)', color: h.topic.required ? 'var(--danger)' : 'var(--text-tertiary)' }}>
+                        not subscribed
+                      </span>}
+                  <button onClick={() => setOpenTopic(isOpen ? null : h.topic.id)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--info)', fontSize: 'var(--text-xs)' }}>
+                    {isOpen ? 'Hide payload' : 'Payload'}
+                  </button>
+                </div>
+                {isOpen && (
+                  <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.6, maxWidth: '84ch' }}>
+                      {h.topic.description}
+                    </p>
+                    <pre style={{
+                      margin: 0, padding: '12px 14px', borderRadius: 'var(--radius)',
+                      background: 'var(--brand-navy)', color: '#e8eef7', fontSize: 'var(--text-xs)',
+                      lineHeight: 1.6, overflow: 'auto', maxHeight: '280px', fontFamily: 'monospace',
+                    }}>{JSON.stringify(h.topic.payload, null, 2)}</pre>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      </SectionCard>
+
+      {deliveries.length > 0 && (
+        <SectionCard title="What reached you"
+                     subtitle={`The last ${deliveries.length} deliveries to your endpoints`}>
+          <Table headers={['When', 'Topic', 'Reference', 'Attempts', 'Outcome', 'Detail']}>
+            {deliveries.slice(0, 12).map(d => {
+              const tone = DELIVERY_TONE[d.status]
+              return (
+                <tr key={d.id}>
+                  <Td style={{ fontSize: 'var(--text-xs)' }}>{fmtDateTime(d.delivered_at)}</Td>
+                  <Td style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)' }}>
+                    {topics.find(t => t.id === d.topic_id)?.name ?? d.topic_id}
+                  </Td>
+                  <Td style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)' }}>{d.reference ?? '—'}</Td>
+                  <Td right>{d.attempts}</Td>
+                  <Td>
+                    <strong style={{
+                      fontSize: 'var(--text-xs)',
+                      color: tone === 'ok' ? 'var(--success)' : tone === 'bad' ? 'var(--danger)' : 'var(--text-tertiary)',
+                    }}>
+                      {d.status}{d.http_status ? ` · ${d.http_status}` : ''}{d.ms ? ` · ${d.ms}ms` : ''}
+                    </strong>
+                  </Td>
+                  <Td style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', maxWidth: '44ch' }}>
+                    {d.detail}
+                  </Td>
+                </tr>
+              )
+            })}
+          </Table>
+        </SectionCard>
+      )}
 
       <SectionCard title="Your endpoints" subtitle={`${book.endpoints.length} registered`}>
         {book.endpoints.length === 0 ? (
@@ -321,23 +428,28 @@ export function PartnerIntegrations({ partnerId }: { partnerId: string }) {
 
             <FormField label="Events" required hint="The two marked required have to be covered by some enabled endpoint.">
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {EVENTS.map(ev => (
+                {/* From the catalogue, not from a constant. The compiled list
+                    held seven; the marketplace publishes nine, and a seller
+                    could not subscribe to the two it did not know about. */}
+                {(topics.length ? topics : EVENTS.map(e => ({
+                  id: e.id, name: e.id, title: e.label, required: e.required,
+                }) as unknown as Topic)).map(ev => (
                   <label key={ev.id} style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: 'var(--text-sm)', cursor: 'pointer' }}>
                     <input
                       type="checkbox"
-                      checked={editing.draft.events.includes(ev.id)}
+                      checked={editing.draft.events.includes(ev.name)}
                       onChange={e => setEditing({
                         ...editing,
                         draft: {
                           ...editing.draft,
                           events: e.target.checked
-                            ? [...editing.draft.events, ev.id]
-                            : editing.draft.events.filter(x => x !== ev.id),
+                            ? [...editing.draft.events, ev.name]
+                            : editing.draft.events.filter(x => x !== ev.name),
                         },
                       })}
                     />
-                    <span style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)' }}>{ev.id}</span>
-                    <span style={{ color: 'var(--text-tertiary)' }}>{ev.label}</span>
+                    <span style={{ fontFamily: 'monospace', fontSize: 'var(--text-xs)' }}>{ev.name}</span>
+                    <span style={{ color: 'var(--text-tertiary)' }}>{ev.title}</span>
                     {ev.required && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--warning)' }}>required</span>}
                   </label>
                 ))}
