@@ -113,6 +113,28 @@ export function oneCurrency(items: readonly Comparable[]): string | null {
   return set.size === 1 ? [...set][0] : null
 }
 
+/* And whether they are bought the same way. ₹1,099 a month is a smaller
+   number than ₹64,999 once, and it is not cheaper — it is a subscription
+   beside a handset. Marking the subscription "best value" is the comparison
+   telling a shopper something false with a tick beside it. */
+export function onePaymentModel(items: readonly Comparable[]): string | null {
+  const set = new Set(items.map(i => i.model ?? 'oneoff'))
+  return set.size === 1 ? [...set][0] : null
+}
+
+export function priceComparable(items: readonly Comparable[]): { ok: true } | { ok: false; why: string } {
+  if (!oneCurrency(items)) {
+    return { ok: false, why: 'These are priced in different currencies, so there is no cheaper one to point at.' }
+  }
+  if (!onePaymentModel(items)) {
+    return {
+      ok: false,
+      why: 'One of these is a recurring charge and another is paid once, so the smaller number is not the cheaper thing.',
+    }
+  }
+  return { ok: true }
+}
+
 function judge(row: Omit<Row, 'best'>): Row {
   if (!row.better) return { ...row, best: [] }
   const values = row.cells.map(c => c.value)
@@ -132,20 +154,18 @@ export function compareRows(
   items: readonly Comparable[],
   money: (n: number, currency: string) => string,
 ): Row[] {
-  const currency = oneCurrency(items)
+  const priceable = priceComparable(items)
   const rows: Row[] = []
 
   rows.push(judge({
     label: 'Price',
-    better: currency ? 'low' : undefined,
+    better: priceable.ok ? 'low' : undefined,
     cells: items.map(i => ({
       text: money(i.price, i.currency ?? 'USD')
         + (i.model === 'monthly' ? ' a month' : i.model === 'annual' ? ' a year' : ''),
       value: i.price,
     })),
-    note: currency
-      ? undefined
-      : 'These are priced in different currencies, so there is no cheaper one to point at.',
+    note: priceable.ok ? undefined : priceable.why,
   }))
 
   /* Only where somebody is actually discounted — a row of dashes teaches
@@ -161,14 +181,19 @@ export function compareRows(
     }))
   }
 
-  rows.push({
-    label: 'Tax',
-    best: [],
-    cells: items.map(i => ({
-      text: i.price_includes_tax === true ? 'Included in the price'
-        : i.price_includes_tax === false ? 'Added at checkout' : null,
-    })),
-  })
+  /* Only where the marketplace actually knows. A row of "Not stated" across
+     every column is a line of noise, and the shopper learns the same nothing
+     from its absence. */
+  if (items.some(i => i.price_includes_tax != null)) {
+    rows.push({
+      label: 'Tax',
+      best: [],
+      cells: items.map(i => ({
+        text: i.price_includes_tax === true ? 'Included in the price'
+          : i.price_includes_tax === false ? 'Added at checkout' : null,
+      })),
+    })
+  }
 
   rows.push(judge({
     label: 'Rating',
@@ -217,7 +242,9 @@ export function compareRows(
     })
   }
 
-  return rows
+  /* Drop anything nobody could fill in. A specification row where every column
+     reads "Not stated" is the union of specs doing its job badly. */
+  return rows.filter(r => r.cells.some(c => c.text !== null))
 }
 
 /* Rows where every column says the same thing tell a shopper nothing about

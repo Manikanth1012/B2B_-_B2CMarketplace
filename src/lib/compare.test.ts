@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   COMPARE_CAP, toggleCompare, capHint, canCompare, compareRows, oneCurrency,
-  differingOnly, sameCount, highlightNote,
+  differingOnly, sameCount, highlightNote, onePaymentModel, priceComparable,
 } from './compare'
 import type { Comparable } from './compare'
 
@@ -74,6 +74,30 @@ describe('what can be judged', () => {
     expect(row.note).toContain('different currencies')
   })
 
+  it('refuses to call a subscription cheaper than a handset', () => {
+    /* ₹1,099 a month is a smaller number than ₹64,999 once, and it is not the
+       cheaper thing. The table marked the subscription best value until this
+       was caught in the browser. */
+    const items = [
+      p({ id: '1', price: 64999, model: 'oneoff' }),
+      p({ id: '2', price: 1099, model: 'monthly' }),
+    ]
+    expect(onePaymentModel(items)).toBeNull()
+    const check = priceComparable(items)
+    expect(check.ok).toBe(false)
+    const row = rowFor('Price', items)
+    expect(row.best).toEqual([])
+    expect(row.note).toContain('recurring charge')
+  })
+
+  it('still picks the cheaper of two bought the same way', () => {
+    const row = rowFor('Price', [
+      p({ id: '1', price: 64999, model: 'oneoff' }),
+      p({ id: '2', price: 30999, model: 'oneoff' }),
+    ])
+    expect(row.best).toEqual([1])
+  })
+
   it('marks the highest rating', () => {
     const row = rowFor('Rating', [p({ id: '1', rating: 4.2 }), p({ id: '2', rating: 4.8 })])
     expect(row.best).toEqual([1])
@@ -92,14 +116,23 @@ describe('what can be judged', () => {
   })
 
   it('shows an unrated product as unrated, not as zero', () => {
-    const row = rowFor('Rating', [p({ id: '1', rating: null, reviews: 0 })])
+    /* Beside a rated one, so the row survives and the blank is the thing under
+       test. On its own the row is dropped, which is the other rule. */
+    const row = rowFor('Rating', [
+      p({ id: '1', rating: null, reviews: 0 }), p({ id: '2', rating: 4.4 }),
+    ])
     expect(row.cells[0].text).toBeNull()
     expect(row.cells[0].value).toBeUndefined()
+    expect(row.cells[1].text).toContain('4.4')
   })
 
   it('treats a rating with no reviews behind it as no rating', () => {
-    const row = rowFor('Rating', [p({ id: '1', rating: 5, reviews: 0 })])
+    const row = rowFor('Rating', [
+      p({ id: '1', rating: 5, reviews: 0 }), p({ id: '2', rating: 4.4 }),
+    ])
     expect(row.cells[0].text).toBeNull()
+    /* And so it cannot win the row on a five nobody gave it. */
+    expect(row.best).toEqual([])
   })
 
   it('leaves the rows that are not contests alone', () => {
@@ -129,6 +162,17 @@ describe('the rows themselves', () => {
     expect(quality.cells[0].text).toBe('4K')
     /* The one that does not have it shows a gap rather than being dropped. */
     expect(quality.cells[1].text).toBeNull()
+  })
+
+  it('leaves out a row no column can fill in', () => {
+    /* Tax was rendering "Not stated" three times across, which is a line of
+       noise a shopper learns nothing from. */
+    const rows = compareRows([
+      p({ id: '1', price_includes_tax: null, specs: {} }),
+      p({ id: '2', price_includes_tax: null, specs: {} }),
+    ], money)
+    expect(rows.some(r => r.label === 'Tax')).toBe(false)
+    expect(rows.every(r => r.cells.some(c => c.text !== null))).toBe(true)
   })
 
   it('leaves out the was-price row when nobody is discounted', () => {
