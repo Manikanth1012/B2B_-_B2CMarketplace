@@ -15,10 +15,10 @@
  */
 import { createContext, useContext, useEffect, useState, useMemo } from 'react'
 import type { ReactNode } from 'react'
-import { loadMoneyBook, loadHomeMarket, EMPTY_BOOK } from './moneyRepo'
+import { loadMoneyBook, loadHome, EMPTY_BOOK } from './moneyRepo'
 import { supabase } from './supabase'
 import type { MoneyBook } from './moneyRepo'
-import { format as formatMoney, money, currenciesOf } from './money'
+import { format as formatMoney, money, currenciesOf, presentIn } from './money'
 import type { Currency, Market } from './money'
 
 const STORAGE_KEY = 'aventa.market'
@@ -38,8 +38,24 @@ export interface MarketState {
   setCurrency: (code: string) => void
   /** Format an amount that is already in this market's currency. */
   fmt: (amount: number, opts?: { decimals?: boolean; code?: boolean }) => string
-  /** Format an amount that carries its own currency, whatever that is. */
-  fmtIn: (amount: number, currency: string, opts?: { decimals?: boolean; code?: boolean }) => string
+  /**
+   * Format an amount that carries its own currency, whatever that is.
+   *
+   * Where the buyer's account is kept in a different currency, the figure is
+   * ALSO shown in theirs and the original is kept beside it. A bill issued in
+   * shillings was paid in shillings — the record is not rewritten, it is
+   * presented, the way a bank statement presents a foreign transaction.
+   *
+   * `asOf` is the date the document belongs to. Converting last year's bill at
+   * today's rate is the single most common way currency handling goes wrong,
+   * so a caller that knows the date passes it.
+   */
+  fmtIn: (
+    amount: number, currency: string,
+    opts?: { decimals?: boolean; code?: boolean; asOf?: string; bare?: boolean },
+  ) => string
+  /** The currency this buyer's account is kept in, once they have signed in. */
+  account: string | null
   /**
    * The market this buyer is registered in, once they have signed in.
    *
@@ -61,6 +77,7 @@ const FALLBACK: MarketState = {
   fmt: n => n.toFixed(2),
   fmtIn: (n, c) => `${c} ${n.toFixed(2)}`,
   home: null,
+  account: null,
 }
 
 const Ctx = createContext<MarketState>(FALLBACK)
@@ -75,6 +92,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   })
   const [ready, setReady] = useState(false)
   const [home, setHome] = useState<string | null>(null)
+  const [account, setAccount] = useState<string | null>(null)
 
   useEffect(() => {
     let live = true
@@ -93,8 +111,8 @@ export function MarketProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let live = true
     const read = async () => {
-      const where = await loadHomeMarket()
-      if (live) setHome(where)
+      const where = await loadHome()
+      if (live) { setHome(where.market); setAccount(where.currency) }
     }
     void read()
     const { data } = supabase.auth.onAuthStateChange(() => { void read() })
@@ -136,14 +154,36 @@ export function MarketProvider({ children }: { children: ReactNode }) {
        rather than pricing in something nobody there can pay — which is what a
        shopper who chose dollars in Kenya and then switched to India would
        otherwise get. */
-    const active = wanted && choices.includes(wanted) ? wanted : (choices[0] ?? market?.currency)
+    /* A signed-in buyer is quoted in the currency their account is kept in —
+       that is what they are billed in and what their wallet holds. The picker
+       is still theirs, but the default is the account rather than the market's
+       first currency: a Kisumu customer whose account is in dollars should not
+       have to change a dropdown to see the price he will be charged. */
+    const active = wanted && choices.includes(wanted) ? wanted
+      : account && choices.includes(account) ? account
+      : (choices[0] ?? market?.currency)
     const currency = book.currencies.find(c => c.code === active) ?? null
 
-    const fmtIn = (amount: number, cur: string, opts?: { decimals?: boolean; code?: boolean }) =>
-      formatMoney(money(amount, cur), book.currencies, opts)
+    const fmtIn = (
+      amount: number, cur: string,
+      opts?: { decimals?: boolean; code?: boolean; asOf?: string; bare?: boolean },
+    ) => {
+      const own = formatMoney(money(amount, cur), book.currencies, opts)
+      if (!account || cur === account || opts?.bare) return own
+
+      /* At the document's own date where the caller knows it. Null where no
+         rate that old exists, and then the original stands alone rather than
+         being restated at a day's rate it was never struck at. */
+      const asOf = opts?.asOf ?? new Date().toISOString().slice(0, 10)
+      const shown = presentIn(money(amount, cur), account, book.rates, asOf, book.currencies)
+      if (!shown) return own
+      /* Converted first, original second. The customer asked to see dollars;
+         they are still owed the figure they were actually charged. */
+      return `${formatMoney(shown.money, book.currencies, opts)} · ${own}`
+    }
 
     return {
-      book, market, currency, choices, ready, home,
+      book, market, currency, choices, ready, home, account,
       /* Pinned once the buyer is known. Refusing here rather than letting the
          call through keeps one answer on the screen: the picker shows the
          market as settled instead of offering a switch that silently does
@@ -156,7 +196,7 @@ export function MarketProvider({ children }: { children: ReactNode }) {
       fmtIn,
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [book, code, wanted, ready, home])
+  }, [book, code, wanted, ready, home, account])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

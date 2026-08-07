@@ -128,7 +128,11 @@ export function OrdersView() {
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>{fmtIn(order.total, order.currency)}</div>
+                    {/* At the order's own date. An order placed a year ago
+                        converted at today's rate shows a price nobody paid. */}
+                    <div style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>
+                      {fmtIn(order.total, order.currency, { asOf: order.created_at?.slice(0, 10) })}
+                    </div>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
                       {paymentLabel(order.payment_method, methods)}
                     </div>
@@ -284,7 +288,7 @@ function OrderDetailModal({ order, items, methods, onClose }: {
   order: Order; items: OrderItem[]; methods: readonly PaymentMethod[]; onClose: () => void
 }) {
   const { fmtIn } = useMarket()
-  const mny = (n: number) => fmtIn(n, order.currency)
+  const mny = (n: number) => fmtIn(n, order.currency, { asOf: order.created_at?.slice(0, 10) })
   const stages = order.stages || ['Ordered', 'Confirmed', 'Dispatched', 'In transit', 'Delivered']
   const currentStage = order.stage || 0
   const addr = order.shipping_address || {}

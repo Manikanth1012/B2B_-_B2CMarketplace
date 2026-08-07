@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   money, add, sumOf, byCurrency, formatGroups, isMixed, currenciesIn, negate,
-  roundMinor, round, minorUnitsOf, rateOn, convert, totalIn,
+  roundMinor, round, minorUnitsOf, rateOn, convert, totalIn, presentIn,
   format, symbolOf, charmPrice, wasPriceFor, priceBandOk,
   currenciesOf, marketTakes, marketsTaking,
   describeIn, marketProse
@@ -528,5 +528,55 @@ describe('two decimal places, agreeing with the database', () => {
 
   it('leaves a figure that is already exact alone', () => {
     for (const n of [0.01, 12.34, 1605.63, 999999.99]) expect(round2(n)).toBe(n)
+  })
+})
+
+describe('presenting a frozen figure in the account currency', () => {
+  /* Otieno Odhiambo is a Kisumu customer whose account is kept in dollars. His
+     bills were issued in shillings and were paid in shillings, and the record
+     of what he paid is not rewritten to suit the screen. */
+
+  it('converts at the document own date, not at today rate', () => {
+    /* The same shilling amount is a different number of dollars in June and in
+       August, and each bill is owed its own month rate. Converting the lot at
+       today rate is the single most common way this goes wrong. */
+    const bill = money(6946, 'KES')
+    const june = presentIn(bill, 'USD', RATES, '2026-07-15', CURRENCIES)!
+    const august = presentIn(bill, 'USD', RATES, '2026-08-15', CURRENCIES)!
+    expect(june.money.amount).toBe(54.08)
+    expect(august.money.amount).toBe(53.76)
+    expect(june.money.amount).not.toBe(august.money.amount)
+    expect(june.as_of).toBe('2026-07-01')
+    expect(august.as_of).toBe('2026-08-01')
+  })
+
+  it('says what it converted from, so the original can be shown beside it', () => {
+    const p = presentIn(money(10145, 'KES'), 'USD', RATES, '2026-09-01', CURRENCIES)!
+    expect(p.from).toBe('KES')
+    expect(p.rate).toBeCloseTo(1 / 129.20, 8)
+  })
+
+  it('has nothing to say when the figure is already in the account currency', () => {
+    /* The wallet is in dollars now. Restating a dollar as a dollar beside
+       itself is noise. */
+    expect(presentIn(money(56.66, 'USD'), 'USD', RATES, '2026-08-07', CURRENCIES)).toBeNull()
+  })
+
+  it('has nothing to say for somebody with no account currency', () => {
+    /* A visitor. Nobody has told the marketplace what they are billed in. */
+    expect(presentIn(money(6946, 'KES'), null, RATES, '2026-08-07', CURRENCIES)).toBeNull()
+  })
+
+  it('refuses to convert a document older than any rate on file', () => {
+    /* Showing the original alone is better than restating it at a rate struck
+       years after it was issued. */
+    expect(presentIn(money(6946, 'KES'), 'USD', RATES, '2020-01-01', CURRENCIES)).toBeNull()
+  })
+
+  it('rounds to the account currency minor units, not the original', () => {
+    /* A yen account showing a shilling bill gets whole yen. */
+    const rates: Rate[] = [...RATES, { base: 'JPY', quote: 'KES', rate: 0.85, as_of: '2026-08-01', pegged: false }]
+    const p = presentIn(money(6946, 'KES'), 'JPY', rates, '2026-08-07', CURRENCIES)!
+    expect(Number.isInteger(p.money.amount)).toBe(true)
   })
 })

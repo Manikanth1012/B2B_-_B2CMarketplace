@@ -1560,8 +1560,10 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
      not — it added rupees to dirhams and printed the result behind a dollar
      sign. Grouped instead, so a customer who has moved market sees each
      currency's total separately rather than a number that is not any of them. */
+  /* Presented at the bill's own date. Converting last month's bill at today's
+     rate would show a figure that was never charged and never quoted. */
   const billMoney = (b: ConsumerBill | undefined) =>
-    b ? fmtIn(b.total, b.currency ?? 'USD') : '—'
+    b ? fmtIn(b.total, b.currency ?? 'USD', { asOf: b.fx_as_of ?? b.issued }) : '—'
   const totalsFor = (rows: ConsumerBill[]) =>
     byCurrency(rows.map(b => money(b.total, b.currency ?? 'USD')))
       .map(t => fmtIn(t.total.amount, t.currency)).join('  +  ') || '—'

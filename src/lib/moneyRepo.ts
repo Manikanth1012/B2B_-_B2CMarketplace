@@ -74,16 +74,35 @@ export async function loadMoneyBook(): Promise<MoneyBook> {
  * not know who they are yet.
  */
 export async function loadHomeMarket(): Promise<string | null> {
+  return (await loadHome()).market
+}
+
+/**
+ * The buyer's market and the currency their account is kept in.
+ *
+ * The two are not the same question and the marketplace has always allowed
+ * them to differ — Kenya has taken dollars since markets were configured. A
+ * customer in Kisumu billed in USD is still a Kenyan customer of the Kenyan
+ * entity paying Kenyan VAT; what changes is the money.
+ *
+ * The currency matters to every screen, because it is what the buyer is quoted
+ * in and what their history is presented in. Reading it here rather than
+ * per-screen is what keeps one answer on the page.
+ */
+export async function loadHome(): Promise<{ market: string | null; currency: string | null }> {
   const { data: session } = await supabase.auth.getSession()
-  if (!session.session) return null
+  if (!session.session) return { market: null, currency: null }
 
   const [me, account] = await Promise.all([
-    supabase.from('consumer_profile').select('market').maybeSingle(),
-    supabase.from('enterprise_accounts').select('market').maybeSingle(),
+    supabase.from('consumer_profile').select('market,currency').maybeSingle(),
+    supabase.from('enterprise_accounts').select('market,currency').maybeSingle(),
   ])
-  return (me.data as { market?: string } | null)?.market
-    ?? (account.data as { market?: string } | null)?.market
-    ?? null
+  const c = me.data as { market?: string; currency?: string } | null
+  const a = account.data as { market?: string; currency?: string } | null
+  return {
+    market: c?.market ?? a?.market ?? null,
+    currency: c?.currency ?? a?.currency ?? null,
+  }
 }
 
 /** The whole price book for one currency. */

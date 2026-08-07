@@ -315,6 +315,29 @@ export function convert(
 }
 
 /**
+ * A figure kept in one currency, shown to somebody whose account is kept in
+ * another.
+ *
+ * The record is not rewritten. A bill issued in shillings was paid in
+ * shillings, the seller was settled against it in shillings and the tax on it
+ * was computed on a shilling figure — so the original comes back alongside the
+ * conversion, the way a bank statement presents a foreign transaction.
+ *
+ * Null where there is no rate as old as the document. A conversion nobody has
+ * a rate for is one that should not silently happen, and showing the original
+ * alone is better than showing a figure struck at the wrong day's rate.
+ */
+export function presentIn(
+  m: Money, account: string | null, rates: readonly Rate[], asOf: string,
+  currencies: readonly Currency[] = [],
+): Converted | null {
+  if (!account || m.currency === account) return null
+  const r = rateOn(rates, m.currency, account, asOf)
+  if (!r) return null
+  return convert(m, account, r.rate, r.as_of, currencies)
+}
+
+/**
  * A mixed list expressed in one currency, at one date's rates.
  *
  * The honest version of what the operator's dashboard was doing. Returns the
