@@ -45,6 +45,25 @@ describe('a shopper registers', () => {
     /* Signed out rather than leaving a freshly made account signed in — the
        next file to run would otherwise inherit it. */
     await signOut()
+
+    /* And the sweep this file's header has always claimed happened.
+     *
+     * It did not. `afterAll` signed out and stopped, and thirty-four accounts
+     * called "Integration Shopper" accumulated in Kochi — one per run, every one
+     * of them a customer on the operator's customer list. The marker on the
+     * address was here from the start so that a sweep could find them; nobody
+     * ever wrote the sweep.
+     *
+     * `sweep_test_shoppers` is fixed to this domain and takes no pattern, so it
+     * cannot be talked into deleting anything else. Signed in as the operator
+     * because it removes rows a signed-out client cannot see. */
+    await signIn(OPERATOR.email, OPERATOR.password)
+    const { data, error } = await supabase.rpc('sweep_test_shoppers')
+    await signOut()
+
+    /* Loud. A cleanup that fails quietly is what produced the pile. */
+    expect(error, `the sweep failed: ${error?.message}`).toBeNull()
+    if (made.length > 0) expect(Number(data)).toBeGreaterThan(0)
   }, 30000)
 
   it('creates a working consumer account', async () => {
