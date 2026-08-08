@@ -3,6 +3,7 @@ import { Pager, usePaging } from '../Pager'
 import { Wallet, Download, FileText, TriangleAlert as AlertTriangle } from 'lucide-react'
 import {
   StatCard, SectionCard, Table, Td, StatusPill, fmtInt, Btn, toast,
+  Modal, FormField, TextArea,
 } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
 import { PartnerStatementLines } from './PartnerStatementLines'
@@ -20,14 +21,10 @@ import type { DocumentSetup } from '../../lib/documentRepo'
 import { statementFacts } from '../../lib/documentFacts'
 import type { StatementRow } from '../../lib/documentFacts'
 import { billPdf, pdfNameFor, saveBlob } from '../../lib/billPdf'
+import { loadMyNotes, disputeNote } from '../../lib/creditNotesRepo'
+import { line, netOf, STATE_LABEL, STATE_TONE, STATE_MEANING } from '../../lib/creditNotes'
+import type { Note } from '../../lib/creditNotes'
 import { nextReference } from '../../lib/billTemplate'
-import {
-  FREQUENCY_LABEL, cycleLine, holdLine, minimumLine, nextClose, periodLabel,
-} from '../../lib/settlementCycle'
-import type { Terms } from '../../lib/settlementCycle'
-import { loadMyTerms, loadMyAccrual, loadMyWithholding } from '../../lib/settlementCycleRepo'
-import type { AccruingRow, WithholdingBook } from '../../lib/settlementCycleRepo'
-import { byStatute, certificateLine } from '../../lib/withholding'
 
 /* What the seller is owed, how it was worked out, and when it lands.
  *
@@ -131,10 +128,7 @@ export function PartnerSettlement({ partnerId }: { partnerId: string }) {
           <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Settlement</h1>
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
             What you are owed, how it was worked out, and when it lands.
-            {/* Not `plan.cycle`. That column says "Monthly, net 30" on all
-                eight plans and describes a cadence nothing schedules from; the
-                agreed cycle is on the card below and it is per partner. */}
-            {plan ? ` Plan: ${plan.name}` : ''}
+            {plan ? ` Plan: ${plan.name} · ${plan.cycle}` : ''}
           </p>
         </div>
         <Btn variant="secondary" onClick={download}><Download size={14} /> Export statements</Btn>
@@ -291,22 +285,125 @@ export function PartnerSettlement({ partnerId }: { partnerId: string }) {
           figure above, from the same rows the marketplace reads. */}
       <PartnerStatementLines partnerId={partnerId} />
 
-      {/* The cycle as agreed, not as a sentence.
-          This card used to read `commission_plans.cycle` — the string "Monthly,
-          net 30", identical on all eight plans, describing a cadence nothing
-          scheduled from. "When am I paid" is the commonest question a partner
-          desk gets and the answer was prose. */}
-      <MyCycle partnerId={partnerId} planName={plan?.name ?? null} fees={plan?.fees ?? null} />
-      <MyTaxDeducted partnerId={partnerId} />
       {plan && (
-        <SectionCard title="How your commission works" subtitle={plan.name}>
+        <SectionCard title="How you are paid" subtitle={plan.name}>
           <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px' }}>
             <Fact icon={<Wallet size={15} />} label="Commercial model" value={plan.model} />
+            <Fact icon={<FileText size={15} />} label="Cycle" value={plan.cycle} />
+            <Fact icon={<Wallet size={15} />} label="Holdback" value={plan.hold} />
             <Fact icon={<FileText size={15} />} label="Fees" value={plan.fees} />
           </div>
         </SectionCard>
       )}
+
+      <NotesAgainstMe />
     </div>
+  )
+}
+
+/* What the marketplace has adjusted, and the seller's one move against it.
+ *
+ * A note changes what this seller is paid and is raised entirely by the other
+ * side. Showing it here — with the reason, the evidence and a way to challenge
+ * it — is the difference between an adjustment process and a deduction.
+ */
+function NotesAgainstMe() {
+  const [book, setBook] = useState<Awaited<ReturnType<typeof loadMyNotes>> | null>(null)
+  const [disputing, setDisputing] = useState<Note | null>(null)
+  const [why, setWhy] = useState('')
+  const [busy, setBusy] = useState(false)
+  const { fmtIn } = useMarket()
+
+  const reload = useCallback(async () => setBook(await loadMyNotes()), [])
+  useEffect(() => { void reload() }, [reload])
+
+  if (!book || book.notes.length === 0) return null
+  const policy = book.policy
+  const cash = (n: number) => fmtIn(Math.abs(n), policy?.currency ?? 'USD')
+  const waiting = book.notes.filter(n => n.state === 'issued')
+
+  const submit = async () => {
+    if (!disputing) return
+    setBusy(true)
+    const r = await disputeNote(disputing.id, why)
+    setBusy(false)
+    if (!r.ok) { toast(r.why ?? 'That did not send', 'error'); return }
+    toast(`${disputing.id} disputed. It will not settle while it is open.`)
+    setDisputing(null); setWhy('')
+    await reload()
+  }
+
+  return (
+    <SectionCard title="Adjustments the marketplace has made"
+      subtitle={waiting.length > 0
+        ? `${waiting.length} agreed and not yet on a statement, worth ${netOf(waiting) >= 0 ? '+' : '−'}${cash(netOf(waiting))} at your next run.`
+        : 'Each one is separate from your commission so your own reconciliation still works.'}>
+      <Table headers={['Note', 'What it is for', 'Amount', 'State', '']}>
+        {book.notes.map(n => {
+          const reason = book.reasons.find(r => r.id === n.reason_id) ?? null
+          return (
+            <tr key={n.id}>
+              <Td>
+                <strong style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>{n.id}</strong>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{n.raised_on}</div>
+              </Td>
+              <Td style={{ maxWidth: '42ch' }}>
+                <div style={{ fontSize: 'var(--text-xs)' }}>{line(n, reason)}</div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>{n.detail}</div>
+                {n.evidence && (
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '3px' }}>
+                    Evidence: {n.evidence}
+                  </div>
+                )}
+                {n.dispute_note && (
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', marginTop: '4px', lineHeight: 1.5 }}>
+                    You said: {n.dispute_note}
+                  </div>
+                )}
+              </Td>
+              <Td right>
+                <strong style={{ color: n.kind === 'credit' ? 'var(--success)' : 'var(--danger)' }}>
+                  {n.kind === 'credit' ? '+' : '−'}{cash(n.amount)}
+                </strong>
+              </Td>
+              <Td>
+                <StatusPill status={STATE_TONE[n.state]} label={STATE_LABEL[n.state]} />
+                <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px', maxWidth: '26ch', lineHeight: 1.4 }}>
+                  {STATE_MEANING[n.state]}
+                </div>
+              </Td>
+              <Td right>
+                {(n.state === 'issued' || n.state === 'applied') && (
+                  <Btn variant="secondary" size="sm" onClick={() => { setDisputing(n); setWhy('') }}>
+                    Dispute
+                  </Btn>
+                )}
+              </Td>
+            </tr>
+          )
+        })}
+      </Table>
+
+      {disputing && (
+        <Modal open title={`Dispute ${disputing.id}`} onClose={() => setDisputing(null)}
+          footer={<>
+            <Btn variant="secondary" size="sm" onClick={() => setDisputing(null)}>Cancel</Btn>
+            <Btn size="sm" disabled={busy || !why.trim()} onClick={() => void submit()}>
+              {busy ? 'Sending…' : 'Dispute it'}
+            </Btn>
+          </>}>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+            It stops settling straight away and stays out of every run until it is resolved — nothing
+            is taken from you while this is open. What the note says does not change; your reason is
+            recorded beside it.
+          </p>
+          <FormField label="What is wrong with it" required
+                     hint="Name the order, the period or the clause you are relying on. A dispute with no reason cannot be investigated.">
+            <TextArea rows={4} value={why} onChange={e => setWhy(e.target.value)} />
+          </FormField>
+        </Modal>
+      )}
+    </SectionCard>
   )
 }
 
@@ -340,201 +437,5 @@ function Fact({ icon, label, value }: { icon: React.ReactNode; label: string; va
         <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{value}</div>
       </div>
     </div>
-  )
-}
-
-/* The seller's own settlement cycle, and what is building up in it.
- *
- * Read-only, deliberately. When you get paid is a term of the contract, not a
- * setting — but a seller is entitled to see it, and to see the two things that
- * change what actually lands: what is held back inside the returns window, and
- * whether the balance is under the minimum that makes a transfer worth making.
- */
-function MyCycle({ partnerId, planName, fees }: {
-  partnerId: string; planName: string | null; fees: string | null
-}) {
-  const { fmtIn } = useMarket()
-  const [terms, setTerms] = useState<Terms | null>(null)
-  const [accrual, setAccrual] = useState<AccruingRow | null>(null)
-  const [ready, setReady] = useState(false)
-
-  useEffect(() => {
-    let live = true
-    void Promise.all([loadMyTerms(partnerId), loadMyAccrual(partnerId)])
-      .then(([t, a]) => { if (live) { setTerms(t); setAccrual(a); setReady(true) } })
-    return () => { live = false }
-  }, [partnerId])
-
-  if (!ready) return null
-
-  /* Said rather than hidden. A seller with no agreed cycle is one nobody can
-     pay, and that is a thing to tell them rather than to render as a blank. */
-  if (!terms) {
-    return (
-      <SectionCard title="Your settlement cycle">
-        <div style={{ padding: '18px 20px' }}>
-          <Callout tone="warning" title="No cycle is agreed yet">
-            Nothing is settled until a cycle is agreed and recorded against your account. It is signed with
-            the contract{planName ? ` alongside the ${planName} commission plan` : ''}. Raise it with your
-            partner manager in Disputes &amp; Support.
-          </Callout>
-        </div>
-      </SectionCard>
-    )
-  }
-
-  const next = nextClose(terms, new Date().toISOString().slice(0, 10))
-  const wouldPay = accrual ? accrual.net - accrual.held_back : 0
-  const stuck = wouldPay > 0 && wouldPay < terms.minimum_payout
-
-  return (
-    <SectionCard
-      title="Your settlement cycle"
-      subtitle={terms.contract_ref ? `Agreed ${terms.agreed_on} · ${terms.contract_ref}` : `Agreed ${terms.agreed_on}`}>
-      <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
-        <p style={{ margin: 0, fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-          {cycleLine(terms)}
-        </p>
-
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
-          <Fact icon={<FileText size={15} />} label="How often"
-                value={FREQUENCY_LABEL[terms.frequency]} />
-          <Fact icon={<FileText size={15} />} label="Next period closes" value={next ?? '—'} />
-          <Fact icon={<Wallet size={15} />} label="Then payable within"
-                value={`${terms.pay_within_days} days`} />
-          <Fact icon={<Wallet size={15} />} label="Paid in" value={terms.payout_currency} />
-        </div>
-
-        {/* The two things that make what lands differ from what was earned. */}
-        {holdLine(terms) && (
-          <div style={{
-            fontSize: 'var(--text-xs)', color: 'var(--text-secondary)',
-            padding: '10px 12px', background: 'var(--bg-alt)', borderRadius: 'var(--radius)',
-          }}>
-            {/* The reason is free text and most of them are written as
-                sentences, so the full stop comes off before another is added. */}
-            <strong>Held back:</strong> {holdLine(terms)!.replace(/\.$/, '')}. It is not lost — it settles
-            in the period after the one it was earned in.
-          </div>
-        )}
-        {minimumLine(terms) && (
-          <div style={{
-            fontSize: 'var(--text-xs)', color: 'var(--text-secondary)',
-            padding: '10px 12px', background: 'var(--bg-alt)', borderRadius: 'var(--radius)',
-          }}>
-            <strong>Minimum payout:</strong> {minimumLine(terms)}
-          </div>
-        )}
-
-        {accrual && (
-          <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '14px' }}>
-            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: '8px' }}>
-              {periodLabel(accrual.frequency, accrual.period_start)} so far —{' '}
-              {accrual.period_start} to {accrual.period_end}
-            </div>
-            <Row label="Sales in the period" value={fmtInt(accrual.lines)} />
-            <Row label="Gross" value={fmtIn(accrual.gross, 'USD')} />
-            <Row label="Net after commission and fees" value={fmtIn(accrual.net, 'USD')} />
-            {accrual.held_back > 0 && (
-              <Row label="Inside the hold window" value={`− ${fmtIn(accrual.held_back, 'USD')}`} />
-            )}
-            <Row
-              label={stuck ? 'Would carry forward' : 'Payable if it closed today'}
-              value={stuck
-                ? `${fmtIn(wouldPay, 'USD')} — under the minimum`
-                : fmtIn(Math.max(0, wouldPay), 'USD')} />
-            {/* Stated because it is a projection and not a promise. Every
-                figure above moves with the next order. */}
-            <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '8px', lineHeight: 1.5 }}>
-              This period is still running. Nothing here is owed yet — it is what has been sold since the last
-              period closed, and it changes with every order{fees ? `. Fees are ${fees.toLowerCase()}` : ''}.
-            </p>
-          </div>
-        )}
-      </div>
-    </SectionCard>
-  )
-}
-
-/* Tax deducted at source, and the document to claim it back with.
- *
- * The deduction already showed on the statement as a line in the gross-to-net
- * stack. What it did not have was a reason a seller could act on: which
- * statute, on what basis, and where the certificate is. Without the last of
- * those the money is simply gone from the seller's point of view, and that is
- * a dispute the marketplace loses.
- */
-function MyTaxDeducted({ partnerId }: { partnerId: string }) {
-  const { fmtIn } = useMarket()
-  const [book, setBook] = useState<WithholdingBook | null>(null)
-
-  useEffect(() => {
-    let live = true
-    void loadMyWithholding(partnerId).then(b => { if (live) setBook(b) })
-    return () => { live = false }
-  }, [partnerId])
-
-  if (!book) return null
-
-  const totals = byStatute(book.certificates)
-  /* Nothing deducted is a real answer — a UAE seller is deducted from nowhere —
-     and it is worth saying rather than rendering an empty card or none. */
-  if (book.certificates.length === 0) {
-    return (
-      <SectionCard title="Tax deducted at source">
-        <div style={{ padding: '18px 20px', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.55 }}>
-          Nothing has been deducted from your settlements. Whether anything is depends on where you are tax
-          resident and where the paying entity is — if that changes, this card will show what was taken and
-          the certificate to claim it back with.
-        </div>
-      </SectionCard>
-    )
-  }
-
-  return (
-    <SectionCard
-      title="Tax deducted at source"
-      subtitle="Taken out of your settlement and paid to the authority against your own tax account. You claim it back when you file.">
-      <div style={{ padding: '16px 20px 6px', display: 'flex', gap: '20px', flexWrap: 'wrap' }}>
-        {totals.map(t => (
-          <div key={t.statute}>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{t.statute}</div>
-            <div style={{ fontSize: 'var(--text-lg)', fontWeight: 800 }}>{fmtIn(t.amount, 'USD')}</div>
-            <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
-              across {t.count} {t.count === 1 ? 'quarter' : 'quarters'}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <Table headers={['Quarter', 'Statute', 'On', 'Deducted', 'Document', 'Where it is']}>
-        {book.certificates.map(c => (
-          <tr key={c.id}>
-            <Td>
-              <div style={{ fontWeight: 600 }}>{c.period_start} to {c.period_end}</div>
-            </Td>
-            <Td style={{ fontSize: 'var(--text-xs)' }}>{c.statute ?? c.rule_id}</Td>
-            {/* The basis, because a seller reconciling 1% of something needs to
-                know 1% of what. India deducts on the whole sale, not the
-                commission. */}
-            <Td right style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-              {c.basis === 'gross' ? 'the whole sale'
-                : c.basis === 'commission' ? 'our commission'
-                : 'the net supply'}
-            </Td>
-            <Td right style={{ fontWeight: 700 }}>{fmtIn(c.amount, c.currency)}</Td>
-            <Td right style={{ fontSize: 'var(--text-xs)' }}>{c.form}</Td>
-            <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '320px', color: 'var(--text-secondary)' }}>
-              {certificateLine(c)}
-            </Td>
-          </tr>
-        ))}
-      </Table>
-
-      <div style={{ padding: '12px 20px 16px', fontSize: '11px', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
-        This is not a cost. It is your own tax, paid early and on your behalf — the certificate is what turns
-        it back into a credit on your return.
-      </div>
-    </SectionCard>
   )
 }

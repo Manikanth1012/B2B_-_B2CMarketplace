@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Package, DollarSign, Warehouse, Ticket,
   Shield, Code, Megaphone, Tag, TrendingUp, Settings,
   Search, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store, Wallet as WalletIcon, MessageSquareWarning, RotateCcw, Gift, Scale, BookText, Radio, Receipt, LibraryBig, Globe,
-  User, KeyRound, Monitor, Smartphone, Layers } from 'lucide-react'
+  User, KeyRound, Monitor, Smartphone, Layers, FileText } from 'lucide-react'
 import type { OperatorView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
 import { AccountMenu } from '../AccountMenu'
@@ -40,6 +40,10 @@ const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; i
       { id: 'op-refunds', label: 'Refunds', icon: <RotateCcw size={18} /> },
       { id: 'op-rewards', label: 'Rewards', icon: <Gift size={18} /> },
       { id: 'op-revshare', label: 'Revenue Share', icon: <Scale size={18} /> },
+      /* Beside revenue share rather than beside billing: a note is what the
+         marketplace pays a seller outside the commission model, and the two are
+         read together when somebody is asking why a payout moved. */
+      { id: 'op-notes', label: 'Credit & Debit Notes', icon: <FileText size={18} /> },
       { id: 'op-ledger', label: 'General Ledger', icon: <BookText size={18} /> },
       { id: 'op-billtemplates', label: 'Bill Templates', icon: <Receipt size={18} /> },
       { id: 'op-markets', label: 'Markets & Currencies', icon: <Globe size={18} /> },

@@ -50,6 +50,7 @@ import { OperatorChannels } from './components/operator/OperatorChannels'
 import { OperatorRoles } from './components/operator/OperatorRoles'
 import { OperatorAudit } from './components/operator/OperatorAudit'
 import { OperatorShelves } from './components/operator/OperatorShelves'
+import { OperatorNotes } from './components/operator/OperatorNotes'
 import { OperatorReviews } from './components/operator/OperatorReviews'
 import { OperatorWallets } from './components/operator/OperatorWallets'
 import { OperatorContentFeedback } from './components/operator/OperatorContentFeedback'
@@ -460,6 +461,7 @@ function AppInner() {
         {opView === 'op-refunds' && <OperatorRefunds />}
         {opView === 'op-rewards' && <OperatorRewards />}
         {opView === 'op-revshare' && <OperatorRevenueShare />}
+        {opView === 'op-notes' && <OperatorNotes />}
         {opView === 'op-ledger' && <OperatorLedger />}
         {opView === 'op-feedback' && <OperatorContentFeedback />}
         {opView === 'op-audit' && <OperatorAudit />}
