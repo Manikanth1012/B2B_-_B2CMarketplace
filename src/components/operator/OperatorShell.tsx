@@ -4,8 +4,7 @@ import {
   LayoutDashboard, Users, Package, DollarSign, Warehouse, Ticket,
   Shield, Code, Megaphone, Tag, TrendingUp, Settings,
   Search, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store, Wallet as WalletIcon, MessageSquareWarning, RotateCcw, Gift, Scale, BookText, Radio, Receipt, LibraryBig, Globe,
-  User, KeyRound, Monitor, Smartphone
-} from 'lucide-react'
+  User, KeyRound, Monitor, Smartphone, Layers } from 'lucide-react'
 import type { OperatorView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
 import { AccountMenu } from '../AccountMenu'
@@ -63,6 +62,9 @@ const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; i
   {
     label: 'Governance',
     items: [
+      /* Governance of the shelf itself, above governance of what buyers say
+         about it — a listing has to get onto a shelf before it can be reviewed. */
+      { id: 'op-shelves', label: 'Shelves & Rules', icon: <Layers size={18} /> },
       { id: 'op-reviews', label: 'Reviews', icon: <Star size={18} /> },
       { id: 'op-feedback', label: 'Content Feedback', icon: <MessageSquareWarning size={18} /> },
       { id: 'op-roles', label: 'Roles & Users', icon: <Shield size={18} /> },
