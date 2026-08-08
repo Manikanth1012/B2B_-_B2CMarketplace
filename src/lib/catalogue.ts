@@ -319,9 +319,22 @@ export interface CategoryPolicy {
   returns_window: string
   sla_hours: number
   price_floor: boolean
-  rating_required: boolean
-  min_rating: number
-  max_listings_per_seller: number
+  /* Null where the shelf sets no bar. It used to be a number beside a
+     `rating_required` boolean, and the two disagreed on four of the six
+     shelves — a bar of 3.0 sitting under "no rating required" answers one
+     question twice. The boolean is gone; absent means no bar. */
+  min_rating: number | null
+  /* And the question the bar cannot answer on its own: what happens to a seller
+     nobody has rated yet. Without it, any bar doubles as "closed to new
+     sellers", because an unrated seller is below every threshold. */
+  allow_unrated: boolean
+  unrated_note: string | null
+  max_listings_per_seller: number | null
+  open_to_buyers: boolean
+  closed_reason: string | null
+  note: string | null
+  updated_on: string | null
+  updated_by: string | null
 }
 
 export interface PolicyRuleRow {

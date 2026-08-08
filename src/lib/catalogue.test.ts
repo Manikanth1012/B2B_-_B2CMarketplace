@@ -247,7 +247,9 @@ describe('applyPolicy', () => {
   const policy: CategoryPolicy = {
     category_id: 'device', review: 'Automated with spot check', auto_publish: true,
     returns_window: '14 days', sla_hours: 48, price_floor: true,
-    rating_required: false, min_rating: 3, max_listings_per_seller: 400,
+    min_rating: 3, allow_unrated: true, unrated_note: null,
+    max_listings_per_seller: 12, open_to_buyers: true, closed_reason: null,
+    note: null, updated_on: null, updated_by: null,
   }
   const rules: PolicyRuleRow[] = [
     { id: 'PR-03', name: 'Price floor', descr: '', check_by: 'auto', basis: 'Commercial', owner: 'Commercial', evidence: null, blocks: true, status: 'active', locked: null, sort_order: 3 },
