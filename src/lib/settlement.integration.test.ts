@@ -32,6 +32,7 @@ interface Row {
   fees: number
   withholding: number
   refunds: number
+  adjustments: number
 }
 
 describe('what a seller is actually paid', () => {

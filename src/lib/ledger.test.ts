@@ -348,6 +348,40 @@ describe('reconcileStatement', () => {
     expect(r.ok).toBe(true)
   })
 
+  /* The bug this replaced: a seller with a credit note on their statement was
+     told it did not reconcile, out by exactly the correction the marketplace had
+     made in their favour. A note is by definition not about a sale, so it is in
+     no order line and the check has to add it back. */
+  it('adds back a credit note, which belongs to no order line', () => {
+    const r = reconcileStatement(stmt({ id: 'ss-1', adjustments: 310, net: 1180 }), [
+      line({ id: 'l1', gross: 1000, commission: 110, fees: 20, net: 870 }),
+    ])
+    expect(r.ok).toBe(true)
+  })
+
+  it('subtracts a debit note the same way', () => {
+    const r = reconcileStatement(stmt({ id: 'ss-1', adjustments: -200, net: 670 }), [
+      line({ id: 'l1', gross: 1000, commission: 110, fees: 20, net: 870 }),
+    ])
+    expect(r.ok).toBe(true)
+  })
+
+  it('handles a statement carrying both a note and withholding', () => {
+    const r = reconcileStatement(stmt({ id: 'ss-1', withholding: 40, adjustments: 310, net: 1140 }), [
+      line({ id: 'l1', gross: 1000, commission: 110, fees: 20, net: 870 }),
+    ])
+    expect(r.ok).toBe(true)
+  })
+
+  /* A row read before notes existed carries no `adjustments` at all, and it has
+     to mean nothing was adjusted rather than NaN. */
+  it('treats a missing adjustments field as no adjustment', () => {
+    const s = stmt({ id: 'ss-1', net: 870 })
+    delete (s as { adjustments?: number }).adjustments
+    expect(reconcileStatement(s, [line({ id: 'l1', gross: 1000, commission: 110, fees: 20, net: 870 })]).ok)
+      .toBe(true)
+  })
+
   it('treats a statement with no lines as a failure rather than a pass', () => {
     /* Zero equals zero, which is exactly the trap: no evidence is not the same
        as agreement. */

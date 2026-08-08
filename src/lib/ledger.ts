@@ -91,6 +91,12 @@ export interface Statement {
   withholding: number
   refunds: number
   net: number
+  /* Credit and debit notes that landed on this statement. Not derived from the
+     order lines — that is the whole point of a note, and a reconciliation that
+     did not know about them would tell a seller their statement was short by
+     exactly the correction the marketplace made in their favour. Optional
+     because rows read before notes existed do not carry it. */
+  adjustments?: number
   status: string
   order_count: number
   /* The two legs. `currency` is what the statement was computed in — the
@@ -444,7 +450,12 @@ export function reconcileStatement(
     variance('Marketplace commission', n(statement.commission), sum(l => l.commission)),
     variance('Fees', n(statement.fees), sum(l => l.fees)),
     variance('Refunds', n(statement.refunds), sum(l => l.refunds)),
-    variance('Net payable', n(statement.net), money(sum(l => l.net) - n(statement.withholding))),
+    /* The lines, less what is deducted at statement level rather than per line:
+       withholding, and any credit or debit note that landed here. A note is by
+       definition not about a sale, so it is in no order line and has to be added
+       back or the statement reads as short by the correction itself. */
+    variance('Net payable', n(statement.net),
+      money(sum(l => l.net) - n(statement.withholding) + n(statement.adjustments))),
   ].filter((v): v is Variance => v !== null)
 
   return {

@@ -139,13 +139,26 @@ export function payoutAgrees(
   return drift <= tolerance + 1e-9
 }
 
-/** Whether a statement's own arithmetic holds, before any currency is involved. */
+/**
+ * Whether a statement's own arithmetic holds, before any currency is involved.
+ *
+ * `adjustments` is the credit and debit notes that landed on it. It is optional
+ * because this ran for months before notes existed, and absent has to mean zero
+ * rather than NaN — but it is not optional to the sum. A note is by definition
+ * not about a sale, so it appears in no order line and in none of the other
+ * figures; leaving it out reported every statement carrying one as broken by
+ * exactly the correction the marketplace had made.
+ */
 export function statementAddsUp(
-  s: { gross: number; commission: number; fees: number; withholding: number; refunds: number; net: number },
+  s: {
+    gross: number; commission: number; fees: number
+    withholding: number; refunds: number; net: number
+    adjustments?: number
+  },
   tolerance = 0.01,
 ): boolean {
   const expected = Number(s.gross) - Number(s.commission) - Number(s.fees)
-    - Number(s.withholding) - Number(s.refunds)
+    - Number(s.withholding) - Number(s.refunds) + Number(s.adjustments ?? 0)
   return Math.abs(Number(s.net) - expected) <= tolerance
 }
 

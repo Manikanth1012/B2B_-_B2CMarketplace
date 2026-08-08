@@ -169,10 +169,23 @@ export function PartnerStatementLines({ partnerId }: { partnerId: string }) {
         <div style={{ padding: '14px 20px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.7 }}>
           Tax is shown so you can see what of the gross was never yours or ours — it is collected on the
           authority’s behalf and does not change your share.
-          {Number(statement.withholding) > 0 && (
-            <> Withholding of ${fmtMoney(Number(statement.withholding))} is deducted at statement level rather
-            than per line, which is why the lines total ${fmtMoney(lines.reduce((a, l) => a + Number(l.net), 0))}{' '}
-            and the payout is ${fmtMoney(Number(statement.net))}.</>
+          {/* Two things sit between the lines and the payout, and both are at
+              statement level. Naming only withholding left the arithmetic short
+              by exactly the note, which reads to a seller as a statement that
+              does not add up. */}
+          {(Number(statement.withholding) > 0 || Number(statement.adjustments ?? 0) !== 0) && (
+            <> The lines total ${fmtMoney(lines.reduce((a, l) => a + Number(l.net), 0))} and the payout is{' '}
+            ${fmtMoney(Number(statement.net))}, because
+            {Number(statement.withholding) > 0 && (
+              <> withholding of ${fmtMoney(Number(statement.withholding))} is deducted at statement level
+              rather than per line</>
+            )}
+            {Number(statement.withholding) > 0 && Number(statement.adjustments ?? 0) !== 0 && <>, and</>}
+            {Number(statement.adjustments ?? 0) !== 0 && (
+              <> {Number(statement.adjustments) > 0 ? 'a credit' : 'a debit'} of{' '}
+              ${fmtMoney(Math.abs(Number(statement.adjustments)))} was applied by note — an adjustment that
+              is not about any one sale, so it belongs to no line</>
+            )}.</>
           )}
         </div>
       </SectionCard>

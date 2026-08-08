@@ -276,9 +276,12 @@ function Queue({ book, policy, reload, onVoid, onResolve }: {
                         {n.second_approved_by ?? `needs a second — at or above ${policy.second_approval_above} ${policy.currency}`}
                       </div>
                     )}
-                    {need === 'none' && (
+                    {/* Only where nobody has signed. Printing the floor beside a
+                        name says twice what the name already said, and on the
+                        sub-floor notes the approver field is the policy itself. */}
+                    {need === 'none' && !n.approved_by && (
                       <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
-                        under the {policy.auto_approve_below} {policy.currency} floor
+                        no signature needed — under the {policy.auto_approve_below} {policy.currency} floor
                       </div>
                     )}
                   </Td>

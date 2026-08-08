@@ -183,14 +183,17 @@ describe('what the screen says about each payee', () => {
 describe('what was actually deducted', () => {
   it('deducts on every unapproved statement at the rate its own payee attracts', async () => {
     const { data } = await supabase.from('settlement_statements')
-      .select('id,partner_id,gross,commission,fees,refunds,net,withholding,withholding_rate,withholding_detail,closed_on,status')
+      .select('id,partner_id,gross,commission,fees,refunds,net,withholding,withholding_rate,withholding_detail,adjustments,closed_on,status')
     const rows = (data ?? []) as unknown as Record<string, string & number & unknown[]>[]
     expect(rows.length).toBeGreaterThan(0)
 
     for (const s of rows) {
+      /* Notes are on the stack too. They are not about a sale, so they are in
+         none of the trade figures — leaving them out reported a statement as
+         short by exactly the correction that had been applied to it. */
       const stack = Number(s.gross) - Number(s.commission) - Number(s.fees)
-        - Number(s.refunds) - Number(s.withholding)
-      expect(Math.abs(Number(s.net) - stack), `${s.id} does not reconcile after withholding`)
+        - Number(s.refunds) - Number(s.withholding) + Number(s.adjustments ?? 0)
+      expect(Math.abs(Number(s.net) - stack), `${s.id} does not reconcile after withholding and notes`)
         .toBeLessThan(0.02)
 
       const detail = (s.withholding_detail ?? []) as { rule_id: string; amount: number }[]
