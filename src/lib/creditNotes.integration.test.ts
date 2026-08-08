@@ -316,11 +316,25 @@ describe('what a seller can see and do about a note raised against them', () => 
     expect(after.state).toBe('disputed')
     expect(after.dispute_note).toMatch(/Integration test/)
 
-    /* Put it back, so the file can be run twice. */
+    /* Put it back, so the file can be run twice — and the dispute case with it.
+     *
+     * Disputing a note now opens a case on the operator's dispute desk. Undoing
+     * the note without withdrawing the case left an open dispute against
+     * something nobody was disputing, which `disputeProblems` reports and which
+     * broke this whole block on the next run: the note stayed `disputed` and
+     * every test below it that wanted an issued one found nothing.
+     *
+     * The case is deleted rather than resolved. It never happened — it was a
+     * test making a note dispute itself — and closing it would put a fabricated
+     * outcome and a fabricated answer into the desk's record of what it has
+     * decided. */
     await signOut()
     await signIn(OPERATOR.email, OPERATOR.password)
     await supabase.from('settlement_note')
       .update({ state: was, dispute_note: null, disputed_on: null }).eq('id', target.id)
+    await supabase.from('disputes')
+      .delete().eq('kind', 'note').eq('subject_ref', target.id)
+      .not('status', 'in', '("resolved","rejected")')
     await signOut()
     await signIn(PARTNER.email, PARTNER.password)
 
