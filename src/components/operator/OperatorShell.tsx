@@ -38,6 +38,11 @@ const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; i
       { id: 'op-orders', label: 'Orders', icon: <PackageSearch size={18} /> },
       { id: 'op-numbers', label: 'Numbers & SIMs', icon: <Smartphone size={18} /> },
       { id: 'op-tickets', label: 'Tickets & SLA', icon: <Ticket size={18} /> },
+      /* Below tickets and separate from them on purpose. A ticket is a question
+         and the worst case is somebody is annoyed; a dispute holds money and has
+         a clock on it, and merging the two makes every question look like a
+         claim. */
+      { id: 'op-disputes', label: 'Disputes', icon: <Scale size={18} /> },
       { id: 'op-dunning', label: 'Collections', icon: <TrendingUp size={18} /> },
       { id: 'op-wallets', label: 'Wallets', icon: <WalletIcon size={18} /> },
       { id: 'op-refunds', label: 'Refunds', icon: <RotateCcw size={18} /> },
