@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Package, DollarSign, Warehouse, Ticket,
   Shield, Code, Megaphone, Tag, TrendingUp, Settings,
   Search, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store, Wallet as WalletIcon, MessageSquareWarning, RotateCcw, Gift, Scale, BookText, Radio, Receipt, LibraryBig, Globe,
-  User, KeyRound, Monitor, Smartphone, Layers, FileText } from 'lucide-react'
+  User, KeyRound, Monitor, Smartphone, Layers, FileText, PackageSearch } from 'lucide-react'
 import type { OperatorView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
 import { AccountMenu } from '../AccountMenu'
@@ -33,6 +33,9 @@ const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; i
     items: [
       { id: 'op-settlement', label: 'Settlement Runs', icon: <DollarSign size={18} /> },
       { id: 'op-inventory', label: 'Inventory & WMS', icon: <Warehouse size={18} /> },
+      /* Above tickets: a ticket is what somebody says about an order, and the
+         order is the thing itself. Support reads them in that direction. */
+      { id: 'op-orders', label: 'Orders', icon: <PackageSearch size={18} /> },
       { id: 'op-numbers', label: 'Numbers & SIMs', icon: <Smartphone size={18} /> },
       { id: 'op-tickets', label: 'Tickets & SLA', icon: <Ticket size={18} /> },
       { id: 'op-dunning', label: 'Collections', icon: <TrendingUp size={18} /> },

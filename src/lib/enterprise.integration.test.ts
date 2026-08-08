@@ -307,6 +307,21 @@ describe('a decision, made and put back', () => {
     await supabase.from('enterprise_requisitions').update({
       state: 'pending', decided_by: null, decided_on: null, decision_note: null, order_ref: null,
     }).eq('id', target.id)
+
+    /* And the order the approval placed. Clearing `order_ref` without removing
+       it is what put twenty copies of this requisition's order in the book —
+       every run of this file left one behind, and the old idempotency check
+       read the pointer this cleanup had just nulled, so the next run made
+       another rather than finding the one already there.
+     *
+     * The function now asks the orders table instead, and a unique index makes
+     * a second one impossible. This still has to go: a pending requisition with
+     * an order against it is a purchase nobody approved. */
+    const placed = await supabase.from('orders').select('id').eq('requisition_id', target.id)
+    for (const o of (placed.data ?? []) as { id: string }[]) {
+      await supabase.from('order_items').delete().eq('order_id', o.id)
+      await supabase.from('orders').delete().eq('id', o.id)
+    }
     await signOut()
   })
 
