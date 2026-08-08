@@ -53,6 +53,7 @@ import { OperatorShelves } from './components/operator/OperatorShelves'
 import { OperatorNotes } from './components/operator/OperatorNotes'
 import { OperatorOrders } from './components/operator/OperatorOrders'
 import { OperatorDisputes } from './components/operator/OperatorDisputes'
+import { OperatorCredit } from './components/operator/OperatorCredit'
 import { OperatorReviews } from './components/operator/OperatorReviews'
 import { OperatorWallets } from './components/operator/OperatorWallets'
 import { OperatorContentFeedback } from './components/operator/OperatorContentFeedback'
@@ -466,6 +467,7 @@ function AppInner() {
         {opView === 'op-notes' && <OperatorNotes />}
         {opView === 'op-orders' && <OperatorOrders />}
         {opView === 'op-disputes' && <OperatorDisputes />}
+        {opView === 'op-credit' && <OperatorCredit />}
         {opView === 'op-ledger' && <OperatorLedger />}
         {opView === 'op-feedback' && <OperatorContentFeedback />}
         {opView === 'op-audit' && <OperatorAudit />}

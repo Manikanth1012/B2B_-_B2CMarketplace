@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Users, Package, DollarSign, Warehouse, Ticket,
   Shield, Code, Megaphone, Tag, TrendingUp, Settings,
   Search, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store, Wallet as WalletIcon, MessageSquareWarning, RotateCcw, Gift, Scale, BookText, Radio, Receipt, LibraryBig, Globe,
-  User, KeyRound, Monitor, Smartphone, Layers, FileText, PackageSearch } from 'lucide-react'
+  User, KeyRound, Monitor, Smartphone, Layers, FileText, PackageSearch, Landmark } from 'lucide-react'
 import type { OperatorView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
 import { AccountMenu } from '../AccountMenu'
@@ -43,6 +43,9 @@ const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; i
          a clock on it, and merging the two makes every question look like a
          claim. */
       { id: 'op-disputes', label: 'Disputes', icon: <Scale size={18} /> },
+      /* Above collections: credit decides who may owe us, collections chases
+         what they already do. Read in that order or the second is a surprise. */
+      { id: 'op-credit', label: 'Credit & Exposure', icon: <Landmark size={18} /> },
       { id: 'op-dunning', label: 'Collections', icon: <TrendingUp size={18} /> },
       { id: 'op-wallets', label: 'Wallets', icon: <WalletIcon size={18} /> },
       { id: 'op-refunds', label: 'Refunds', icon: <RotateCcw size={18} /> },
