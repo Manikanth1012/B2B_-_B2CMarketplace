@@ -498,24 +498,57 @@ describe('the tax on a document', () => {
   it('charges each market its own rate, and only its own rate', async () => {
     const { data: markets } = await supabase.from('markets').select('code,tax_rate,tax_label')
     const { data: bills } = await supabase.from('consumer_bills').select('id,market,tax_rate')
-    const { data: invoices } = await supabase.from('enterprise_invoices').select('id,market,tax_rate')
+    const { data: invoices } = await supabase.from('enterprise_invoices')
+      .select('id,market,tax_rate,note,account:enterprise_accounts(reverse_charge,tax_exempt)')
+      .returns<{ id: string; market: string; tax_rate: number; note: string | null
+                 account: { reverse_charge: boolean; tax_exempt: boolean } | null }[]>()
 
     const rateFor = new Map((markets ?? []).map(m => [m.code as string, Number(m.tax_rate)]))
     expect(rateFor.size, 'no markets to charge tax in').toBeGreaterThan(1)
 
-    for (const row of [...(bills ?? []), ...(invoices ?? [])]) {
-      expect(Number(row.tax_rate), `${row.id} is taxed at a rate ${row.market} does not charge`)
-        .toBe(rateFor.get(row.market as string))
+    /* Nil is a rate, where the customer's own tax position says nil. Reverse
+       charge moves the liability to the recipient and the supplier charges
+       nothing — an invoice that quietly added 5% would be collected twice and
+       disallowed once. It is a rule, not a gap, and the guard in the database
+       permits it only where the account is on reverse charge or exempt AND the
+       document says why. This is the same rule, checked from outside. */
+    const nilByRight = (i: { note: string | null; account: { reverse_charge: boolean; tax_exempt: boolean } | null }) =>
+      Boolean(i.account && (i.account.reverse_charge || i.account.tax_exempt)
+              && /reverse charge|exempt/i.test(i.note ?? ''))
+
+    for (const b of bills ?? []) {
+      expect(Number(b.tax_rate), `${b.id} is taxed at a rate ${b.market} does not charge`)
+        .toBe(rateFor.get(b.market as string))
+    }
+    for (const i of invoices ?? []) {
+      if (Number(i.tax_rate) === 0) {
+        expect(nilByRight(i),
+          `${i.id} charges no tax and its customer is entitled to none, or does not say so on the document`)
+          .toBe(true)
+        continue
+      }
+      expect(Number(i.tax_rate), `${i.id} is taxed at a rate ${i.market} does not charge`)
+        .toBe(rateFor.get(i.market))
     }
 
     /* And a retail bill and a business invoice in the same market agree — the
-       original point of the test, now stated per market. */
+       original point of the test, now stated per market and net of the
+       documents that are legitimately zero-rated. */
     for (const [code, rate] of rateFor) {
-      const here = [...(bills ?? []), ...(invoices ?? [])].filter(r => r.market === code)
+      const here = [
+        ...(bills ?? []).filter(r => r.market === code),
+        ...(invoices ?? []).filter(r => r.market === code && !(Number(r.tax_rate) === 0 && nilByRight(r))),
+      ]
       const rates = new Set(here.map(r => Number(r.tax_rate)))
       expect([...rates].length, `${code} charges more than one rate`).toBeLessThanOrEqual(1)
       if (here.length) expect([...rates][0]).toBe(rate)
     }
+
+    /* And the case exists at all — a rule with nothing exercising it is a rule
+       nobody has checked. */
+    expect((invoices ?? []).some(i => Number(i.tax_rate) === 0 && nilByRight(i)),
+      'no invoice is zero-rated by right, so reverse charge is configured and never applied')
+      .toBe(true)
   })
 
   it('prints that rate on the document rather than inferring one', () => {

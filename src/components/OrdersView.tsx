@@ -10,6 +10,9 @@ import { paymentLabel } from '../lib/payments'
 import { loadPaymentCatalogue } from '../lib/gatewayRepo'
 import { planLine } from '../lib/gateway'
 import type { PaymentMethod, PaymentAttempt } from '../lib/gateway'
+import { loadPushesFor } from '../lib/comRepo'
+import { STATE_LABEL, STATE_MEANING } from '../lib/com'
+import type { Push } from '../lib/com'
 
 /* An order is read in the money it was placed in, not in whatever market the
    shopper has the storefront set to now. Switching to Kenya does not restate
@@ -314,6 +317,43 @@ export function OrdersView() {
   )
 }
 
+/* What the network has actually been asked, and what it said back.
+ *
+ * The rail above says where the marketplace thinks the order is. This says
+ * where it really is, and the two can disagree in exactly one direction: the
+ * marketplace cannot show the last rung until the order manager has finished,
+ * but it can and does sit at "Confirmed" for an order that was refused hours
+ * ago. Somebody chasing a SIM that has not arrived is owed the reason rather
+ * than a progress bar that has stopped. */
+function NetworkFulfilment({ orderRef }: { orderRef: string }) {
+  const [pushes, setPushes] = useState<Push[]>([])
+  useEffect(() => {
+    let live = true
+    void loadPushesFor(orderRef).then(r => { if (live) setPushes(r) })
+    return () => { live = false }
+  }, [orderRef])
+
+  if (pushes.length === 0) return null
+  return (
+    <div style={{ marginTop: '12px', marginLeft: '34px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      {pushes.map(p => {
+        const bad = p.state === 'rejected' || p.state === 'failed'
+        return (
+          <div key={p.id} style={{
+            fontSize: 'var(--text-xs)', lineHeight: 1.55,
+            color: bad ? 'var(--danger)' : 'var(--text-tertiary)',
+          }}>
+            <strong>{p.product_name ?? p.product_id} — {STATE_LABEL[p.state].toLowerCase()}.</strong>{' '}
+            {bad
+              ? 'Nothing has been provisioned. Support has been given the reason and can move it on.'
+              : STATE_MEANING[p.state]}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function OrderDetailModal({ order, items, methods, onClose }: {
   order: Order; items: OrderItem[]; methods: readonly PaymentMethod[]; onClose: () => void
 }) {
@@ -390,6 +430,7 @@ function OrderDetailModal({ order, items, methods, onClose }: {
               Carrier: {order.carrier} · Tracking: {order.tracking_ref}
             </div>
           )}
+          <NetworkFulfilment orderRef={order.order_ref} />
         </div>
 
         {/* Items */}

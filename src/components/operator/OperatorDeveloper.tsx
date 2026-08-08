@@ -8,6 +8,7 @@ import {
   Modal, FormField, TextInput, Select, TextArea, toast, Id,
 } from './shared'
 import { Callout } from '../OnboardingJourney'
+import { ComTab } from './OperatorComTab'
 import {
   LIFECYCLE_LABEL, KEY_STATE_LABEL, keyNote, maskedSecret, usable, sunsetWarning,
   usageOf, statusBreakdown, productionQueue, publishable, deprecatable, LIMITS, daysUntil, specSize,
@@ -40,7 +41,7 @@ import type { PortalAdmin, InboundView } from '../../lib/devPortalRepo'
  * The queue is the other half. Sellers can now ask for production, so somebody
  * has to answer, and a refusal has to carry a reason the seller can act on.
  */
-type Tab = 'apis' | 'queue' | 'applications' | 'inbound' | 'traffic'
+type Tab = 'apis' | 'queue' | 'applications' | 'inbound' | 'com' | 'traffic'
 
 export function OperatorDeveloper() {
   const [admin, setAdmin] = useState<PortalAdmin | null>(null)
@@ -55,14 +56,20 @@ export function OperatorDeveloper() {
   const [suspending, setSuspending] = useState<Application | null>(null)
   const [issuing, setIssuing] = useState<Application | null>(null)
   const [inbound, setInbound] = useState<InboundView | null>(null)
+  /* Just the count, for the tab badge. The tab loads the rest itself — pulling
+     the whole fulfilment queue into this component to render a number would
+     make every other tab wait for it. */
+  const [comStuck, setComStuck] = useState(0)
 
   const reload = useCallback(async () => {
-    const [a, list, inb] = await Promise.all([
+    const [a, list, inb, stuckCount] = await Promise.all([
       loadPortalAdmin(),
       supabase.from('operator_apis').select('*').order('sort_order'),
       loadInbound(),
+      supabase.from('com_order').select('id', { count: 'exact', head: true })
+        .in('state', ['rejected', 'failed']),
     ])
-    setAdmin(a); setInbound(inb)
+    setAdmin(a); setInbound(inb); setComStuck(stuckCount.count ?? 0)
     if (list.data) setApis(list.data as OperatorApi[])
   }, [])
 
@@ -139,6 +146,10 @@ export function OperatorDeveloper() {
           ['apis', `APIs and versions`], ['queue', `Production queue${queue.length ? ` (${queue.length})` : ''}`],
           ['applications', 'Applications and keys'],
           ['inbound', `Inbound & events${silentRequired ? ` (${silentRequired})` : ''}`],
+          /* The one interface the marketplace consumes rather than publishes.
+             It sits here because it is an API surface an operator maintains,
+             and it is labelled differently because nobody subscribes to it. */
+          ['com', `Order management${comStuck ? ` (${comStuck})` : ''}`],
           ['traffic', 'Traffic'],
         ] as [Tab, string][]).map(([id, label]) => (
           <button key={id} onClick={() => setTab(id)} style={tabStyle(tab === id)}>{label}</button>
@@ -163,6 +174,8 @@ export function OperatorDeveloper() {
         <ApplicationsTab admin={admin} onSuspend={setSuspending} onIssue={setIssuing}
                          onChanged={() => void reload()} onMinted={setMinted} />
       )}
+
+      {tab === 'com' && <ComTab />}
 
       {tab === 'traffic' && <TrafficTab admin={admin} />}
 
