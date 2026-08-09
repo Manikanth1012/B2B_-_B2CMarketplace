@@ -1,9 +1,10 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import { supabase } from './supabase'
 import {
-  windowFor, lastClosed, nextClose, dueOn, periodLabel, heldBack, settle,
+  windowFor, lastClosed, nextClose, dueOn, periodLabel, heldBack, settle, projectPayout,
 } from './settlementCycle'
 import type { Terms } from './settlementCycle'
+import type { Rule } from './withholding'
 
 const signIn = async (email: string, password: string) => {
   const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -104,21 +105,132 @@ describe('the settlement cycle, in the database and in TypeScript', () => {
     }
   })
 
+  /* `settlement_statements.net` is stored AFTER withholding — the run writes
+     `after_wht` into it, and the statement screen reads it that way ("the
+     payout is $net, because withholding is deducted at statement level").
+     `settlement_accruing.net` is the sum of the line nets, before any tax. Two
+     columns of the same name meaning different things; feeding a statement row
+     to `projectPayout` would deduct the tax twice.
+
+     So the pre-tax figure the module is given here is reconstructed rather than
+     read, and the check is that putting it back through the module lands on
+     what the run stored. */
   it('pays every issued statement the way the module would have', async () => {
     const { data } = await supabase.from('settlement_statements')
-      .select('id, partner_id, net, held_back, carried_in, carried_out, status')
+      .select('id, partner_id, net, withholding, held_back, carried_in, carried_out, status')
       .neq('status', 'open')
 
+    let taxed = 0
     for (const s of (data ?? []) as Record<string, string>[]) {
       const t = terms.find(x => x.partner_id === s.partner_id)
       if (!t) continue
+      const withheld = Number(s.withholding ?? 0)
+      if (withheld > 0) taxed++
       const mine = settle({
-        earned: Number(s.net), held: Number(s.held_back),
+        earned: Number(s.net) + withheld, withheld, held: Number(s.held_back),
         carriedIn: Number(s.carried_in), terms: t,
       })
+
+      /* The order the run uses: tax comes off before anything is held, so what
+         is left after tax is exactly the figure it stored as the net. A module
+         that deducted in the wrong place would still balance its own books and
+         disagree with this. */
+      expect(Math.abs((mine.earned - mine.withheld) - Number(s.net)), `${s.id}: net after tax`)
+        .toBeLessThan(0.02)
+
       /* What carries forward is the figure that decides whether money moves at
          all, so it is the one worth reconciling rather than the net. */
       expect(Math.abs(mine.carriedOut - Number(s.carried_out)), `${s.id}: carried out`)
+        .toBeLessThan(0.02)
+
+      /* And what is transferred: `after_wht - held + carried`, the run's own
+         expression. Reconciling `carried_out` alone never caught the missing
+         tax term, because a deduction does not change what carries. */
+      expect(
+        Math.abs(mine.payable - Math.max(0, Number(s.net) - Number(s.held_back) + Number(s.carried_in))),
+        `${s.id}: payable`,
+      ).toBeLessThan(0.02)
+    }
+
+    expect(taxed, 'no statement deducted anything, so the tax term went unchecked')
+      .toBeGreaterThan(0)
+  })
+
+  /* The seller's own card projects a close that has not happened, off the
+     accruing view. If those inputs stop arriving the projection silently falls
+     back to the figure this whole change replaced. */
+  it('gives the accrual card everything it needs to project a close', async () => {
+    const { data, error } = await supabase.from('settlement_accruing').select('*')
+    expect(error, error?.message).toBeNull()
+    const rows = (data ?? []) as Record<string, string | boolean>[]
+    expect(rows.length).toBeGreaterThan(0)
+
+    for (const row of rows) {
+      expect(row.market, `${row.partner_id}: no market`).toBeTruthy()
+      expect(row.tax_residence, `${row.partner_id}: no tax residence`).toBeTruthy()
+      expect(typeof row.treaty_on_file, `${row.partner_id}: treaty flag`).toBe('boolean')
+      expect(Number(row.carried_in), `${row.partner_id}: carry-in`).toBeGreaterThanOrEqual(0)
+    }
+
+    /* Both sides of the comparison the whole withholding model turns on. A
+       marketplace where every seller is resident where they sell never
+       exercises the non-resident branch, and the treaty rate stays theory. */
+    expect(rows.some(r => r.tax_residence !== r.market),
+      'every seller is resident in their own market, so the cross-border rate is untested')
+      .toBe(true)
+  })
+
+  /* The projection and the run are the two evaluations of one rule, and the
+     only way to know they agree is to close a period both ways. */
+  it('projects the same deduction the run computed, on the periods already settled', async () => {
+    const [{ data: statements }, { data: ruleRows }] = await Promise.all([
+      supabase.from('settlement_statements')
+        .select('id, partner_id, gross, commission, fees, refunds, withholding, closed_on')
+        .gt('withholding', 0),
+      supabase.from('withholding_rule').select('*').order('sort_order'),
+    ])
+    const rules = ((ruleRows ?? []) as Record<string, string>[]).map(r => ({
+      ...r,
+      resident_rate: Number(r.resident_rate),
+      non_resident_rate: Number(r.non_resident_rate),
+      treaty_rate: r.treaty_rate == null ? null : Number(r.treaty_rate),
+      sort_order: Number(r.sort_order),
+    })) as unknown as Rule[]
+
+    const { data: banks } = await supabase.from('partner_bank')
+      .select('partner_id, tax_residence, treaty_on_file')
+    const { data: partners } = await supabase.from('partners').select('id, market')
+    const marketOf = new Map(((partners ?? []) as { id: string; market: string }[])
+      .map(p => [p.id, p.market]))
+    const bankOf = new Map(((banks ?? []) as {
+      partner_id: string; tax_residence: string | null; treaty_on_file: boolean
+    }[]).map(b => [b.partner_id, b]))
+
+    const rows = (statements ?? []) as Record<string, string>[]
+    expect(rows.length, 'nothing was ever deducted, so this checked nothing').toBeGreaterThan(0)
+
+    for (const s of rows) {
+      const market = marketOf.get(s.partner_id)!
+      const bank = bankOf.get(s.partner_id)
+      const t = terms.find(x => x.partner_id === s.partner_id)
+      if (!t) continue
+
+      const mine = projectPayout({
+        accruing: {
+          gross: Number(s.gross), commission: Number(s.commission),
+          fees: Number(s.fees), refunds: Number(s.refunds),
+          /* Not read for the deduction, which is the point — the tax comes off
+             the gross-to-net stack, not off whatever `net` happens to say. */
+          net: 0, held_back: 0, carried_in: 0,
+          market,
+          tax_residence: bank?.tax_residence ?? market,
+          treaty_on_file: bank?.treaty_on_file ?? false,
+          closed_on: s.closed_on,
+        },
+        terms: t,
+        rules,
+      })
+      expect(Math.abs(mine.withheld - Number(s.withholding)), `${s.id}: withheld`)
         .toBeLessThan(0.02)
     }
   })

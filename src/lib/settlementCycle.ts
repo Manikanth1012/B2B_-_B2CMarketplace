@@ -16,6 +16,8 @@
  * is not is a class of bug this build has spent several migrations removing.
  */
 
+import { deductionsOn, totalOf, type Rule, type Deduction } from './withholding'
+
 export type Frequency = 'monthly' | 'quarterly' | 'half-yearly' | 'yearly'
 export type Align = 'calendar' | 'anniversary'
 
@@ -173,6 +175,10 @@ export function heldBack(sales: readonly Sale[], terms: Terms, closes: string): 
 export interface Outcome {
   /* Everything the period earned, before anything is held or carried. */
   earned: number
+  /* Taken by the payer and handed to the revenue authority. It reduces what
+     lands without reducing what was earned, which is why it sits beside
+     `earned` rather than inside it. */
+  withheld: number
   held: number
   carriedIn: number
   /* What actually goes out. */
@@ -188,21 +194,30 @@ export interface Outcome {
 /**
  * What a period actually pays.
  *
- * The order matters: hold first, then add what the last period could not pay,
- * then test the minimum against the total. Testing the minimum before the
- * carry-in would strand a partner forever — three periods of $90 against a
- * $250 minimum would each carry and never combine.
+ * The order matters, and it is the order `run_settlements_core` uses: deduct
+ * tax at source, then hold, then add what the last period could not pay, then
+ * test the minimum against the total.
+ *
+ * Withholding comes off before anything is held because it has already gone to
+ * the revenue authority. Holding money that is no longer in the marketplace's
+ * hands would carry a figure it does not have, and the next period would pay
+ * out against it.
+ *
+ * Testing the minimum before the carry-in would strand a partner forever —
+ * three periods of $90 against a $250 minimum would each carry and never
+ * combine.
  */
 export function settle(
-  { earned, held, carriedIn, terms }: {
-    earned: number; held: number; carriedIn: number; terms: Terms
+  { earned, withheld = 0, held, carriedIn, terms }: {
+    earned: number; withheld?: number; held: number; carriedIn: number; terms: Terms
   },
 ): Outcome {
-  const base = round2(earned - held + carriedIn)
+  const afterTax = round2(earned - withheld)
+  const base = round2(afterTax - held + carriedIn)
 
   if (base > 0 && base < terms.minimum_payout) {
     return {
-      earned: round2(earned), held, carriedIn,
+      earned: round2(earned), withheld: round2(withheld), held, carriedIn,
       payable: 0,
       carriedOut: round2(held + base),
       belowMinimum: true,
@@ -211,7 +226,7 @@ export function settle(
   }
 
   return {
-    earned: round2(earned), held, carriedIn,
+    earned: round2(earned), withheld: round2(withheld), held, carriedIn,
     payable: base > 0 ? base : 0,
     carriedOut: held,
     belowMinimum: false,
@@ -223,6 +238,80 @@ export function settle(
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
+}
+
+/* ------------------------------------------------ the period still running -- */
+
+/** What the accruing view gives a screen mid-period. */
+export interface Accruing {
+  gross: number
+  commission: number
+  fees: number
+  refunds: number
+  /* The sum of the line nets, BEFORE tax at source. Not the same thing as
+     `settlement_statements.net`, which the run writes after the deduction —
+     passing a settled statement in here would take the tax off twice. */
+  net: number
+  held_back: number
+  carried_in: number
+  /* The paying entity's market, and where the payee is tax resident. The two
+     are compared, and that comparison is the whole of the withholding model —
+     a treaty only ever reduces a rate that crosses a border. */
+  market: string
+  tax_residence: string
+  treaty_on_file: boolean
+  closed_on: string
+}
+
+/**
+ * What a seller would actually be paid if this period closed today.
+ *
+ * The card that shows this used to compute `net - held_back` and call it
+ * payable. That is not what a run produces, and the gap is not small: tax at
+ * source takes 1.1% of gross off an Indian seller before anything is held, and
+ * a carry-in from a period that fell under the minimum can be the whole reason
+ * this one clears it.
+ *
+ * The rates are read on the day the period CLOSES, not today. A rate that
+ * changes next week is not the rate this period was earned under, and it is
+ * the closing date the eventual statement will be computed on.
+ *
+ * The deductions come back listed rather than totalled because a seller
+ * reconciles them against separate returns — one figure covering 194-O and
+ * s.52 CGST is a figure they cannot split, and therefore cannot claim.
+ */
+export function projectPayout(
+  { accruing, terms, rules }: {
+    accruing: Accruing; terms: Terms; rules: readonly Rule[]
+  },
+): Outcome & { deductions: Deduction[] } {
+  const deductions = deductionsOn({
+    rules,
+    market: accruing.market,
+    direction: 'partner-payout',
+    payee: { residence: accruing.tax_residence, treaty_on_file: accruing.treaty_on_file },
+    amounts: {
+      gross: accruing.gross,
+      commission: accruing.commission,
+      /* Not `accruing.net`. The 'net' basis in the rules means the supply after
+         everything the marketplace charged, which is what the run computes
+         inline; keeping the two in step matters more than the shorter
+         expression. */
+      net: round2(accruing.gross - accruing.commission - accruing.fees - accruing.refunds),
+    },
+    on: accruing.closed_on,
+  })
+
+  return {
+    ...settle({
+      earned: accruing.net,
+      withheld: totalOf(deductions),
+      held: accruing.held_back,
+      carriedIn: accruing.carried_in,
+      terms,
+    }),
+    deductions,
+  }
 }
 
 /* ------------------------------------------------------------- in words ---- */

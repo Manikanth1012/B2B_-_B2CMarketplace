@@ -23,12 +23,13 @@ import type { StatementRow } from '../../lib/documentFacts'
 import { billPdf, pdfNameFor, saveBlob } from '../../lib/billPdf'
 import { nextReference } from '../../lib/billTemplate'
 import {
-  FREQUENCY_LABEL, cycleLine, holdLine, minimumLine, nextClose, periodLabel,
+  FREQUENCY_LABEL, cycleLine, holdLine, minimumLine, nextClose, periodLabel, projectPayout,
 } from '../../lib/settlementCycle'
 import type { Terms } from '../../lib/settlementCycle'
 import { loadMyTerms, loadMyAccrual, loadMyWithholding } from '../../lib/settlementCycleRepo'
 import type { AccruingRow, WithholdingBook } from '../../lib/settlementCycleRepo'
 import { byStatute, certificateLine } from '../../lib/withholding'
+import type { Rule } from '../../lib/withholding'
 import { loadMyNotes, disputeNote } from '../../lib/creditNotesRepo'
 import { line, netOf, STATE_LABEL, STATE_TONE, STATE_MEANING } from '../../lib/creditNotes'
 import type { Note } from '../../lib/creditNotes'
@@ -471,12 +472,18 @@ function MyCycle({ partnerId, planName, fees }: {
   const { fmtIn } = useMarket()
   const [terms, setTerms] = useState<Terms | null>(null)
   const [accrual, setAccrual] = useState<AccruingRow | null>(null)
+  /* The rules, not the certificates. What was deducted last quarter is history;
+     this card is projecting what the next close will take, which is decided by
+     the rules in force on the day it closes. */
+  const [rules, setRules] = useState<Rule[]>([])
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
     let live = true
-    void Promise.all([loadMyTerms(partnerId), loadMyAccrual(partnerId)])
-      .then(([t, a]) => { if (live) { setTerms(t); setAccrual(a); setReady(true) } })
+    void Promise.all([loadMyTerms(partnerId), loadMyAccrual(partnerId), loadMyWithholding(partnerId)])
+      .then(([t, a, w]) => {
+        if (live) { setTerms(t); setAccrual(a); setRules(w.rules); setReady(true) }
+      })
     return () => { live = false }
   }, [partnerId])
 
@@ -499,8 +506,11 @@ function MyCycle({ partnerId, planName, fees }: {
   }
 
   const next = nextClose(terms, new Date().toISOString().slice(0, 10))
-  const wouldPay = accrual ? accrual.net - accrual.held_back : 0
-  const stuck = wouldPay > 0 && wouldPay < terms.minimum_payout
+  /* The whole stack a run would compute, not the two terms of it that were
+     easy to reach off the view. It used to be `net - held_back`, which ignored
+     tax at source and whatever the last period could not pay — a seller was
+     shown a figure nobody was going to transfer. */
+  const outcome = accrual ? projectPayout({ accruing: accrual, terms, rules }) : null
 
   return (
     <SectionCard
@@ -541,7 +551,7 @@ function MyCycle({ partnerId, planName, fees }: {
           </div>
         )}
 
-        {accrual && (
+        {accrual && outcome && (
           <div style={{ borderTop: '1px solid var(--border-light)', paddingTop: '14px' }}>
             <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-tertiary)', marginBottom: '8px' }}>
               {periodLabel(accrual.frequency, accrual.period_start)} so far —{' '}
@@ -550,16 +560,40 @@ function MyCycle({ partnerId, planName, fees }: {
             <Row label="Sales in the period" value={fmtInt(accrual.lines)} />
             <Row label="Gross" value={fmtIn(accrual.gross, 'USD')} />
             <Row label="Net after commission and fees" value={fmtIn(accrual.net, 'USD')} />
+            {/* Listed by statute rather than totalled. A seller claims 194-O
+                and s.52 CGST back on two different returns, and one combined
+                figure is one they cannot split between them. */}
+            {outcome.deductions.map(d => (
+              <Row key={d.rule_id}
+                   label={`${d.statute} at ${d.rate}% of ${d.basis}`}
+                   value={`− ${fmtIn(d.amount, 'USD')}`} />
+            ))}
             {accrual.held_back > 0 && (
               <Row label="Inside the hold window" value={`− ${fmtIn(accrual.held_back, 'USD')}`} />
             )}
+            {accrual.carried_in > 0 && (
+              <Row label="Carried in from the last period" value={`+ ${fmtIn(accrual.carried_in, 'USD')}`} />
+            )}
             <Row
-              label={stuck ? 'Would carry forward' : 'Payable if it closed today'}
-              value={stuck
-                ? `${fmtIn(wouldPay, 'USD')} — under the minimum`
-                : fmtIn(Math.max(0, wouldPay), 'USD')} />
+              label={outcome.belowMinimum ? 'Would carry forward' : 'Payable if it closed today'}
+              value={outcome.belowMinimum
+                ? `${fmtIn(outcome.carriedOut, 'USD')} — under the minimum`
+                : fmtIn(outcome.payable, 'USD')} />
+
+            {/* Not lost, and not the marketplace's. Without this a seller reads
+                the deduction as a fee somebody has taken off them. */}
+            {outcome.withheld > 0 && (
+              <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '8px', lineHeight: 1.5 }}>
+                {fmtIn(outcome.withheld, 'USD')} of that goes to the revenue authority rather than to the
+                marketplace, against your own tax account. You claim it back on your return with the
+                certificate below, which is issued after the quarter closes.
+              </p>
+            )}
+
             {/* Stated because it is a projection and not a promise. Every
-                figure above moves with the next order. */}
+                figure above moves with the next order, and the tax rates are
+                the ones in force on the day the period closes rather than
+                today's — that is the day the statement will be computed on. */}
             <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '8px', lineHeight: 1.5 }}>
               This period is still running. Nothing here is owed yet — it is what has been sold since the last
               period closed, and it changes with every order{fees ? `. Fees are ${fees.toLowerCase()}` : ''}.

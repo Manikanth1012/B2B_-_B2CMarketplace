@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
-  windowFor, lastClosed, nextClose, dueOn, periodLabel, heldBack, settle,
+  windowFor, lastClosed, nextClose, dueOn, periodLabel, heldBack, settle, projectPayout,
   cycleLine, holdLine, minimumLine, termsWarnings, termsProblem, MONTHS,
 } from './settlementCycle'
-import type { Terms } from './settlementCycle'
+import type { Terms, Accruing } from './settlementCycle'
+import type { Rule } from './withholding'
 
 const terms = (over: Partial<Terms> = {}): Terms => ({
   partner_id: 'PTR-1001',
@@ -216,6 +217,128 @@ describe('settle', () => {
     const t = terms({ hold_days: 14, hold_reason: 'Returns window on hardware.' })
     expect(settle({ earned: 1000, held: 200, carriedIn: 0, terms: t }).why)
       .toMatch(/Returns window on hardware/)
+  })
+
+  /* The term the function did not have. `run_settlements_core` deducts tax at
+     source before anything is held or carried; this used to model the same
+     stack with that step missing. */
+  it('takes tax at source off before anything is held', () => {
+    const r = settle({ earned: 1000, withheld: 11, held: 200, carriedIn: 0, terms: terms() })
+    expect(r.payable).toBe(789)
+    expect(r.withheld).toBe(11)
+    /* What is held is still what is held. Withholding does not enlarge it —
+       that money is with the revenue authority, not carried into next period. */
+    expect(r.carriedOut).toBe(200)
+  })
+
+  it('leaves everything unchanged when nothing is withheld', () => {
+    const with0 = settle({ earned: 1000, withheld: 0, held: 200, carriedIn: 0, terms: terms() })
+    const without = settle({ earned: 1000, held: 200, carriedIn: 0, terms: terms() })
+    expect(with0).toEqual(without)
+  })
+
+  /* The case that makes the missing term more than a rounding difference: a
+     deduction can be what drops a payment under the minimum, and the seller is
+     paid nothing rather than the figure the old card showed them. */
+  it('can be the thing that puts a payment under the minimum', () => {
+    const t = terms({ minimum_payout: 250, payout_currency: 'KES' })
+    expect(settle({ earned: 255, withheld: 0, held: 0, carriedIn: 0, terms: t }).payable).toBe(255)
+    const taxed = settle({ earned: 255, withheld: 10, held: 0, carriedIn: 0, terms: t })
+    expect(taxed.payable).toBe(0)
+    expect(taxed.belowMinimum).toBe(true)
+    expect(taxed.carriedOut).toBe(245)
+  })
+})
+
+describe('projectPayout', () => {
+  /* Both Indian statutes, as they are actually configured: 1% of gross under
+     194-O and 0.1% of the net supply under s.52 CGST. */
+  const inRules: Rule[] = [
+    {
+      id: 'WHT-IN-194O', market: 'IN', applies_to: 'partner-payout', basis: 'gross',
+      statute: 's.194-O', label: 'TDS on e-commerce', resident_rate: 1, non_resident_rate: 20,
+      treaty_rate: null, threshold_amount: null, threshold_period: null,
+      effective_from: '2020-10-01', effective_to: null, note: null, sort_order: 1,
+    },
+    {
+      id: 'WHT-IN-52', market: 'IN', applies_to: 'partner-payout', basis: 'net',
+      statute: 's.52 CGST', label: 'TCS on the supply', resident_rate: 0.1, non_resident_rate: 0.1,
+      treaty_rate: null, threshold_amount: null, threshold_period: null,
+      effective_from: '2018-10-01', effective_to: null, note: null, sort_order: 2,
+    },
+  ]
+
+  const accruing = (over: Partial<Accruing> = {}): Accruing => ({
+    gross: 10000, commission: 1000, fees: 200, refunds: 0, net: 8800,
+    held_back: 0, carried_in: 0,
+    market: 'IN', tax_residence: 'IN', treaty_on_file: false,
+    closed_on: '2026-08-31',
+    ...over,
+  })
+
+  it('deducts under every statute in force, listed rather than totalled', () => {
+    const r = projectPayout({ accruing: accruing(), terms: terms(), rules: inRules })
+    expect(r.deductions.map(d => d.statute)).toEqual(['s.194-O', 's.52 CGST'])
+    expect(r.deductions[0].amount).toBe(100)
+    /* 0.1% of gross less commission, fees and refunds — not of `net`, and not
+       of gross. Getting the basis wrong here is a tenfold error, not a
+       rounding one. */
+    expect(r.deductions[1].amount).toBe(8.8)
+    expect(r.withheld).toBe(108.8)
+    expect(r.payable).toBe(8691.2)
+  })
+
+  /* The figure the card used to show. Kept as a test so the gap cannot quietly
+     reopen — it is 108.80 on this seller and it is the seller's money. */
+  it('pays less than net minus the hold, which is what the card used to claim', () => {
+    const a = accruing({ held_back: 300 })
+    const r = projectPayout({ accruing: a, terms: terms(), rules: inRules })
+    expect(a.net - a.held_back).toBe(8500)
+    expect(r.payable).toBe(8391.2)
+  })
+
+  it('adds what the last period could not pay', () => {
+    const r = projectPayout({
+      accruing: accruing({ carried_in: 250 }), terms: terms(), rules: inRules,
+    })
+    expect(r.payable).toBe(8941.2)
+  })
+
+  /* A treaty reduces a rate that crosses a border and does nothing to a
+     domestic one. The seller who exercises this is real: PTR-1009 sells into
+     Kenya and is resident in the UAE. */
+  it('charges a non-resident the non-resident rate, reduced by a treaty on file', () => {
+    const a = accruing({ market: 'IN', tax_residence: 'AE', treaty_on_file: false })
+    expect(projectPayout({ accruing: a, terms: terms(), rules: inRules }).deductions[0].rate).toBe(20)
+
+    const relieved: Rule[] = [{ ...inRules[0], treaty_rate: 10 }, inRules[1]]
+    const b = accruing({ market: 'IN', tax_residence: 'AE', treaty_on_file: true })
+    expect(projectPayout({ accruing: b, terms: terms(), rules: relieved }).deductions[0].rate).toBe(10)
+
+    /* And the same certificate does nothing for a domestic payee. */
+    const c = accruing({ market: 'IN', tax_residence: 'IN', treaty_on_file: true })
+    expect(projectPayout({ accruing: c, terms: terms(), rules: relieved }).deductions[0].rate).toBe(1)
+  })
+
+  /* The UAE imposes none. A nil rate is a real answer and not a missing one,
+     and it is not a line on a statement. */
+  it('deducts nothing where no rule is in force, and says so with an empty list', () => {
+    const r = projectPayout({
+      accruing: accruing({ market: 'AE', tax_residence: 'AE' }), terms: terms(), rules: inRules,
+    })
+    expect(r.deductions).toEqual([])
+    expect(r.withheld).toBe(0)
+    expect(r.payable).toBe(8800)
+  })
+
+  /* Rates are read on the closing date, not today — a rule that came into
+     force after this period ended did not govern it. */
+  it('applies the rules in force when the period closes', () => {
+    const future: Rule[] = [{ ...inRules[0], effective_from: '2026-12-01' }]
+    const r = projectPayout({
+      accruing: accruing({ closed_on: '2026-08-31' }), terms: terms(), rules: future,
+    })
+    expect(r.deductions).toEqual([])
   })
 })
 

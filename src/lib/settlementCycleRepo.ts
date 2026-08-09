@@ -51,6 +51,14 @@ export interface AccruingRow {
   net: number
   lines: number
   held_back: number
+  /* What the last closed period could not pay, and the two facts the
+     withholding rules are applied against. All three came onto the view
+     together: without them the accrual card projected a payment nobody was
+     going to make. */
+  carried_in: number
+  market: string
+  tax_residence: string
+  treaty_on_file: boolean
 }
 
 export interface Run {
@@ -86,6 +94,14 @@ const num = <T>(row: T, keys: readonly string[]): T => {
   return out as T
 }
 
+/* Every numeric column on the accruing view, in one place. It was written out
+   twice and the second copy was the one that fell behind when `carried_in`
+   arrived — a carry-in left as the string "250.00" adds to a net as "531.41250.00". */
+const ACCRUAL_FIGURES = [
+  'gross', 'commission', 'fees', 'refunds', 'net', 'lines',
+  'held_back', 'carried_in', 'minimum_payout', 'hold_days',
+] as const
+
 export async function loadCycleBook(): Promise<CycleBook> {
   const [t, d, a, r] = await Promise.all([
     supabase.from('partner_settlement_terms').select('*').order('partner_id'),
@@ -102,7 +118,7 @@ export async function loadCycleBook(): Promise<CycleBook> {
     terms: grab<Terms>(t, 'the contracts').map(x => num(x, ['minimum_payout', 'hold_days', 'pay_within_days', 'closes_on_day'])),
     due: grab<DueRow>(d, 'what is due').map(x => num(x, ['minimum_payout', 'hold_days', 'pay_within_days'])),
     accruing: grab<AccruingRow>(a, 'what is accruing')
-      .map(x => num(x, ['gross', 'commission', 'fees', 'refunds', 'net', 'lines', 'held_back', 'minimum_payout', 'hold_days'])),
+      .map(x => num(x, ACCRUAL_FIGURES)),
     runs: grab<Run>(r, 'the runs'),
     ...(errors.length ? { loadError: `Some of the settlement cycle did not load (${errors.join('; ')}).` } : {}),
   }
@@ -119,7 +135,7 @@ export async function loadMyAccrual(partnerId: string): Promise<AccruingRow | nu
   const { data } = await supabase.from('settlement_accruing')
     .select('*').eq('partner_id', partnerId).maybeSingle()
   return data
-    ? num(data as AccruingRow, ['gross', 'commission', 'fees', 'refunds', 'net', 'lines', 'held_back', 'minimum_payout', 'hold_days'])
+    ? num(data as AccruingRow, ACCRUAL_FIGURES)
     : null
 }
 
