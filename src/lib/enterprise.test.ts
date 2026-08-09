@@ -419,6 +419,23 @@ describe('approvalImpact', () => {
     const out = approvalImpact(req({ amount: 500000 }), lines, ACCOUNT, [], 0)
     expect(out.some(s => /-/.test(s))).toBe(false)
   })
+
+  /* Held on credit, the first line is the one thing on the list that is no
+     longer true. "The order goes to Nimbus Sensors immediately" printed under a
+     banner saying nothing goes to the seller is worse than printing nothing. */
+  it('does not promise an order that will be held', () => {
+    const out = approvalImpact(req(), lines, ACCOUNT, [centre()], 0, undefined, true)
+    expect(out[0]).toMatch(/Nothing goes to Nimbus Sensors until the marketplace releases the hold/)
+    expect(out[0]).not.toMatch(/immediately/)
+  })
+
+  it('still says everything a hold does not change', () => {
+    const held = approvalImpact(req(), lines, ACCOUNT, [centre()], 45706.8, undefined, true)
+    const free = approvalImpact(req(), lines, ACCOUNT, [centre()], 45706.8, undefined, false)
+    /* The spend is committed either way — the cap moves, the budget drops, and
+       an approver who is told otherwise will approve a second one. */
+    expect(held.slice(1)).toEqual(free.slice(1))
+  })
 })
 
 describe('duplicatesOf', () => {

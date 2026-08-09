@@ -12,7 +12,8 @@
  */
 
 import { supabase } from './supabase'
-import type { Position, Assessment, Security } from './credit'
+import { dueFrom } from './credit'
+import type { Position, Assessment, Security, CreditBand } from './credit'
 
 const POS_NUM = ['credit_limit', 'deposit_held', 'owed', 'committed', 'exposure', 'headroom']
 const ASS_NUM = ['limit_granted', 'deposit_required', 'reserve_pct']
@@ -136,16 +137,20 @@ export async function reassess(
     account_id?: string; partner_id?: string; side: 'buyer' | 'seller'
     band: string; evidence: string; rationale: string; currency: string
     limit_granted?: number | null; deposit_required?: number | null; reserve_pct?: number | null
-    reviewed_by: string; months: number
+    reviewed_by: string
   },
 ): Promise<{ ok: boolean; why?: string }> {
   if (!a.evidence.trim() || !a.rationale.trim()) {
     return { ok: false, why: 'A review needs what you looked at and what you concluded. Either alone is an opinion.' }
   }
   const party = a.account_id ?? a.partner_id!
-  const today = new Date()
-  const next = new Date(today)
-  next.setMonth(next.getMonth() + a.months)
+  const today = new Date().toISOString().slice(0, 10)
+  /* Not a figure this call chooses. The cadence follows the band, `z_stamp_credit_review_due`
+     is what writes it, and this is computed here only so the two copies of the
+     date — the assessment and the billing row — go in agreeing. A reviewer who
+     could pick their own next date could band an account high and then not look
+     at it for a year, which is what the seed did to all of them. */
+  const next = dueFrom(a.band as CreditBand, today)
 
   const { data: prior } = await supabase.from('credit_assessment')
     .select('id').or(`account_id.eq.${party},partner_id.eq.${party}`)
@@ -157,7 +162,7 @@ export async function reassess(
     account_id: a.account_id ?? null,
     partner_id: a.partner_id ?? null,
     side: a.side,
-    reviewed_on: today.toISOString().slice(0, 10),
+    reviewed_on: today,
     reviewed_by: a.reviewed_by,
     evidence: a.evidence.trim(),
     band: a.band,
@@ -166,7 +171,7 @@ export async function reassess(
     limit_granted: a.limit_granted ?? null,
     deposit_required: a.deposit_required ?? null,
     reserve_pct: a.reserve_pct ?? null,
-    next_review: next.toISOString().slice(0, 10),
+    next_review: next,
   })
   if (error) return { ok: false, why: error.message }
 
@@ -180,15 +185,15 @@ export async function reassess(
   if (a.account_id && a.limit_granted != null) {
     await supabase.from('enterprise_billing').update({
       credit_limit: a.limit_granted,
-      credit_reviewed: today.toISOString().slice(0, 10),
-      credit_review_due: next.toISOString().slice(0, 10),
+      credit_reviewed: today,
+      credit_review_due: next,
     }).eq('account_id', a.account_id)
   }
   if (a.partner_id) {
     await supabase.from('partner_security').update({
       reserve_pct: a.reserve_pct ?? 0,
       why: a.rationale.trim(),
-      reviewed_on: today.toISOString().slice(0, 10),
+      reviewed_on: today,
     }).eq('partner_id', a.partner_id)
   }
   return { ok: true }

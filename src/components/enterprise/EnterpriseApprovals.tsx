@@ -20,6 +20,7 @@ import {
 import type { Requisition, Policy, Member, PolicyMoney } from '../../lib/enterprise'
 import { useMarket } from '../../lib/MarketContext'
 import { may, roleName } from '../../lib/enterpriseAdmin'
+import { wouldBreach } from '../../lib/credit'
 
 /* Approvals, from the seat of the person who signs them.
  *
@@ -221,6 +222,14 @@ export function EnterpriseApprovals() {
                 <Td right>
                   <StatusPill status={r.state === 'approved' ? 'approved' : r.state === 'declined' ? 'rejected' : 'draft'} />
                   {r.order_ref && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>{r.order_ref}</div>}
+                  {/* Approved with no order against it is the state a buyer will
+                      otherwise read as "ordered" and wait on. Say so here, where
+                      they look, rather than only on the marketplace's screen. */}
+                  {r.state === 'approved' && r.credit_hold && (
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--warning)', marginTop: '2px' }}>
+                      Held on credit — not yet with the seller
+                    </div>
+                  )}
                 </Td>
               </tr>
             ))}
@@ -382,8 +391,17 @@ function DecideModal({ book, me, policy, req, approve, onClose, onDone }: {
   const [busy, setBusy] = useState(false)
   const lines = book.lines.filter(l => l.requisition_id === req.id)
   const at = book.account ? policyMoneyFor(book.account, book.rates)(req) : null
+  /* Only against the account's own money. A requisition raised in a second
+     currency is judged against the limit at the converted figure, which is what
+     `at` already holds — comparing the raw amount would test rupees against a
+     dirham limit. */
+  const breach = book.credit
+    ? wouldBreach(book.credit, at?.amount ?? Number(req.amount))
+    : null
+
   const impact = book.account
-    ? approvalImpact(req, lines, book.account, book.centres, spentThisYear(book.invoices, book.account), at)
+    ? approvalImpact(req, lines, book.account, book.centres,
+                     spentThisYear(book.invoices, book.account), at, breach?.breach === true)
     : []
 
   const submit = async () => {
@@ -393,7 +411,12 @@ function DecideModal({ book, me, policy, req, approve, onClose, onDone }: {
       currency: book.account?.currency ?? 'USD', rates: book.rates,
     })
     setBusy(false)
-    toast(res.ok ? res.note ?? 'Saved' : res.reason, res.ok ? 'success' : 'error')
+    /* Three outcomes, not two. A requisition held on credit was decided — the
+       list has to refresh or the approver is left looking at a pending row the
+       database has already approved — but it did not go to the seller, so it is
+       not told in the same green as one that did. */
+    toast(res.ok ? res.note ?? 'Saved' : res.reason,
+      res.ok ? (res.held ? 'info' : 'success') : 'error')
     if (res.ok) await onDone()
   }
 
@@ -403,7 +426,11 @@ function DecideModal({ book, me, policy, req, approve, onClose, onDone }: {
       footer={<>
         <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
         <Btn variant={approve ? 'success' : 'danger'} size="sm" onClick={submit} disabled={busy}>
-          {busy ? 'Saving…' : approve ? (req.need === 'none' ? 'Confirm and place the order' : 'Approve and place the order') : 'Decline'}
+          {busy ? 'Saving…'
+            : approve ? (breach?.breach
+                ? 'Approve — it will be held on credit'
+                : req.need === 'none' ? 'Confirm and place the order' : 'Approve and place the order')
+            : 'Decline'}
         </Btn>
       </>}>
       <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
@@ -417,8 +444,22 @@ function DecideModal({ book, me, policy, req, approve, onClose, onDone }: {
                   placeholder={approve ? 'Anything worth recording against the decision' : 'What would need to change for this to be approved'} />
       </FormField>
 
+      {/* Said before the decision, not after it. The database makes the same
+          comparison in `guard_requisition_credit` and is what actually decides;
+          this exists so an approver is not surprised by it. */}
+      {approve && breach?.breach && (
+        <Callout tone="danger" title="This will be approved and held on credit">
+          {book.account?.company ?? 'The account'} is at {money(book.credit!.exposure)} of
+          {' '}{money(book.credit!.credit_limit)}, and this takes it {money(breach.over)} past
+          the limit. The decision is recorded and nothing goes to the seller until the
+          marketplace releases it against a payment.
+        </Callout>
+      )}
+
       {approve ? (
-        <Callout tone="warning" title={req.need === 'none' ? 'This places the order — there is no separate confirmation' : 'Approving places the order — there is no separate confirmation'}>
+        <Callout tone="warning" title={breach?.breach
+          ? 'What approving does, and does not do'
+          : req.need === 'none' ? 'This places the order — there is no separate confirmation' : 'Approving places the order — there is no separate confirmation'}>
           <ul style={{ margin: '4px 0 0 16px' }}>{impact.map((s, i) => <li key={i}>{s}</li>)}</ul>
         </Callout>
       ) : (

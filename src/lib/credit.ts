@@ -100,12 +100,25 @@ export const BAND_TONE: Record<CreditBand, string> = {
   refused: 'rejected',
 }
 
+/**
+ * How long until the band is looked at again, in months.
+ *
+ * The same table as `credit_review_months` in the database, which is what
+ * actually stamps the date. This exists so the screen can say when the next
+ * review will be before the row comes back, and the integration test reconciles
+ * the two — a cadence evaluated in two places is a cadence until somebody edits
+ * one of them.
+ */
+export function reviewMonths(band: CreditBand): number {
+  return band === 'refused' || band === 'high' ? 3 : band === 'medium' ? 6 : 12
+}
+
 /** What the band means for what happens next, rather than what it is called. */
 export const BAND_MEANING: Record<CreditBand, string> = {
   low: 'Buys on terms without a hold. Reviewed annually.',
-  medium: 'Buys on terms and is watched. A large order will be close to the limit.',
+  medium: 'Buys on terms and is watched. A large order will be close to the limit. Reviewed every six months.',
   high: 'Held at the limit and reviewed quarterly. Security may be required.',
-  refused: 'No credit. Everything is paid before it ships.',
+  refused: 'No credit. Everything is paid before it ships. Reviewed quarterly.',
 }
 
 /* ----------------------------------------------------------------- a buyer -- */
@@ -156,19 +169,31 @@ export function wouldBreach(
   return { breach: true, over: Math.round((after - p.credit_limit) * 100) / 100 }
 }
 
+/**
+ * How a figure is written, passed in rather than chosen here.
+ *
+ * This module knows what to say and not how the reader writes money — that is
+ * the market's business and there is one formatter for it. Defaulting to a
+ * plain "1449746.18 INR" is what these sentences did on their first pass, next
+ * to a column that said ₹14,49,746.18, on the same row.
+ */
+export type Fmt = (amount: number, currency: string) => string
+
+const plain: Fmt = (n, c) => `${n.toFixed(2)} ${c}`
+
 /** One sentence for a position, leading with the thing that matters. */
-export function positionLine(p: Position): string {
+export function positionLine(p: Position, fmt: Fmt = plain): string {
   if (p.credit_limit <= 0) return `${p.company} buys on terms against no limit at all.`
   if (isOver(p)) {
-    return `${p.company} is over its limit by ${Math.abs(p.headroom).toFixed(2)} ${p.currency}. `
+    return `${p.company} is over its limit by ${fmt(Math.abs(p.headroom), p.currency)}. `
       + 'The next requisition is held.'
   }
   const u = utilisation(p)
   if (u >= 0.8) {
-    return `${p.company} has ${p.headroom.toFixed(2)} ${p.currency} left of `
-      + `${p.credit_limit.toFixed(2)} — a large order would take it past the limit.`
+    return `${p.company} has ${fmt(p.headroom, p.currency)} left of `
+      + `${fmt(p.credit_limit, p.currency)} — a large order would take it past the limit.`
   }
-  return `${p.company} has ${p.headroom.toFixed(2)} ${p.currency} left of ${p.credit_limit.toFixed(2)}.`
+  return `${p.company} has ${fmt(p.headroom, p.currency)} left of ${fmt(p.credit_limit, p.currency)}.`
 }
 
 /* ---------------------------------------------------------------- a seller -- */
@@ -199,15 +224,15 @@ export function sellerCover(
   }
 }
 
-export function securityLine(s: Security): string {
+export function securityLine(s: Security, fmt: Fmt = plain): string {
   if (s.deposit_held === 0 && s.reserve_pct === 0) {
     return 'Nothing held. Nothing in their record justifies it.'
   }
   const bits: string[] = []
-  if (s.deposit_held > 0) bits.push(`${s.deposit_held.toFixed(2)} ${s.currency} on ${s.deposit_kind}`)
+  if (s.deposit_held > 0) bits.push(`${fmt(s.deposit_held, s.currency)} on ${s.deposit_kind}`)
   if (s.reserve_pct > 0) {
     bits.push(s.reserve_held > 0
-      ? `${s.reserve_pct}% rolling reserve, ${s.reserve_held.toFixed(2)} held`
+      ? `${s.reserve_pct}% rolling reserve, ${fmt(s.reserve_held, s.currency)} held`
       : `${s.reserve_pct}% rolling reserve, nothing accrued yet`)
   }
   return bits.join(' and ') + '.'
@@ -224,6 +249,35 @@ export function reviewIn(a: Pick<Assessment, 'next_review'>, today: string): num
 
 export function reviewOverdue(a: Pick<Assessment, 'next_review'>, today: string): boolean {
   return reviewIn(a, today) < 0
+}
+
+/**
+ * When this review is due, from its band and the day it was made.
+ *
+ * Month arithmetic rather than a day count, because "quarterly" means the same
+ * date three months on and not 91 days later — a quarter that lands on the 5th
+ * one time and the 3rd the next reads like a mistake to whoever is chasing it.
+ *
+ * The day is clamped to the end of the target month, which is what Postgres's
+ * `make_interval` does and what `Date.setUTCMonth` does not: a review made on
+ * 30 November is due on 28 February, and JavaScript on its own would roll that
+ * to 2 March. Two evaluations of one rule disagreeing by two days is small
+ * enough to survive every test that does not go looking for it, which is the
+ * only reason it is worth this much comment.
+ */
+export function dueFrom(band: CreditBand, reviewedOn: string): string {
+  const [y, m, d] = reviewedOn.split('-').map(Number)
+  const months = (m - 1) + reviewMonths(band)
+  const year = y + Math.floor(months / 12)
+  const month = months % 12
+  /* Day 0 of the next month is the last day of this one. */
+  const last = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
+  return new Date(Date.UTC(year, month, Math.min(d, last))).toISOString().slice(0, 10)
+}
+
+/** Whether a review's date is the one its band asks for. */
+export function onCadence(a: Pick<Assessment, 'band' | 'reviewed_on' | 'next_review'>): boolean {
+  return a.next_review === dueFrom(a.band, a.reviewed_on)
 }
 
 /**
@@ -296,7 +350,7 @@ export function creditBook(
  */
 export function creditProblems(
   positions: readonly Position[], assessments: readonly Assessment[],
-  security: readonly Security[], today: string,
+  security: readonly Security[], today: string, fmt: Fmt = plain,
 ): string[] {
   const out: string[] = []
   const byAccount = new Map(assessments.filter(a => a.account_id && !a.superseded_by)
@@ -309,11 +363,12 @@ export function creditProblems(
     }
     const a = byAccount.get(p.account_id)
     if (!a) {
-      out.push(`${p.company} has a limit of ${p.credit_limit} with no assessment behind it.`)
+      out.push(`${p.company} has a limit of ${fmt(p.credit_limit, p.currency)} with no assessment behind it.`)
       continue
     }
     if (a.limit_granted !== null && Math.abs(a.limit_granted - p.credit_limit) > 0.01) {
-      out.push(`${p.company} is held to ${p.credit_limit} and was granted ${a.limit_granted}.`)
+      out.push(`${p.company} is held to ${fmt(p.credit_limit, p.currency)} and was granted `
+        + `${fmt(a.limit_granted, a.currency)}.`)
     }
     if (a.currency !== p.currency) {
       out.push(`${p.company} was assessed in ${a.currency} and trades in ${p.currency}.`)
@@ -324,11 +379,17 @@ export function creditProblems(
     if (reviewOverdue(a, today)) {
       out.push(`${p.company} was due a review on ${a.next_review}.`)
     }
+    /* A band that does not change when the next look happens is a label. This
+       was true of every account until `20260808540000`. */
+    if (!onCadence(a)) {
+      out.push(`${p.company} is banded ${BAND_LABEL[a.band].toLowerCase()} and is next `
+        + `reviewed on ${a.next_review}, not ${dueFrom(a.band, a.reviewed_on)}.`)
+    }
   }
 
   for (const s of security) {
     if (s.deposit_held > 0 && s.deposit_kind === 'none') {
-      out.push(`${s.partner_id} holds a deposit of ${s.deposit_held} recorded as no instrument.`)
+      out.push(`${s.partner_id} holds a deposit of ${fmt(s.deposit_held, s.currency)} recorded as no instrument.`)
     }
     if (s.reserve_held > 0 && s.reserve_pct === 0) {
       out.push(`${s.partner_id} has a reserve held against a rate of zero.`)

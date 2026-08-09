@@ -18,8 +18,24 @@ import type {
 import { currenciesOf , round2} from './money'
 import type { Rate, MarketCurrency } from './money'
 import type { EnterpriseRole } from './enterpriseAdmin'
+import type { Position as CreditPosition } from './credit'
 
 export type Result = Check
+
+/**
+ * What came of a decision.
+ *
+ * `held` is the third outcome, and it needed to be one. An approval on an
+ * account past its credit limit is recorded, is a decision the account was
+ * entitled to make, and does not send the order — so it is neither the success
+ * that says "gone to the seller" nor the failure that says "nothing happened".
+ * Reporting it as a failure left the approver looking at a red toast beside a
+ * requisition the database had already approved, with the list not refreshed
+ * and no next step named.
+ */
+export type Decision =
+  | { ok: true; note?: string; held?: boolean }
+  | { ok: false; reason: string }
 
 export interface AccountBook {
   account: Account | null
@@ -45,14 +61,37 @@ export interface AccountBook {
      against a threshold set in the account's primary one, at the fix in force
      on the day it was raised. */
   rates: Rate[]
+  /* Where the account stands against its credit limit, so an approver is told
+     before they approve rather than after. The view returns exactly one row to
+     an account — its own — and null here means it did not load, not that there
+     is no limit. */
+  credit: CreditPosition | null
   loadError?: string
 }
 
 const EMPTY: AccountBook = {
   account: null, me: null, members: [], roles: [], centres: [], policy: null,
   requisitions: [], lines: [], subscriptions: [], invoices: [], invoiceLines: [],
-  currencies: [], rates: [],
+  currencies: [], rates: [], credit: null,
 }
+
+/* PostgREST sends numerics as strings, and a limit compared as a string is
+   compared alphabetically — "990000" is less than "9167000" as text and greater
+   as a number, which is the account's position inverted. */
+const creditRow = (r: Record<string, unknown>): CreditPosition => ({
+  account_id: String(r.account_id),
+  company: String(r.company),
+  currency: String(r.currency),
+  credit_limit: Number(r.credit_limit),
+  deposit_held: Number(r.deposit_held),
+  owed: Number(r.owed),
+  committed: Number(r.committed),
+  exposure: Number(r.exposure),
+  headroom: Number(r.headroom),
+  over_limit: Boolean(r.over_limit),
+  band: (r.band ?? null) as CreditPosition['band'],
+  next_review: (r.next_review ?? null) as string | null,
+})
 
 /**
  * The whole account in one read.
@@ -65,7 +104,7 @@ export async function loadAccount(): Promise<AccountBook> {
   const { data: session } = await supabase.auth.getUser()
   const uid = session.user?.id ?? null
 
-  const [a, u, ro, c, p, r, l, s, i, il, mc, fx] = await Promise.all([
+  const [a, u, ro, c, p, r, l, s, i, il, mc, fx, cp] = await Promise.all([
     supabase.from('enterprise_accounts').select('*').maybeSingle(),
     supabase.from('enterprise_users').select('*').order('sort_order'),
     supabase.from('enterprise_roles').select('*').order('sort_order'),
@@ -78,6 +117,7 @@ export async function loadAccount(): Promise<AccountBook> {
     supabase.from('enterprise_invoice_lines').select('*').order('sort_order'),
     supabase.from('market_currencies').select('*').order('sort_order'),
     supabase.from('fx_rates').select('*').order('as_of'),
+    supabase.from('account_credit_position').select('*').maybeSingle(),
   ])
 
   const errors: string[] = []
@@ -110,6 +150,9 @@ export async function loadAccount(): Promise<AccountBook> {
     /* PostgREST hands numerics back as strings, and a rate that is a string
        multiplies to NaN — which converts every figure to nothing at all. */
     rates: grab<Rate>(fx, 'exchange rates').map(x => ({ ...x, rate: Number(x.rate) })),
+    /* Every figure through `Number`: PostgREST sends numerics as strings, and a
+       limit compared as a string is compared alphabetically. */
+    credit: cp.data ? creditRow(cp.data as Record<string, unknown>) : null,
     ...(a.error ? { loadError: `Your account did not load (${a.error.message}).` }
       : errors.length ? { loadError: `Some of this did not load (${errors.join('; ')}).` } : {}),
   }
@@ -133,7 +176,7 @@ export async function decideRequisition(
     currency: string
     rates?: readonly Rate[]
   },
-): Promise<Result> {
+): Promise<Decision> {
   /* An approver's limit is a chosen figure in the account's own money, so a
      requisition raised in another currency is converted at the fix in force
      when it was raised before being compared against it. `null` means there is
@@ -153,14 +196,32 @@ export async function decideRequisition(
        out of the requisition id. Nothing ever created the order, so every
        approval left a requisition pointing at an order that did not exist while
        telling the approver it had gone to the seller. The reference now comes
-       back from the database, which writes the order in the same breath. */
-  }).eq('id', req.id).select('id')
+       back from the database, which writes the order in the same breath.
+
+       `credit_hold` comes back on the same read because `guard_requisition_credit`
+       sets it on this very write. Asking for it afterwards would be a second
+       round trip to learn what the first one already decided. */
+  }).eq('id', req.id).select('id,credit_hold,credit_note')
 
   if (error) return { ok: false, reason: friendly(error.message) }
   if (!data?.length) return { ok: false, reason: REFUSED }
 
   if (!approve) {
     return { ok: true, note: `${req.id} declined. Nothing was ordered and the requester has been told why.` }
+  }
+
+  /* Held on credit. The decision is recorded and nothing goes to the seller —
+     not a failure to be retried, and not a success to be reported as ordered.
+     Calling `place_requisition_order` here would only raise, so it is not
+     called: the refusal is already known and re-learning it as an exception
+     would turn the control into an error message. */
+  const decided = data[0] as { credit_hold: boolean | null; credit_note: string | null }
+  if (decided.credit_hold) {
+    return {
+      ok: true, held: true,
+      note: `${req.id} is approved and held on credit — nothing has gone to the seller. `
+        + (decided.credit_note ?? 'Finance can release it.'),
+    }
   }
 
   const placed = await supabase.rpc('place_requisition_order', { p_req_id: req.id })

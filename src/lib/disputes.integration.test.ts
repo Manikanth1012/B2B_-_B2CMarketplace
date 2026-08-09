@@ -135,9 +135,27 @@ describe('the flag and the case, kept in step', () => {
       s.kind === 'invoice' && (s.state === 'open' || s.state === 'overdue'))!
     expect(target, 'no payable invoice to dispute').toBeTruthy()
 
-    await supabase.from('enterprise_invoices')
-      .update({ status: 'disputed', note: 'Integration test — disputed to check a case opens.' })
-      .eq('id', target.ref)
+    /* Appended, not replaced. This overwrote the note, and on an AED invoice
+       that note carries the reverse-charge statement the document is required
+       to make — `guard_invoice_market` refused the whole update, no case was
+       opened, and the assertion below reported "opened no case" as though the
+       trigger were broken. The error was there the entire time and nothing
+       looked at it, which is why it is checked now.
+
+       Which invoice this picks depends on what is payable today, so this is not
+       a test that can afford to assume the one it gets has nothing to say. */
+    const was = await supabase.from('enterprise_invoices')
+      .select('note').eq('id', target.ref).single()
+    const kept = (was.data as { note: string | null } | null)?.note ?? null
+
+    const raised = await supabase.from('enterprise_invoices')
+      .update({
+        status: 'disputed',
+        note: `${kept ? `${kept} ` : ''}Integration test — disputed to check a case opens.`,
+      })
+      .eq('id', target.ref).select('id')
+    expect(raised.error, `disputing ${target.ref} was refused: ${raised.error?.message}`).toBeNull()
+    expect(raised.data?.length, `${target.ref} was not updated by anything`).toBe(1)
 
     const after = await loadDisputeBook()
     const made = after.disputes.find(d => d.kind === 'invoice' && d.subject_ref === target.ref)
@@ -158,9 +176,10 @@ describe('the flag and the case, kept in step', () => {
     expect((data as { status: string }).status,
       `${target.ref} is still disputed after its case was closed`).not.toBe('disputed')
 
-    /* Put it back exactly as it was, so the file runs twice. */
+    /* Put it back exactly as it was, so the file runs twice. Its own note, not
+       null — nulling it is what broke the next run on an invoice that needs one. */
     await supabase.from('enterprise_invoices')
-      .update({ status: target.state, note: null }).eq('id', target.ref)
+      .update({ status: target.state, note: kept }).eq('id', target.ref)
     await supabase.from('disputes').delete().eq('id', made!.id)
   })
 

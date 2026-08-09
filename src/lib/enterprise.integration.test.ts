@@ -18,6 +18,7 @@ import {
   committed, budgetPosition, centreUse, bySeller, spentThisYear, duplicatesOf,
 } from './enterprise'
 import type { Requisition } from './enterprise'
+import { isOver } from './credit'
 
 const ENTERPRISE = { email: 'vikram.shah@smartbuild.in', password: 'enterprise123' }
 const OPERATOR   = { email: 'anika.sharma@aventa.com',   password: 'operator123' }
@@ -306,6 +307,10 @@ describe('a decision, made and put back', () => {
     await signIn(OPERATOR.email, OPERATOR.password)
     await supabase.from('enterprise_requisitions').update({
       state: 'pending', decided_by: null, decided_on: null, decision_note: null, order_ref: null,
+      /* And the hold, which the approval may have set. Leaving it on a pending
+         requisition would carry into the next run as a requisition held before
+         anybody decided anything. */
+      credit_hold: false, credit_note: null,
     }).eq('id', target.id)
 
     /* And the order the approval placed. Clearing `order_ref` without removing
@@ -325,7 +330,15 @@ describe('a decision, made and put back', () => {
     await signOut()
   })
 
-  it('approves it, stamps who decided, and places the order in the same write', async () => {
+  /* Approving *is* ordering — unless the account is past its credit limit, in
+     which case approving is approving and the order waits for finance. Both are
+     asserted here rather than one, because which happens is a fact about the
+     demo account's balance today and not about the code. The demo account is
+     currently over its limit, so it is the hold branch that runs; asserting the
+     order unconditionally is what this test did, and it started failing the day
+     the limits went in — correctly. */
+  it('approves it, stamps who decided, and either orders or holds', async () => {
+    const over = book.credit ? isOver(book.credit) : false
     const res = await decideRequisition({
       req: target, me: book.me!, policy: book.policy!, approve: true, note: 'Approved for the integration test.',
       currency: book.account!.currency,
@@ -337,7 +350,17 @@ describe('a decision, made and put back', () => {
     expect(saved.state).toBe('approved')
     expect(saved.decided_by).toBe(book.me!.id)
     expect(saved.decided_on).toBeTruthy()
-    expect(saved.order_ref).toBeTruthy()
+
+    if (over) {
+      expect(res.ok && res.held, 'the account is over its limit and this was not held').toBe(true)
+      expect(saved.credit_hold).toBe(true)
+      expect(saved.order_ref, 'a held requisition went to the seller').toBeFalsy()
+      const { data } = await supabase.from('orders').select('id').eq('requisition_id', target.id)
+      expect((data ?? []).length, 'an order exists against a held requisition').toBe(0)
+    } else {
+      expect(res.ok && res.held, 'this was held on an account inside its limit').toBeFalsy()
+      expect(saved.order_ref, 'approving did not place the order').toBeTruthy()
+    }
   })
 
   it('refuses to re-open what it just decided', async () => {

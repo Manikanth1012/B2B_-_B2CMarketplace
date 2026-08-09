@@ -41,6 +41,9 @@ export function OperatorCredit() {
   const [book, setBook] = useState<CreditBook | null>(null)
   const [tab, setTab] = useState<'buyers' | 'sellers'>('buyers')
   const [releasing, setReleasing] = useState<string | null>(null)
+  /* Above the loading guard: `useMarket` is a hook, and a hook after an early
+     return runs on some renders and not others. */
+  const { fmtIn } = useMarket()
 
   const reload = useCallback(async () => setBook(await loadCreditBook()), [])
   useEffect(() => { void reload() }, [reload])
@@ -53,7 +56,7 @@ export function OperatorCredit() {
   }
 
   const today = new Date().toISOString().slice(0, 10)
-  const problems = creditProblems(book.positions, book.assessments, book.security, today)
+  const problems = creditProblems(book.positions, book.assessments, book.security, today, fmtIn)
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -240,7 +243,7 @@ function Buyers({ book, today }: { book: CreditBook; today: string }) {
               <Td style={{ maxWidth: '46ch' }}>
                 {a && <StatusPill status={BAND_TONE[a.band]} label={BAND_LABEL[a.band]} />}
                 <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '3px', lineHeight: 1.5 }}>
-                  {positionLine(p)}
+                  {positionLine(p, fmtIn)}
                 </div>
                 {a && (
                   <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '3px', lineHeight: 1.5 }}>
@@ -306,7 +309,7 @@ function Sellers({ book }: { book: CreditBook }) {
               </Td>
               <Td style={{ maxWidth: '52ch' }}>
                 <div style={{ fontSize: 'var(--text-xs)', lineHeight: 1.55 }}>
-                  {sec ? securityLine(sec) : 'Never assessed.'}
+                  {sec ? securityLine(sec, fmtIn) : 'Never assessed.'}
                 </div>
                 {a && (
                   <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '3px', lineHeight: 1.5 }}>
@@ -350,7 +353,7 @@ function ReleaseDialog({ id, book, onClose, onDone }: {
         </Btn>
       </>}>
       {p && (
-        <Callout tone={isOver(p) ? 'danger' : 'warning'} title={positionLine(p)}>
+        <Callout tone={isOver(p) ? 'danger' : 'warning'} title={positionLine(p, fmtIn)}>
           <div style={{ lineHeight: 1.6 }}>
             Releasing this adds {fmtIn(h.amount, h.currency)}, taking the account to{' '}
             {fmtIn(p.exposure + h.amount, p.currency)} against a limit of {fmtIn(p.credit_limit, p.currency)}.

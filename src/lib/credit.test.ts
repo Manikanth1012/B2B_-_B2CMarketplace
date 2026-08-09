@@ -3,6 +3,7 @@ import {
   BAND_LABEL, BAND_TONE, BAND_MEANING, utilisation, isOver, pressure, PRESSURE_TONE,
   wouldBreach, positionLine, reserveOn, sellerCover, securityLine,
   reviewIn, reviewOverdue, reviewQueue, creditBook, creditProblems,
+  reviewMonths, dueFrom, onCadence,
 } from './credit'
 import type { Position, Assessment, Security, CreditBand } from './credit'
 
@@ -164,7 +165,7 @@ describe('the sentence on a position', () => {
 
   it('is plain when there is room', () => {
     expect(positionLine(pos({ exposure: 200, credit_limit: 1000, headroom: 800 })))
-      .toBe('SmartBuild Ltd has 800.00 INR left of 1000.00.')
+      .toBe('SmartBuild Ltd has 800.00 INR left of 1000.00 INR.')
   })
 
   it('says plainly when there is no limit at all', () => {
@@ -213,7 +214,7 @@ describe('a seller’s security', () => {
     const l = securityLine(sec({ deposit_held: 5000, deposit_kind: 'bank guarantee', reserve_pct: 10, reserve_held: 400 }))
     expect(l).toContain('bank guarantee')
     expect(l).toContain('10% rolling reserve')
-    expect(l).toContain('400.00 held')
+    expect(l).toContain('400.00 USD held')
   })
 
   /* A rate set today has accrued nothing yet, and saying "0.00 held" reads as a
@@ -221,6 +222,46 @@ describe('a seller’s security', () => {
   it('distinguishes a reserve that has not accrued from one holding nothing', () => {
     expect(securityLine(sec({ reserve_pct: 10, reserve_held: 0 })))
       .toMatch(/nothing accrued yet/)
+  })
+})
+
+/* The sentences say what to say; the market says how money is written. Passing
+   the formatter in is what stopped "1449746.18 INR" appearing on the same row
+   as a column that read ₹14,49,746.18. */
+describe('who writes the money in these sentences', () => {
+  const rupees = (n: number, c: string) =>
+    `${c === 'INR' ? '₹' : c + ' '}${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+  it('uses the formatter it is given, on a position', () => {
+    const l = positionLine(pos({ exposure: 2000, credit_limit: 1000, headroom: -1000 }), rupees)
+    expect(l).toContain('₹1,000.00')
+    expect(l).not.toContain('1000.00 INR')
+  })
+
+  it('uses it on both figures, not just the first', () => {
+    const l = positionLine(pos({ exposure: 200, credit_limit: 1000, headroom: 800 }), rupees)
+    expect(l).toContain('₹800.00')
+    expect(l).toContain('₹1,000.00')
+  })
+
+  it('uses it on what is held from a seller', () => {
+    const l = securityLine(sec({ deposit_held: 5000, deposit_kind: 'bank guarantee',
+      reserve_pct: 10, reserve_held: 400, currency: 'INR' }), rupees)
+    expect(l).toContain('₹5,000.00')
+    expect(l).toContain('₹400.00')
+  })
+
+  it('uses it in the problems too, where a bare number is worst', () => {
+    const orphan = pos({ account_id: 'ENT-9999', company: 'Nobody Ltd', credit_limit: 990000 })
+    const out = creditProblems([orphan], [], [], TODAY, rupees)
+    expect(out[0]).toContain('₹9,90,000.00')
+  })
+
+  /* Without one it still says something readable rather than throwing — these
+     run in tests and in the database checks, where there is no market. */
+  it('falls back to the amount and the code', () => {
+    expect(positionLine(pos({ exposure: 200, credit_limit: 1000, headroom: 800 })))
+      .toContain('800.00 INR')
   })
 })
 
@@ -236,6 +277,55 @@ describe('when the review is due', () => {
 
   it('is not overdue on the day', () => {
     expect(reviewOverdue(ass({ next_review: TODAY }), TODAY)).toBe(false)
+  })
+})
+
+/* The band decided how much they could have and then decided nothing else,
+   until `20260808540000`. Every account was a year out whatever it was banded,
+   and a risk rating that does not change what happens next is a label. */
+describe('how often a band is looked at again', () => {
+  it('looks at the ones that worry us four times as often', () => {
+    expect(reviewMonths('high')).toBe(3)
+    expect(reviewMonths('refused')).toBe(3)
+    expect(reviewMonths('medium')).toBe(6)
+    expect(reviewMonths('low')).toBe(12)
+  })
+
+  it('separates every band from the one below it', () => {
+    const bands: CreditBand[] = ['refused', 'high', 'medium', 'low']
+    for (let i = 1; i < bands.length; i++) {
+      expect(reviewMonths(bands[i]), `${bands[i]} against ${bands[i - 1]}`)
+        .toBeGreaterThanOrEqual(reviewMonths(bands[i - 1]))
+    }
+    expect(reviewMonths('high')).toBeLessThan(reviewMonths('low'))
+  })
+
+  /* Months, not days. A quarter that lands on the 5th one time and the 3rd the
+     next reads like a mistake to whoever is chasing it. */
+  it('lands on the same day of the month', () => {
+    expect(dueFrom('high', '2026-08-08')).toBe('2026-11-08')
+    expect(dueFrom('medium', '2026-08-08')).toBe('2027-02-08')
+    expect(dueFrom('low', '2026-08-08')).toBe('2027-08-08')
+  })
+
+  it('carries a quarter over a year end', () => {
+    expect(dueFrom('high', '2026-12-15')).toBe('2027-03-15')
+  })
+
+  /* Clamped to the end of the month, which is what `make_interval` does and
+     what `setUTCMonth` does not — it would roll 30 November plus a quarter to
+     2 March. Every one of these was checked against the database. */
+  it('clamps to the end of a shorter month, the way Postgres does', () => {
+    expect(dueFrom('high', '2026-11-30')).toBe('2027-02-28')
+    expect(dueFrom('medium', '2026-12-31')).toBe('2027-06-30')
+    expect(dueFrom('medium', '2026-08-31')).toBe('2027-02-28')
+    expect(dueFrom('low', '2024-02-29')).toBe('2025-02-28')
+  })
+
+  it('knows a date that is on its band and one that is not', () => {
+    expect(onCadence(ass({ band: 'low', next_review: '2027-08-08' }))).toBe(true)
+    expect(onCadence(ass({ band: 'high', next_review: '2027-08-08' }))).toBe(false)
+    expect(onCadence(ass({ band: 'high', next_review: '2026-11-08' }))).toBe(true)
   })
 })
 

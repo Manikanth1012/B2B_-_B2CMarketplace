@@ -121,6 +121,14 @@ export interface Requisition {
   decision_note: string | null
   order_ref: string | null
   po_ref: string | null
+  /* Approved, and stopped before the seller. Set by `guard_requisition_credit`
+     when the approval would take the account past its limit; the note carries
+     the arithmetic that held it, because "held" with no figures is a refusal
+     the account cannot argue with. Optional on the type rather than required:
+     the columns arrived after this interface did, and a row read before they
+     existed is still a requisition. */
+  credit_hold?: boolean | null
+  credit_note?: string | null
   sort_order: number
 }
 
@@ -514,14 +522,22 @@ export function validateDecision(
 export function approvalImpact(
   req: Requisition, lines: ReqLine[], account: Account, centres: CostCentre[], spentYear: number,
   at?: PolicyMoney | null,
+  /* Whether this one will be held on credit. The rest of the list is true
+     either way — the spend is committed, the caps move, the budget drops —
+     but the first line is not, and saying "the order goes to Nimbus Sensors
+     immediately" above a banner saying nothing goes to the seller is worse
+     than saying nothing at all. */
+  held = false,
 ): string[] {
   const c = account.currency
   const sellers = [...new Set(lines.map(l => l.seller))]
   const out: string[] = []
   out.push(
-    sellers.length === 1
-      ? `The order goes to ${sellers[0]} immediately — this is not a quote.`
-      : `Orders go to ${sellers.join(' and ')} immediately — this is not a quote.`,
+    held
+      ? `Nothing goes to ${sellers.join(' and ')} until the marketplace releases the hold.`
+      : sellers.length === 1
+        ? `The order goes to ${sellers[0]} immediately — this is not a quote.`
+        : `Orders go to ${sellers.join(' and ')} immediately — this is not a quote.`,
   )
   const asked = money(req.amount, req.currency)
   out.push(
