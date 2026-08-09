@@ -167,6 +167,52 @@ describe('what a partner buys, and how it comes off what they are owed', () => {
     expect((a.adjustment_detail as unknown[]).length).toBe((b.adjustment_detail as unknown[]).length)
   })
 
+  /* Four disputes argue about TrackWise's July net, one of them still open, and
+     the netting quietly took $112.45 off the figure they are arguing about. */
+  it('does not take wholesale off a statement the seller is disputing', async () => {
+    const { data } = await supabase.from('settlement_statements')
+      .select('id, disputed, net, adjustments, status')
+      .eq('disputed', true).not('status', 'in', '("approved","paid")')
+    const contested = (data ?? []) as Record<string, unknown>[]
+    expect(contested.length, 'no disputed statement on file, so this rule is not exercised')
+      .toBeGreaterThan(0)
+
+    for (const st of contested) {
+      const { data: took } = await supabase.from('partner_charge_recovery')
+        .select('charge_id').eq('statement_id', st.id)
+      expect(took ?? [], `${st.id} is under dispute and wholesale came off it anyway`).toEqual([])
+
+      /* And a second pass does not quietly do it either. */
+      const { error } = await supabase.rpc('apply_settlement_adjustments', { p_statement: st.id })
+      expect(error, error?.message).toBeNull()
+      const { data: after } = await supabase.from('partner_charge_recovery')
+        .select('charge_id').eq('statement_id', st.id)
+      expect(after ?? []).toEqual([])
+    }
+
+    /* The charge is still a fact about the month — it waits rather than
+       vanishing. */
+    const held = bills.filter(c => c.partner_id === 'PTR-1011' && c.recovered < c.gross)
+    expect(held.length, 'the charge held off a disputed statement is not outstanding')
+      .toBeGreaterThan(0)
+  }, 30_000)
+
+  /* No claim may be worth more than the thing it is against. Checked here as
+     well as in `disputes.integration`, because it was this file's feature that
+     broke it. */
+  it('leaves every statement worth at least what is claimed against it', async () => {
+    const [{ data: d }, { data: st }] = await Promise.all([
+      supabase.from('disputes').select('id, subject_ref, amount').eq('kind', 'statement'),
+      supabase.from('settlement_statements').select('id, net'),
+    ])
+    const netOf = new Map(((st ?? []) as { id: string; net: string }[])
+      .map(r => [r.id, Number(r.net)]))
+    const over = ((d ?? []) as { id: string; subject_ref: string; amount: string }[])
+      .filter(x => netOf.has(x.subject_ref) && Number(x.amount) > netOf.get(x.subject_ref)! + 0.02)
+      .map(x => `${x.id} claims ${x.amount} against ${x.subject_ref} worth ${netOf.get(x.subject_ref)}`)
+    expect(over, over.join('; ')).toEqual([])
+  })
+
   /* ------------------------------------------------------- what a seller can do */
 
   it('lets a seller take a product, and freezes its price on the way in', async () => {
