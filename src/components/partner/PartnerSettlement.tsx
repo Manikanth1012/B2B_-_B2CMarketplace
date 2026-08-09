@@ -30,6 +30,10 @@ import { loadMyTerms, loadMyAccrual, loadMyWithholding } from '../../lib/settlem
 import type { AccruingRow, WithholdingBook } from '../../lib/settlementCycleRepo'
 import { byStatute, certificateLine } from '../../lib/withholding'
 import type { Rule } from '../../lib/withholding'
+import { accruing as loadWholesaleAccruing } from '../../lib/wholesaleRepo'
+import type { WholesaleAccruing } from '../../lib/wholesaleRepo'
+import { netOff } from '../../lib/wholesale'
+const round2 = (n: number) => Math.round(n * 100) / 100
 import { loadMyNotes, disputeNote } from '../../lib/creditNotesRepo'
 import { line, netOf, STATE_LABEL, STATE_TONE, STATE_MEANING } from '../../lib/creditNotes'
 import type { Note } from '../../lib/creditNotes'
@@ -75,6 +79,7 @@ export function PartnerSettlement({ partnerId }: { partnerId: string }) {
   /* Above the loading guard: `usePaging` is a hook, and a hook after an
      early return runs on some renders and not others. */
   const stmtPage = usePaging(snap?.statements ?? [])
+
 
   if (!snap || !record) {
     return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
@@ -476,13 +481,20 @@ function MyCycle({ partnerId, planName, fees }: {
      this card is projecting what the next close will take, which is decided by
      the rules in force on the day it closes. */
   const [rules, setRules] = useState<Rule[]>([])
+  /* What this seller has taken from the marketplace. It comes off the same
+     payment this card projects, so a projection without it is wrong by
+     however much wholesale they are running. */
+  const [wholesale, setWholesale] = useState<WholesaleAccruing | null>(null)
   const [ready, setReady] = useState(false)
 
   useEffect(() => {
     let live = true
-    void Promise.all([loadMyTerms(partnerId), loadMyAccrual(partnerId), loadMyWithholding(partnerId)])
-      .then(([t, a, w]) => {
-        if (live) { setTerms(t); setAccrual(a); setRules(w.rules); setReady(true) }
+    void Promise.all([
+      loadMyTerms(partnerId), loadMyAccrual(partnerId), loadMyWithholding(partnerId),
+      loadWholesaleAccruing(partnerId).catch(() => null),
+    ])
+      .then(([t, a, w, wh]) => {
+        if (live) { setTerms(t); setAccrual(a); setRules(w.rules); setWholesale(wh); setReady(true) }
       })
     return () => { live = false }
   }, [partnerId])
@@ -511,6 +523,21 @@ function MyCycle({ partnerId, planName, fees }: {
      tax at source and whatever the last period could not pay — a seller was
      shown a figure nobody was going to transfer. */
   const outcome = accrual ? projectPayout({ accruing: accrual, terms, rules }) : null
+
+  /* Wholesale is not a deduction from what was earned. It is a separate debt
+     that comes off the same payment, so it sits after `projectPayout` rather
+     than inside it — and it is bounded by what the payment is, because you
+     cannot net off against money that is not there. */
+  const wholesaleDue = round2((wholesale?.this_period ?? 0) + (wholesale?.brought_forward ?? 0))
+  const afterWholesale = outcome
+    ? (() => {
+        const out = netOff({
+          room: outcome.payable,
+          charges: [{ id: 'wholesale', gross: wholesaleDue, recovered: 0 }],
+        })
+        return { left: round2(outcome.payable - out.recovered), taken: out.recovered, carried: out.carried }
+      })()
+    : { left: 0, taken: 0, carried: 0 }
 
   return (
     <SectionCard
@@ -574,11 +601,28 @@ function MyCycle({ partnerId, planName, fees }: {
             {accrual.carried_in > 0 && (
               <Row label="Carried in from the last period" value={`+ ${fmtIn(accrual.carried_in, 'USD')}`} />
             )}
+            {/* Listed here because the figure below is what lands, and a seller
+                on a $3,900 wholesale pack reading a payable that ignores it is
+                reading a number thousands of dollars adrift of their bank. */}
+            {wholesaleDue > 0 && (
+              <Row label={`Wholesale you have taken${afterWholesale.carried > 0
+                ? ` — ${fmtIn(wholesaleDue, 'USD')} due, and this is all the period covers` : ''}`}
+                   value={`− ${fmtIn(afterWholesale.taken, 'USD')}`} />
+            )}
+
             <Row
               label={outcome.belowMinimum ? 'Would carry forward' : 'Payable if it closed today'}
               value={outcome.belowMinimum
                 ? `${fmtIn(outcome.carriedOut, 'USD')} — under the minimum`
-                : fmtIn(outcome.payable, 'USD')} />
+                : fmtIn(afterWholesale.left, 'USD')} />
+
+            {afterWholesale.carried > 0 && (
+              <p style={{ fontSize: '11px', color: 'var(--warning)', marginTop: '8px', lineHeight: 1.5 }}>
+                {fmtIn(afterWholesale.carried, 'USD')} of wholesale is more than this period earned. It is
+                not written off and it is not invoiced — it comes off the next settlement that has room
+                for it.
+              </p>
+            )}
 
             {/* Not lost, and not the marketplace's. Without this a seller reads
                 the deduction as a fee somebody has taken off them. */}

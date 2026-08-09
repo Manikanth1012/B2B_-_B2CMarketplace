@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   Star,
-  LayoutDashboard, Route, Package, ShoppingCart, Wallet, FileText,
+  LayoutDashboard, Route, Package, ShoppingCart, ShoppingBag, Wallet, FileText,
   BarChart3, Plug, LifeBuoy, Users, History, User,
   Search, Bell as BellIcon, LogOut, Menu, X, Store, BookOpen, RotateCcw, Gift,
   KeyRound, Monitor, Code2
@@ -38,6 +38,7 @@ const NAV_SECTIONS: { label: string; items: { id: PartnerView; label: string; ic
     label: 'Trade',
     items: [
       { id: 'pt-orders', label: 'Orders', icon: <ShoppingCart size={18} /> },
+      { id: 'pt-wholesale', label: 'Wholesale', icon: <ShoppingBag size={18} /> },
       { id: 'pt-refunds', label: 'Refunds', icon: <RotateCcw size={18} /> },
       { id: 'pt-rewards', label: 'Rewards', icon: <Gift size={18} /> },
       { id: 'pt-settlement', label: 'Settlement', icon: <Wallet size={18} /> },

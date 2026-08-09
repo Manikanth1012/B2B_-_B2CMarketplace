@@ -41,6 +41,7 @@ export type PartnerView =
   | 'pt-listings'
   | 'pt-newlisting'
   | 'pt-orders'
+  | 'pt-wholesale'
   | 'pt-settlement'
   | 'pt-plan'
   | 'pt-performance'

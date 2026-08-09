@@ -7,6 +7,7 @@ import { loadSellerStatements } from '../../lib/ledgerRepo'
 import type { SellerStatements } from '../../lib/ledgerRepo'
 import { reconcileStatement, revenueSplit, toCsv } from '../../lib/ledger'
 import type { Statement } from '../../lib/ledger'
+import { adjustmentNoun } from '../../lib/wholesale'
 
 /* The seller's half of the reconciliation.
  *
@@ -183,7 +184,8 @@ export function PartnerStatementLines({ partnerId }: { partnerId: string }) {
             {Number(statement.withholding) > 0 && Number(statement.adjustments ?? 0) !== 0 && <>, and</>}
             {Number(statement.adjustments ?? 0) !== 0 && (
               <> {Number(statement.adjustments) > 0 ? 'a credit' : 'a debit'} of{' '}
-              ${fmtMoney(Math.abs(Number(statement.adjustments)))} was applied by note — an adjustment that
+              ${fmtMoney(Math.abs(Number(statement.adjustments)))} was applied{' '}
+              {adjustmentNoun(statement.adjustment_detail)} — an adjustment that
               is not about any one sale, so it belongs to no line</>
             )}.</>
           )}
