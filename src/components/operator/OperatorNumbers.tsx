@@ -386,9 +386,17 @@ function NumberDetail({ n, onClose, onChanged }: {
           {facts.map(([k, v]) => (
             <tr key={k}>
               <Td style={{ fontWeight: 600, color: 'var(--text-secondary)', width: '38%' }}>{k}</Td>
-              {/* Declared, never blank. */}
-              <Td right style={{ color: v ? 'var(--text)' : 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>
-                {v ?? 'Not recorded'}
+              {/* Widthed on purpose. `Td right` means "this is a figure" and
+                  carries `nowrap` with it, which is right for $41,871.56 and
+                  wrong for "Nimbus Occupancy sensor SKU5004-0000001, at Priya
+                  Raman, from ORD-881044" — that ran the table past the edge of
+                  its own modal and clipped every value in the list. A cell with
+                  a width has been told it must wrap, and does. */}
+              <Td right style={{ color: v?.trim() ? 'var(--text)' : 'var(--text-tertiary)', fontSize: 'var(--text-sm)', width: '62%' }}>
+                {/* Declared, never blank — and an empty string is blank. `??`
+                    alone let `market: ''` render as nothing at all, which is
+                    the state this line exists to rule out. */}
+                {v?.trim() ? v : 'Not recorded'}
               </Td>
             </tr>
           ))}

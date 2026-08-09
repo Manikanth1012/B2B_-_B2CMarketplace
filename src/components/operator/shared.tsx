@@ -180,16 +180,69 @@ export function StatCard({ label, value, sublabel, color }: { label: string; val
 /**
  * A column heading.
  *
- * A bare string keeps the old rule — first column left, every other right,
- * which is correct when every other column is a figure. Where one is not (a
- * "Why", a note, a reason) the alignment has to be sayable, or the header sits
- * at one edge of the column and its prose at the other.
+ * An explicit `{ label, align }` still wins. A bare string no longer guesses:
+ * it takes the alignment of the cells underneath it, read off the first row —
+ * see `alignmentsFrom` below.
  */
 export type Header = string | { label: string; align: 'left' | 'right' }
 
 const headerLabel = (h: Header): string => (typeof h === 'string' ? h : h.label)
-const headerAlign = (h: Header, i: number): 'left' | 'right' =>
-  typeof h === 'string' ? (i === 0 ? 'left' : 'right') : h.align
+
+/**
+ * Where each header sits, taken from the column rather than from its position.
+ *
+ * The rule used to be "first column left, every other right". That is correct
+ * for a table of figures and wrong for every other table in the app: `Td`
+ * left-aligns unless it is told `right`, so a heading over a name, a seller or
+ * a status pill sat hard against the right edge with its own data at the left.
+ * "Waiting for stock" was the reported case — SELLER floating above nothing,
+ * three columns away from the sellers — but it was never one table. Ten of the
+ * hundred and forty-four say their alignment; the rest inherited a default
+ * that only ever suited a minority of them.
+ *
+ * So the header asks the cells. `Td right` already means "this is a figure",
+ * which is the same fact the header needs, and it is stated once at the cell
+ * where the data is rather than repeated in a list of strings at the top where
+ * it can fall out of step.
+ *
+ * Read off the first row whose cell count matches the headers. A row with a
+ * `colSpan` — the empty states, mostly — has no per-column answer to give, and
+ * a row with a conditional cell in it has a different shape from the header
+ * list; either would map the wrong cell onto the wrong heading, so both are
+ * skipped in favour of the next row that lines up. If no row does, or there
+ * are no rows at all, everything is left: the alignment a `Td` with nothing
+ * said about it would take.
+ *
+ * Fragments are descended into rather than counted. Several tables emit
+ * `<><tr>…</tr>{expanded && <tr>…</tr>}</>` per record, and a walker that
+ * stopped at the fragment would find two `<tr>`s where it wanted ten cells,
+ * conclude nothing, and fall back to left — which on the revenue-share table
+ * put nine headings on the wrong side of nine columns of figures.
+ */
+function rowsIn(children: React.ReactNode): React.ReactElement[] {
+  const out: React.ReactElement[] = []
+  for (const node of React.Children.toArray(children)) {
+    if (!React.isValidElement(node)) continue
+    if (node.type === React.Fragment) {
+      out.push(...rowsIn((node.props as { children?: React.ReactNode }).children))
+    } else {
+      out.push(node)
+    }
+  }
+  return out
+}
+
+function alignmentsFrom(children: React.ReactNode, columns: number): ('left' | 'right')[] {
+  for (const row of rowsIn(children)) {
+    const cells = React.Children.toArray(
+      (row.props as { children?: React.ReactNode }).children,
+    ).filter(React.isValidElement)
+    if (cells.length !== columns) continue
+    return cells.map(c =>
+      (c.props as { right?: boolean }).right ? 'right' : 'left')
+  }
+  return Array.from({ length: columns }, () => 'left' as const)
+}
 
 /**
  * Side padding, chosen by how many columns have to share the width.
@@ -203,6 +256,7 @@ const padFor = (columns: number): string =>
   columns >= 10 ? '6px' : columns >= 8 ? '7px' : '10px'
 
 export function Table({ headers, children }: { headers: Header[]; children: React.ReactNode }) {
+  const fromCells = alignmentsFrom(children, headers.length)
   return (
     <div style={{ overflowX: 'auto' }}>
       <table style={{
@@ -220,7 +274,8 @@ export function Table({ headers, children }: { headers: Header[]; children: Reac
           <tr style={{ borderBottom: '2px solid var(--border)' }}>
             {headers.map((h, i) => (
               <th key={i} style={{
-                textAlign: headerAlign(h, i), padding: '10px var(--cell-pad, 10px)',
+                textAlign: typeof h === 'string' ? fromCells[i] : h.align,
+                padding: '10px var(--cell-pad, 10px)',
                 fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-tertiary)',
                 textTransform: 'uppercase', letterSpacing: '0.04em', lineHeight: 1.25,
                 /* A header may wrap between its words — "SETTLEMENT / PLAN" is
@@ -373,7 +428,14 @@ export function Modal({ open, onClose, title, children, footer }: ModalProps) {
             <X size={20} />
           </button>
         </div>
-        <div style={{ padding: '20px', overflowY: 'auto', flex: 1 }}>
+        {/* `minWidth: 0` is what keeps the 640px above from being a suggestion.
+            A column flex item's minimum width is `auto`, meaning "never narrower
+            than my content" — so one unwrappable cell inside a table in here
+            pushed the whole dialog wider than the window, and every value in it
+            was clipped at the right-hand edge with no way to scroll to them. The
+            table already carries its own `overflow-x`; this is what lets it use
+            it rather than shoving its container open. */}
+        <div style={{ padding: '20px', overflowY: 'auto', flex: 1, minWidth: 0 }}>
           {children}
         </div>
         {footer && (
