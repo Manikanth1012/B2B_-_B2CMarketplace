@@ -4,8 +4,7 @@ import {
   ladderFor, rungOf, rungState, nextRung,
   rateFor, worthIn, ladderIn, returnRate, earnLine, pointsFor,
   earnOnSpend, reversalOf,
-  fmtPoints, fmtMoney,
-} from './loyalty'
+  fmtPoints, fmtMoney, earnedOn, withinMonthlyCap, reversalValueOf } from './loyalty'
 import type { Member, Programme, RedeemOption, PointRate, Threshold } from './loyalty'
 
 const PROGRAMME: Programme = {
@@ -473,5 +472,84 @@ describe('earnLine', () => {
     /* The stored tier prose used to say "Earn 1.5 points per $1", which is
        wrong in three of the four currencies the marketplace trades in. */
     for (const r of RATES) expect(earnLine(r, 1.5)).not.toMatch(/[$₹]|AED|KSh/)
+  })
+})
+
+/* Three things multiply and they are easy to mistake for one. I reported
+   thirteen ledger rows as "three times or more what the rate tables allow" by
+   comparing against the currency rate alone — on that arithmetic a Gold
+   customer during a triple-points window looks like a fraud, and the rows that
+   stood out loudest were the ones where the promotion was working. */
+describe('what an order earns under a rule', () => {
+  const inr: PointRate = { currency: 'INR', earn_per_unit: 0.01, per_unit: 1 }
+  const plain = { rate: 1.0, bonus: null, cap_per_order: null }
+
+  it('multiplies the currency rate, the rule rate and the tier together', () => {
+    /* ₹10,000 at a point per hundred is 100; doubled by the rule is 200; Gold's
+       1.5x makes 300. Checking the whole chain rather than each link, because
+       the defect was a caller that used one of the three. */
+    expect(earnedOn({ amount: 10000, rate: inr, rule: { ...plain, rate: 2.0 }, multiplier: 1.5 }))
+      .toBe(300)
+  })
+
+  it('is the base earn when the rule and the tier are both neutral', () => {
+    expect(earnedOn({ amount: 10000, rate: inr, rule: plain, multiplier: 1 })).toBe(100)
+  })
+
+  it('gives a Gold member more than a Bronze one on the same money', () => {
+    const gold = earnedOn({ amount: 10000, rate: inr, rule: plain, multiplier: 1.5 })
+    const bronze = earnedOn({ amount: 10000, rate: inr, rule: plain, multiplier: 1.0 })
+    expect(gold).toBeGreaterThan(bronze)
+  })
+
+  it('adds a flat bonus on top of the multiplied figure', () => {
+    expect(earnedOn({ amount: 10000, rate: inr, rule: { ...plain, bonus: 750 }, multiplier: 1 }))
+      .toBe(850)
+  })
+
+  it('stops at the per-order cap', () => {
+    expect(earnedOn({ amount: 999999, rate: inr, rule: { ...plain, cap_per_order: 1200 }, multiplier: 2 }))
+      .toBe(1200)
+  })
+
+  /* Floored, not rounded — the rule `pointsFor` already establishes, inherited
+     rather than restated so the two cannot disagree. */
+  it('floors rather than rounding, like the base rate does', () => {
+    expect(earnedOn({ amount: 3188.79, rate: { ...inr, earn_per_unit: 0.01 }, rule: plain, multiplier: 1.25 }))
+      .toBe(39)
+  })
+
+  it('never returns less than nothing', () => {
+    expect(earnedOn({ amount: 0, rate: inr, rule: plain, multiplier: 1.5 })).toBe(0)
+    expect(earnedOn({ amount: 100, rate: null, rule: plain, multiplier: 1.5 })).toBe(0)
+  })
+})
+
+describe('a monthly ceiling', () => {
+  it('lets the first orders earn in full', () => {
+    expect(withinMonthlyCap(500, 0, 5000)).toBe(500)
+  })
+
+  it('takes only what is left once the month is nearly spent', () => {
+    expect(withinMonthlyCap(500, 4800, 5000)).toBe(200)
+  })
+
+  it('gives nothing once the ceiling is reached, rather than a negative', () => {
+    expect(withinMonthlyCap(500, 5000, 5000)).toBe(0)
+    expect(withinMonthlyCap(500, 6000, 5000)).toBe(0)
+  })
+
+  it('is no ceiling at all where the rule sets none', () => {
+    expect(withinMonthlyCap(99999, 100000, null)).toBe(99999)
+  })
+})
+
+describe('the cash on a reversal', () => {
+  /* The half that is easy to get wrong by symmetry. Points flip; money does
+     not. */
+  it('stays a magnitude while the points flip', () => {
+    expect(reversalOf(680)).toBe(-680)
+    expect(reversalValueOf(680)).toBe(680)
+    expect(reversalValueOf(-680)).toBe(680)
   })
 })

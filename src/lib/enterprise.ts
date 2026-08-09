@@ -286,9 +286,11 @@ export function policyMoneyFor(
 /** The clause that says what was converted and at what, appended to any
     sentence that compares a requisition against a limit. A converted figure
     shown without its rate and date is a figure nobody can check. */
-export function conversionNote(req: { amount: number; currency: string }, at: PolicyMoney): string {
+export function conversionNote(
+  req: { amount: number; currency: string }, at: PolicyMoney, fmt: Fmt = money,
+): string {
   if (at.native) return ''
-  return ` — ${money(req.amount, req.currency)} converted at ${at.rate} ${at.currency}/${req.currency} as of ${at.as_of}`
+  return ` — ${fmt(req.amount, req.currency)} converted at ${at.rate} ${at.currency}/${req.currency} as of ${at.as_of}`
 }
 
 /**
@@ -522,6 +524,11 @@ export function validateDecision(
 export function approvalImpact(
   req: Requisition, lines: ReqLine[], account: Account, centres: CostCentre[], spentYear: number,
   at?: PolicyMoney | null,
+  /* The market's formatter, so the bullets read in the same money as the header
+     two lines above them. Defaulted to the module's own, which writes the ISO
+     code — every other caller of this module still gets that, and the rest of
+     them want the same treatment. */
+  fmt: Fmt = money,
   /* Whether this one will be held on credit. The rest of the list is true
      either way — the spend is committed, the caps move, the budget drops —
      but the first line is not, and saying "the order goes to Nimbus Sensors
@@ -539,7 +546,7 @@ export function approvalImpact(
         ? `The order goes to ${sellers[0]} immediately — this is not a quote.`
         : `Orders go to ${sellers.join(' and ')} immediately — this is not a quote.`,
   )
-  const asked = money(req.amount, req.currency)
+  const asked = fmt(req.amount, req.currency)
   out.push(
     req.model === 'monthly'
       ? `${asked} a month is added to the committed spend and appears on the next invoice.`
@@ -552,7 +559,7 @@ export function approvalImpact(
     return out
   }
   if (at && !at.native) {
-    out.push(`Against the account's ${c} caps that is ${money(owed, c)}${conversionNote(req, at)}.`)
+    out.push(`Against the account's ${c} caps that is ${fmt(owed, c)}${conversionNote(req, at, fmt)}.`)
   }
 
   const cc = centres.find(x => x.id === req.cost_centre)
@@ -560,12 +567,12 @@ export function approvalImpact(
     const after = cc.spent_quarter + (req.model === 'monthly' ? owed * 3 : owed)
     out.push(
       after > cc.cap_quarter
-        ? `${cc.name} goes ${money(after - cc.cap_quarter, c)} over its ${money(cc.cap_quarter, c)} cap for ${cc.quarter}.`
-        : `${cc.name} moves to ${money(after, c)} of its ${money(cc.cap_quarter, c)} cap for ${cc.quarter}.`,
+        ? `${cc.name} goes ${fmt(after - cc.cap_quarter, c)} over its ${fmt(cc.cap_quarter, c)} cap for ${cc.quarter}.`
+        : `${cc.name} moves to ${fmt(after, c)} of its ${fmt(cc.cap_quarter, c)} cap for ${cc.quarter}.`,
     )
   }
   const left = account.budget_year - spentYear - owed
-  out.push(`Budget remaining drops to about ${money(Math.max(0, left), c)} for the year.`)
+  out.push(`Budget remaining drops to about ${fmt(Math.max(0, left), c)} for the year.`)
   return out
 }
 
@@ -890,6 +897,21 @@ export { round2 }
  * cross-border document is written anyway. Screens pass `fmtIn` from
  * `useMarket`, which has the table, and get "₹27,27,882".
  */
+/**
+ * How a figure is written, where the caller has the currency table.
+ *
+ * `money()` below hands `format` an empty currency list, so it can find neither
+ * the symbol nor the locale and falls back to the ISO code and en-US grouping:
+ * "INR 401,258.00" where the same screen's header says "₹4,01,258.00". That is
+ * every string this module produces, not only the one that was reported.
+ *
+ * Injected rather than looked up because this module has no data access by
+ * design — the rules have to be testable without a network. The screens all
+ * have `fmtIn` from `useMarket()`, which is the same formatter with the table
+ * already in it.
+ */
+export type Fmt = (amount: number, currency: string) => string
+
 export function money(n: number, currency: string): string {
   return formatMoney(asMoney(n, currency), [])
 }

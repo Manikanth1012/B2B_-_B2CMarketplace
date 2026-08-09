@@ -440,3 +440,97 @@ export function earnLine(rate: PointRate, multiplier = 1): string {
    every other call site switch does not apply to it. */
 const trim = (n: number): string =>
   Number.isInteger(n) ? String(n) : String(Math.round(n * 100) / 100)
+
+/* ------------------------------------------------------------- what it earns -- */
+
+/**
+ * An earn rule, as the operator configures it.
+ *
+ * `rate` multiplies the currency's own points-per-unit; `bonus` is a flat award
+ * on top; the caps are ceilings, one per order and one per member per month.
+ */
+export interface EarnRule {
+  id: string
+  name: string
+  rate: number
+  bonus: number | null
+  cap_per_order: number | null
+  cap_per_month: number | null
+  status: string
+}
+
+/**
+ * What an order earns, before any monthly ceiling.
+ *
+ * The same arithmetic as `loyalty_points_for` in the database, which is what
+ * actually writes the ledger. This exists so a screen can say what a basket
+ * will earn before it is placed, and the integration test reconciles the two —
+ * a rule evaluated in two places is one edit away from being two rules.
+ *
+ * Three things multiply and they are easy to mistake for one:
+ *
+ *   the currency rate    a point per hundred rupees, a point per dollar
+ *   the rule rate        double points on content, triple on a launch
+ *   the tier multiplier  Gold earns 1.5x of whatever the rule gives
+ *
+ * I reported thirteen rows as "three times or more what the rate tables allow"
+ * by comparing against the first of those alone. On that arithmetic a Gold
+ * customer during a triple-points window looks like a four-and-a-half-times
+ * error, and the rows that stood out loudest were the ones where the promotion
+ * was working.
+ *
+ * `amount` is in the member's own currency. Points are earned in the money the
+ * member banks in, not the money the order was priced in — a Kenyan buyer may
+ * pay in dollars and still earn shillings, so the conversion happens before
+ * this is called.
+ */
+export function earnedOn(
+  { amount, rate, rule, multiplier }: {
+    amount: number
+    /* The member's own currency rate — `rateFor(rates, member.currency)`. */
+    rate: PointRate | null
+    rule: Pick<EarnRule, 'rate' | 'bonus' | 'cap_per_order'>
+    multiplier: number
+  },
+): number {
+  /* Built on `pointsFor` rather than repeating its arithmetic. That one answers
+     "what does this spend earn at the base rate", which is what the tier
+     projection needs; this one adds the rule on top. Two functions computing
+     the same floor with different rounding is precisely the defect `pointsFor`'s
+     own comment describes. */
+  const base = pointsFor(amount, rate, rule.rate * multiplier)
+  const raw = base + (rule.bonus ?? 0)
+  const capped = rule.cap_per_order === null ? raw : Math.min(raw, rule.cap_per_order)
+  return Math.max(0, capped)
+}
+
+/**
+ * How much of a monthly ceiling is left, given what has already been earned.
+ *
+ * Separate from `pointsFor` because a per-order cap is a property of the order
+ * and a per-month cap is a property of everything before it. Applying the
+ * second inside the first would make the answer depend on what else the caller
+ * happened to know.
+ */
+export function withinMonthlyCap(
+  points: number, alreadyEarned: number, cap: number | null,
+): number {
+  if (cap === null) return points
+  return Math.max(0, Math.min(points, cap - alreadyEarned))
+}
+
+/**
+ * What a reversal's cash figure is.
+ *
+ * `reversalOf` above already gives the points. This is the other half, and it
+ * is the half that is easy to get wrong by symmetry: a movement's `value` is
+ * the money the points come to, and money does not go negative because the
+ * points did. A redemption carries −100 points and a positive value; so does
+ * its reversal's mirror. `guard_ledger_currency` refuses anything else.
+ *
+ * Worth its own function only because restating an earn and leaving its
+ * reversal at the old figure left one customer 512 points down on an order she
+ * had been refunded for — the pair has to move together, and moving it
+ * together means knowing which of the two flips sign.
+ */
+export const reversalValueOf = (value: number): number => Math.abs(value)

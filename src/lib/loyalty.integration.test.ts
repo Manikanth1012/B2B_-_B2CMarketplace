@@ -12,7 +12,8 @@ import { supabase } from './supabase'
 import { signIn, signOut } from './authRepo'
 import { loadMyRewards, redeemPoints } from './loyaltyRepo'
 import type { RewardsBook } from './loyaltyRepo'
-import { offeredTo, validateRedemption } from './loyalty'
+import type { PointRate } from './loyalty'
+import { offeredTo, validateRedemption, earnedOn } from './loyalty'
 
 const CONSUMER = { email: 'priya.raman@example.com', password: 'demo1234' }
 const OPERATOR = { email: 'anika.sharma@aventa.com', password: 'operator123' }
@@ -229,5 +230,147 @@ describe('and a customer cannot reverse anything', () => {
     })
     expect(error).not.toBeNull()
     expect(error!.message).toMatch(/only the marketplace/i)
+  })
+})
+
+/* The rate schedule, read rather than admired.
+ *
+ * `loyalty_point_rates`, `loyalty_earn_rules` and `loyalty_tiers` describe what
+ * an order earns. Until `20260809300000` nothing multiplied them together and
+ * every one of the 413 movements was a figure somebody wrote down. Now the
+ * database computes it in `loyalty_points_for` and the browser computes it in
+ * `earnedOn` — which is two evaluations of one rule, and this is what stops
+ * them drifting apart.
+ */
+describe('what the schedule says an order earns', () => {
+  beforeAll(async () => { await signIn(OPERATOR.email, OPERATOR.password) })
+  afterAll(async () => { await signOut() })
+
+  it('agrees with the browser on every live rule and tier', async () => {
+    const [{ data: rules }, { data: rates }, { data: members }, { data: tiers }] = await Promise.all([
+      supabase.from('loyalty_earn_rules').select('id,rate,bonus,cap_per_order').eq('status', 'active'),
+      supabase.from('loyalty_point_rates').select('*'),
+      supabase.from('loyalty_members').select('id,tier,currency'),
+      supabase.from('loyalty_tiers').select('id,multiplier'),
+    ])
+    expect((rules ?? []).length).toBeGreaterThan(0)
+    expect((members ?? []).length).toBeGreaterThan(0)
+
+    const mult = new Map((tiers ?? []).map(t =>
+      [(t as { id: string }).id, Number((t as { multiplier: number }).multiplier)]))
+
+    for (const rule of rules as { id: string; rate: number; bonus: number | null; cap_per_order: number | null }[]) {
+      for (const m of (members as { id: string; tier: string; currency: string }[]).slice(0, 4)) {
+        const rate = (rates as PointRate[]).find(r => r.currency === m.currency)!
+        for (const amount of [0, 949, 14999, 199999]) {
+          const { data, error } = await supabase.rpc('loyalty_points_for', {
+            p_amount: amount, p_currency: m.currency, p_rule: rule.id,
+            p_member: m.id, p_on: new Date().toISOString().slice(0, 10),
+          })
+          expect(error, `${rule.id}/${m.id}: ${error?.message}`).toBeNull()
+          const here = earnedOn({
+            amount, rate,
+            rule: { rate: Number(rule.rate), bonus: rule.bonus === null ? null : Number(rule.bonus),
+                    cap_per_order: rule.cap_per_order === null ? null : Number(rule.cap_per_order) },
+            multiplier: mult.get(m.tier) ?? 1,
+          })
+          expect(Number(data),
+            `${rule.id} for ${m.id} on ${amount} ${m.currency}: database ${data}, browser ${here}`)
+            .toBe(here)
+        }
+      }
+    }
+  }, 120000)
+
+  /* Points are earned in the money the member banks in. Wanjiru is Kenyan and
+     three of her orders are priced in dollars, which the marketplace allows —
+     her balance is still shillings, and `guard_ledger_currency` enforces it
+     from the other side. */
+  it('converts an order priced in another currency before crediting it', async () => {
+    const { data: usd } = await supabase.rpc('loyalty_points_for', {
+      p_amount: 100, p_currency: 'USD', p_rule: 'ERN-01',
+      p_member: 'LM-4030', p_on: '2026-08-01',
+    })
+    const { data: kes } = await supabase.rpc('loyalty_points_for', {
+      p_amount: 100, p_currency: 'KES', p_rule: 'ERN-01',
+      p_member: 'LM-4030', p_on: '2026-08-01',
+    })
+    /* A hundred dollars is worth far more than a hundred shillings, so it must
+       earn far more. Crediting the dollar figure at the shilling rate is what
+       the first version of the function did. */
+    expect(Number(usd)).toBeGreaterThan(Number(kes) * 100)
+  })
+
+  it('refuses an order in a currency nobody has priced a point in', async () => {
+    const { error } = await supabase.rpc('loyalty_points_for', {
+      p_amount: 100, p_currency: 'JPY', p_rule: 'ERN-01',
+      p_member: 'LM-4030', p_on: '2026-08-01',
+    })
+    expect(error, 'a yen order was credited at somebody else’s rate').toBeTruthy()
+    expect(error!.message).toMatch(/no .*rate on file|have no value set/i)
+  })
+
+  it('has every order-linked movement equal to what the schedule produces', async () => {
+    const { data } = await supabase
+      .from('loyalty_ledger')
+      .select('id, member, rule_id, ref, points, type')
+      .eq('type', 'earn')
+    const earns = (data ?? []) as
+      { id: string; member: string; rule_id: string; ref: string; points: number }[]
+    expect(earns.length).toBeGreaterThan(0)
+
+    const { data: orders } = await supabase.from('orders').select('order_ref,total,currency,created_at')
+    const byRef = new Map((orders ?? []).map(o =>
+      [(o as { order_ref: string }).order_ref, o as { total: number; currency: string; created_at: string }]))
+
+    let checked = 0
+    for (const e of earns) {
+      const o = byRef.get(e.ref)
+      if (!o || !e.rule_id) continue
+      const { data: expected, error } = await supabase.rpc('loyalty_points_for', {
+        p_amount: Number(o.total), p_currency: o.currency, p_rule: e.rule_id,
+        p_member: e.member, p_on: o.created_at.slice(0, 10),
+      })
+      expect(error, `${e.id}: ${error?.message}`).toBeNull()
+      /* At or below: a monthly ceiling can take a row below its own figure, and
+         that is the cap working. Above it is the defect. */
+      expect(Number(e.points) <= Number(expected),
+        `${e.id} earned ${e.points} on ${e.ref} and the schedule allows ${expected}`).toBe(true)
+      checked++
+    }
+    expect(checked, 'no order-linked earn movement was checked').toBeGreaterThan(10)
+  }, 120000)
+
+  /* The pair that came apart: an earn restated and its reversal left behind. */
+  it('has every reversal worth exactly what it reverses', async () => {
+    const { data } = await supabase.from('loyalty_ledger')
+      .select('id, member, ref, points, type').in('type', ['earn', 'reverse'])
+    const rows = (data ?? []) as
+      { id: string; member: string; ref: string; points: number; type: string }[]
+    const reversals = rows.filter(r => r.type === 'reverse')
+    expect(reversals.length, 'no reversal on the book, so this proves nothing').toBeGreaterThan(0)
+
+    for (const r of reversals) {
+      const earn = rows.find(e => e.type === 'earn' && e.member === r.member && e.ref === r.ref)
+      if (!earn) continue
+      expect(Number(r.points),
+        `${r.id} is ${r.points} and reverses ${earn.id} which is ${earn.points}`)
+        .toBe(-Number(earn.points))
+    }
+  })
+
+  /* A balance that moves for a reason the holder cannot read is worse than a
+     wrong balance, because there is nothing to query. */
+  it('shows a member every movement on their own membership', async () => {
+    const { data } = await supabase.from('loyalty_ledger')
+      .select('id, member, user_id')
+    const rows = (data ?? []) as { id: string; member: string; user_id: string | null }[]
+    const { data: ms } = await supabase.from('loyalty_members').select('id,user_id')
+    const owned = new Set((ms ?? [])
+      .filter(m => (m as { user_id: string | null }).user_id)
+      .map(m => (m as { id: string }).id))
+
+    const hidden = rows.filter(r => owned.has(r.member) && !r.user_id)
+    expect(hidden.map(r => r.id), 'movements a member cannot see on their own history').toEqual([])
   })
 })

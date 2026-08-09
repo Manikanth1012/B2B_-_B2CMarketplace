@@ -424,14 +424,14 @@ describe('approvalImpact', () => {
      longer true. "The order goes to Nimbus Sensors immediately" printed under a
      banner saying nothing goes to the seller is worse than printing nothing. */
   it('does not promise an order that will be held', () => {
-    const out = approvalImpact(req(), lines, ACCOUNT, [centre()], 0, undefined, true)
+    const out = approvalImpact(req(), lines, ACCOUNT, [centre()], 0, undefined, undefined, true)
     expect(out[0]).toMatch(/Nothing goes to Nimbus Sensors until the marketplace releases the hold/)
     expect(out[0]).not.toMatch(/immediately/)
   })
 
   it('still says everything a hold does not change', () => {
-    const held = approvalImpact(req(), lines, ACCOUNT, [centre()], 45706.8, undefined, true)
-    const free = approvalImpact(req(), lines, ACCOUNT, [centre()], 45706.8, undefined, false)
+    const held = approvalImpact(req(), lines, ACCOUNT, [centre()], 45706.8, undefined, undefined, true)
+    const free = approvalImpact(req(), lines, ACCOUNT, [centre()], 45706.8, undefined, undefined, false)
     /* The spend is committed either way — the cap moves, the budget drops, and
        an approver who is told otherwise will approve a second one. */
     expect(held.slice(1)).toEqual(free.slice(1))
@@ -820,5 +820,42 @@ describe('shared vocabulary', () => {
   it('labels every level of approval', () => {
     expect(Object.keys(NEED_LABEL)).toHaveLength(4)
     expect(NEED_LABEL.both).toBe('Finance approval and IT sign-off')
+  })
+})
+
+/* "INR 401,258.00" under a header reading "₹4,01,258.00", on the same modal.
+   The cause is `money()` handing the formatter an empty currency list, so it
+   finds neither the symbol nor the locale — which is every string this module
+   produces, not only the bullets that were reported. */
+describe('who writes the money in the impact list', () => {
+  const lines: ReqLine[] = [
+    { id: 'l1', requisition_id: 'REQ-1', product_id: 'SKU-5006', name: 'Cold-chain starter', seller: 'Nimbus Sensors', partner_id: 'PTR-1004', quantity: 2, unit_price: 2295, line_total: 4590, sort_order: 1 },
+  ]
+  const rupees = (n: number, c: string) =>
+    `${c === 'INR' ? '₹' : c + ' '}${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+  it('uses the formatter it is given for the amount asked for', () => {
+    const out = approvalImpact(
+      req({ amount: 401258, currency: 'INR' }), lines, ACCOUNT, [centre()], 0, undefined, rupees)
+    expect(out.join(' ')).toContain('₹4,01,258.00')
+    expect(out.join(' ')).not.toContain('INR 401,258.00')
+  })
+
+  it('uses it for the cap and the budget too, not only the first figure', () => {
+    const out = approvalImpact(
+      req({ amount: 20000, currency: 'INR' }), lines, ACCOUNT, [centre()], 0, undefined, rupees)
+    /* The account's caps are in its own currency and the requisition is in
+       rupees, so both appear — what matters is that every one of them came
+       through the injected formatter, which the Indian grouping shows. A figure
+       that slipped through would read "401,258.00" in en-US thousands. */
+    for (const line of out.filter(l => /\d/.test(l))) {
+      expect(line, `${line} was not written by the formatter given`)
+        .toMatch(/₹[\d,]+\.\d{2}|USD [\d,]+\.\d{2}/)
+    }
+  })
+
+  it('falls back to the code where no formatter is given, as every other caller still does', () => {
+    const out = approvalImpact(req({ amount: 401258 }), lines, ACCOUNT, [centre()], 0)
+    expect(out.join(' ')).toContain('401,258.00')
   })
 })

@@ -401,7 +401,10 @@ function DecideModal({ book, me, policy, req, approve, onClose, onDone }: {
 
   const impact = book.account
     ? approvalImpact(req, lines, book.account, book.centres,
-                     spentThisYear(book.invoices, book.account), at, breach?.breach === true)
+                     spentThisYear(book.invoices, book.account), at,
+                     /* The market's formatter. Without it these bullets read
+                        "INR 401,258.00" under a header saying "₹4,01,258.00". */
+                     fmtIn, breach?.breach === true)
     : []
 
   const submit = async () => {
