@@ -18,6 +18,8 @@ import {
   type Audience, type BillFacts,
   canDelete, nextReference, validateTemplate, money, issuerFor, issuersByMarket, taxLabelFor,
 } from './billTemplate'
+import { statementFacts } from './documentFacts'
+import type { StatementRow } from './documentFacts'
 import { faceOfDocument, regimeFor, scannable } from './einvoice'
 import type { ClearanceRecord, Regime, DocKind } from './einvoice'
 
@@ -324,54 +326,25 @@ async function loadSamples(
       .find((s: Record<string, string>) => s.partner_id) as Record<string, string> | undefined
     if (!st) return null
 
-    const gross = Number(st.gross ?? 0)
-    const commission = Number(st.commission ?? 0)
-    const fees = Number(st.fees ?? 0)
-    const refunds = Number(st.refunds ?? 0)
-    const withholding = Number(st.withholding ?? 0)
-    const net = Number(st.net ?? 0)
+    /* Built by `statementFacts`, not beside it. This function used to derive
+       the same document a second time from the same row, and the two drifted:
+       when `adjustments` grew a second source the deduction sheet here went on
+       printing gross-less-deductions while `net` carried the adjustment, so the
+       preview's total no longer followed from the lines above it. One document,
+       one derivation; only the things that are genuinely the preview's — its
+       reference, its issuer, its market's tax label — are supplied here. */
+    const facts = statementFacts(st as unknown as StatementRow, {
+      issuer: null,
+      template: null,
+      reference: refOf('partner', st.partner_id),
+      taxLabel: labelFor(st.market),
+    })
 
     return {
-      reference: refOf('partner', st.partner_id),
-      issued: st.period, due: st.period,
-      billedTo: {
-        name: st.partner_name,
-        ref: st.partner_id ?? null,
-        lines: [`${st.order_count} orders in ${st.period}`],
-        contact: '',
-        tax: null,
-      },
+      ...facts,
       billedFrom: { ...from, mark },
-      /* A self-billing invoice reads as a deduction sheet: gross the seller
-         earned, less what the marketplace kept.
-         All of it in `usage`, none of it in `subs`. A seller statement has no
-         subscription side, so the seeded template does not carry that section —
-         and a gross figure put there would simply never print, leaving a
-         document of pure deductions whose total does not reconcile. */
-      lines: [],
-      usage: [
-        { label: 'Gross sales', detail: `${st.order_count} orders · ${st.period}`, amount: gross },
-        { label: 'Marketplace commission', detail: `${st.commission_rate ?? ''}%`, amount: -commission },
-        { label: 'Platform and payment fees', detail: st.period, amount: -fees },
-        { label: 'Refunds passed back', detail: st.period, amount: -refunds },
-      ].filter(l => l.amount !== 0),
-      credits: -withholding,
-      paid: st.status === 'paid' ? net : 0,
-      taxRate: 0,
-      tax: 0,
-      total: net,
-      rewards: null,
-      advert: null,
-      paid_already: st.status === 'paid',
       support, terms,
       howToPay: remit('partner'),
-      payRef: st.id,
-      currency: st.currency,
-      currencyMark: markFor(st.currency),
-      taxLabel: labelFor(st.market),
-      /* A self-billing statement is not a document any of these authorities
-         clears — the marketplace raises it to itself. Empty is the answer, and
-         the section renders nothing rather than an unearned stamp. */
       clearance: [], verifyUrl: null,
     }
   }
