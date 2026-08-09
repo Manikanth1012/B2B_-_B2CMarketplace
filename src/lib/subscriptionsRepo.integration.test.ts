@@ -84,10 +84,35 @@ describe('the consumer subscriptions', () => {
     }
   })
 
-  it('has five billing and one paused, and totals what they cost', async () => {
+  it('has several billing and one paused, and totals what they cost', async () => {
     const subs = await load()
-    expect(subs.filter(isActive)).toHaveLength(5)
-    expect(subs.filter(s => s.status === 'paused')).toHaveLength(1)
+    /* Counts rather than a literal, for the same reason the cancelled figure
+       stopped being one: the seed grows, and a test that pins it to five fails
+       on the day somebody adds a sixth subscription rather than on the day
+       something breaks. What must hold is that there is a book to total and
+       that the paused case — which the screen draws differently — is in it. */
+    expect(subs.filter(isActive).length).toBeGreaterThanOrEqual(5)
+    expect(subs.filter(s => s.status === 'paused').length).toBeGreaterThanOrEqual(1)
+
+    /* An active subscription is one waiting on a payment that has not happened
+       yet. This was three months in the past on five rows, which nothing
+       noticed because every screen renders a date without asking whether it
+       has gone by.
+     *
+       Active only. A paused subscription is not waiting on a payment at all —
+       it carries `resumes_at` and no renewal, which is what pausing means and
+       what the screen draws. Asserting a future renewal on it was this test's
+       own mistake a minute ago. */
+    const today = new Date().toISOString().slice(0, 10)
+    for (const s of subs.filter(isActive)) {
+      expect(s.next_renewal, `${s.ref} is active with no next renewal`).toBeTruthy()
+      expect(s.next_renewal! >= today,
+        `${s.ref} is active and its next renewal was ${s.next_renewal}`).toBe(true)
+    }
+    for (const s of subs.filter(x => x.status === 'paused')) {
+      expect(s.resumes_at ?? s.next_renewal,
+        `${s.ref} is paused and says neither when it resumes nor when it renews`).toBeTruthy()
+    }
     /* Cancelled is no longer a fixed count: the duplicates that a checkout
        created against products already held were cancelled rather than deleted,
        because the orders behind them are real. What must hold is that every one
@@ -96,6 +121,10 @@ describe('the consumer subscriptions', () => {
     expect(cancelled.length).toBeGreaterThanOrEqual(1)
     for (const c of cancelled) {
       expect(c.ends_at, `${c.ref} is cancelled without saying when access ends`).toBeTruthy()
+      /* Three rows ended four days before they began: cancelling copies
+         `next_renewal` into `ends_at`, and theirs was already in the past. */
+      expect(c.ends_at! >= c.started_at.slice(0, 10),
+        `${c.ref} ended ${c.ends_at} and started ${c.started_at.slice(0, 10)}`).toBe(true)
     }
     /* Derived rather than written down. This was `54.28` — the dollar total,
        from when `subscriptions.price` carried the catalogue's USD list price

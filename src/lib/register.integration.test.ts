@@ -223,7 +223,21 @@ describe('a shopper registers', () => {
     const { data: hers } = await supabase.from('loyalty_members')
       .select('tier, balance').eq('id', 'LM-4001').maybeSingle()
     expect((hers as { tier: string } | null)?.tier).toBe('gold')
-    expect(Number((hers as { balance: number } | null)?.balance)).toBe(2500)
+
+    /* Derived, not written down. This was `2500`, and it went stale the moment
+       she legitimately earned points on new orders — which is the balance doing
+       exactly what it should. `rebalance_member` keeps `balance` equal to the
+       signed sum of the ledger, so that is what to check: a literal here says
+       only whether the figure has changed, never whether it is right.
+     *
+       What this test is actually for is that *registering somebody else* does
+       not touch her row, and that holds however many points she has. */
+    const { data: rows } = await supabase.from('loyalty_ledger')
+      .select('points').eq('member', 'LM-4001')
+    const ledger = ((rows ?? []) as { points: number }[])
+      .reduce((a, r) => a + Number(r.points), 0)
+    expect(Number((hers as { balance: number } | null)?.balance),
+      'her balance is not the sum of her own ledger').toBe(ledger)
     await signOut()
   }, 30000)
 

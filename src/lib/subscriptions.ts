@@ -94,3 +94,27 @@ export function actionsFor(s: SubscriptionRow): {
     canResume: isPaused(s),
   }
 }
+
+/**
+ * The next billing date for a subscription starting on a given day.
+ *
+ * A month, not thirty days. The checkout used `Date.now() + 30 * 86400000`,
+ * which is a month only in September, April, June and November — everywhere
+ * else it lands a day or three early, and it compounds: a subscription bought
+ * on the 7th renews on the 6th, then the 5th, and after a year it has walked
+ * back a fortnight from the day the customer thinks they are billed on.
+ *
+ * The day is clamped into shorter months, so the 31st bills on the 30th in
+ * November and on the 28th in February without moving the day it bills on in
+ * every other month. That is what `Date.setUTCMonth` will not do on its own —
+ * it rolls 31 January forward into March.
+ */
+export function nextRenewalFrom(startedOn: string, months = 1): string {
+  const [y, m, d] = startedOn.slice(0, 10).split('-').map(Number)
+  const target = (m - 1) + months
+  const year = y + Math.floor(target / 12)
+  const month = ((target % 12) + 12) % 12
+  /* Day 0 of the following month is the last day of this one. */
+  const last = new Date(Date.UTC(year, month + 1, 0)).getUTCDate()
+  return new Date(Date.UTC(year, month, Math.min(d, last))).toISOString().slice(0, 10)
+}

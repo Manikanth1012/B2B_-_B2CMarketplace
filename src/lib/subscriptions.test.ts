@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   formatDateOnly, statusLine, monthlyTotal, billingCurrency, actionsFor,
-  isActive, isPaused, isCancelled, type SubscriptionRow,
+  isActive, isPaused, isCancelled, nextRenewalFrom, type SubscriptionRow,
 } from './subscriptions'
 
 const sub = (o: Partial<SubscriptionRow> = {}): SubscriptionRow => ({
@@ -131,5 +131,39 @@ describe('what the account is billed in', () => {
      subscription lapsed with an unlabelled total. */
   it('counts a cancelled row towards the answer', () => {
     expect(billingCurrency([sub({ status: 'cancelled' })])).toBe('INR')
+  })
+})
+
+/* Thirty days is a month in four of them. The checkout used
+   `Date.now() + 30 * 86400000`, which walks the billing day backwards in the
+   other eight and compounds every cycle. */
+describe('when the next payment is due', () => {
+  it('is the same day of the next month, not thirty days later', () => {
+    expect(nextRenewalFrom('2026-08-07')).toBe('2026-09-07')
+    expect(nextRenewalFrom('2026-01-31')).toBe('2026-02-28')
+    expect(nextRenewalFrom('2026-05-15')).toBe('2026-06-15')
+  })
+
+  it('does not drift when applied repeatedly', () => {
+    let d = '2026-01-07'
+    for (let i = 0; i < 12; i++) d = nextRenewalFrom(d)
+    expect(d).toBe('2027-01-07')
+  })
+
+  /* The case the naive version gets wrong in both directions: thirty days from
+     31 January is 2 March, and `setUTCMonth` rolls it to 3 March. */
+  it('clamps into a shorter month rather than rolling past it', () => {
+    expect(nextRenewalFrom('2026-01-31')).toBe('2026-02-28')
+    expect(nextRenewalFrom('2024-01-31')).toBe('2024-02-29')
+    expect(nextRenewalFrom('2026-03-31')).toBe('2026-04-30')
+  })
+
+  it('crosses a year end', () => {
+    expect(nextRenewalFrom('2026-12-20')).toBe('2027-01-20')
+  })
+
+  it('takes a longer cycle where a subscription bills quarterly', () => {
+    expect(nextRenewalFrom('2026-08-07', 3)).toBe('2026-11-07')
+    expect(nextRenewalFrom('2026-12-07', 12)).toBe('2027-12-07')
   })
 })

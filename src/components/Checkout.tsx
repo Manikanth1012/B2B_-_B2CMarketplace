@@ -3,6 +3,7 @@ import {
   Check, CreditCard, Wallet, Building2, Smartphone, MapPin, Landmark, Receipt,
   CalendarClock,
 } from 'lucide-react'
+import { nextRenewalFrom } from '../lib/subscriptions'
 import { supabase } from '../lib/supabase'
 import type { CartItem } from '../types'
 import { orderedAddresses, defaultAddress, formatAddress, type Address } from '../lib/addresses'
@@ -247,7 +248,11 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
           seller: item.product?.seller ?? null,
           status: 'active',
           auto_renew: true,
-          next_renewal: new Date(Date.now() + 30 * 86400000).toISOString().split('T')[0],
+          /* A month from today, not thirty days. Thirty days is a month in four
+             of them and walks the billing day backwards in the other eight —
+             `ORD-14800252-2` started on the 7th and was already renewing on the
+             6th before it had billed once. */
+          next_renewal: nextRenewalFrom(new Date().toISOString().slice(0, 10)),
           price: item.product?.price || 0,
           /* NOT NULL since subscriptions got a currency, and guarded against the
              customer's bills — so this insert was failing outright, not merely
