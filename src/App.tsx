@@ -54,6 +54,7 @@ import { OperatorNotes } from './components/operator/OperatorNotes'
 import { OperatorOrders } from './components/operator/OperatorOrders'
 import { OperatorDisputes } from './components/operator/OperatorDisputes'
 import { OperatorCredit } from './components/operator/OperatorCredit'
+import { OperatorContracts } from './components/operator/OperatorContracts'
 import { OperatorReviews } from './components/operator/OperatorReviews'
 import { OperatorWallets } from './components/operator/OperatorWallets'
 import { OperatorContentFeedback } from './components/operator/OperatorContentFeedback'
@@ -97,6 +98,7 @@ import { EnterpriseNotifications } from './components/enterprise/EnterpriseNotif
 import { EnterpriseApprovals } from './components/enterprise/EnterpriseApprovals'
 import { EnterpriseRefunds } from './components/enterprise/EnterpriseRefunds'
 import { EnterpriseBilling } from './components/enterprise/EnterpriseBilling'
+import { EnterpriseAgreement } from './components/enterprise/EnterpriseAgreement'
 import { EnterpriseRewards } from './components/enterprise/EnterpriseRewards'
 import { EnterpriseSupport } from './components/enterprise/EnterpriseSupport'
 import { KnowledgeBase } from './components/KnowledgeBase'
@@ -468,6 +470,7 @@ function AppInner() {
         {opView === 'op-orders' && <OperatorOrders />}
         {opView === 'op-disputes' && <OperatorDisputes />}
         {opView === 'op-credit' && <OperatorCredit />}
+        {opView === 'op-contracts' && <OperatorContracts />}
         {opView === 'op-ledger' && <OperatorLedger />}
         {opView === 'op-feedback' && <OperatorContentFeedback />}
         {opView === 'op-audit' && <OperatorAudit />}
@@ -546,6 +549,7 @@ function AppInner() {
         {enView === 'en-numbers' && <EnterpriseNumbers />}
         {enView === 'en-refunds' && <EnterpriseRefunds />}
         {enView === 'en-billing' && <EnterpriseBilling />}
+        {enView === 'en-agreement' && <EnterpriseAgreement />}
         {enView === 'en-rewards' && <EnterpriseRewards />}
         {enView === 'en-support' && <EnterpriseSupport />}
         {enView === 'en-notifications' && <EnterpriseNotifications />}

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, Search, Shield, Cpu, Monitor, ShoppingCart, SquareCheck as CheckSquare, Users, History, User, Bell as BellIcon, LogOut, Menu, X, Building2, BookOpen, RotateCcw, Repeat, Receipt, Zap, LifeBuoy, Wallet as WalletIcon, KeyRound, Smartphone } from 'lucide-react'
+import { LayoutDashboard, Search, Shield, Cpu, Monitor, ShoppingCart, SquareCheck as CheckSquare, Users, History, User, Bell as BellIcon, LogOut, Menu, X, Building2, BookOpen, RotateCcw, Repeat, Receipt, Zap, LifeBuoy, Wallet as WalletIcon, KeyRound, Smartphone, FileSignature } from 'lucide-react'
 import type { EnterpriseView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
 import { AccountMenu } from '../AccountMenu'
@@ -65,6 +65,7 @@ const NAV_SECTIONS: { label: string; items: { id: EnterpriseView; label: string;
       { id: 'en-subs', label: 'Subscriptions', icon: <Repeat size={18} /> },
       { id: 'en-numbers', label: 'Numbers & SIMs', icon: <Smartphone size={18} /> },
       { id: 'en-billing', label: 'Billing', icon: <Receipt size={18} /> },
+      { id: 'en-agreement', label: 'Your Agreement', icon: <FileSignature size={18} /> },
       /* Money the marketplace is holding for the company. It sat in the
          database with no screen anywhere in this persona. */
       { id: 'en-wallet', label: 'Wallet', icon: <WalletIcon size={18} /> },

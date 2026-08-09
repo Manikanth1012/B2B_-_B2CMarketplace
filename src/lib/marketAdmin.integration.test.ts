@@ -150,17 +150,39 @@ describe('as the operator, configuring a market', () => {
        and `20260802470000` started refusing the fixture — `guard_invoice_market`
        will not raise an Emirati invoice against an Indian account, which is the
        defect it exists to stop and which this test was unwittingly reproducing. */
-    const { data: acct } = await supabase.from('enterprise_accounts').select('id, market')
+    /* Ordered, and then searched rather than taken first.
+     *
+     * This read the accounts unordered and took whichever came back first,
+     * which is not a stable choice — Postgres returns heap order and any
+     * update anywhere rewrites it. A migration that touched
+     * `enterprise_accounts` for an unrelated reason moved the Kenyan account to
+     * the front, the test picked KES/USD, and Kenya genuinely carries a USD
+     * consumer bill. Nothing was wrong with the data or the guard; the test had
+     * simply been relying on a pair being clean without checking.
+     *
+     * So it looks for a pair with nothing billed in it, and says plainly if
+     * there is none rather than asserting one into existence. */
+    const { data: acct } = await supabase.from('enterprise_accounts')
+      .select('id, market').order('id')
     const accounts = (acct ?? []) as { id: string; market: string }[]
-    const usable = accounts.find(a => currenciesOf(a.market, accepted).length > 1)
-    expect(usable, 'no account contracts in a market with a second currency').toBeTruthy()
+
+    let usable: { id: string; market: string } | undefined
+    let second = ''
+    let clean = { bills: 0, listings: 0 }
+    for (const a of accounts) {
+      const currencies = currenciesOf(a.market, accepted)
+      if (currencies.length < 2) continue
+      const footprint = await currencyFootprint(a.market, currencies[1])
+      if (footprint.bills === 0) { usable = a; second = currencies[1]; clean = footprint; break }
+    }
+    expect(usable,
+      'no account contracts in a market whose second currency is free of billed money')
+      .toBeTruthy()
 
     const market = markets.find(m => m.code === usable!.market)
-    const second = currenciesOf(market!.code, accepted)[1]
     const account = usable!.id
 
     /* Nothing is billed in it yet, so it comes off cleanly. */
-    const clean = await currencyFootprint(market!.code, second)
     expect(clean.bills, `${second} already carries bills in ${market!.code}`).toBe(0)
     expect(canRemove(market!.code, second, accepted, clean).ok).toBe(true)
 
