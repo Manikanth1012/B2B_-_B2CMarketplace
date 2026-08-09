@@ -333,6 +333,16 @@ export function asText(
         out.push('- '.repeat(26), 'PAYMENT SLIP',
           `Reference ${facts.payRef}`, row('Amount', facts.total), '')
         break
+
+      /* A custom section has an id nothing in this switch knows — it was
+         written by an operator against one template. So it is matched on the
+         section row rather than on a name, and prints the heading and the
+         words they wrote and nothing else. */
+      default: {
+        const own = sections.find(x => x.id === id)
+        if (own?.custom && own.heading && own.body) out.push(own.heading.toUpperCase(), own.body, '')
+        break
+      }
     }
   }
 

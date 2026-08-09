@@ -4,6 +4,7 @@ import {
   sectionsOn, has, offeredTo, canRemove, canAdd, warningsFor, validateTemplate,
   nextReference, referencePattern, validateNumbering, templateFor, usedBy, canDelete,
   blocksFor, suppressed, money, issuerFor, issuersByMarket, taxLabelFor,
+  orderProblem, moved,
   type Issuer,
 } from './billTemplate'
 
@@ -622,5 +623,73 @@ describe('what the tax on a document is called', () => {
        reader cannot tell whether the number is tax or a rounding. */
     expect(taxLabelFor(null, [], null)).toBe('Tax')
     expect(taxLabelFor('KE', [], { tax_label: '' })).toBe('Tax')
+  })
+})
+
+
+/* `invoice_template_sections.sort_order` has existed since the table did, is
+   per template, and was written by nothing — every template on the marketplace
+   printed its blocks in one fixed order as a result. */
+describe('the order a template prints in', () => {
+  const sec = (id: string, order: number, over: Partial<Section> = {}): Section => ({
+    id, label: id, note: '', locked: false, audiences: ['consumer'], sort_order: order, ...over,
+  })
+  const CATALOGUE: Section[] = [
+    sec('masthead', 1, { locked: true, anchor: 'top' }),
+    sec('parties', 2, { locked: true, anchor: 'top' }),
+    sec('subs', 4),
+    sec('credits', 6),
+    sec('summary', 9, { locked: true }),
+    sec('fiscal', 10, { locked: true, anchor: 'after' }),
+    sec('terms', 16),
+  ]
+  const TPL = { id: 'BT-X' } as Template
+
+  it('follows the template\'s own order, not the catalogue\'s', () => {
+    const chosen = [
+      { template_id: 'BT-X', section_id: 'terms', sort_order: 1 },
+      { template_id: 'BT-X', section_id: 'subs', sort_order: 2 },
+      { template_id: 'BT-X', section_id: 'credits', sort_order: 3 },
+    ]
+    expect(sectionsOn(TPL, CATALOGUE, chosen).map(s => s.id)).toEqual(['terms', 'subs', 'credits'])
+  })
+
+  it('leaves another template\'s order alone', () => {
+    const chosen = [
+      { template_id: 'BT-X', section_id: 'subs', sort_order: 1 },
+      { template_id: 'BT-Y', section_id: 'terms', sort_order: 1 },
+    ]
+    expect(sectionsOn(TPL, CATALOGUE, chosen).map(s => s.id)).toEqual(['subs'])
+  })
+
+  /* "Summary and total" says of itself that it reconciles every block above
+     it. Above the charges, the document makes a false statement about its own
+     arithmetic. */
+  it('refuses an order the document could not be printed from', () => {
+    expect(orderProblem(['masthead', 'parties', 'subs', 'summary', 'fiscal'], CATALOGUE)).toBeNull()
+    expect(orderProblem(['subs', 'masthead', 'parties', 'summary'], CATALOGUE))
+      .toMatch(/opens the document/)
+    expect(orderProblem(['masthead', 'parties', 'fiscal', 'subs', 'summary'], CATALOGUE))
+      .toMatch(/refers back to the total/)
+  })
+
+  it('moves a section a place, and says no rather than clamping', () => {
+    const ids = ['masthead', 'parties', 'subs', 'credits', 'summary', 'fiscal']
+    expect(moved(ids, 'credits', -1, CATALOGUE))
+      .toEqual(['masthead', 'parties', 'credits', 'subs', 'summary', 'fiscal'])
+    /* Off the ends. */
+    expect(moved(ids, 'masthead', -1, CATALOGUE)).toBeNull()
+    expect(moved(ids, 'fiscal', 1, CATALOGUE)).toBeNull()
+    /* And the moves the rules refuse. */
+    expect(moved(ids, 'parties', 1, CATALOGUE)).toBeNull()
+    expect(moved(ids, 'fiscal', -1, CATALOGUE)).toBeNull()
+  })
+
+  /* An ordinary rearrangement has to go through, or the rule is not a
+     constraint but a lock — which is the state this replaced. */
+  it('lets the sections between the anchors move freely', () => {
+    const ids = ['masthead', 'parties', 'subs', 'credits', 'summary', 'fiscal', 'terms']
+    expect(moved(ids, 'subs', 1, CATALOGUE)).not.toBeNull()
+    expect(moved(ids, 'terms', -1, CATALOGUE)).not.toBeNull()
   })
 })

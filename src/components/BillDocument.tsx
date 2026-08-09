@@ -1,4 +1,4 @@
-import type { Template, BillFacts } from '../lib/billTemplate'
+import type { Template, BillFacts, Section } from '../lib/billTemplate'
 import { blocksFor, money } from '../lib/billTemplate'
 import { ClearanceStamp } from './ClearanceStamp'
 import type { Regime, ClearanceRecord } from '../lib/einvoice'
@@ -18,7 +18,7 @@ import type { Regime, ClearanceRecord } from '../lib/einvoice'
  */
 
 export function BillDocument(
-  { template, ids, facts, reference, clearance }: {
+  { template, ids, facts, reference, clearance, sections = [] }: {
     /* No 'currency': the document is denominated by the row it is raised from,
        which `facts` carries. The template only decides how it looks. */
     template: Pick<Template, 'doc_title' | 'accent' | 'tax_label' | 'logo' |
@@ -37,6 +37,11 @@ export function BillDocument(
        Absent (or null) where nothing has been registered, which the stamp
        itself renders as a warning rather than as silence. */
     clearance?: { regime: Regime | null; record: ClearanceRecord | null }
+    /* The catalogue, so a section an operator wrote for this template can print
+       the words they wrote. Built-in sections need nothing from it — they are
+       named blocks in this file — which is why it defaults to empty rather
+       than being required of every caller. */
+    sections?: readonly Section[]
   },
 ) {
   if (!facts) {
@@ -245,6 +250,18 @@ export function BillDocument(
           </div>
         </div>
       )}
+
+      {/* Whatever an operator wrote against this template, wherever they put
+          it. Rendered in the section order like every built-in block, so a
+          footer placed between two of them appears between those two. */}
+      {sections
+        .filter(sec => sec.custom && ids.includes(sec.id) && sec.heading && sec.body)
+        .map(sec => (
+          <div key={sec.id} style={blockStyle}>
+            <strong style={blockHead}>{sec.heading}</strong>
+            <div style={tiny}>{sec.body}</div>
+          </div>
+        ))}
 
       {(template.remittance || template.footer) && (
         <div style={{ ...tiny, marginTop: '12px', paddingTop: '8px', borderTop: '1px solid var(--border-light)' }}>

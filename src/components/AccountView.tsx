@@ -1679,7 +1679,7 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
       {viewing && book && template && (
         <Modal title={`${template.doc_title} — ${viewing.period}`} onClose={() => setViewing(null)} wide>
           <BillDocument template={template} ids={ids} facts={factsFor(viewing, book)}
-            clearance={stamp ?? undefined} />
+            sections={book.sections} clearance={stamp ?? undefined} />
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '20px' }}>
             <button onClick={() => setViewing(null)} style={billBtn}>Close</button>
             <button onClick={() => downloadBill(viewing, 'txt')} style={billBtn}>Plain text</button>

@@ -208,6 +208,19 @@ export function billPages(
         break
       }
 
+      /* Written by an operator against this one template, so it is matched on
+         the section row rather than on a name in this switch. */
+      default: {
+        const own = sections.find(x => x.id === id)
+        if (own?.custom && own.heading && own.body) {
+          s.gap(4)
+          s.line(own.heading, { size: 8, font: 'bold', colour: INK })
+          s.paragraph(own.body, { size: 7, colour: MUTED })
+          s.gap(4)
+        }
+        break
+      }
+
       case 'slip': {
         /* Label above the rule, not on it. A scissors line with words through
            it is the sort of thing that survives review and then arrives in a
