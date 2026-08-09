@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { Product } from '../../types'
-import { awaitingReply, orderForDisplay, aggregate, hasReply, stars, type Review } from '../../lib/reviews'
+import {
+  awaitingReply, orderForDisplay, aggregate, hasReply, stars,
+  provenanceOf, PROVENANCE_BADGE, type Review,
+} from '../../lib/reviews'
 import { formatDateOnly } from '../../lib/subscriptions'
 
 /* What buyers are saying about this seller's products, and what they have not
@@ -143,6 +146,17 @@ export function PartnerReviews({ partnerId }: { partnerId: string }) {
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <span style={{ color: 'var(--brand-gold, #F5A623)', letterSpacing: '1px' }}>{stars(r.rating)}</span>
               <span style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>{r.title}</span>
+              {/* The same badge the shopper sees, so a seller answering a review
+                  knows whether the reader was shown one. */}
+              {PROVENANCE_BADGE[provenanceOf(r)] && (
+                <span style={{
+                  fontSize: 'var(--text-xs)', fontWeight: 600, padding: '2px 8px',
+                  borderRadius: '10px', background: 'var(--success-bg)', color: 'var(--success)',
+                  border: '1px solid var(--success)',
+                }}>
+                  {PROVENANCE_BADGE[provenanceOf(r)]}
+                </span>
+              )}
               <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
                 {products[r.product_id]?.name} · {r.author} · {formatDateOnly(r.submitted)}
               </span>

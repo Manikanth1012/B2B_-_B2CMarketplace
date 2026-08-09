@@ -2,8 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   canReview, validateReview, aggregate, awaitingReply, hasReply,
   pendingReviews, validateModeration, orderForDisplay, stars,
-  REVIEW_REASONS, MIN_BODY, type Review,
-} from './reviews'
+  REVIEW_REASONS, MIN_BODY, type Review, provenanceOf, isVerified, PROVENANCE_BADGE, PROVENANCE_NOTE, verifiedShare } from './reviews'
 
 const review = (o: Partial<Review> & { id: string }): Review => ({
   product_id: 'SKU-5003', rating: 5, title: 'Good', body: 'A long enough body here.',
@@ -174,5 +173,69 @@ describe('stars', () => {
   it('does not run off the end for nonsense input', () => {
     expect(stars(0)).toBe('☆☆☆☆☆')
     expect(stars(9)).toBe('★★★★★')
+  })
+})
+
+/* Every other record here traces to something. A review pointed at a product
+   and carried a name typed into a text column, and that was all. */
+describe('where a review came from', () => {
+  const r = (o: Partial<Review> = {}): Review => ({
+    id: 'REV-1', product_id: 'SKU-4001', rating: 5, title: 't', body: 'b'.repeat(30),
+    author: 'Arun Deshpande', submitted: '01 Aug 2026', status: 'published',
+    reject_reason: null, reply_by: null, reply_at: null, reply_text: null,
+    ...o,
+  })
+
+  it('is verified when it names the purchase', () => {
+    expect(provenanceOf(r({ order_ref: 'ORD-1', customer_id: 'cp-1' }))).toBe('verified')
+    expect(isVerified(r({ order_ref: 'ORD-1' }))).toBe(true)
+  })
+
+  /* Somebody real saying something about a thing they got elsewhere. Worth
+     reading, not worth badging — and quite different from a name in a box. */
+  it('is known when the customer is identified but the purchase is not', () => {
+    expect(provenanceOf(r({ customer_id: 'cp-449118' }))).toBe('known')
+    expect(provenanceOf(r({ account_id: 'ENT-2011' }))).toBe('known')
+    expect(isVerified(r({ customer_id: 'cp-449118' }))).toBe(false)
+  })
+
+  it('is anonymous when nothing behind it resolves', () => {
+    expect(provenanceOf(r())).toBe('anonymous')
+  })
+
+  /* A customer without a login is still a customer. Four of the shoppers here
+     have orders and no auth user, and keying provenance on `user_id` alone
+     filed three named people as strangers. */
+  it('counts a customer with no login as known', () => {
+    expect(provenanceOf(r({ customer_id: 'cp-449118', user_id: null }))).toBe('known')
+  })
+
+  it('badges only the verified ones', () => {
+    expect(PROVENANCE_BADGE.verified).toBe('Verified purchase')
+    expect(PROVENANCE_BADGE.known).toBeNull()
+    expect(PROVENANCE_BADGE.anonymous).toBeNull()
+  })
+
+  /* The moderator needs the opposite of what the shopper needs: the two
+     unverified states spelled out, because that is what they decide on. */
+  it('tells the moderator all three apart', () => {
+    const notes = new Set(Object.values(PROVENANCE_NOTE))
+    expect(notes.size).toBe(3)
+    expect(PROVENANCE_NOTE.known).toMatch(/no purchase of this product/)
+    expect(PROVENANCE_NOTE.anonymous).toMatch(/not linked/i)
+  })
+
+  it('reports the verified share as a pair, over published reviews only', () => {
+    const share = verifiedShare([
+      r({ status: 'published', order_ref: 'ORD-1' }),
+      r({ status: 'published' }),
+      r({ status: 'pending', order_ref: 'ORD-2' }),
+      r({ status: 'rejected', order_ref: 'ORD-3' }),
+    ])
+    expect(share).toEqual({ verified: 1, published: 2 })
+  })
+
+  it('says nothing rather than dividing by nothing where a product has no reviews', () => {
+    expect(verifiedShare([])).toEqual({ verified: 0, published: 0 })
   })
 })

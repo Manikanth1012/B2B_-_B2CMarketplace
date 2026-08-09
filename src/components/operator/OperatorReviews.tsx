@@ -1,10 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { ShieldAlert, TriangleAlert, Info, CircleCheck as CheckCircle, Package } from 'lucide-react'
+import {
+  ShieldAlert, TriangleAlert, Info, CircleCheck as CheckCircle, Package,
+  BadgeCheck, User, CircleHelp,
+} from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import type { Product } from '../../types'
 import {
-  orderForDisplay, validateModeration, stars,
-  REVIEW_REASONS, type Review, type RejectReason,
+  orderForDisplay, validateModeration, stars, provenanceOf, PROVENANCE_NOTE,
+  REVIEW_REASONS, type Review, type RejectReason, type Provenance,
 } from '../../lib/reviews'
 import { screenAll, triage, screeningSummary } from '../../lib/reviewScreening'
 import type { Screening, Severity, Flag } from '../../lib/reviewScreening'
@@ -164,6 +167,8 @@ export function OperatorReviews() {
                     </span>
                   </div>
 
+                  <ProvenanceRow review={r} />
+
                   <div style={{ padding: '11px 12px' }}>
                     <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>{r.title}</div>
                     <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: '4px 0 0', lineHeight: 1.55 }}>{r.body}</p>
@@ -204,6 +209,50 @@ export function OperatorReviews() {
           </div>
         )}
       </SectionCard>
+    </div>
+  )
+}
+
+/* Where the review came from, on every card in every tab.
+ *
+   The automated screen reads the text; this reads the ledger, and they answer
+   different questions. A moderator deciding whether to publish wants to know
+   whether there is an order behind the words before they read the words —
+   which is why this sits above the body and not in the screening panel.
+
+   Unlike the shopper's view, all three states are spelled out here. The absence
+   of a badge is the message on a product page; on a moderation queue an absence
+   is just something easy to miss. */
+const PROVENANCE_TONE: Record<Provenance, { ink: string; bg: string; icon: typeof Info }> = {
+  verified: { ink: 'var(--success)', bg: 'var(--success-bg)', icon: BadgeCheck },
+  known: { ink: 'var(--text-secondary)', bg: 'var(--bg-alt)', icon: User },
+  anonymous: { ink: 'var(--warning)', bg: 'var(--warning-bg)', icon: CircleHelp },
+}
+
+function ProvenanceRow({ review }: { review: Review }) {
+  const p = provenanceOf(review)
+  const tone = PROVENANCE_TONE[p]
+  const Icon = tone.icon
+  return (
+    <div style={{
+      display: 'flex', gap: '7px', alignItems: 'center', padding: '7px 12px',
+      borderTop: '1px solid var(--border-light)', background: tone.bg, flexWrap: 'wrap',
+    }}>
+      <Icon size={13} style={{ color: tone.ink, flexShrink: 0 }} />
+      <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+        {PROVENANCE_NOTE[p]}
+      </span>
+      {/* The order itself, not a tick claiming there is one. A moderator who
+          doubts the link can go and look it up. */}
+      {review.order_ref && (
+        <span style={{
+          fontSize: '10px', fontFamily: 'ui-monospace, monospace', color: 'var(--text-tertiary)',
+          background: 'white', border: '1px solid var(--border-light)',
+          padding: '2px 6px', borderRadius: 'var(--radius-sm)',
+        }}>
+          {review.order_ref}
+        </span>
+      )}
     </div>
   )
 }

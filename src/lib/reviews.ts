@@ -18,7 +18,20 @@ export interface Review {
   reply_at: string | null
   reply_text: string | null
   user_id?: string | null
+  /* Who wrote it and what they bought.
+   *
+     `customer_id` rather than `user_id` alone, because four of the shoppers in
+     this marketplace have orders and no login — a guest checkout is a customer
+     we can name, and filing them as anonymous throws away what we know.
+     `order_ref` is the purchase the review is about; null is not a defect, it
+     is an unverified review, which is an ordinary thing. */
+  customer_id?: string | null
+  account_id?: string | null
+  order_ref?: string | null
 }
+
+/** What is known about where a review came from, worst-known to best. */
+export type Provenance = 'anonymous' | 'known' | 'verified'
 
 export const REVIEW_STATES = ['pending', 'published', 'rejected'] as const
 
@@ -138,4 +151,62 @@ export function orderForDisplay(reviews: readonly Review[]): Review[] {
 
 export function stars(rating: number): string {
   return '★'.repeat(Math.max(0, Math.min(5, rating))) + '☆'.repeat(Math.max(0, 5 - rating))
+}
+
+
+/* --------------------------------------------------------------- provenance */
+
+/**
+ * Where a review came from.
+ *
+ * Three states and they are genuinely different to a reader. A verified
+ * purchase is a claim the marketplace can stand behind. A known customer with
+ * no purchase of *this* product is somebody real saying something about a thing
+ * they got elsewhere — worth reading, not worth badging. Anonymous is a name in
+ * a text box.
+ *
+ * Derived from the pointer rather than stored beside it. A `verified` boolean
+ * next to an `order_ref` is two copies of one fact, and the copy that goes
+ * stale is always the one the screen reads.
+ */
+export function provenanceOf(
+  r: Pick<Review, 'order_ref' | 'customer_id' | 'account_id'>,
+): Provenance {
+  if (r.order_ref) return 'verified'
+  return r.customer_id || r.account_id ? 'known' : 'anonymous'
+}
+
+export function isVerified(r: Pick<Review, 'order_ref'>): boolean {
+  return Boolean(r.order_ref)
+}
+
+/** The badge a shopper sees. Nothing at all for the two unverified states —
+    "unverified purchase" on a review reads as an accusation, and the absence of
+    the badge is the whole message. */
+export const PROVENANCE_BADGE: Record<Provenance, string | null> = {
+  verified: 'Verified purchase',
+  known: null,
+  anonymous: null,
+}
+
+/** What the moderator is told, which is the opposite: they need the two
+    unverified states spelled out, because that is what they are deciding on. */
+export const PROVENANCE_NOTE: Record<Provenance, string> = {
+  verified: 'Verified purchase — the order is on file',
+  known: 'Known customer, but no purchase of this product on file',
+  anonymous: 'Not linked to any account',
+}
+
+/**
+ * How much of a product's published opinion is backed by a purchase.
+ *
+ * Reported as a pair rather than a percentage, because "60% verified" over five
+ * reviews and over five hundred are different facts and the percentage hides
+ * which one you are looking at.
+ */
+export function verifiedShare(
+  reviews: readonly Pick<Review, 'status' | 'order_ref'>[],
+): { verified: number; published: number } {
+  const published = reviews.filter(r => r.status === 'published')
+  return { verified: published.filter(isVerified).length, published: published.length }
 }

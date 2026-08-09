@@ -3,7 +3,10 @@ import { Star, Minus, Plus, Shield, Truck, Zap, Check } from 'lucide-react'
 import type { Product } from '../types'
 import { getProductImage } from '../lib/images'
 import { supabase } from '../lib/supabase'
-import { aggregate, orderForDisplay, stars, type Review } from '../lib/reviews'
+import {
+  aggregate, orderForDisplay, stars, provenanceOf, PROVENANCE_BADGE, verifiedShare,
+  type Review,
+} from '../lib/reviews'
 import { useMarket } from '../lib/MarketContext'
 
 import type { View } from '../types/view'
@@ -83,6 +86,7 @@ export function ProductDetail({ product, onAddToCart, onNavigate, compact = fals
   const active = shots[Math.min(shown, shots.length - 1)]
 
   const agg = aggregate(reviews)
+  const backing = verifiedShare(reviews)
   const color = catColors[product.category_id] || 'var(--brand-accent)'
   const hasDiscount = product.was_price && product.was_price > product.price
   const outOfStock = product.stock === 'out'
@@ -434,6 +438,12 @@ export function ProductDetail({ product, onAddToCart, onNavigate, compact = fals
                             </div>
                           )
                         })}
+                        {/* Counted, not converted to a percentage: "2 of 3 backed by an
+                            order" and "200 of 300" are different facts about a product,
+                            and 67% hides which one you are reading. */}
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '8px' }}>
+                          {backing.verified} of {backing.published} backed by an order on file
+                        </div>
                       </>
                     ) : (
                       <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', margin: 0 }}>
@@ -453,6 +463,20 @@ export function ProductDetail({ product, onAddToCart, onNavigate, compact = fals
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                         <span style={{ color: '#F5A623', letterSpacing: '1px' }}>{stars(r.rating)}</span>
                         <span style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>{r.title}</span>
+                        {/* Badged when the order is on file, silent otherwise. There is no
+                            "unverified" badge on purpose — it reads as an accusation against
+                            someone who may simply have bought the thing before this
+                            marketplace existed. */}
+                        {PROVENANCE_BADGE[provenanceOf(r)] && (
+                          <span style={{
+                            fontSize: 'var(--text-xs)', fontWeight: 600, padding: '2px 8px',
+                            borderRadius: '10px', background: 'var(--green-50, #ECFDF3)',
+                            color: 'var(--green-700, #067647)',
+                            border: '1px solid var(--green-200, #ABEFC6)',
+                          }}>
+                            {PROVENANCE_BADGE[provenanceOf(r)]}
+                          </span>
+                        )}
                         <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
                           {r.author} · {r.submitted}
                         </span>
