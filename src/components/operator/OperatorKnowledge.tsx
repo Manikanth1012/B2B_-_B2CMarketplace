@@ -1,5 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Trash2, Pencil, ArrowLeft, Eye, EyeOff, Paperclip, X, Check, UserCheck } from 'lucide-react'
+import {
+  Plus, Trash2, Pencil, ArrowLeft, Eye, EyeOff, Paperclip, X, Check, UserCheck,
+  ChevronUp, ChevronDown,
+} from 'lucide-react'
 import {
   SectionCard, Table, Td, EmptyState, Btn, Modal, FormField, TextInput, TextArea,
   Select, toast, ConfirmDialog, StatCard,
@@ -14,8 +17,9 @@ import type { KbAdminBook, ArticleDraft, FaqDraft, KbReader } from '../../lib/kb
 import {
   KB_KINDS, kbKind, PERSONAS, personaLabel, publishedTo, kbWarnings,
   validateArticle, validateFaq, canLink, helpfulness, assetsFor,
+  blankBlock, blockProblem, BLOCK_LABEL,
 } from '../../lib/kb'
-import type { KbArticle, KbFaq } from '../../lib/kb'
+import type { KbArticle, KbFaq, KbBlock, KbBlockKind } from '../../lib/kb'
 import { KnowledgeBase } from '../KnowledgeBase'
 import type { Persona } from '../../types/view'
 
@@ -570,7 +574,7 @@ function ReaderPicker(
 function blankArticle(): ArticleDraft {
   return {
     title: '', summary: '', kind: 'howto', personas: [], audience_ids: [], status: 'held',
-    mins: 3, tags: [], view: null, roles: [], body: [['', '']], audience_note: '',
+    mins: 3, tags: [], view: null, roles: [], body: [blankBlock('prose')], audience_note: '',
   }
 }
 
@@ -696,22 +700,106 @@ function ArticleEditor(
         </div>
       </SectionCard>
 
-      <SectionCard pad title="The article itself" subtitle="A heading and its prose, in order">
-        {draft.body.map((pair, i) => (
-          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 2.4fr auto', gap: '10px', alignItems: 'start', marginBottom: '10px' }}>
-            <TextInput value={pair[0]} placeholder="Heading"
-              onChange={e => set('body', draft.body.map((b, j) => j === i ? [e.target.value, b[1]] : b))} />
-            <TextArea rows={3} value={pair[1]} placeholder="Prose"
-              onChange={e => set('body', draft.body.map((b, j) => j === i ? [b[0], e.target.value] : b))} />
-            <Btn size="sm" variant="secondary" disabled={draft.body.length === 1}
-              onClick={() => set('body', draft.body.filter((_, j) => j !== i))}>
-              <Trash2 size={12} />
+      {/* A block is words, a picture or a video. It used to be words only, so
+          every article in this marketplace was prose about a user interface with
+          no picture of it — and a screenshot with the button ringed is the same
+          instruction in a second rather than a paragraph. */}
+      <SectionCard pad title="The article itself"
+        subtitle="Words, pictures and video, in the order a reader meets them">
+        {draft.body.map((block, i) => {
+          const edit = (patch: Partial<KbBlock>) =>
+            set('body', draft.body.map((b, j) =>
+              j === i ? ({ ...b, ...patch } as KbBlock) : b))
+          const why = blockProblem(block)
+          return (
+            <div key={i} style={{
+              border: `1px solid ${why ? 'var(--warning)' : 'var(--border-light)'}`,
+              borderRadius: 'var(--radius)', padding: '10px', marginBottom: '10px',
+              display: 'flex', flexDirection: 'column', gap: '8px',
+            }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <div style={{ width: '130px', flexShrink: 0 }}>
+                  {/* Changing the kind rebuilds the block rather than keeping
+                      the old fields alongside the new ones — a block carrying
+                      both prose and a URL is one nobody can say the meaning
+                      of. The heading survives, because it is the same heading. */}
+                  <Select value={block.kind}
+                    onChange={e => set('body', draft.body.map((b, j) => j === i
+                      ? { ...blankBlock(e.target.value as KbBlockKind), heading: b.heading }
+                      : b))}>
+                    {(Object.keys(BLOCK_LABEL) as KbBlockKind[]).map(k => (
+                      <option key={k} value={k}>{BLOCK_LABEL[k]}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <TextInput value={block.heading} placeholder="Heading"
+                    onChange={e => edit({ heading: e.target.value })} />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                  <Btn size="sm" variant="secondary" disabled={i === 0}
+                    onClick={() => set('body', swapAt(draft.body, i, i - 1))}>
+                    <ChevronUp size={12} />
+                  </Btn>
+                  <Btn size="sm" variant="secondary" disabled={i === draft.body.length - 1}
+                    onClick={() => set('body', swapAt(draft.body, i, i + 1))}>
+                    <ChevronDown size={12} />
+                  </Btn>
+                </div>
+                <Btn size="sm" variant="secondary" disabled={draft.body.length === 1}
+                  onClick={() => set('body', draft.body.filter((_, j) => j !== i))}>
+                  <Trash2 size={12} />
+                </Btn>
+              </div>
+
+              {block.kind === 'prose' && (
+                <TextArea rows={3} value={block.text} placeholder="Prose"
+                  onChange={e => edit({ text: e.target.value } as Partial<KbBlock>)} />
+              )}
+
+              {block.kind === 'image' && (
+                <>
+                  <TextInput value={block.src} placeholder="https://… or a picture already on this marketplace"
+                    onChange={e => edit({ src: e.target.value } as Partial<KbBlock>)} />
+                  <TextInput value={block.alt}
+                    placeholder="What the picture shows — required"
+                    onChange={e => edit({ alt: e.target.value } as Partial<KbBlock>)} />
+                  <TextInput value={block.caption ?? ''} placeholder="Caption (optional)"
+                    onChange={e => edit({ caption: e.target.value } as Partial<KbBlock>)} />
+                  {block.src && (
+                    <img src={block.src} alt={block.alt}
+                      style={{ maxWidth: '260px', borderRadius: 'var(--radius)', border: '1px solid var(--border-light)' }} />
+                  )}
+                </>
+              )}
+
+              {block.kind === 'video' && (
+                <>
+                  <TextInput value={block.url} placeholder="https://www.youtube.com/watch?v=… or a Vimeo link"
+                    onChange={e => edit({ url: e.target.value } as Partial<KbBlock>)} />
+                  <TextInput value={block.caption ?? ''} placeholder="Caption (optional)"
+                    onChange={e => edit({ caption: e.target.value } as Partial<KbBlock>)} />
+                </>
+              )}
+
+              {/* Said here, beside the block, rather than as a toast when they
+                  press Save and have to work out which of nine blocks it meant. */}
+              {why && (
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--warning)', lineHeight: 1.5 }}>
+                  {why}
+                </div>
+              )}
+            </div>
+          )
+        })}
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+          {(Object.keys(BLOCK_LABEL) as KbBlockKind[]).map(k => (
+            <Btn key={k} size="sm" variant="secondary"
+              onClick={() => set('body', [...draft.body, blankBlock(k)])}>
+              <Plus size={13} style={{ marginRight: 5 }} />{BLOCK_LABEL[k]}
             </Btn>
-          </div>
-        ))}
-        <Btn size="sm" variant="secondary" onClick={() => set('body', [...draft.body, ['', '']])}>
-          <Plus size={13} style={{ marginRight: 5 }} />Add a section
-        </Btn>
+          ))}
+        </div>
       </SectionCard>
     </div>
   )
@@ -820,4 +908,13 @@ function FaqModal(
 const pill: React.CSSProperties = {
   padding: '2px 9px', borderRadius: 'var(--radius-full)',
   fontSize: '10px', fontWeight: 700,
+}
+
+
+/* Two blocks exchanged. The order is the order a reader meets them in, so it
+   has to be something an author can change without deleting and retyping. */
+function swapAt(body: readonly KbBlock[], a: number, b: number): KbBlock[] {
+  const next = [...body]
+  ;[next[a], next[b]] = [next[b], next[a]]
+  return next
 }

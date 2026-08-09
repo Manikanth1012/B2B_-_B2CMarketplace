@@ -1,3 +1,4 @@
+import { KbBlocks } from './KbBlocks'
 import { useState, useEffect, useCallback } from 'react'
 import { ChevronLeft, Clock, Paperclip, TriangleAlert as AlertTriangle } from 'lucide-react'
 import { SectionCard, EmptyState, Btn, TextInput, Select, Modal, FormField, TextArea, toast } from './operator/shared'
@@ -81,12 +82,7 @@ export function KnowledgeBase({ persona, title, myRole = null, feedbackAs, previ
               </div>
             )}
 
-            {open.body.map(([heading, prose], i) => (
-              <div key={i}>
-                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: '4px' }}>{heading}</div>
-                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.65 }}>{prose}</p>
-              </div>
-            ))}
+            <KbBlocks body={open.body} />
 
             <KbAssets assets={assetsFor(snap.assets, open.id)} />
 

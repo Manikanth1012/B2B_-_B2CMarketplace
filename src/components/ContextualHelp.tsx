@@ -1,3 +1,4 @@
+import { KbBlocks } from './KbBlocks'
 import { useState } from 'react'
 import { CircleHelp as HelpCircle } from 'lucide-react'
 import { Modal, Btn } from './operator/shared'
@@ -59,12 +60,7 @@ export function ContextualHelp({ persona, view, onOpenCatalogue, onDark = false 
               <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{article.mins} min read</span>
             </div>
             <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>{article.summary}</p>
-            {article.body.map(([h, p], i) => (
-              <div key={i}>
-                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: '4px' }}>{h}</div>
-                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.65 }}>{p}</p>
-              </div>
-            ))}
+            <KbBlocks body={article.body} compact />
           </div>
         ) : (
           /* Say it plainly rather than doing nothing — and say WHICH thing.

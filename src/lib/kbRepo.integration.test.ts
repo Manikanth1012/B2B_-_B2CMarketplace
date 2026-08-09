@@ -25,7 +25,7 @@ const testArticle: KbArticle = {
   id: AID, persona: 'partner', personas: ['partner'], audience_ids: [], audience_note: '',
   kind: 'howto', title: 'Test article', mins: 1,
   updated: '29 Jul 2026', view: 'pt-team', roles: [], tags: ['test'],
-  summary: 'Seeded by the integration test', body: [['Heading', 'Prose']],
+  summary: 'Seeded by the integration test', body: [{ kind: 'prose', heading: 'Heading', text: 'Prose' }],
   status: 'published', sort_order: -1,
 }
 
@@ -37,7 +37,11 @@ async function teardown() {
 beforeAll(async () => {
   await signIn(OPERATOR.email, OPERATOR.password)
   await teardown()
-  const { error } = await supabase.from('kb_articles').insert({ ...testArticle, body: JSON.stringify(testArticle.body) })
+  /* Not `JSON.stringify(body)`. `body` is jsonb, and a stringified array
+     arrives as a jsonb *string* rather than a list — so this seeded an article
+     whose body every reader would render as nothing. Invisible until the guard
+     on the column started refusing it. */
+  const { error } = await supabase.from('kb_articles').insert(testArticle)
   if (error) throw new Error(`Could not seed ${AID}: ${error.message}`)
 })
 

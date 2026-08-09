@@ -17,7 +17,10 @@ import { signIn, signOut } from './authRepo'
 import { loadKbAdmin, saveArticle, saveFaq, deleteArticle, deleteFaq, setArticleStatus, setAudiences } from './kbAdminRepo'
 import type { KbAdminBook } from './kbAdminRepo'
 import { loadKb } from './kbRepo'
-import { publishedTo, faqsFor, faqsByTopic, validateFaq, canLink } from './kb'
+import {
+  publishedTo, faqsFor, faqsByTopic, validateFaq, canLink,
+  blocksOf, blockProblem, bodyProblem,
+} from './kb'
 
 const OPERATOR = { email: 'anika.sharma@aventa.com', password: 'operator123' }
 const CONSUMER = { email: 'priya.raman@example.com', password: 'demo1234' }
@@ -122,7 +125,7 @@ describe('what the operator can now do, and what is still refused', () => {
       draft: {
         title: 'Integration test article', summary: 'Written by the integration suite.',
         kind: 'howto', personas: ['consumer', 'enterprise'], audience_ids: [], status: 'published',
-        mins: 2, tags: ['test'], view: null, roles: [], body: [['Why', 'Because']],
+        mins: 2, tags: ['test'], view: null, roles: [], body: [{ kind: 'prose', heading: 'Why', text: 'Because' }],
         audience_note: '',
       },
     })
@@ -304,5 +307,89 @@ describe('tidying up', () => {
     expect(after.faqs.map(f => f.id).filter(id => faqs.includes(id))).toEqual([])
     /* And the set is back to the size it was before this file ran. */
     expect(after.faqs.length, 'the tidy-up left something behind').toBe(faqsBefore)
+  })
+})
+
+
+/* An article was a list of [heading, prose] pairs, so the help centre could not
+   show you the screen it was describing. */
+describe('the blocks an article is made of, in the database', () => {
+  const article = 'KB-O06'
+  let original: unknown = null
+
+  beforeAll(async () => {
+    await signIn(OPERATOR.email, OPERATOR.password)
+    const { data } = await supabase.from('kb_articles').select('body').eq('id', article).maybeSingle()
+    original = (data as { body: unknown } | null)?.body ?? null
+    expect(original, `${article} is not on file`).toBeTruthy()
+  }, 30_000)
+
+  afterAll(async () => {
+    if (original) await supabase.from('kb_articles').update({ body: original }).eq('id', article)
+    await signOut()
+  })
+
+  it('holds every block as an object, on every article', async () => {
+    const { data, error } = await supabase.from('kb_articles').select('id, body')
+    expect(error, error?.message).toBeNull()
+    const rows = (data ?? []) as { id: string; body: unknown[] }[]
+    expect(rows.length).toBeGreaterThan(0)
+
+    const pairs = rows.filter(r => (r.body ?? []).some(b => Array.isArray(b))).map(r => r.id)
+    expect(pairs, `still holding pairs: ${pairs.join(', ')}`).toEqual([])
+  })
+
+  /* The rule the module evaluates and the rule the trigger evaluates, against
+     every article actually on file rather than a fixture. */
+  it('agrees with the module about every article on file', async () => {
+    const { data } = await supabase.from('kb_articles').select('id, body')
+    const wrong = ((data ?? []) as { id: string; body: unknown }[])
+      .map(r => ({ id: r.id, why: bodyProblem(blocksOf(r.body)) }))
+      .filter(r => r.why)
+      .map(r => `${r.id}: ${r.why}`)
+    expect(wrong, wrong.join('; ')).toEqual([])
+  })
+
+  it('has media to show, or nothing exercises the feature', async () => {
+    const { data } = await supabase.from('kb_articles').select('id, body')
+    const media = ((data ?? []) as { body: unknown }[])
+      .flatMap(r => blocksOf(r.body))
+      .filter(b => b.kind === 'image' || b.kind === 'video')
+    expect(media.length).toBeGreaterThanOrEqual(2)
+    for (const b of media) expect(blockProblem(b), JSON.stringify(b)).toBeNull()
+  })
+
+  it('refuses a picture with no alt text', async () => {
+    const { error } = await supabase.from('kb_articles')
+      .update({ body: [{ kind: 'image', heading: 'x', src: 'https://a/b.png' }] })
+      .eq('id', article)
+    expect(error, 'an image with no alt text was written').not.toBeNull()
+    expect(error!.message).toMatch(/alt text/)
+  })
+
+  /* A URL an author pastes becomes an iframe on a page every persona reads. */
+  it('refuses an origin it will not frame, in the database as well as the form', async () => {
+    const { error } = await supabase.from('kb_articles')
+      .update({ body: [{ kind: 'video', heading: 'x', url: 'https://example.com/v' }] })
+      .eq('id', article)
+    expect(error, 'an arbitrary origin was accepted as an embed').not.toBeNull()
+    expect(error!.message).toMatch(/will frame/)
+    expect(blockProblem({ kind: 'video', heading: 'x', url: 'https://example.com/v' }))
+      .toMatch(/will frame/)
+  })
+
+  it('takes a picture and a video that are properly formed', async () => {
+    const body = [
+      { kind: 'prose', heading: 'What this is', text: 'Written by the integration suite.' },
+      { kind: 'image', heading: 'The screen', src: 'https://example.org/shot.png', alt: 'A screenshot of the settlement list.' },
+      { kind: 'video', heading: 'Watch it', url: 'https://vimeo.com/76979871' },
+    ]
+    const { error } = await supabase.from('kb_articles').update({ body }).eq('id', article)
+    expect(error, error?.message).toBeNull()
+
+    const { data } = await supabase.from('kb_articles').select('body').eq('id', article).maybeSingle()
+    const back = blocksOf((data as { body: unknown }).body)
+    expect(back.map(b => b.kind)).toEqual(['prose', 'image', 'video'])
+    expect(bodyProblem(back)).toBeNull()
   })
 })
