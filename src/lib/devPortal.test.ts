@@ -4,8 +4,11 @@ import {
   curlFor, endpointUrl, scopesHeld, callability, productionQueue,
   publishable, deprecatable, statusTone, groupEndpoints, KEY_STATE_LABEL,
   groupOperations, coverage, specSize,
+  standardProblem, namedStandards, byDomain, standardLabel,
 } from './devPortal'
-import type { Credential, Version, Endpoint, Subscription, Rollup, Spec, SpecOperation } from './devPortal'
+import type {
+  Credential, Version, Endpoint, Subscription, Rollup, Spec, SpecOperation, TmfStandard,
+} from './devPortal'
 
 const NOW = new Date('2026-08-06T12:00:00Z')
 
@@ -421,5 +424,72 @@ describe('shaping', () => {
     ])
     expect(g.map(x => x.resource)).toEqual(['category', 'productOffering'])
     expect(g[1].endpoints).toHaveLength(2)
+  })
+})
+
+describe('the standard an API claims', () => {
+  const register: TmfStandard[] = [
+    { code: 'TMF620', name: 'Product Catalog Management', domain: 'Product', note: null },
+    { code: 'TMF685', name: 'Resource Pool Management', domain: 'Resource',
+      note: 'Resource pools — not stock on hand.' },
+    { code: 'TMF687', name: 'Stock Management', domain: 'Resource', note: null },
+    { code: 'TMF688', name: 'Event Management', domain: 'Common', note: null },
+  ]
+
+  /* Four spellings of one standard is four standards to anything that groups
+     or joins, and a portal a developer cannot search. */
+  it('reads one standard however it was written', () => {
+    expect(namedStandards('TMF620')).toEqual(['TMF620'])
+    expect(namedStandards('tmf620')).toEqual(['TMF620'])
+    expect(namedStandards('TMF-620')).toEqual(['TMF620'])
+    expect(namedStandards('TMF 620')).toEqual(['TMF620'])
+  })
+
+  /* A real published value here: one standard plus a transport. */
+  it('reads every number in a compound claim', () => {
+    expect(namedStandards('TMF688 / AsyncAPI')).toEqual(['TMF688'])
+    expect(namedStandards('TMF620 with TMF622 extensions')).toEqual(['TMF620', 'TMF622'])
+  })
+
+  it('finds no standard in something that never claimed one', () => {
+    expect(namedStandards('6D internal')).toEqual([])
+    expect(namedStandards('')).toEqual([])
+  })
+
+  /* The field used to arrive pre-filled with TMF620, so nobody was ever asked.
+     An unanswered question has to look unanswered. */
+  it('refuses a blank rather than assuming the product catalogue', () => {
+    expect(standardProblem('', register)).toMatch(/no sensible default/)
+    expect(standardProblem('   ', register)).toMatch(/no sensible default/)
+  })
+
+  /* The exact defect: a real-looking number for an API that does not exist,
+     with no specification behind it to contradict the claim. */
+  it('refuses a number the register does not hold', () => {
+    expect(standardProblem('TMF999', register)).toMatch(/TMF999 is not a standard/)
+    expect(standardProblem('TMF688 / TMF999', register)).toMatch(/TMF999/)
+  })
+
+  it('accepts a standard that exists, whatever its spelling', () => {
+    expect(standardProblem('TMF687', register)).toBeNull()
+    expect(standardProblem('tmf-687', register)).toBeNull()
+    expect(standardProblem('TMF688 / AsyncAPI', register)).toBeNull()
+  })
+
+  /* Two of the seven APIs here are 6D's own. Forcing them into a number would
+     be the TMF685 mistake with more ceremony. */
+  it('lets an API say it is not a TM Forum one', () => {
+    expect(standardProblem('6D internal', register)).toBeNull()
+  })
+
+  it('groups the register the way a picker reads it', () => {
+    const groups = byDomain(register)
+    expect(groups.map(g => g.domain)).toEqual(['Common', 'Product', 'Resource'])
+    expect(groups[2].standards.map(s => s.code)).toEqual(['TMF685', 'TMF687'])
+  })
+
+  it('names a standard rather than numbering it, and leaves an unknown alone', () => {
+    expect(standardLabel('TMF687', register)).toBe('TMF687 Stock Management')
+    expect(standardLabel('6D internal', register)).toBe('6D internal')
   })
 })

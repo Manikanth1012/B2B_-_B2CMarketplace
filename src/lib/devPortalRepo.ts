@@ -10,7 +10,7 @@
 import { supabase } from './supabase'
 import type {
   Application, Credential, Version, Endpoint, Subscription, CallRecord, Rollup, Spec,
-  Topic, Subscriber, Delivery, Environment,
+  Topic, Subscriber, Delivery, Environment, TmfStandard,
 } from './devPortal'
 
 export interface DeveloperWorkspace {
@@ -145,6 +145,15 @@ export async function loadPortalAdmin(): Promise<PortalAdmin> {
     partners: (partners.data ?? []) as { id: string; name: string }[],
     loadError: (apps.error ?? subs.error)?.message,
   }
+}
+
+/* TM Forum's Open API register, as this marketplace holds it. Read-only to
+   everybody — TM Forum publishes it, this marketplace does not, and a new
+   entry belongs in a migration rather than in whatever somebody typed into
+   the publish form. */
+export async function loadTmfStandards(): Promise<TmfStandard[]> {
+  const { data } = await supabase.from('tmf_standard').select('*').order('code')
+  return (data ?? []) as TmfStandard[]
 }
 
 function shapeSubs(rows: unknown[], versions: Version[]): Subscription[] {

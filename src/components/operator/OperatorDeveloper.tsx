@@ -13,12 +13,15 @@ import {
   LIFECYCLE_LABEL, KEY_STATE_LABEL, keyNote, maskedSecret, usable, sunsetWarning,
   usageOf, statusBreakdown, productionQueue, publishable, deprecatable, LIMITS, daysUntil, specSize,
   topicHealth, coverageGaps, DELIVERY_TONE,
+  standardProblem, namedStandards, byDomain, standardLabel,
 } from '../../lib/devPortal'
-import type { Version, Credential, Application, Subscription, Environment } from '../../lib/devPortal'
+import type {
+  Version, Credential, Application, Subscription, Environment, TmfStandard,
+} from '../../lib/devPortal'
 import {
   loadPortalAdmin, loadInbound, decideProductionAccess, publishVersion, addEndpoint,
   setLifecycle, setApplicationStatus, revokeCredential, rotateCredential,
-  issueCredential, publishEvent,
+  issueCredential, publishEvent, loadTmfStandards,
 } from '../../lib/devPortalRepo'
 import type { PortalAdmin, InboundView } from '../../lib/devPortalRepo'
 
@@ -227,6 +230,11 @@ function ApisTab({ apis, versions, subscriptions, onEdit, onPublishVersion, onDe
 }) {
   const page = usePaging(apis)
   const [open, setOpen] = useState<string | null>(null)
+  /* Named, not numbered. "TMF685" reads as correct to anybody who does not
+     know the register by heart, and "TMF685 Resource Pool Management" over a
+     stock API does not — which is the whole reason the register is a table. */
+  const [register, setRegister] = useState<TmfStandard[]>([])
+  useEffect(() => { void loadTmfStandards().then(setRegister) }, [])
 
   const retire = async (v: Version) => {
     const left = daysUntil(v.sunset_on)
@@ -261,7 +269,7 @@ function ApisTab({ apis, versions, subscriptions, onEdit, onPublishVersion, onDe
             const subs = subscriptions.filter(s => s.api_id === a.id && s.state === 'active')
             return (
               <SectionCard key={a.id} title={a.name}
-                subtitle={`${a.standard} · ${a.audience} · ${vs.length} version${vs.length === 1 ? '' : 's'} · ${subs.length} live subscription${subs.length === 1 ? '' : 's'} · ${a.why}`}
+                subtitle={`${standardLabel(a.standard, register)} · ${a.audience} · ${vs.length} version${vs.length === 1 ? '' : 's'} · ${subs.length} live subscription${subs.length === 1 ? '' : 's'} · ${a.why}`}
                 action={
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <Btn variant="secondary" size="sm" onClick={() => onEdit(a)}>Edit</Btn>
@@ -619,15 +627,31 @@ const CODE_MEANING: Record<number, string> = {
 function ApiModal({ api, onClose, onSaved }: {
   api: OperatorApi | null; onClose: () => void; onSaved: () => void
 }) {
+  /* No default standard. It used to open on TMF620 — Product Catalog
+     Management — so a shipping API, a payment API, anything at all, was born
+     claiming to be the product catalogue unless somebody noticed a field that
+     already looked answered. An unanswered question has to look unanswered. */
   const [form, setForm] = useState<OperatorApi>(api ?? {
-    id: '', name: '', standard: 'TMF620', audience: 'Sellers', description: '', why: '',
+    id: '', name: '', standard: '', audience: 'Sellers', description: '', why: '',
     scopes: [], methods: ['GET'], environments: ['sandbox'], lifecycle: 'current',
     version: '1.0', subscriber_count: 0, sort_order: 0,
   })
   const [scopeText, setScopeText] = useState((api?.scopes ?? []).join(', '))
 
+  /* The register, read rather than remembered. `own` is the escape hatch for
+     the two APIs here that are 6D's own implementations — a marketplace does
+     not only publish TM Forum standards, and forcing those into a number
+     would be the TMF685 mistake with more ceremony. */
+  const [register, setRegister] = useState<TmfStandard[]>([])
+  const [own, setOwn] = useState(Boolean(api && namedStandards(api.standard).length === 0))
+  useEffect(() => { void loadTmfStandards().then(setRegister) }, [])
+
   const save = async () => {
     if (!form.name.trim()) { toast('Name is required', 'error'); return }
+    /* The database checks the same thing in `check_named_standard`. This is so
+       the form can say what is wrong rather than relaying a trigger. */
+    const claim = standardProblem(form.standard, register)
+    if (claim) { toast(claim, 'error'); return }
     if (!form.why.trim()) { toast('Say in one line why this API exists.', 'error'); return }
     const scopes = scopeText.split(',').map(s => s.trim()).filter(Boolean)
     if (scopes.length === 0) {
@@ -662,8 +686,41 @@ function ApiModal({ api, onClose, onSaved }: {
           <TextInput value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
         </FormField>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-          <FormField label="TM Forum standard">
-            <TextInput value={form.standard} onChange={e => setForm({ ...form, standard: e.target.value })} />
+          <FormField label="TM Forum standard" required
+                     hint={own
+                       ? 'Name what it is. It will not be published against a standard.'
+                       : 'Picked from the register, so a number that does not exist cannot be typed in.'}>
+            {own ? (
+              <TextInput value={form.standard} placeholder="6D internal, AsyncAPI, …"
+                         onChange={e => setForm({ ...form, standard: e.target.value })} />
+            ) : (
+              <Select value={form.standard} onChange={e => setForm({ ...form, standard: e.target.value })}>
+                <option value="">Which standard does this implement?</option>
+                {byDomain(register).map(g => (
+                  <optgroup key={g.domain} label={g.domain}>
+                    {g.standards.map(s => (
+                      <option key={s.code} value={s.code}>{s.code} {s.name}</option>
+                    ))}
+                  </optgroup>
+                ))}
+              </Select>
+            )}
+            <label style={{
+              display: 'flex', gap: '6px', alignItems: 'center', marginTop: '6px',
+              fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', cursor: 'pointer',
+            }}>
+              <input type="checkbox" checked={own}
+                     onChange={e => { setOwn(e.target.checked); setForm({ ...form, standard: '' }) }} />
+              This is not a TM Forum API
+            </label>
+            {/* The register carries the reason a number is the wrong one where
+                somebody has already got it wrong. TMF685 looks like a stock
+                API and is not. */}
+            {register.find(s => s.code === form.standard)?.note && (
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--warning)', margin: '6px 0 0', lineHeight: 1.5 }}>
+                {register.find(s => s.code === form.standard)!.note}
+              </p>
+            )}
           </FormField>
           <FormField label="Audience">
             <TextInput value={form.audience} onChange={e => setForm({ ...form, audience: e.target.value })}

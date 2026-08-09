@@ -455,6 +455,86 @@ export function publishable(
   return { ok: true }
 }
 
+/* ---- The standard an API claims ------------------------------------------- */
+
+export interface TmfStandard {
+  code: string
+  name: string
+  domain: string
+  note: string | null
+}
+
+/**
+ * Every TM Forum number named in a string, as the register spells them.
+ *
+ * A string rather than a code because one published API here is
+ * "TMF688 / AsyncAPI" — a standard plus a transport — and the useful question
+ * is which standards it names, not whether the whole of it is one.
+ *
+ * Case and punctuation are absorbed on the way through. "tmf 620", "TMF-620"
+ * and "TMF620" are one standard, and a free text box that treats them as three
+ * is a portal a developer cannot search.
+ */
+export function namedStandards(standard: string): string[] {
+  const out: string[] = []
+  for (const m of standard.matchAll(/TMF[ -]?(\d{3})/gi)) {
+    const code = `TMF${m[1]}`
+    if (!out.includes(code)) out.push(code)
+  }
+  return out
+}
+
+/**
+ * Whether an API may be published claiming this.
+ *
+ * Two things are refused and one is deliberately allowed. A blank is refused
+ * because the field used to arrive pre-filled with TMF620 and nobody was ever
+ * asked — an unanswered question has to look unanswered. A number that is not
+ * in the register is refused because that is the exact defect that put the
+ * Inventory API under TMF685 for a year: a real-looking number for a different
+ * API, with no specification behind it to contradict the claim.
+ *
+ * Free text naming no TMF number at all is allowed. Two of the seven APIs
+ * published here are 6D's own implementations, and forcing them into a
+ * standard would be the TMF685 mistake with more ceremony.
+ *
+ * The database evaluates the same rule in `check_named_standard`. This one is
+ * so the form can say what is wrong before it saves rather than relaying a
+ * trigger's exception.
+ */
+export function standardProblem(
+  standard: string, register: readonly TmfStandard[],
+): string | null {
+  if (!standard.trim()) {
+    return 'Say which standard this implements, or that it is not a TM Forum API. There is no sensible default.'
+  }
+  const known = new Set(register.map(s => s.code))
+  const unknown = namedStandards(standard).filter(c => !known.has(c))
+  if (unknown.length > 0) {
+    return `${unknown.join(', ')} ${unknown.length === 1 ? 'is not a standard' : 'are not standards'} in the register. An API published against a number that does not exist is one whose specification nobody can look up.`
+  }
+  return null
+}
+
+/** The register as a picker reads it: grouped by domain, in TMF number order. */
+export function byDomain(
+  register: readonly TmfStandard[],
+): { domain: string; standards: TmfStandard[] }[] {
+  const map = new Map<string, TmfStandard[]>()
+  for (const s of [...register].sort((a, b) => a.code.localeCompare(b.code))) {
+    map.set(s.domain, [...(map.get(s.domain) ?? []), s])
+  }
+  return [...map.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([domain, standards]) => ({ domain, standards }))
+}
+
+/** "TMF687 Stock Management", for a screen that has the code and wants the name. */
+export function standardLabel(code: string, register: readonly TmfStandard[]): string {
+  const hit = register.find(s => s.code === code)
+  return hit ? `${hit.code} ${hit.name}` : code
+}
+
 /* Deprecating rather than deleting. Deletion took a published API away from
    whoever was still calling it, with no notice and no record it had existed —
    the one operation a portal must not offer. */
