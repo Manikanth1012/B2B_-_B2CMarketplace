@@ -243,6 +243,20 @@ describe('what raising it will mean, said before it is raised', () => {
     expect(v.note).toMatch(/converted at/)
   })
 
+  /* The preview is what a buyer reads beside a basket the storefront already
+     wrote in rupees. Written by `money()` it says "INR 200,000.00" under a
+     total that says "₹2,00,000.00". */
+  it('writes the threshold in the money the screen is written in', () => {
+    const rupees = (n: number, c: string) =>
+      `${c === 'INR' ? '₹' : c + ' '}${n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    const b = build({ line: item({ unit_price: 100000 }), q: 2 })
+    const v = verdict(b, ACCOUNT, POLICY, [], '2026-08-04', rupees)
+    expect(v.note).toContain('₹2,00,000.00')
+    expect(v.note).not.toMatch(/INR [\d,]/)
+    /* And still the ISO code when nobody hands it one. */
+    expect(verdict(b, ACCOUNT, POLICY, [], '2026-08-04').note).toContain('INR 200,000.00')
+  })
+
   it('says nothing about an empty basket', () => {
     const v = verdict(EMPTY_BASKET, ACCOUNT, POLICY, [], '2026-08-04')
     expect(v.total).toBe(0)

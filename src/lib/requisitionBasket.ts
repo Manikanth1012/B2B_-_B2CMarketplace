@@ -16,7 +16,7 @@
  * somebody senior either agrees to or does not.
  */
 import { requisitionTotal, needFor, policyNoteFor, inPolicyMoney, money } from './enterprise'
-import type { Policy, Account, Need, Check } from './enterprise'
+import type { Policy, Account, Need, Check, Fmt } from './enterprise'
 import type { Rate } from './money'
 
 export interface BasketLine {
@@ -218,6 +218,10 @@ export interface BasketVerdict {
  */
 export function verdict(
   basket: Basket, account: Account, policy: Policy, rates: readonly Rate[], today: string,
+  /* The preview is rendered, not stored, so it is written in the money the
+     rest of the screen is written in. `policy_note` on the raised requisition
+     keeps the ISO default — that one is a record other markets read back. */
+  fmt: Fmt = money,
 ): BasketVerdict {
   const total = basketTotal(basket)
   const vertical = verticalOf(basket.lines)
@@ -232,12 +236,12 @@ export function verdict(
   if (!at) {
     return {
       ...base, need: 'none', note: null,
-      blocked: `There is no exchange rate on file for ${basket.currency} to ${account.currency} on ${today}, so this cannot be checked against the ${money(policy.threshold, account.currency)} approval threshold.`,
+      blocked: `There is no exchange rate on file for ${basket.currency} to ${account.currency} on ${today}, so this cannot be checked against the ${fmt(policy.threshold, account.currency)} approval threshold.`,
     }
   }
 
   const need = needFor({ amount: at.amount, vertical }, policy)
-  return { ...base, need, note: policyNoteFor(need, at.amount, policy, account.currency, at), blocked: null }
+  return { ...base, need, note: policyNoteFor(need, at.amount, policy, account.currency, at, fmt), blocked: null }
 }
 
 /**

@@ -325,10 +325,11 @@ export function needFor(
  */
 export function policyNoteFor(
   need: Need, amount: number, policy: Policy, currency: string, at?: PolicyMoney | null,
+  fmt: Fmt = money,
 ): string {
-  const t = money(policy.threshold, currency)
+  const t = fmt(policy.threshold, currency)
   const from = at && !at.native
-    ? ` (judged on ${money(amount, currency)}, converted at ${at.rate} as of ${at.as_of})`
+    ? ` (judged on ${fmt(amount, currency)}, converted at ${at.rate} as of ${at.as_of})`
     : ''
   switch (need) {
     case 'both':
@@ -435,6 +436,7 @@ export function decided(reqs: Requisition[]): Requisition[] {
  */
 export function canDecide(
   req: Requisition, me: Member, policy: Policy, currency?: string, at?: PolicyMoney | null,
+  fmt: Fmt = money,
 ): Check {
   if (req.state !== 'pending') {
     return { ok: false, reason: `${req.id} was already ${req.state}. A decision is not re-openable.` }
@@ -476,7 +478,7 @@ export function canDecide(
       return {
         ok: false,
         reason: currency
-          ? `${money(judged, currency)}${at ? conversionNote(req, at) : ''} is above the ${money(me.approve_limit, currency)} you may approve.`
+          ? `${fmt(judged, currency)}${at ? conversionNote(req, at, fmt) : ''} is above the ${fmt(me.approve_limit, currency)} you may approve.`
           : 'That is above the value you may approve.',
       }
     }
@@ -789,23 +791,25 @@ export function byCostCentre(lines: InvoiceLine[], centres: CostCentre[]): {
 
 /** Does the invoice equal the lines under it. A buyer being asked to pay a
     total they cannot reconstruct is a buyer who disputes it. */
-export function reconcileInvoice(invoice: Invoice, lines: InvoiceLine[]): Check {
+export function reconcileInvoice(
+  invoice: Invoice, lines: InvoiceLine[], fmt: Fmt = money,
+): Check {
   const c = invoice.currency
   const mine = lines.filter(l => l.invoice_id === invoice.id)
   if (!mine.length) return { ok: false, reason: `${invoice.id} has no lines behind it` }
   const sum = round2(mine.reduce((a, l) => a + l.amount, 0))
   const net = round2(invoice.recurring + invoice.oneoff)
   if (sum !== net) {
-    return { ok: false, reason: `${invoice.id} is ${money(net, c)} before tax but its lines add to ${money(sum, c)}` }
+    return { ok: false, reason: `${invoice.id} is ${fmt(net, c)} before tax but its lines add to ${fmt(sum, c)}` }
   }
   const tax = round2((net * invoice.tax_rate) / 100)
   if (tax !== round2(invoice.tax)) {
-    return { ok: false, reason: `${invoice.id} charges ${money(invoice.tax, c)} tax where ${invoice.tax_rate}% of ${money(net, c)} is ${money(tax, c)}` }
+    return { ok: false, reason: `${invoice.id} charges ${fmt(invoice.tax, c)} tax where ${invoice.tax_rate}% of ${fmt(net, c)} is ${fmt(tax, c)}` }
   }
   if (round2(net + invoice.tax) !== round2(invoice.total)) {
-    return { ok: false, reason: `${invoice.id} totals ${money(invoice.total, c)} where its parts add to ${money(net + invoice.tax, c)}` }
+    return { ok: false, reason: `${invoice.id} totals ${fmt(invoice.total, c)} where its parts add to ${fmt(net + invoice.tax, c)}` }
   }
-  return { ok: true, note: `${mine.length} lines, ${money(net, c)} plus ${money(invoice.tax, c)} tax` }
+  return { ok: true, note: `${mine.length} lines, ${fmt(net, c)} plus ${fmt(invoice.tax, c)} tax` }
 }
 
 export const DUNNING = { restrictAfterDays: 14, suspendAfterDays: 30 }
@@ -849,7 +853,7 @@ export function arrears(invoice: Invoice, today: string): {
 
 /** What a buyer can claim back, which is the only reason the tax position is
     on this screen at all. */
-export function taxPosition(account: Account, invoices: Invoice[]): {
+export function taxPosition(account: Account, invoices: Invoice[], fmt: Fmt = money): {
   reclaimable: number; blocked: boolean; why: string
 } {
   const reclaimable = round2(invoices.reduce((a, i) => a + i.tax, 0))
@@ -857,7 +861,7 @@ export function taxPosition(account: Account, invoices: Invoice[]): {
     return {
       reclaimable,
       blocked: true,
-      why: `${money(reclaimable, account.currency)} of tax has been charged on these invoices. Without a registration number on file none of it can be reclaimed.`,
+      why: `${fmt(reclaimable, account.currency)} of tax has been charged on these invoices. Without a registration number on file none of it can be reclaimed.`,
     }
   }
   if (account.tax_exempt && !account.exempt_cert) {
@@ -870,7 +874,7 @@ export function taxPosition(account: Account, invoices: Invoice[]): {
   return {
     reclaimable,
     blocked: false,
-    why: `${money(reclaimable, account.currency)} of input tax across these invoices, against ${account.registration}.`,
+    why: `${fmt(reclaimable, account.currency)} of input tax across these invoices, against ${account.registration}.`,
   }
 }
 
@@ -902,13 +906,22 @@ export { round2 }
  *
  * `money()` below hands `format` an empty currency list, so it can find neither
  * the symbol nor the locale and falls back to the ISO code and en-US grouping:
- * "INR 401,258.00" where the same screen's header says "₹4,01,258.00". That is
- * every string this module produces, not only the one that was reported.
+ * "INR 401,258.00" where the same screen's header says "₹4,01,258.00". That was
+ * every string this module produced, not only the one that was reported, so
+ * every function that writes a figure into a sentence now takes the formatter
+ * — `conversionNote`, `approvalImpact`, `policyNoteFor`, `canDecide`,
+ * `reconcileInvoice` and `taxPosition`.
  *
  * Injected rather than looked up because this module has no data access by
  * design — the rules have to be testable without a network. The screens all
  * have `fmtIn` from `useMarket()`, which is the same formatter with the table
  * already in it.
+ *
+ * The default stays `money`, and it is the right answer in one place: the
+ * `policy_note` written onto a requisition is stored, read later by people in
+ * other markets, and is a record rather than a rendering. "INR 401,258.00" is
+ * how a cross-border document is written; a rupee symbol chosen by whoever
+ * happened to raise it is not.
  */
 export type Fmt = (amount: number, currency: string) => string
 

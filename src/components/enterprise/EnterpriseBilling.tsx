@@ -47,7 +47,10 @@ export function EnterpriseBilling() {
   const { money, money0 } = useAccountMoney(book?.account?.currency)
   /* The markets catalogue, for what the tax is called where this account is
      registered. */
-  const { book: moneyBook } = useMarket()
+  /* `fmtIn` and not this module's `money`: the rules in `enterprise.ts` write
+     figures into sentences, and with no currency table they fall back to
+     "INR 401,258.00" beside a header that says "₹4,01,258.00". */
+  const { book: moneyBook, fmtIn } = useMarket()
   useEffect(() => { void reload() }, [reload])
 
   /* Above the loading guard, and reading through an empty list until the book
@@ -75,11 +78,11 @@ export function EnterpriseBilling() {
   const budget = budgetPosition(book.invoices, account, TODAY)
   const com = committed(book.subscriptions)
   const idle = idleSeats(book.subscriptions)
-  const tax = taxPosition(account, book.invoices)
+  const tax = taxPosition(account, book.invoices, fmtIn)
   const late = book.invoices.filter(i => i.status === 'overdue')
   const sellers = new Set(book.invoiceLines.map(l => l.seller))
   const broken = book.invoices
-    .map(i => ({ invoice: i, check: reconcileInvoice(i, book.invoiceLines) }))
+    .map(i => ({ invoice: i, check: reconcileInvoice(i, book.invoiceLines, fmtIn) }))
     .filter(r => !r.check.ok)
 
   /* The invoice as a document, on the template the operator assigned to
@@ -322,6 +325,7 @@ function InvoiceDetail({ invoice, book }: { invoice: Invoice; book: AccountBook 
      guard sees to that — but a document is read in the money it was issued in,
      and a reprint of an old one must not follow the account somewhere else. */
   const { money } = useAccountMoney(invoice.currency)
+  const { fmtIn } = useMarket()
   /* The statutory registration. On a B2B invoice this is the field the
      customer's own finance team looks for first: without an IRN an Indian
      invoice cannot be claimed against, and finding that out from an auditor is
@@ -333,7 +337,7 @@ function InvoiceDetail({ invoice, book }: { invoice: Invoice; book: AccountBook 
     return () => { live = false }
   }, [invoice.id])
   const lines = book.invoiceLines.filter(l => l.invoice_id === invoice.id)
-  const check = reconcileInvoice(invoice, book.invoiceLines)
+  const check = reconcileInvoice(invoice, book.invoiceLines, fmtIn)
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
       <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-tertiary)' }}>
@@ -382,6 +386,7 @@ function PayModal({ invoice, onClose, onDone }: {
   invoice: Invoice; onClose: () => void; onDone: () => Promise<void>
 }) {
   const { money } = useAccountMoney(invoice.currency)
+  const { fmtIn } = useMarket()
   const [busy, setBusy] = useState(false)
   const submit = async () => {
     setBusy(true)

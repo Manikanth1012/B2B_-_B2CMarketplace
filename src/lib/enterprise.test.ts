@@ -854,8 +854,39 @@ describe('who writes the money in the impact list', () => {
     }
   })
 
-  it('falls back to the code where no formatter is given, as every other caller still does', () => {
+  it('falls back to the ISO code where no formatter is given', () => {
     const out = approvalImpact(req({ amount: 401258 }), lines, ACCOUNT, [centre()], 0)
     expect(out.join(' ')).toContain('401,258.00')
+  })
+
+  /* "every string this module produces, not only the bullets that were
+     reported" — so every function that writes a figure into a sentence takes
+     the formatter, and each one is checked rather than assumed. */
+  it('writes the policy note in the money the screen is written in', () => {
+    const note = policyNoteFor('finance', 401258, policy, 'INR', undefined, rupees)
+    expect(note).toContain('₹')
+    expect(note).not.toMatch(/INR [\d,]/)
+  })
+
+  it('writes the approval limit a decision refuses on', () => {
+    const me = member({ id: 'EU-09', approves_finance: true, approve_limit: 100000 })
+    const out = canDecide(
+      req({ amount: 401258, currency: 'INR', need: 'finance' }), me, policy, 'INR', undefined, rupees)
+    expect(out.ok).toBe(false)
+    expect(!out.ok && out.reason).toContain('₹4,01,258.00')
+    expect(!out.ok && out.reason).not.toMatch(/INR [\d,]/)
+  })
+
+  it('writes the figures an invoice failed to reconcile on', () => {
+    const bill = inv({ currency: 'INR', recurring: 401258, oneoff: 0, tax: 0, tax_rate: 0, total: 401258 })
+    const out = reconcileInvoice(bill, [line({ amount: 1 })], rupees)
+    expect(out.ok).toBe(false)
+    expect(!out.ok && out.reason).toContain('₹4,01,258.00')
+  })
+
+  it('writes what can be reclaimed', () => {
+    const acct = { ...ACCOUNT, currency: 'INR', reg_type: 'Not registered' as const, registration: null }
+    const out = taxPosition(acct, [inv({ currency: 'INR', tax: 401258 })], rupees)
+    expect(out.why).toContain('₹4,01,258.00')
   })
 })

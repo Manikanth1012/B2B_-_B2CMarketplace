@@ -273,7 +273,10 @@ function RequisitionCard({ book, req, at, onDecide }: {
   const { me, policy } = book
   const lines = book.lines.filter(l => l.requisition_id === req.id)
   const allowed = me && policy
-    ? canDecide(req, me, policy, book.account?.currency ?? 'USD', at)
+    /* `fmtIn` last: the refusal names the limit and the value, and without the
+       currency table those come out as "INR 401,258.00" under a heading that
+       says "₹4,01,258.00". */
+    ? canDecide(req, me, policy, book.account?.currency ?? 'USD', at, fmtIn)
     : { ok: false as const, reason: 'Not signed in' }
   const others = policy ? whoCanDecide(req, book.members, policy, at) : []
   const dupes = policy?.duplicate_flag ? duplicatesOf(lines, book.subscriptions) : []

@@ -17,7 +17,7 @@ import { verdict, missingFields, missingNote, verticalOf, modelOf } from '../../
 import type { MissingField } from '../../lib/requisitionBasket'
 import { raiseRequisition, loadAccount } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
-import { money } from '../../lib/enterprise'
+import { useMarket } from '../../lib/MarketContext'
 import { VERTICAL_NAMES } from './data'
 import { getProductImage } from '../../lib/images'
 import { round2 } from '../../lib/money'
@@ -39,6 +39,11 @@ export function RequisitionPanel({ onRaised }: {
   onRaised: () => void
 }) {
   const { basket, open, setOpen, setQuantity, remove, empty, total, count } = useRequisition()
+  /* The marketplace's formatter, with the currency table in it. This panel used
+     to import `money` from `enterprise.ts`, which has no table and writes
+     "INR 400,000.00" — every price on the panel, not only the threshold. */
+  const { fmtIn } = useMarket()
+  const money = (n: number, c: string) => fmtIn(n, c)
   const [draft, setDraft] = useState(BLANK)
   const [busy, setBusy] = useState(false)
   /* Nothing is marked red until somebody has actually tried. A form that scolds
@@ -71,7 +76,9 @@ export function RequisitionPanel({ onRaised }: {
   const rates = book?.rates ?? []
   const today = new Date().toISOString().slice(0, 10)
   const v = account && policy
-    ? verdict(basket, account, policy, rates, today)
+    /* The preview names the threshold, and without the currency table it names
+       it as "INR 400,000.00" beside a basket priced "₹4,00,000.00". */
+    ? verdict(basket, account, policy, rates, today, fmtIn)
     : null
   const missing = account ? missingFields(basket, draft, account)
     : [{ field: 'lines' as MissingField, says: book ? 'your account, which did not load' : 'your account to finish loading' }]
