@@ -565,12 +565,24 @@ describe('the orders the account placed', () => {
     }
   })
 
-  it('gives a provisioned order different stage names from a shipped one', async () => {
-    const { data } = await supabase.from('orders').select('order_ref,carrier,stages')
-    const digital = data!.find(o => o.carrier === 'Digital')!
-    const shipped = data!.find(o => o.carrier !== 'Digital')!
-    expect((digital.stages as string[]).join()).not.toBe((shipped.stages as string[]).join())
-    expect((digital.stages as string[]).some(s => /transit/i.test(s))).toBe(false)
+  /* Found by what the order actually is rather than by `carrier = 'Digital'`.
+     That was a sentinel meaning "nothing here ships", written into a column
+     that is otherwise the name of a courier — and carriage now lives on the
+     part that ships, so the sentinel is gone along with it. `order_part.kind`
+     says the same thing as a fact rather than as a spare value. */
+  it('puts a provisioned part on a different journey from a shipped one', async () => {
+    const { data } = await supabase.from('order_part').select('order_id,kind,state')
+    const parts = (data ?? []) as { order_id: string; kind: string; state: string }[]
+    const digital = parts.filter(p => p.kind !== 'shipped')
+    const shipped = parts.filter(p => p.kind === 'shipped')
+    expect(digital.length, 'nothing on this account provisions').toBeGreaterThan(0)
+    expect(shipped.length, 'nothing on this account ships').toBeGreaterThan(0)
+
+    /* The two rails share only the states that happen to any part. Nothing
+       that provisions is ever in transit, which is the claim the old test was
+       making through the carrier column. */
+    expect(digital.some(p => p.state === 'in transit' || p.state === 'packed')).toBe(false)
+    expect(shipped.some(p => p.state === 'activating' || p.state === 'active')).toBe(false)
   })
 
   it('cannot be edited by the account that placed it', async () => {
