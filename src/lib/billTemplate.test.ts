@@ -416,6 +416,7 @@ describe('what a particular bill actually renders', () => {
   const facts = (over: Partial<BillFacts> = {}): BillFacts => ({
     reference: 'BILL-2026-88214', issued: '01 Jul 2026', due: '15 Jul 2026',
     currency: 'INR', currencyMark: '\u20b9', taxLabel: 'GST',
+    clearance: [], verifyUrl: null,
     billedTo: { name: 'Priya Raman', ref: 'CUS-449021', lines: ['12 Nandi Road', 'Bengaluru 560001'], contact: 'priya.raman@example.com', tax: null },
     billedFrom: { name: 'Aventa Communications Private Limited', mark: 'Aventa Telecom', lines: ['1 Marathahalli', 'Bengaluru 560037'], tax: '29AAACA1234F1Z5' },
     lines: [{ label: 'Aventa Fibre 500', detail: '1 × $59.00', amount: 59 }],

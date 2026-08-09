@@ -97,7 +97,11 @@ export interface AccountRow {
 export function invoiceFacts(
   invoice: InvoiceRow,
   lines: readonly InvoiceLineRow[],
-  ctx: { issuer: Issuer | null; account: AccountRow | null; template: Template | null; currencies?: Currency[]; taxLabel?: string },
+  /* `clearance` optional and empty by default: this is the shape a caller
+     without a clearance record passes, and an invoice that has not been
+     stamped prints no stamp. A caller that HAS one passes it rather than the
+     facts builder reaching for a table — this module has no data access. */
+  ctx: { issuer: Issuer | null; account: AccountRow | null; template: Template | null; currencies?: Currency[]; taxLabel?: string; clearance?: BillFacts['clearance']; verifyUrl?: string | null },
 ): BillFacts {
   const mark = markFor(invoice.currency ?? 'USD', ctx.currencies ?? [])
   const mine = lines.filter(l => l.invoice_id === invoice.id)
@@ -147,6 +151,8 @@ export function invoiceFacts(
     currency: invoice.currency ?? 'USD',
     currencyMark: markFor(invoice.currency ?? 'USD', ctx.currencies ?? []),
     taxLabel: ctx.taxLabel ?? ctx.template?.tax_label ?? 'Tax',
+    clearance: ctx.clearance ?? [],
+    verifyUrl: ctx.verifyUrl ?? null,
   }
 }
 
@@ -224,6 +230,10 @@ export function statementFacts(
     currency: st.currency ?? 'USD',
     currencyMark: markFor(st.currency ?? 'USD', ctx.currencies ?? []),
     taxLabel: ctx.taxLabel ?? ctx.template?.tax_label ?? 'Tax',
+    /* A self-billing statement is raised by the marketplace to itself and no
+       authority clears it, so there is never a stamp to print. */
+    clearance: [],
+    verifyUrl: null,
   }
 }
 

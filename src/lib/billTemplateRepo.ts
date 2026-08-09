@@ -16,8 +16,10 @@ import { markFor } from './money'
 import {
   type Section, type Template, type TemplateSection, type Assignment, type Issuer,
   type Audience, type BillFacts,
-  canDelete, nextReference, validateTemplate, money, issuerFor, issuersByMarket,
+  canDelete, nextReference, validateTemplate, money, issuerFor, issuersByMarket, taxLabelFor,
 } from './billTemplate'
+import { faceOfDocument, regimeFor, scannable } from './einvoice'
+import type { ClearanceRecord, Regime, DocKind } from './einvoice'
 
 export type Result = { ok: true; note?: string } | { ok: false; reason: string }
 
@@ -83,7 +85,8 @@ export async function loadBillTemplates(): Promise<BillTemplateBook> {
 async function loadSamples(
   issuer: Issuer | null, templates: readonly Template[], assignments: readonly Assignment[],
 ): Promise<Record<Audience, BillFacts | null>> {
-  const [bills, invoices, lines, statements, banners, profile, address, account, member, ledger] =
+  const [bills, invoices, lines, statements, banners, profile, address, account, member, ledger,
+         clearance, regimes, taxLabels] =
     await Promise.all([
       /* Ordered by id, not by `issued`. Those columns hold "01 Jun 2026" as
          text, and sorting that lexically puts April after June. */
@@ -102,7 +105,31 @@ async function loadSamples(
       supabase.from('enterprise_accounts').select('*').eq('id', 'ENT-2007').maybeSingle(),
       supabase.from('loyalty_members').select('*').eq('kind', 'consumer'),
       supabase.from('loyalty_ledger').select('*'),
+      /* The tax authority's stamp on the specimen documents. A preview that
+         omitted it would show an operator a fiscal-clearance section rendering
+         as nothing and leave them to conclude the section is broken — the
+         specimen bills this samples are Kenyan and Indian, and both carry
+         one. */
+      supabase.from('einvoice_clearance').select('*'),
+      supabase.from('tax_regime').select('*').order('sort_order'),
+      /* What each market calls its own tax. The preview hard-coded 'GST' on
+         all three specimens, so the Kenyan bill it samples printed "GST at
+         16%" — an Indian tax name over a Kenyan VAT rate, on the screen whose
+         entire job is showing an operator what will actually be issued. */
+      supabase.from('markets').select('code, tax_label'),
     ])
+
+  const labelFor = (market: string | null | undefined) =>
+    taxLabelFor(market, (taxLabels.data ?? []) as { code: string; tax_label: string }[])
+
+  /* Reduced once, the same way the customer's own bill reduces it, so the
+     preview and the issued document cannot print different stamps. */
+  const stampFor = (kind: DocKind, id: string, market: string | null) => {
+    const rec = ((clearance.data ?? []) as ClearanceRecord[])
+      .find(c => c.doc_kind === kind && c.doc_id === id) ?? null
+    const regime = regimeFor((regimes.data ?? []) as Regime[], market ?? '')
+    return { clearance: faceOfDocument(regime, rec), verifyUrl: scannable(rec) }
+  }
 
   const from = issuer
     ? { name: issuer.legal_name, lines: issuer.lines, tax: `${issuer.tax_label} ${issuer.tax_id}` }
@@ -225,7 +252,8 @@ async function loadSamples(
       payRef: p?.customer_id ?? bill.id,
       currency: bill.currency,
       currencyMark: markFor(bill.currency),
-      taxLabel: 'GST',
+      taxLabel: labelFor(bill.market),
+      ...stampFor('consumer_bill', bill.id, bill.market ?? null),
     }
   }
 
@@ -286,7 +314,8 @@ async function loadSamples(
       payRef: inv.po_ref || inv.id,
       currency: inv.currency,
       currencyMark: markFor(inv.currency),
-      taxLabel: 'GST',
+      taxLabel: labelFor(inv.market),
+      ...stampFor('enterprise_invoice', inv.id, inv.market ?? null),
     }
   }
 
@@ -339,7 +368,11 @@ async function loadSamples(
       payRef: st.id,
       currency: st.currency,
       currencyMark: markFor(st.currency),
-      taxLabel: 'GST',
+      taxLabel: labelFor(st.market),
+      /* A self-billing statement is not a document any of these authorities
+         clears — the marketplace raises it to itself. Empty is the answer, and
+         the section renders nothing rather than an unearned stamp. */
+      clearance: [], verifyUrl: null,
     }
   }
 }

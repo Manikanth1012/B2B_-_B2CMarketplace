@@ -182,6 +182,23 @@ export function billPages(
         ], hex(facts.advert.accent))
         break
 
+      /* Under the total it stamps. Nothing where no clearance was due — an
+         empty heading reads as a stamp that failed rather than one that was
+         never required, and two of the three markets here require none. */
+      case 'fiscal': {
+        if (facts.clearance.length === 0) break
+        s.gap(4)
+        s.line('Fiscal clearance', { size: 8, font: 'bold', colour: INK })
+        for (const c of facts.clearance) s.row(c.label, c.value, { size: 7.5, colour: MUTED })
+        if (facts.verifyUrl && facts.verifyUrl !== 'signed') {
+          s.paragraph(`Verify at ${facts.verifyUrl}`, { size: 7, colour: MUTED })
+        } else if (facts.verifyUrl === 'signed') {
+          s.paragraph('Signed QR printed on the document.', { size: 7, colour: MUTED })
+        }
+        s.gap(4)
+        break
+      }
+
       case 'terms': {
         if (!facts.terms.length) break
         s.gap(4)

@@ -155,8 +155,37 @@ export function BillDocument(
 
       {on('payments') && <Line label="Paid this period" amount={-facts.paid} mark={facts.currencyMark} />}
 
-      {clearance && (
-        <ClearanceStamp regime={clearance.regime} record={clearance.record} compact />
+      {/* Inside the section list, not beside it.
+       *
+          This used to render on `clearance &&` — a prop the customer's own bill
+          view passed and the template preview did not, so the stamp appeared on
+          one of the four renditions of a document and on none of the three a
+          Kenyan customer actually files: not the PDF, not the plain-text
+          download, not the operator's preview. It was also not a section, so
+          the operator had no way to see it existed or where it sat.
+
+          `facts.clearance` is now the same reduction all four read, and `on`
+          is the same section switch as every block around it. The `clearance`
+          prop stays for the live record's own detail — status, failure, the
+          scannable QR — which is more than the printed document carries. */}
+      {on('fiscal') && facts.clearance.length > 0 && (
+        clearance
+          ? <ClearanceStamp regime={clearance.regime} record={clearance.record} compact />
+          : (
+            <div style={blockStyle}>
+              <strong style={blockHead}>Fiscal clearance</strong>
+              <div style={tiny}>
+                {facts.clearance.map(c => (
+                  <div key={c.label}>
+                    {c.label} <strong style={c.mono ? num : undefined}>{c.value}</strong>
+                  </div>
+                ))}
+                {facts.verifyUrl && facts.verifyUrl !== 'signed' && (
+                  <div style={{ marginTop: 3 }}>Verify at {facts.verifyUrl}</div>
+                )}
+              </div>
+            </div>
+          )
       )}
 
       {on('howtopay') && (

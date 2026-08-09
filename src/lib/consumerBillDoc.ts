@@ -25,6 +25,8 @@ import type {
 } from './billTemplate'
 import { sectionsOn, templateFor, blocksFor, money, taxLabelFor } from './billTemplate'
 import { markFor } from './money'
+import { faceOfDocument, regimeFor, scannable } from './einvoice'
+import type { ClearanceRecord, Regime } from './einvoice'
 import type { Currency, Market } from './money'
 import type { ConsumerBill } from '../types'
 
@@ -44,6 +46,11 @@ export interface BillBook {
      fetched per bill — seven bills would otherwise be seven identical reads. */
   currencies: Currency[]
   markets: Market[]
+  /* The tax authority's stamp on each of this customer's bills, and what a
+     stamp is in each market. Held per book rather than per bill for the same
+     reason as the templates: seven bills would be seven identical reads. */
+  clearance: ClearanceRecord[]
+  regimes: Regime[]
   loadError?: string
 }
 
@@ -75,6 +82,11 @@ function sameMonth(when: string, period: string): boolean {
  * raised at another rate does not print a lie about itself.
  */
 export function factsFor(bill: ConsumerBill, book: BillBook): BillFacts {
+  /* This bill's own stamp. Matched on the document id rather than taken from
+     the head of the list: a customer with seven bills has seven clearance
+     records, and printing the first one on all of them would put one bill's
+     control unit number on another's. */
+  const stamp = (book.clearance ?? []).find(c => c.doc_id === bill.id) ?? null
   /* The bill's own currency, not the template's. One template renders bills in
      every market; the row says which one this is. */
   const currency = bill.currency ?? 'USD'
@@ -172,6 +184,13 @@ export function factsFor(bill: ConsumerBill, book: BillBook): BillFacts {
        the template's hedge — "GST / VAT" and "VAT / GST". One rule, in
        `taxLabelFor`, for all three. */
     taxLabel: taxLabelFor(bill.market, book.markets ?? [], template),
+    /* Reduced through `faceOfDocument`, which is the same function the
+       operator's clearance screen renders from — one jurisdiction's answer to
+       "what goes on the face of the document", not this module's guess at it.
+       It returns nothing unless the record is actually cleared, so a pending
+       or failed submission prints no stamp rather than an unearned one. */
+    clearance: faceOfDocument(regimeFor(book.regimes ?? [], bill.market ?? ''), stamp),
+    verifyUrl: scannable(stamp),
   }
 }
 
@@ -259,6 +278,22 @@ export function asText(
 
       case 'summary':
         out.push(rule, row('Net', facts.total - facts.tax), row('Total due', facts.total), rule, '')
+        break
+
+      /* Nothing at all where the market requires no clearance, which is two of
+         the three here. An empty "FISCAL CLEARANCE" heading on an Emirati bill
+         would read as a stamp that failed rather than one that was never
+         due. */
+      case 'fiscal':
+        if (facts.clearance.length === 0) break
+        out.push('FISCAL CLEARANCE',
+          ...facts.clearance.map(c => `${c.label}: ${c.value}`),
+          ...(facts.verifyUrl && facts.verifyUrl !== 'signed'
+            ? [`Verify at ${facts.verifyUrl}`]
+            : facts.verifyUrl === 'signed'
+              ? ['Signed QR printed on the document.']
+              : []),
+          '')
         break
 
       case 'payments':

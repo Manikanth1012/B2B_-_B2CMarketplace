@@ -35,6 +35,7 @@ const TEMPLATE: Template = {
 const facts = (over: Partial<BillFacts> = {}): BillFacts => ({
   reference: 'BILL-2026-07', issued: '01 Aug 2026', due: '15 Aug 2026',
   currency: 'INR', currencyMark: '₹', taxLabel: 'GST',
+  clearance: [], verifyUrl: null,
   billedTo: {
     name: 'Priya Raman', ref: 'CUS-449021',
     lines: ['42 Rustom Bagh, HAL Old Airport Road', 'Bengaluru 560017'],

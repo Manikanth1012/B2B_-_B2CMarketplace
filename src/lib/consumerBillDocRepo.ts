@@ -11,6 +11,7 @@ import { issuerFor } from './billTemplate'
 import type {
   Section, Template, TemplateSection, Assignment, Issuer,
 } from './billTemplate'
+import type { ClearanceRecord, Regime } from './einvoice'
 import type { BillBook } from './consumerBillDoc'
 
 /**
@@ -20,7 +21,7 @@ import type { BillBook } from './consumerBillDoc'
  * record would otherwise be seven identical reads of the same template.
  */
 export async function loadBillBook(): Promise<BillBook> {
-  const [secRes, tplRes, tsRes, asgRes, issRes, profRes, addrRes, memRes, ledRes, banRes, curRes, mktRes] =
+  const [secRes, tplRes, tsRes, asgRes, issRes, profRes, addrRes, memRes, ledRes, banRes, curRes, mktRes, clrRes, regRes] =
     await Promise.all([
       supabase.from('invoice_sections').select('*').order('sort_order'),
       supabase.from('invoice_templates').select('*').order('sort_order'),
@@ -47,6 +48,13 @@ export async function loadBillBook(): Promise<BillBook> {
       supabase.from('public_banners').select('*').eq('audience', 'consumer').order('sort_order'),
       supabase.from('currencies').select('*').order('sort_order'),
       supabase.from('markets').select('*').order('sort_order'),
+      /* The tax authority's stamp on each of this customer's own bills, and the
+         regimes that say what a stamp is in each market. Read here with
+         everything else: a Kenyan bill cannot print its control unit number
+         from a table nobody fetched, which is how twelve cleared bills came to
+         carry a KRA reference no document has ever shown. */
+      supabase.from('einvoice_clearance').select('*').eq('doc_kind', 'consumer_bill'),
+      supabase.from('tax_regime').select('*').order('sort_order'),
     ])
 
   const profile = (profRes.data as Record<string, string> | null) ?? null
@@ -70,6 +78,8 @@ export async function loadBillBook(): Promise<BillBook> {
     ledger: (ledRes.data ?? []) as Record<string, string>[],
     currencies: (curRes.data ?? []) as Currency[],
     markets: (mktRes.data ?? []) as Market[],
+    clearance: (clrRes.data ?? []) as ClearanceRecord[],
+    regimes: (regRes.data ?? []) as Regime[],
     advert: banner
       ? { title: banner.title, subtitle: banner.subtitle ?? null, cta: banner.cta, accent: banner.accent || '#0D47A1' }
       : null,

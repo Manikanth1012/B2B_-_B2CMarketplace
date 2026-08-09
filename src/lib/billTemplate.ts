@@ -483,6 +483,18 @@ export interface BillFacts {
   /* GST in India, VAT in the UAE and Kenya. The template used to name the tax,
      which made every bill say GST wherever it was raised. */
   taxLabel: string
+  /* What the tax authority gave back for this document, already reduced to the
+     labels its own jurisdiction uses — an IRN in India, a control unit number
+     in Kenya, nothing in the Emirates. Empty is the ordinary answer in two of
+     the three markets, and the section renders nothing rather than an empty
+     heading when it is.
+
+     Reduced here rather than in the renderer so the PDF and the on-screen
+     document cannot print different stamps for one document. */
+  clearance: { label: string; value: string; mono?: boolean }[]
+  /* Where a reader checks the stamp themselves. Kenya publishes an iTax URL;
+     India returns a signed QR and no link. Null in both other cases. */
+  verifyUrl: string | null
 }
 
 /**
@@ -504,6 +516,11 @@ export function blocksFor(ids: readonly string[], facts: BillFacts): string[] {
     if (id === 'support' && !facts.support) return false
     if (id === 'terms' && !facts.terms.length) return false
     if (id === 'howtopay' && !facts.howToPay.trim()) return false
+    /* Two of the three markets clear nothing, so a locked section with nothing
+       to print is the ordinary case rather than a fault. Dropping it here
+       means `suppressed` explains the blank instead of the document carrying
+       an empty heading. */
+    if (id === 'fiscal' && facts.clearance.length === 0) return false
     return true
   })
 }
@@ -520,6 +537,7 @@ export function suppressed(ids: readonly string[], facts: BillFacts): { id: stri
     support: 'the issuing entity has published no support contact — set one under Billing identity',
     terms: 'no terms have been written for the issuing entity',
     howtopay: 'this template carries no remittance instructions',
+    fiscal: 'this document was raised in a market that requires no fiscal clearance, or has not been cleared yet',
   }
   return ids
     .filter(id => !showing.has(id))

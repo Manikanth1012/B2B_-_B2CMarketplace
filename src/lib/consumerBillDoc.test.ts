@@ -20,13 +20,16 @@ const SECTIONS: Section[] = [
   { id: 'rewards', label: 'Reward points', note: '', locked: false, audiences: ['consumer', 'enterprise'], sort_order: 7 },
   { id: 'tax', label: 'Taxation breakdown', note: '', locked: true, audiences: ['consumer', 'enterprise', 'partner'], sort_order: 8 },
   { id: 'summary', label: 'Summary and total', note: '', locked: true, audiences: ['consumer', 'enterprise', 'partner'], sort_order: 9 },
-  { id: 'payments', label: 'Payments received', note: '', locked: false, audiences: ['consumer', 'enterprise', 'partner'], sort_order: 10 },
-  { id: 'howtopay', label: 'How to pay', note: '', locked: false, audiences: ['consumer', 'enterprise', 'partner'], sort_order: 11 },
-  { id: 'paylink', label: 'Payment link and QR', note: '', locked: false, audiences: ['consumer', 'enterprise'], sort_order: 12 },
-  { id: 'support', label: 'Support and contact', note: '', locked: false, audiences: ['consumer', 'enterprise', 'partner'], sort_order: 13 },
-  { id: 'advert', label: 'Advertisement or banner', note: '', locked: false, audiences: ['consumer'], sort_order: 14 },
-  { id: 'terms', label: 'Terms and conditions', note: '', locked: false, audiences: ['consumer', 'enterprise', 'partner'], sort_order: 15 },
-  { id: 'slip', label: 'Payment slip', note: '', locked: false, audiences: ['consumer', 'enterprise'], sort_order: 16 },
+  /* Directly under the total it is a stamp on, which is where the migration
+     puts it and where both authorities' own specimens put it. */
+  { id: 'fiscal', label: 'Fiscal clearance', note: '', locked: true, audiences: ['consumer', 'enterprise', 'partner'], sort_order: 10 },
+  { id: 'payments', label: 'Payments received', note: '', locked: false, audiences: ['consumer', 'enterprise', 'partner'], sort_order: 11 },
+  { id: 'howtopay', label: 'How to pay', note: '', locked: false, audiences: ['consumer', 'enterprise', 'partner'], sort_order: 12 },
+  { id: 'paylink', label: 'Payment link and QR', note: '', locked: false, audiences: ['consumer', 'enterprise'], sort_order: 13 },
+  { id: 'support', label: 'Support and contact', note: '', locked: false, audiences: ['consumer', 'enterprise', 'partner'], sort_order: 14 },
+  { id: 'advert', label: 'Advertisement or banner', note: '', locked: false, audiences: ['consumer'], sort_order: 15 },
+  { id: 'terms', label: 'Terms and conditions', note: '', locked: false, audiences: ['consumer', 'enterprise', 'partner'], sort_order: 16 },
+  { id: 'slip', label: 'Payment slip', note: '', locked: false, audiences: ['consumer', 'enterprise'], sort_order: 17 },
 ]
 
 const ALL_IDS = SECTIONS.map(s => s.id)
@@ -86,6 +89,8 @@ const book = (over: Partial<BillBook> = {}): BillBook => ({
     { member: 'LM-4002', when_date: '04 Jul 2026', type: 'earn', points: '9999' },
   ],
   advert: { title: 'Add a second line', subtitle: 'Half price for six months', cta: 'See offers', accent: '#0f6ab4' },
+  clearance: [],
+  regimes: [],
   ...over,
 })
 
@@ -248,5 +253,74 @@ describe('the downloaded file', () => {
     expect(t).not.toContain('29AABCI1234L1ZJ')
     expect(t).not.toContain('Whitefield')
     expect(t).not.toContain('Aventa Freedom 50 GB')
+  })
+})
+
+
+/* Twelve Kenyan bills carried a KRA control unit number that no document could
+   print, because there was no section that printed one. */
+describe('the tax authority’s stamp on the document', () => {
+  const KE_REGIME = {
+    market: 'KE', name: 'eTIMS', authority: 'KRA', clearance: 'at-issue',
+    b2b: true, b2c: true, sort_order: 2,
+  } as unknown as BillBook['regimes'][number]
+
+  const cleared = (over: Record<string, unknown> = {}) => ({
+    id: 'EI-1', doc_kind: 'consumer_bill', doc_id: 'CB-1', market: 'KE', audience: 'b2c',
+    status: 'cleared', irn: null, ack_no: null, ack_date: null, signed_qr: null,
+    cu_invoice_no: '0032959491', cu_serial: 'KRACU8691518',
+    verify_url: 'https://itax.kra.go.ke/check?invoiceNo=0032959491',
+    transmission_ref: null, delivered_at: null, submitted_at: null, cleared_at: '2026-03-01',
+    failure_code: null, failure_reason: null, cancelled_at: null, cancel_reason: null,
+    attempts: 1, ...over,
+  }) as unknown as BillBook['clearance'][number]
+
+  const keBook = (over: Partial<BillBook> = {}) => book({
+    regimes: [KE_REGIME],
+    clearance: [cleared()],
+    ...over,
+  })
+
+  it('prints the control unit number a Kenyan bill was cleared under', () => {
+    const f = factsFor(bill({ id: 'CB-1', market: 'KE' }), keBook())
+    expect(f.clearance.map(c => c.label)).toEqual(['CU invoice number', 'Control unit'])
+    expect(f.clearance[0].value).toBe('0032959491')
+    expect(f.verifyUrl).toMatch(/itax\.kra\.go\.ke/)
+  })
+
+  /* A customer with seven bills has seven records. Taking the head of the list
+     would put one bill's control unit number on another's, which is a false
+     statement to a tax authority rather than a display bug. */
+  it('takes the stamp belonging to this bill and no other', () => {
+    const b = keBook({
+      clearance: [cleared({ doc_id: 'CB-OTHER', cu_invoice_no: '9999999999' }), cleared()],
+    })
+    expect(factsFor(bill({ id: 'CB-1', market: 'KE' }), b).clearance[0].value).toBe('0032959491')
+  })
+
+  /* Nothing is the right answer in two of the three markets, and an empty
+     heading reads as a stamp that failed rather than one never due. */
+  it('prints nothing where the market clears nothing', () => {
+    const f = factsFor(bill({ id: 'CB-1', market: 'IN' }), keBook())
+    expect(f.clearance).toEqual([])
+    expect(asText(f, TEMPLATE, ['fiscal'], SECTIONS)).not.toMatch(/FISCAL CLEARANCE/)
+  })
+
+  /* Submitted is not cleared. A stamp printed against a pending or failed
+     submission is a claim the marketplace cannot back. */
+  it('prints nothing until the document is actually cleared', () => {
+    for (const status of ['pending', 'failed', 'cancelled', 'not-required']) {
+      const b = keBook({ clearance: [cleared({ status })] })
+      expect(factsFor(bill({ id: 'CB-1', market: 'KE' }), b).clearance,
+        `${status} printed a stamp`).toEqual([])
+    }
+  })
+
+  it('puts it in the text rendition under its own heading', () => {
+    const f = factsFor(bill({ id: 'CB-1', market: 'KE' }), keBook())
+    const text = asText(f, TEMPLATE, ['fiscal'], SECTIONS)
+    expect(text).toMatch(/FISCAL CLEARANCE/)
+    expect(text).toMatch(/CU invoice number: 0032959491/)
+    expect(text).toMatch(/Verify at https:\/\/itax\.kra\.go\.ke/)
   })
 })
