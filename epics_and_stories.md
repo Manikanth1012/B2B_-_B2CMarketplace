@@ -178,7 +178,7 @@ Format: `{Component}-{FE/BE}-{Sequence}` → e.g., `ORD-BE-001`
 
 ## Prototype Implementation Status
 
-A working front-end prototype sits alongside these documents: `consumer.html` (16 screens), `partner.html` (22), `operator.html` (28), `enterprise.html` (19), entry point `index.html`. Four portals over one deterministic synthetic dataset, no back end.
+A working prototype sits alongside these documents. It is a **React application over a real Postgres database** with row-level security enforcing what each persona may read and write — not the four static HTML files this paragraph used to describe, which remain in the repository as earlier work. The data is still synthetic; the rules are not. Where a story below is marked **[P]**, the rule is usually enforced twice — in SQL so a client that skips the screen cannot get round it, and in TypeScript so a screen can refuse before it saves and say why — and the integration suite exists mainly to check the two agree.
 
 ### Component coverage
 
@@ -1398,3 +1398,57 @@ The anonymous surface the React application opens on, before anyone signs in. De
    destination — not structure. Three components would drift apart at the first change.
 10. **A public CTA signs in by the same door as the login screen.** Both call `handleLogin` with
     the same `Session`, so there is one path into a console and not two to keep in step.
+
+---
+
+## Added in this revision — five things the build could show you and not do
+
+Each of these was found the same way: a rule stated in the data, a screen that
+displayed it, and nothing in between that enforced it.
+
+### EPIC BIL-BE-004: Partner Wholesale, Netted Against Settlement (Backend)
+**Description**: Six products carried the `partner` audience and nothing could buy one. A partner buying is not a shopper checking out — the marketplace already owes them a settlement, so the purchase nets off against it.
+
+| Story ID | Story Title | User Story | Acceptance Criteria | Priority | SP |
+|----------|-------------|------------|---------------------|----------|----|
+| BIL-BE-004-01 | Standing Order **[P]** | As a **seller**, I want to take a product from the partner shelf without being asked for a card. | ✅ Records product, quantity, unit price frozen at purchase, and the date it started <br> ✅ Priced in the currency statements are denominated in <br> ✅ Refused for a seller's own listing, an unpublished product, and an account that is not trading <br> ✅ The actor comes from the session, not from the caller | P0 | 5 |
+| BIL-BE-004-02 | Charge Per Calendar Month **[P]** | As a **seller**, I want to be charged for what I used, not for a period somebody chose. | ✅ One charge per standing order per calendar month, never per settlement period <br> ✅ Pro-rated across the days it was live, carrying days charged and days in the month <br> ✅ A free product raises no charge at all | P0 | 5 |
+| BIL-BE-004-03 | Bounded Netting **[P]** | As the **marketplace**, I want a charge to come off what is owed and no further. | ✅ Recovers up to what the period owes; the remainder stays outstanding and takes the next cycle <br> ✅ Recovery is recorded per statement, so a charge spanning several is reconcilable from either end <br> ✅ The netting pass is repeatable — a second run reproduces the first | P0 | 8 |
+| BIL-BE-004-04 | Disputed Statements Do Not Move **[P]** | As a **seller**, I want the figure I am disputing to stay where it is. | ✅ Wholesale is held off a statement under dispute <br> ✅ The charge is still raised and waits for a statement nobody is arguing about <br> ✅ Notes still apply, because crediting is how a dispute is settled | P0 | 5 |
+
+### EPIC BIL-BE-005: The Rolling Reserve (Backend)
+**Description**: Seven sellers were on a reserve rate and not a cent was ever retained.
+
+| Story ID | Story Title | User Story | Acceptance Criteria | Priority | SP |
+|----------|-------------|------------|---------------------|----------|----|
+| BIL-BE-005-01 | Retention on the Run **[P]** | As the **marketplace**, I want the reserve actually withheld when a period settles. | ✅ A percentage of **gross**, because a refund returns the sale price and not the seller's margin <br> ✅ Bounded by what the period can give <br> ✅ Taken after tax at source and after the returns-window holdback, before the minimum payout is tested | P0 | 8 |
+| BIL-BE-005-02 | A Queue, Not a Balance **[P]** | As a **seller**, I want to know when I get it back, not only how much is held. | ✅ Each retention is a tranche with its own maturity date <br> ✅ The held figure is the sum of what has not matured, by trigger <br> ✅ Matured tranches are returned on a later statement and marked as returned | P0 | 5 |
+| BIL-BE-005-03 | The Payout Leg **[P]** | As **finance**, I want the payout to be what reaches the bank. | ✅ `net` is what the period earned; the payout is that less what is retained plus what has matured <br> ✅ The invariant check reconciles against the retention rather than asserting the net converted | P0 | 5 |
+| BIL-BE-005-04 | The Run Can Write **[P]** | As the **marketplace**, I want a settlement run to be able to create a statement. | ✅ The run supplies the payout currency, the rate in force **when the period closed**, and the converted amount <br> ✅ A partner with no rate on file for their payout currency is skipped with that as the reason rather than settled at an invented conversion <br> *Note: the end-to-end path is unproven until a period closes — every settleable period is already settled and the run refuses a future date* | P0 | 5 |
+
+### EPIC ORD-BE-004: An Order Is Its Parts (Backend)
+**Description**: One status over parts doing different things.
+
+| Story ID | Story Title | User Story | Acceptance Criteria | Priority | SP |
+|----------|-------------|------------|---------------------|----------|----|
+| ORD-BE-004-01 | Parts and Their Rails **[P]** | As a **buyer**, I want each half of my order to tell me the truth about itself. | ✅ One part per fulfilment kind per seller, each on its own rail <br> ✅ The order's state is derived from its parts, not asserted beside them <br> ✅ Carriage belongs to the part that ships and to no other | P0 | 8 |
+| ORD-BE-004-02 | A Seller Moves Their Own **[P]** | As a **seller**, I want to be refused the other seller's part. | ✅ Enforced in the database, not only on the screen <br> ✅ A refusal writes nothing and the absence of the write is the assertion | P0 | 5 |
+
+### EPIC ADM-FE-005: The Customer Book (Frontend)
+**Description**: The console had Sellers and no Accounts, and the credit gate the marketplace owns was visible only to the customer.
+
+| Story ID | Story Title | User Story | Acceptance Criteria | Priority | SP |
+|----------|-------------|------------|---------------------|----------|----|
+| ADM-FE-005-01 | Business Accounts **[P]** | As the **desk**, I want to see who buys from us and where each has got to. | ✅ Market, terms, credit band and limit, progress and what is outstanding <br> ✅ Ordered so whoever needs something doing about them comes first <br> ✅ An account with no credit assessment is called out | P0 | 8 |
+| ADM-FE-005-02 | The Journey Rail **[P]** | As the **desk**, I want the six steps I own to be visible to me. | ✅ Each step with its state, who did it and when, or what it is waiting for <br> ✅ Overdue is read off the date, not off the label <br> ✅ The annual review is a diary entry and does not count towards completeness | P0 | 5 |
+| ADM-FE-005-03 | Pending Companies **[P]** | As the **desk**, I want to know who has applied and not been decided. | ✅ Counted apart from accounts — an application is not a customer <br> ✅ Decided in the existing queue rather than a second one that would drift <br> ✅ The queue says it covers sellers **and** businesses, which it always did | P0 | 3 |
+| ADM-FE-005-04 | Retail Customers **[P]** | As the **desk**, I want "who shops here" to have an answer. | ✅ Name, market, tier, points and how long they have been with us | P1 | 3 |
+
+### EPIC ORD-BE-005: The Renewal Run (Backend)
+**Description**: `next_renewal` was the date a customer agreed to be charged on and nothing ever moved it.
+
+| Story ID | Story Title | User Story | Acceptance Criteria | Priority | SP |
+|----------|-------------|------------|---------------------|----------|----|
+| ORD-BE-005-01 | Charge and Roll **[P]** | As a **customer**, I want the date on my screen to be a date that is still coming. | ✅ Raises a charge for the cycle that is starting <br> ✅ Moves the date by **whole cycles from the agreed date** — somebody billed on the 9th stays on the 9th however late the run is <br> ✅ Refuses a date in the future: a period that has not started has not been used <br> ✅ Idempotent — one charge per subscription per period, enforced by the table | P0 | 8 |
+| ORD-BE-005-02 | What Does Not Renew **[P]** | As a **customer**, I want not to be charged for a cycle I cancelled out of. | ✅ A subscription ending before its renewal does not renew <br> ✅ Auto-renew off lapses rather than charging <br> ✅ Every skip names the subscription and the reason | P0 | 5 |
+| ORD-BE-005-03 | Onto the Bill | As a **customer**, I want the renewal to appear on my bill. | ⬜ The charge waits for the bill covering its period and attaches to it <br> ⬜ Nothing is written to a bill already issued <br> *Not built: charges are raised and wait; no billing run carries them* | P0 | 8 |

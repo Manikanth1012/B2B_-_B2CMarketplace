@@ -1,9 +1,9 @@
 # Product Requirements Document (PRD): B2B/B2C Telecom Marketplace
 
 ## 1. Document Control
-* **Version**: 4.8  
+* **Version**: 4.9  
 * **Date**: August 2026  
-* **Status**: Draft — sections 4.8 to 4.69 and section 7 added from the working build  
+* **Status**: Draft — sections 4.70 to 4.74 added, and section 7 rewritten against the React and Supabase build that replaced the static prototype  
 * **Author**: AI Coding Assistant (Antigravity)  
 * **Target Audience**: Platform Owner (Telecom Operator), Product Managers, Developers, and Partners  
 
@@ -11,6 +11,7 @@
 
 | Version | Date | Change |
 |---|---|---|
+| **4.9** | **Aug 2026** | **Five things the build could show you and not do.** §4.70 partner wholesale — six products carried the `partner` audience and nothing could buy one; purchases now net off against the settlement the marketplace already owes, bounded by what the period holds and held off a statement under dispute. §4.71 the rolling reserve — seven sellers were on a rate and not a cent was ever retained; it is now withheld and returned on dated tranches, and `payout_net` stopped pretending to be the net converted. §4.72 an order is its parts. §4.73 the operator gains Accounts — onboarded and pending companies plus retail customers, and the credit gate the marketplace owns becomes visible to the desk that owns it. §4.74 the renewal run. §7 rewritten: the prototype has a back end, and had had one for some time while this section still said it did not. |
 | **4.8** | **Aug 2026** | **The gateway behind the name, and the recipient behind the id.** §4.30 rewritten: a channel now carries the endpoint, credential, sender registration, receipt callback, retry policy and failover target a real send needs, plus a check that names what would fail instead of reporting a colour. Message cost becomes a per-destination, per-segment, effective-dated rate card in the currency each carrier bills in, replacing a single `unit_cost` column printed in the reporting currency by assumption; spend is reported per currency and never summed across them. §4.14 gains the recipient directory — "who chose what" listed user ids where it should have listed people. |
 | **4.7** | **Aug 2026** | **Product comparison built, on both buy sides.** §4.23 had been specified since v2.0 and never built — no toggle on any card, no tray, no table. Shoppers and enterprise buyers now compare up to three side by side through one shared set of rules. Two rules came from using it rather than from writing it: prices are not compared across payment models any more than across currencies, and a row no column can fill in is dropped rather than printed as "Not stated" across the width. §4.23 rewritten to describe what is built. |
 | **4.6** | **Aug 2026** | **Closed the inbound half of the portal.** The desk can issue a credential directly for a partner it onboarded by hand, with a stated reason and a refusal on production without an approved subscription. The operator gains a view of every partner endpoint the marketplace calls — URL, auth, retry, subscriptions, state — which was previously visible only to the seller. Publish/subscribe becomes real: nine event topics with worked payloads, subscription checked against the catalogue, a delivery recorded per subscriber, and a publish action that fans a topic out and reports what landed. Sellers not listening for a required event are named. |
@@ -1066,6 +1067,53 @@ A caller may still pass its own buy wording via `addLabel`, but it no longer get
 **Waiting for stock** lists what the buyer is owed, one row per alert, with the channel and address each will use: still out of stock (cancellable), back in stock (with the buy action, worded per persona), or closed with the date the buyer was told. Save for later composes the two actions rather than replacing them, so an item going out of stock does not cost the buyer the ability to remove it.
 
 
+### 4.70 A Partner Shelf Nobody Could Buy From (CAT, BIL)
+
+Six products carried the `partner` audience — a white-label storefront, a wholesale connectivity pack, sandbox access to the partner API, a reseller starter, two Beacon bundles. They were listed, priced in four currencies and shown on the reseller shelf. No table in the schema recorded a partner having bought anything and no screen in the seller console offered to. The audience was a label on a product rather than a thing a partner could do.
+
+A partner buying is not a shopper checking out. Nothing is delivered, no gateway is called, and no money moves at the moment of purchase: the marketplace already owes the partner a settlement every cycle, and the wholesale **nets off against it**. That is why it does not go through `orders` — an order paid by not-paying, against a balance computed a month later, is a settlement line in every respect that matters.
+
+Two records. A **standing order** holds what was taken, how many, at what price and from when, priced in the currency statements are denominated in. A **charge** is one calendar month of that standing order, pro-rated across the days it was actually live and carrying the arithmetic — days charged, days in the month — so the partner can check it rather than take it. A month at a time and not a settlement period at a time: the shelf is priced monthly and a reseller on a quarterly cycle would otherwise be billed for a third of what they used.
+
+The netting is **bounded**. A debit note may push a statement negative because an operator raised it deliberately; a wholesale charge recurs every cycle, so the same licence would make an unpayable statement the normal case. A charge comes off what the period actually owes and no further — the remainder stays outstanding and takes the next cycle. There is no credit check and no deposit, and that is not an omission: the charge is secured by the settlement it comes out of, so the marketplace is never exposed beyond what it already owes.
+
+A statement the seller is **disputing** is not one to move. Wholesale is held off a figure somebody has challenged and is waiting for an answer on; the charge is still raised, because what was bought is a fact about the month, and it waits for a statement nobody is arguing about. Notes still apply, because crediting a seller is often how the dispute is settled.
+
+### 4.71 The Rolling Reserve Was a Sentence, Not a Rule (BIL)
+
+Seven sellers carried a reserve rate between 2% and 10%, each with a written rationale, and the operator's Credit & Exposure screen printed "10% rolling" beside the name. Nothing was ever retained. Neither the settlement run nor its TypeScript counterpart contained the word. Only the deposit half was real.
+
+The reserve is a percentage of **gross**, not of the payout: the exposure it covers is a refund or a chargeback, and both are against the sale price — the buyer gets back what they paid, not what the seller kept. Taking it off the margin would size the cover against the wrong number and under-hold exactly the sellers whose commission is highest. It is bounded by what the period can give, for the same reason a wholesale charge is.
+
+It is a **queue, not a balance**. Each retention is its own tranche with its own maturity date, because "how much is held" is a question a seller can answer from their own records and "when do I get it back" is the one they actually ask. The held figure is the sum of what has not matured, maintained by trigger rather than written by hand. The holdback covers the returns window in days; the reserve covers what arrives after it, over a horizon set per seller.
+
+`payout_net` was asserted to be the net converted once. That stopped being true the moment a retention became real: **`net` is what the period earned and the payout is what reaches the bank**, which is the net less what is retained plus what has matured.
+
+### 4.72 An Order Is Its Parts (ORD)
+
+An order carried one status over parts doing different things. On a basket of a handset and an eSIM, one rail was printed over both halves, so the eSIM appeared to be waiting for a van and the handset appeared to be provisioning. Three orders read `in transit` with nothing on them that ships, and either seller on a shared basket could write the whole order's status.
+
+An order is now the reduction of its parts: one part per fulfilment kind per seller, each on its own rail, and the order's state derived from them rather than asserted beside them. Carriage belongs to the part that ships and to no other. A seller may move their own part and is refused the other seller's — in the database, not only on the screen.
+
+### 4.73 Who Our Customers Are (ADM, PMP)
+
+The operator console had Sellers and no Accounts. Companies turned up sideways — in Credit & Exposure, in Agreements, in Wallets — each screen showing the slice it needed and none of them answering "who buys from us". Retail shoppers appeared nowhere at all.
+
+The sharper half was onboarding. Six steps decide whether a company may open an account, one of them the **credit assessment the marketplace staffs itself**, and the record was readable only from the customer's own console. The desk that owns the gate could not see the gate. Sellers have had a journey rail since the beginning; companies had nothing after the accept button.
+
+**Accounts** lists every business account with its market, terms, credit band and limit, how far through onboarding it is and what is outstanding, ordered so whoever needs something doing about them comes first. Overdue is read off the date rather than off the label — a ladder that only goes overdue when somebody marks it overdue never does. A **retail customers** tab answers the other half of the question. Companies who have applied and not been decided are counted here and decided on Onboarding, in the same queue as the sellers, because it is the same desk doing it.
+
+The ladder's sixth step is a **diary entry, not a gate** — an annual credit review is never finished by design, and counting it towards completeness made every account on the book read as part-way through for ever.
+
+### 4.74 A Renewal Date Nothing Moved (ORD, BIL)
+
+`next_renewal` is the date a customer agreed to be charged on and no code in this build ever moved it. Three active monthly subscriptions sat on one date until the calendar went past it. An active subscription renewing in the past is one that has quietly stopped billing: the customer's screen shows a date that has been and gone, and nothing has charged them for the month they are using.
+
+The renewal run is shaped like the settlement run, because it is the same kind of job and the same three things go wrong with it. It **refuses a date in the future** — a period that has not started has not been used, and charging for it is charging for nothing. It is **idempotent**: one charge per subscription per period, enforced by the table rather than by the caller remembering. And it **says why it skipped somebody**, because "four were skipped" is not something anybody can act on: a subscription that ends before it would renew does not renew, and one with auto-renew off lapses rather than being charged.
+
+The date moves by **whole cycles from the agreed date**, never "today plus a month" — somebody billed on the 9th stays on the 9th however late the run is. The charge waits for the bill covering its period; nothing here takes money.
+
+
 ## 5. Architectural & Integration Blueprint
 
 ```
@@ -1142,18 +1190,33 @@ A caller may still pass its own buy wording via `addLabel`, but it no longer get
 
 ## 7. Prototype Implementation Status
 
-A working front-end prototype accompanies this document in the same folder. It is a **demonstrable, self-contained UI over a synthetic dataset** — four portals, no back end, no network calls. It exists to make this PRD reviewable and to de-risk estimation, not to be production software.
+This section described a self-contained UI over a synthetic dataset with **no back end and no network calls**, and had gone on describing it for some time after that stopped being true. It is corrected here.
+
+The prototype is a **React application over a real Postgres database** (Supabase), with row-level security enforcing what each persona may read and write. It is still a prototype and still runs on synthetic data, but the data is in a database, the rules are in the database, and the tests exercise both against it. The four static HTML portals it grew out of remain in the repository as earlier work; they are not what the sections above describe.
+
+What that changes about how to read this document: where a rule is stated below, it is usually enforced **twice** — once in SQL, so a client that skips the screen cannot get round it, and once in TypeScript, so a screen can refuse before it saves and explain why. The integration suite exists mainly to check the two agree.
 
 ### 7.1 What has been built
 
-| Portal | File | Screens | Brand |
-|---|---|---|---|
-| Consumer storefront (B2C) | `consumer.html` | 18 | 6D |
-| Partner / seller console (B2B2X) | `partner.html` | 23 | 6D |
-| Marketplace operator console | `operator.html` | 31 | 6D |
-| Enterprise buyer portal | `enterprise.html` | 20 | Neutral / white-label |
+| Portal | Route | Brand |
+|---|---|---|
+| Consumer storefront (B2C) | `/` and the account screens | 6D |
+| Partner / seller console (B2B2X) | `pt-*` views | 6D |
+| Marketplace operator console | `op-*` views | 6D |
+| Enterprise buyer portal | `en-*` views | Neutral / white-label |
 
-Entry point: `index.html`. Design contract: **nim-ui-design-system-v2** (6D ONE UI).
+Design contract: **nim-ui-design-system-v2** (6D ONE UI). Every screen carries a contextual help article, and a screen shipped without one fails the suite.
+
+### 7.1a How it is verified
+
+| Suite | What it covers |
+|---|---|
+| Unit (`npx vitest run`) | The pure modules — money, settlement arithmetic, onboarding progress, renewal dates, block models. No database. |
+| Integration (`npm run test:integration`) | The live project. Row-level security tried rather than read, the SQL and TypeScript evaluations of each rule reconciled against every row on file, and writes put back. |
+
+Both are expected to be green before anything is committed. Figures move as work lands; at the time of writing they are in the low thousands of unit checks and the mid-hundreds of integration checks.
+
+**Known gaps, stated rather than implied.** The rolling reserve is retained by the settlement run but the end-to-end path is unproven until a settlement period closes — every settleable period is already settled and the run rightly refuses a future date. Subscription renewal raises a charge and moves the date but does not yet carry that charge onto a bill. Neither is described above as finished.
 
 ### 7.2 Coverage against the seven components
 
