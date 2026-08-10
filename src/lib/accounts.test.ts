@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   stepsOf, progressOf, isLate, whereTheyAre, rollup, matches, deskOrder, shopperLine,
 } from './accounts'
-import type { Account, Step, StepState } from './accounts'
+import type { Account, Step, StepState, Shopper } from './accounts'
 
 const step = (over: Partial<Step> = {}): Step => ({
   id: 'BO-2007-1', account_id: 'ENT-2007', name: 'Company verification',
@@ -156,7 +156,7 @@ describe('finding one', () => {
 })
 
 describe('a retail customer as a row', () => {
-  const s = { user_id: 'u1', name: 'Priya Raman', email: null, market: 'IN', currency: 'INR', tier: 'Gold', points: 628, joined: '2024-02-01' }
+  const s = { id: 'me', user_id: 'u1', name: 'Priya Raman', email: null, market: 'IN', currency: 'INR', tier: 'Gold', points: 628, joined: '2024-02-01' }
   it('says where they are and what they are worth', () => {
     expect(shopperLine(s)).toBe('IN · Gold member')
   })
@@ -206,5 +206,36 @@ describe('the step that is not a gate', () => {
     const accounts = [acct({ id: 'ENT-A', company: 'Alpha' }), acct({ id: 'ENT-B', company: 'Bravo' })]
     expect(deskOrder(accounts, [...settled, ...lapsed], '2026-08-10').map(a => a.company))
       .toEqual(['Bravo', 'Alpha'])
+  })
+})
+
+/* Four of the seven consumer profiles have no `user_id` — they are demo people
+   who have never signed in. Keying the retail list on it gave four rows the
+   same key, React collided them, and switching tabs left the old rows in the
+   DOM underneath the new headings: business headers over retail people. An
+   identity that is null for most of the set is not an identity. */
+describe('identifying a retail customer', () => {
+  const shopper = (over: Partial<Shopper>): Shopper => ({
+    id: 'cp-1', user_id: null, name: 'Somebody', email: null,
+    market: 'IN', currency: 'INR', tier: null, points: 0, joined: null, ...over,
+  })
+
+  it('gives every customer a key, including the ones with no login', () => {
+    const book = [
+      shopper({ id: 'cp-449118', name: 'Arun Deshpande' }),
+      shopper({ id: 'cp-449204', name: 'Meera Krishnan' }),
+      shopper({ id: 'me', user_id: 'd5a4012b', name: 'Priya Raman' }),
+    ]
+    const keys = book.map(s => s.id)
+    expect(new Set(keys).size, 'two customers share a key').toBe(book.length)
+    expect(keys.every(Boolean), 'a customer with no key at all').toBe(true)
+  })
+
+  /* The reason the bug bit: most of them have nothing in the column the list
+     used to key on. */
+  it('does not depend on a login the customer may not have', () => {
+    const s = shopper({ id: 'cp-449118', user_id: null })
+    expect(s.id).toBeTruthy()
+    expect(shopperLine(s)).toBe('IN')
   })
 })

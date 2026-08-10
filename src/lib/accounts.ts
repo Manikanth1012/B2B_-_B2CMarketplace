@@ -190,7 +190,13 @@ export function deskOrder(
 /* --------------------------------------------------------------- customers -- */
 
 export interface Shopper {
-  user_id: string
+  /* The profile's own id, which every row has. `user_id` is the link to a
+     login and is null for anybody who has not signed in — four of the seven on
+     file. Keying a list on it gave four rows the same key, React collided them,
+     and switching tabs left the old rows in the DOM under the new headings. An
+     identity that is null for most of the set is not an identity. */
+  id: string
+  user_id: string | null
   name: string
   email: string | null
   market: string | null

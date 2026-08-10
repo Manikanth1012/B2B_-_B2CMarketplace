@@ -32,7 +32,7 @@ export async function loadAccountBook(): Promise<AccountBook> {
     supabase.from('enterprise_onboarding').select('*').order('sort_order'),
     supabase.from('credit_assessment').select('*').is('partner_id', null),
     supabase.from('consumer_profile')
-      .select('user_id, name, email, market, currency, since'),
+      .select('id, user_id, name, email, market, currency, since'),
     supabase.from('loyalty_members').select('user_id, tier, balance, joined').eq('kind', 'consumer'),
     supabase.from('applications').select('id, state, kind_of').eq('kind_of', 'business'),
   ])
@@ -65,9 +65,10 @@ export async function loadAccountBook(): Promise<AccountBook> {
       reviewed_on: String(c.reviewed_on),
     })),
     shoppers: ((shoppers.data ?? []) as Record<string, unknown>[]).map(p => {
-      const extra = tiers.get(String(p.user_id))
+      const extra = p.user_id ? tiers.get(String(p.user_id)) : undefined
       return {
-        user_id: String(p.user_id),
+        id: String(p.id),
+        user_id: p.user_id ? String(p.user_id) : null,
         name: String(p.name ?? '—'),
         email: (p.email as string) ?? null,
         market: (p.market as string) ?? null,

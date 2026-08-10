@@ -201,7 +201,7 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
             <>
               <Table headers={['Customer', 'Where', 'Tier', 'Points', 'With us since']}>
                 {retailPage.rows.map(s => (
-                  <tr key={s.user_id}>
+                  <tr key={s.id}>
                     <Td>
                       <div style={{ fontWeight: 600 }}>{s.name}</div>
                       {s.email && (
