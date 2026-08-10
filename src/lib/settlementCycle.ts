@@ -172,6 +172,17 @@ export function heldBack(sales: readonly Sale[], terms: Terms, closes: string): 
   return round2(sales.filter(s => s.occurred_on > cutoff).reduce((n, s) => n + s.net, 0))
 }
 
+export interface Reserve {
+  /* The rate on file, as a percentage. */
+  rate: number
+  /* What that rate comes to against this period's gross, before any ceiling. */
+  due: number
+  /* What the period could actually give, which is what is retained. */
+  withheld: number
+  /* Tranches that reached maturity and go back on this statement. */
+  released: number
+}
+
 export interface Outcome {
   /* Everything the period earned, before anything is held or carried. */
   earned: number
@@ -181,6 +192,11 @@ export interface Outcome {
   withheld: number
   held: number
   carriedIn: number
+  /* Retained against refunds that land after the returns window, and whatever
+     matured and came back. Both sit beside `held` rather than inside it: a
+     holdback carries to the next period, a reserve waits for a date. */
+  reserveWithheld: number
+  reserveReleased: number
   /* What actually goes out. */
   payable: number
   carriedOut: number
@@ -189,6 +205,36 @@ export interface Outcome {
      it costs more than that to send". */
   belowMinimum: boolean
   why: string | null
+}
+
+/**
+ * What a seller's rolling reserve does on one settlement.
+ *
+ * A percentage of GROSS, not of the payout. The exposure a reserve covers is a
+ * refund or a chargeback, and both are against the sale price — the buyer gets
+ * back what they paid, not what the seller kept. Taking the percentage off the
+ * margin would size the cover against the wrong number and under-hold exactly
+ * the sellers whose commission is highest.
+ *
+ * Bounded by what the period can give, for the same reason a wholesale charge
+ * is: you cannot hold money that is not there. A thin month holds what it has
+ * and does not borrow from the next one.
+ *
+ * `reserve_on` in the database is the same function. The integration suite
+ * checks they agree on every seller on file.
+ */
+export function reserveOn(
+  { gross, room, rate, matured }: {
+    gross: number; room: number; rate: number; matured: number
+  },
+): Reserve {
+  const due = round2(Math.max(0, rate) / 100 * Math.max(0, gross))
+  return {
+    rate: Math.max(0, rate),
+    due,
+    withheld: Math.min(due, Math.max(round2(room), 0)),
+    released: round2(Math.max(0, matured)),
+  }
 }
 
 /**
@@ -208,16 +254,32 @@ export interface Outcome {
  * combine.
  */
 export function settle(
-  { earned, withheld = 0, held, carriedIn, terms }: {
-    earned: number; withheld?: number; held: number; carriedIn: number; terms: Terms
+  { earned, withheld = 0, held, carriedIn, reserve, terms }: {
+    earned: number; withheld?: number; held: number; carriedIn: number
+    /* Omitted where the seller has no rate on file, which is most of them. */
+    reserve?: Reserve
+    terms: Terms
   },
 ): Outcome {
   const afterTax = round2(earned - withheld)
-  const base = round2(afterTax - held + carriedIn)
+  const beforeReserve = round2(afterTax - held + carriedIn)
+
+  /* Retained after tax and after the holdback, and returned in the same
+     movement — then the minimum is tested, because the minimum is a question
+     about what reaches the bank and testing it against a figure about to be
+     reduced would pay out sums already decided against. */
+  const rw = reserve?.withheld ?? 0
+  const rr = reserve?.released ?? 0
+  const base = round2(beforeReserve + rr - rw)
+
+  const common = {
+    earned: round2(earned), withheld: round2(withheld), held, carriedIn,
+    reserveWithheld: round2(rw), reserveReleased: round2(rr),
+  }
 
   if (base > 0 && base < terms.minimum_payout) {
     return {
-      earned: round2(earned), withheld: round2(withheld), held, carriedIn,
+      ...common,
       payable: 0,
       carriedOut: round2(held + base),
       belowMinimum: true,
@@ -226,14 +288,34 @@ export function settle(
   }
 
   return {
-    earned: round2(earned), withheld: round2(withheld), held, carriedIn,
+    ...common,
     payable: base > 0 ? base : 0,
     carriedOut: held,
     belowMinimum: false,
-    why: held > 0
-      ? `${held.toFixed(2)} held back — ${terms.hold_reason ?? `inside the ${terms.hold_days}-day hold`}.`
-      : null,
+    why: reasonFor({ held, reserve, terms }),
   }
+}
+
+/* Why the payable is not simply what was earned. Both reasons where both
+   apply — naming only one of them leaves the seller short by the other and
+   reading a statement that does not add up. */
+function reasonFor(
+  { held, reserve, terms }: { held: number; reserve?: Reserve; terms: Terms },
+): string | null {
+  const bits: string[] = []
+  if (held > 0) {
+    bits.push(`${held.toFixed(2)} held back — ${terms.hold_reason ?? `inside the ${terms.hold_days}-day hold`}`)
+  }
+  if ((reserve?.withheld ?? 0) > 0) {
+    bits.push(`${reserve!.withheld.toFixed(2)} retained as the ${reserve!.rate}% rolling reserve`
+      + (reserve!.withheld < reserve!.due
+        ? `, which is all this period could cover of ${reserve!.due.toFixed(2)}`
+        : ''))
+  }
+  if ((reserve?.released ?? 0) > 0) {
+    bits.push(`${reserve!.released.toFixed(2)} of earlier reserve matured and is returned`)
+  }
+  return bits.length ? `${bits.join('; ')}.` : null
 }
 
 function round2(n: number): number {
@@ -261,6 +343,12 @@ export interface Accruing {
   tax_residence: string
   treaty_on_file: boolean
   closed_on: string
+  /* The rolling reserve: the rate on file, what has already matured and comes
+     back on the next statement, and the running total held. Optional because a
+     row read before the reserve was real does not carry them. */
+  reserve_pct?: number
+  reserve_matured?: number
+  reserve_held?: number
 }
 
 /**
@@ -284,7 +372,7 @@ export function projectPayout(
   { accruing, terms, rules }: {
     accruing: Accruing; terms: Terms; rules: readonly Rule[]
   },
-): Outcome & { deductions: Deduction[] } {
+): Outcome & { deductions: Deduction[]; reserve: Reserve } {
   const deductions = deductionsOn({
     rules,
     market: accruing.market,
@@ -302,15 +390,28 @@ export function projectPayout(
     on: accruing.closed_on,
   })
 
+  /* The reserve is measured against what the period would otherwise pay, so it
+     is computed on that figure rather than on `net` — the same order the run
+     applies it in. */
+  const room = round2(accruing.net - totalOf(deductions) - accruing.held_back + accruing.carried_in)
+  const reserve = reserveOn({
+    gross: accruing.gross,
+    room,
+    rate: accruing.reserve_pct ?? 0,
+    matured: accruing.reserve_matured ?? 0,
+  })
+
   return {
     ...settle({
       earned: accruing.net,
       withheld: totalOf(deductions),
       held: accruing.held_back,
       carriedIn: accruing.carried_in,
+      reserve,
       terms,
     }),
     deductions,
+    reserve,
   }
 }
 

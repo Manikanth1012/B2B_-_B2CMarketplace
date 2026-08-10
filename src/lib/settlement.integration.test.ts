@@ -25,6 +25,8 @@ interface Row {
   currency: string
   payout_currency: string
   payout_net: number
+  reserve_withheld?: number
+  reserve_released?: number
   fx_rate: number
   fx_as_of: string
   gross: number

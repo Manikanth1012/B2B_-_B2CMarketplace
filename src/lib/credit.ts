@@ -394,6 +394,14 @@ export function creditProblems(
     if (s.reserve_held > 0 && s.reserve_pct === 0) {
       out.push(`${s.partner_id} has a reserve held against a rate of zero.`)
     }
+    /* The other direction, which is the one that was true of seven sellers for
+       as long as the reserve was a sentence nobody withheld. Checking only for
+       money held with no policy behind it meant the check could never fire on
+       the failure that had actually happened. */
+    if (s.reserve_pct > 0 && s.reserve_held === 0) {
+      out.push(`${s.partner_id} is on a ${s.reserve_pct}% rolling reserve and nothing has been `
+        + 'retained under it. Either no settlement has run since the rate was set, or the rate is not being applied.')
+    }
   }
 
   return out

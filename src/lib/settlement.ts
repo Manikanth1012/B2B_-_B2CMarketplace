@@ -127,11 +127,23 @@ export function payoutFor(
  * on the screen because both look like ordinary numbers.
  */
 export function payoutAgrees(
-  statement: { net: number; payout_net: number; fx_rate: number },
+  statement: {
+    net: number; payout_net: number; fx_rate: number
+    /* What was retained against later refunds, and what matured and came back.
+       The payout stopped being the net converted the moment a reserve became a
+       thing the run actually withholds: `net` is what the period earned, and
+       the payout is what reaches the bank after a retention that is returned
+       on a date. Optional because rows cut before it existed carry neither. */
+    reserve_withheld?: number
+    reserve_released?: number
+  },
   tolerance = 0.01,
 ): boolean {
+  const paid = Number(statement.net)
+    - Number(statement.reserve_withheld ?? 0)
+    + Number(statement.reserve_released ?? 0)
   const drift = Math.abs(
-    Number(statement.payout_net) - round2(Number(statement.net) * Number(statement.fx_rate)))
+    Number(statement.payout_net) - round2(paid * Number(statement.fx_rate)))
   /* The epsilon is not slack in the tolerance — it is the tolerance surviving
      binary. A row exactly one cent out computes a drift of
      0.010000000002037268 and would be reported as drifted on some statements

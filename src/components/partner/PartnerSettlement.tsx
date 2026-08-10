@@ -601,6 +601,17 @@ function MyCycle({ partnerId, planName, fees }: {
             {accrual.carried_in > 0 && (
               <Row label="Carried in from the last period" value={`+ ${fmtIn(accrual.carried_in, 'USD')}`} />
             )}
+            {/* Retained, not deducted. It is the seller's own money, held
+                against refunds that land after the returns window closes, and
+                it comes back on a date rather than at somebody's discretion. */}
+            {outcome.reserveWithheld > 0 && (
+              <Row label={`Rolling reserve — ${accrual.reserve_pct}% of gross`}
+                   value={`− ${fmtIn(outcome.reserveWithheld, 'USD')}`} />
+            )}
+            {outcome.reserveReleased > 0 && (
+              <Row label="Reserve matured and returned"
+                   value={`+ ${fmtIn(outcome.reserveReleased, 'USD')}`} />
+            )}
             {/* Listed here because the figure below is what lands, and a seller
                 on a $3,900 wholesale pack reading a payable that ignores it is
                 reading a number thousands of dollars adrift of their bank. */}
@@ -615,6 +626,14 @@ function MyCycle({ partnerId, planName, fees }: {
               value={outcome.belowMinimum
                 ? `${fmtIn(outcome.carriedOut, 'USD')} — under the minimum`
                 : fmtIn(afterWholesale.left, 'USD')} />
+
+            {accrual.reserve_held > 0 && (
+              <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '8px', lineHeight: 1.5 }}>
+                {fmtIn(accrual.reserve_held, 'USD')} of yours is held in reserve altogether. It is not a fee and it
+                does not become ours — each retention is returned on its own maturity date, and anything that has
+                already matured is in the figures above.
+              </p>
+            )}
 
             {afterWholesale.carried > 0 && (
               <p style={{ fontSize: '11px', color: 'var(--warning)', marginTop: '8px', lineHeight: 1.5 }}>

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   windowFor, lastClosed, nextClose, dueOn, periodLabel, heldBack, settle, projectPayout,
-  cycleLine, holdLine, minimumLine, termsWarnings, termsProblem, MONTHS,
+  cycleLine, holdLine, minimumLine, termsWarnings, termsProblem, MONTHS, reserveOn,
 } from './settlementCycle'
 import type { Terms, Accruing } from './settlementCycle'
 import type { Rule } from './withholding'
@@ -422,5 +422,102 @@ describe('MONTHS', () => {
   it('is the whole vocabulary and nothing else', () => {
     expect(Object.keys(MONTHS).sort()).toEqual(['half-yearly', 'monthly', 'quarterly', 'yearly'])
     expect(MONTHS.quarterly).toBe(3)
+  })
+})
+
+/* Seven sellers carried a reserve rate and none of them ever had a cent
+   retained, because nothing in the run or in this file mentioned the word. */
+describe('the rolling reserve', () => {
+  const at = (over: Partial<Parameters<typeof reserveOn>[0]> = {}) =>
+    reserveOn({ gross: 10_000, room: 8_000, rate: 10, matured: 0, ...over })
+
+  /* Against gross, not against the payout. A refund returns the sale price,
+     not the seller's margin. */
+  it('is a percentage of gross', () => {
+    expect(at().due).toBe(1000)
+    expect(at({ gross: 4_321, rate: 2.5 }).due).toBe(108.03)
+  })
+
+  it('retains nothing where there is no rate', () => {
+    expect(at({ rate: 0 })).toMatchObject({ due: 0, withheld: 0 })
+  })
+
+  /* You cannot hold money that is not there. */
+  it('never retains more than the period has', () => {
+    expect(at({ room: 250 }).withheld).toBe(250)
+    expect(at({ room: 0 }).withheld).toBe(0)
+    expect(at({ room: -900 }).withheld).toBe(0)
+  })
+
+  it('says what it wanted as well as what it got', () => {
+    const r = at({ room: 250 })
+    expect(r.due).toBe(1000)
+    expect(r.withheld).toBe(250)
+  })
+
+  it('returns what has matured', () => {
+    expect(at({ matured: 412.5 }).released).toBe(412.5)
+  })
+})
+
+describe('a settlement that retains and returns a reserve', () => {
+  const terms: Terms = {
+    partner_id: 'PTR-1011', frequency: 'monthly', align: 'calendar',
+    starts_on: '2026-01-01', closes_on_day: 0, pay_within_days: 30,
+    hold_days: 0, hold_reason: null, minimum_payout: 250, payout_currency: 'USD',
+    agreed_on: '2026-01-01', agreed_by: 'A', contract_ref: 'MSA-1',
+  }
+
+  it('takes the reserve off what is paid and puts the matured part back', () => {
+    const out = settle({
+      earned: 10_000, withheld: 0, held: 0, carriedIn: 0,
+      reserve: reserveOn({ gross: 20_000, room: 10_000, rate: 5, matured: 300 }),
+      terms,
+    })
+    expect(out.reserveWithheld).toBe(1000)
+    expect(out.reserveReleased).toBe(300)
+    expect(out.payable).toBe(9300)
+  })
+
+  /* The minimum asks what reaches the bank. Testing it before the retention
+     would pay out a sum the run had already decided to hold. */
+  it('tests the minimum against the figure after the reserve, not before it', () => {
+    const out = settle({
+      earned: 1_000, withheld: 0, held: 0, carriedIn: 0,
+      reserve: reserveOn({ gross: 20_000, room: 1_000, rate: 4, matured: 0 }),
+      terms,
+    })
+    expect(out.reserveWithheld).toBe(800)
+    expect(out.payable).toBe(0)
+    expect(out.belowMinimum).toBe(true)
+  })
+
+  it('is unchanged for a seller with no reserve on file', () => {
+    const plain = settle({ earned: 5_000, held: 0, carriedIn: 0, terms })
+    expect(plain.payable).toBe(5000)
+    expect(plain.reserveWithheld).toBe(0)
+    expect(plain.reserveReleased).toBe(0)
+  })
+
+  /* Naming one reason and not the other leaves the seller short by the
+     difference and reading a statement that does not add up. */
+  it('names the holdback and the reserve where both apply', () => {
+    const out = settle({
+      earned: 10_000, held: 400, carriedIn: 0,
+      reserve: reserveOn({ gross: 20_000, room: 9_600, rate: 5, matured: 120 }),
+      terms: { ...terms, hold_days: 14, hold_reason: 'the returns window' },
+    })
+    expect(out.why).toMatch(/held back/)
+    expect(out.why).toMatch(/rolling reserve/)
+    expect(out.why).toMatch(/matured and is returned/)
+  })
+
+  it('says so when the period could only cover part of the reserve', () => {
+    const out = settle({
+      earned: 500, held: 0, carriedIn: 0,
+      reserve: reserveOn({ gross: 20_000, room: 500, rate: 10, matured: 0 }),
+      terms: { ...terms, minimum_payout: 0 },
+    })
+    expect(out.why).toMatch(/all this period could cover of 2000\.00/)
   })
 })
