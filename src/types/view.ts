@@ -4,6 +4,7 @@ export type OperatorView =
   | 'op-dashboard'
   | 'op-onboarding'
   | 'op-partners'
+  | 'op-accounts'
   | 'op-catalogue'
   | 'op-settlement'
   | 'op-inventory'

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   Star,
-  LayoutDashboard, Users, Package, DollarSign, Warehouse, Ticket,
+  LayoutDashboard, Building2, Users, Package, DollarSign, Warehouse, Ticket,
   Shield, Code, Megaphone, Tag, TrendingUp, Settings,
   Search, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store, Wallet as WalletIcon, MessageSquareWarning, RotateCcw, Gift, Scale, BookText, Radio, Receipt, LibraryBig, Globe,
   User, KeyRound, Monitor, Smartphone, Layers, FileText, PackageSearch, Landmark, FileSignature } from 'lucide-react'
@@ -23,7 +23,8 @@ const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; i
     label: 'Overview',
     items: [
       { id: 'op-dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
-      { id: 'op-onboarding', label: 'Partner Onboarding', icon: <Users size={18} /> },
+      { id: 'op-onboarding', label: 'Onboarding', icon: <Users size={18} /> },
+      { id: 'op-accounts', label: 'Accounts', icon: <Building2 size={18} /> },
       { id: 'op-partners', label: 'Sellers', icon: <Store size={18} /> },
       { id: 'op-catalogue', label: 'Catalogue Review', icon: <Package size={18} /> },
     ]

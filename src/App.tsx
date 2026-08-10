@@ -31,6 +31,7 @@ import { RewardsView } from './components/RewardsView'
 import { AccountView } from './components/AccountView'
 import { OperatorShell } from './components/operator/OperatorShell'
 import { OperatorDashboard } from './components/operator/OperatorDashboard'
+import { OperatorAccounts } from './components/operator/OperatorAccounts'
 import { OperatorOnboarding } from './components/operator/OperatorOnboarding'
 import { OperatorPartners } from './components/operator/OperatorPartners'
 import { OperatorCatalogue } from './components/operator/OperatorCatalogue'
@@ -445,6 +446,7 @@ function AppInner() {
       <OperatorShell view={opView} onNavigate={(v, anchor) => goOperator(v, anchor ? { focus: anchor } : undefined)} onSignOut={handleSignOut}>
         {opView === 'op-dashboard' && <OperatorDashboard onNavigate={goOperator} />}
         {opView === 'op-onboarding' && <OperatorOnboarding />}
+        {opView === 'op-accounts' && <OperatorAccounts onNavigate={setOpView} />}
         {opView === 'op-partners' && <OperatorPartners focus={opFocus} />}
         {opView === 'op-catalogue' && <OperatorCatalogue focus={opFocus} />}
         {opView === 'op-settlement' && <OperatorSettlement focus={opFocus} />}
