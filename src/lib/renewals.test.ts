@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   cycleLength, advance, nextAfter, skipReason, isDue, chargeFor, plan, renewalLine,
+  ownedByMarketplace, daysLate, band, reportProblem,
 } from './renewals'
 import type { Subscription } from './renewals'
 
@@ -128,7 +129,99 @@ describe('what a run would do before it does it', () => {
   })
 
   it('does nothing on a day nothing is due', () => {
-    expect(plan(book, '2026-04-01')).toEqual({ charge: [], roll: [], skip: [] })
+    expect(plan(book, '2026-04-01')).toEqual({ charge: [], roll: [], skip: [], awaiting: [] })
+  })
+})
+
+/* The correction this module was rewritten for. A subscription sold by a seller
+   is renewed by that seller; a run that rolls their date on their behalf is
+   asserting a renewal that may never have happened. */
+describe('who renews what', () => {
+  const mine = sub({ ref: 'OURS', vendor: null, seller: 'Aventa Telecom' })
+  const theirs = sub({ ref: 'THEIRS', vendor: 'PTR-1007', seller: 'Halo Audio' })
+
+  it('knows a marketplace line from a seller line', () => {
+    expect(ownedByMarketplace(mine)).toBe(true)
+    expect(ownedByMarketplace(theirs)).toBe(false)
+    /* Absent is ours: every row on file before the split was the marketplace's
+       to renew as far as the old run was concerned, and a missing column must
+       not silently hand a subscription to a vendor. */
+    expect(ownedByMarketplace(sub({ vendor: undefined }))).toBe(true)
+  })
+
+  it('charges what we sell and waits on what we do not', () => {
+    const p = plan([mine, theirs], '2026-08-10')
+    expect(p.charge.map(c => c.ref)).toEqual(['OURS'])
+    expect(p.roll.map(r => r.ref)).toEqual(['OURS'])
+    expect(p.awaiting.map(a => a.ref)).toEqual(['THEIRS'])
+  })
+
+  it('names the vendor and says why on everything it is waiting for', () => {
+    const [a] = plan([theirs], '2026-08-10').awaiting
+    expect(a.vendor).toBe('Halo Audio')
+    expect(a.due).toBe('2026-08-09')
+    expect(a.daysLate).toBe(1)
+    expect(a.why).toMatch(/Halo Audio/)
+    expect(a.why).toMatch(/does not roll a date it does not own/)
+  })
+
+  /* A lapsed subscription is nobody's to renew, so there is nothing to wait on
+     a vendor for and it must not appear as work. */
+  it('does not chase a vendor for one that was never going to renew', () => {
+    const p = plan([sub({ ref: 'X', vendor: 'PTR-1007', auto_renew: false })], '2026-08-10')
+    expect(p.awaiting).toEqual([])
+    expect(p.skip.map(s => s.ref)).toEqual(['X'])
+  })
+
+  it('counts the days late and never counts them backwards', () => {
+    expect(daysLate('2026-08-04', '2026-08-10')).toBe(6)
+    expect(daysLate('2026-09-04', '2026-08-10')).toBe(0)
+    expect(daysLate(null, '2026-08-10')).toBe(0)
+  })
+
+  /* A day late is an overnight job that has not landed. A month late is a
+     subscription somebody is still using that nobody has billed for. */
+  it('separates a slow morning from a missing month', () => {
+    expect(band(0)).toBe('watch')
+    expect(band(6)).toBe('watch')
+    expect(band(7)).toBe('chase')
+    expect(band(30)).toBe('escalate')
+  })
+})
+
+describe('what a vendor may report', () => {
+  const theirs = sub({ ref: 'SUB-KE-450121', vendor: 'PTR-1009', seller: 'Beacon Reseller Co' })
+
+  it('accepts the cycle that is due', () => {
+    expect(reportProblem(theirs, '2026-08-09', '2026-08-10')).toBeNull()
+  })
+
+  it('refuses a cycle that has not started', () => {
+    expect(reportProblem(sub({ vendor: 'PTR-1009', next_renewal: '2026-09-09' }), '2026-09-09', '2026-08-10'))
+      .toMatch(/has not started/)
+  })
+
+  it('refuses a cycle that is not the one due, so nothing is skipped over', () => {
+    expect(reportProblem(theirs, '2026-07-09', '2026-08-10')).toMatch(/is the one to report/)
+  })
+
+  /* Answered rather than refused: a retry from a vendor's own system is not an
+     error, and telling them it is teaches them nothing about what to do. */
+  it('says a cycle already on file is already on file', () => {
+    expect(reportProblem(theirs, '2026-08-09', '2026-08-10', ['2026-08-09']))
+      .toMatch(/already been reported/)
+  })
+
+  it('refuses one the marketplace sells, because the run raises that', () => {
+    expect(reportProblem(sub({ vendor: null }), '2026-08-09', '2026-08-10'))
+      .toMatch(/sold by the marketplace/)
+  })
+
+  it('refuses one that is lapsing or already gone', () => {
+    expect(reportProblem(sub({ vendor: 'PTR-1009', auto_renew: false }), '2026-08-09', '2026-08-10'))
+      .toMatch(/Auto-renew is off/)
+    expect(reportProblem(sub({ vendor: 'PTR-1009', status: 'cancelled' }), '2026-08-09', '2026-08-10'))
+      .toMatch(/cancelled/)
   })
 })
 
@@ -143,6 +236,14 @@ describe('what the customer is told', () => {
   it('says overdue rather than printing a date that has gone', () => {
     expect(renewalLine(sub({ next_renewal: '2026-08-09' }), '2026-08-10'))
       .toBe('Overdue for renewal since 2026-08-09')
+  })
+
+  /* The same date means two different things depending on who bills it. On one
+     a seller bills, the customer's service is running and the gap is ours, so
+     telling them they are overdue would be alarming and wrong. */
+  it('does not tell a customer they are overdue when it is the seller we are waiting on', () => {
+    expect(renewalLine(sub({ next_renewal: '2026-08-04', vendor: 'PTR-1009', seller: 'Beacon Reseller Co' }), '2026-08-10'))
+      .toBe('Renewing — awaiting confirmation from Beacon Reseller Co')
   })
 
   it('says when a pause ends', () => {

@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Building2, Users, Package, DollarSign, Warehouse, Ticket,
   Shield, Code, Megaphone, Tag, TrendingUp, Settings,
   Search, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store, Wallet as WalletIcon, MessageSquareWarning, RotateCcw, Gift, Scale, BookText, Radio, Receipt, LibraryBig, Globe,
-  User, KeyRound, Monitor, Smartphone, Layers, FileText, PackageSearch, Landmark, FileSignature } from 'lucide-react'
+  User, KeyRound, Monitor, Smartphone, Layers, FileText, PackageSearch, Landmark, FileSignature, CalendarClock } from 'lucide-react'
 import type { OperatorView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
 import { AccountMenu } from '../AccountMenu'
@@ -37,6 +37,9 @@ const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; i
       /* Above tickets: a ticket is what somebody says about an order, and the
          order is the thing itself. Support reads them in that direction. */
       { id: 'op-orders', label: 'Orders', icon: <PackageSearch size={18} /> },
+      /* Beside orders, above numbers: a renewal is the order that keeps
+         happening, and half of them are a seller's to make happen. */
+      { id: 'op-renewals', label: 'Renewals', icon: <CalendarClock size={18} /> },
       { id: 'op-numbers', label: 'Numbers & SIMs', icon: <Smartphone size={18} /> },
       { id: 'op-tickets', label: 'Tickets & SLA', icon: <Ticket size={18} /> },
       /* Below tickets and separate from them on purpose. A ticket is a question

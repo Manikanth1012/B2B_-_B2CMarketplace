@@ -1,9 +1,9 @@
 # Product Requirements Document (PRD): B2B/B2C Telecom Marketplace
 
 ## 1. Document Control
-* **Version**: 4.9  
+* **Version**: 5.0  
 * **Date**: August 2026  
-* **Status**: Draft — sections 4.70 to 4.74 added, and section 7 rewritten against the React and Supabase build that replaced the static prototype  
+* **Status**: Draft — sections 4.70 to 4.75 added, and section 7 rewritten against the React and Supabase build that replaced the static prototype  
 * **Author**: AI Coding Assistant (Antigravity)  
 * **Target Audience**: Platform Owner (Telecom Operator), Product Managers, Developers, and Partners  
 
@@ -11,6 +11,7 @@
 
 | Version | Date | Change |
 |---|---|---|
+| **5.0** | **Aug 2026** | **Renewals the marketplace does not own.** §4.75: the renewal run renewed every active subscription, and most of them were never ours to renew — a subscription sold by a seller is renewed by that seller, who takes the money on their own system and reports it. The run is scoped to `products.partner_id is null`, gains `awaiting` so a seller who has gone quiet is work rather than silence, and gains `report_renewal` as the only thing that may move a vendor-maintained date: one report, one cycle, out-of-order refused, a repeat answered rather than refused. Both desks get the screen — the operator plans the run and chases in three bands, the seller reports what is theirs and sees the subscription, never the subscriber. A customer on a seller's line is told the renewal is awaiting the seller's confirmation rather than that they are overdue. |
 | **4.9** | **Aug 2026** | **Five things the build could show you and not do.** §4.70 partner wholesale — six products carried the `partner` audience and nothing could buy one; purchases now net off against the settlement the marketplace already owes, bounded by what the period holds and held off a statement under dispute. §4.71 the rolling reserve — seven sellers were on a rate and not a cent was ever retained; it is now withheld and returned on dated tranches, and `payout_net` stopped pretending to be the net converted. §4.72 an order is its parts. §4.73 the operator gains Accounts — onboarded and pending companies plus retail customers, and the credit gate the marketplace owns becomes visible to the desk that owns it. §4.74 the renewal run. §7 rewritten: the prototype has a back end, and had had one for some time while this section still said it did not. |
 | **4.8** | **Aug 2026** | **The gateway behind the name, and the recipient behind the id.** §4.30 rewritten: a channel now carries the endpoint, credential, sender registration, receipt callback, retry policy and failover target a real send needs, plus a check that names what would fail instead of reporting a colour. Message cost becomes a per-destination, per-segment, effective-dated rate card in the currency each carrier bills in, replacing a single `unit_cost` column printed in the reporting currency by assumption; spend is reported per currency and never summed across them. §4.14 gains the recipient directory — "who chose what" listed user ids where it should have listed people. |
 | **4.7** | **Aug 2026** | **Product comparison built, on both buy sides.** §4.23 had been specified since v2.0 and never built — no toggle on any card, no tray, no table. Shoppers and enterprise buyers now compare up to three side by side through one shared set of rules. Two rules came from using it rather than from writing it: prices are not compared across payment models any more than across currencies, and a row no column can fill in is dropped rather than printed as "Not stated" across the width. §4.23 rewritten to describe what is built. |
@@ -1112,6 +1113,20 @@ The ladder's sixth step is a **diary entry, not a gate** — an annual credit re
 The renewal run is shaped like the settlement run, because it is the same kind of job and the same three things go wrong with it. It **refuses a date in the future** — a period that has not started has not been used, and charging for it is charging for nothing. It is **idempotent**: one charge per subscription per period, enforced by the table rather than by the caller remembering. And it **says why it skipped somebody**, because "four were skipped" is not something anybody can act on: a subscription that ends before it would renew does not renew, and one with auto-renew off lapses rather than being charged.
 
 The date moves by **whole cycles from the agreed date**, never "today plus a month" — somebody billed on the 9th stays on the 9th however late the run is. The charge waits for the bill covering its period; nothing here takes money.
+
+### 4.75 Renewals the Marketplace Does Not Own (ORD, BIL, PMP)
+
+The run above renewed everything, and most of it was never ours to renew. **A subscription sold by a seller is renewed by that seller.** Halo Audio decides whether a Halo Music Family subscription runs on, takes the money on their own system, and tells us. A marketplace run that rolled Halo's date on Halo's behalf was asserting a renewal that may never have happened — and it hid the only fact worth acting on, which is that nobody has heard from Halo.
+
+The split is **who sold it**, not who fulfils it: `products.partner_id`. Aventa's own lines — Freedom, Family Safety, Digital Life, IoT Connect — are billed by the marketplace and renewed by the run. Everything a seller sells is theirs, including the resold telco lines that Aventa provisions, because who fulfils and who renews are different questions.
+
+So the run loses one thing and gains two. It loses the right to renew what it does not sell. It gains **`awaiting`** — the vendor-maintained subscriptions whose date has come with no report, each naming the seller and how late they are — because the difference between "renewed" and "nobody has told us" is the whole point, and silence is what the old run was manufacturing. And it gains an inbound path, **`report_renewal`**, which is the only thing that may move a vendor-maintained date.
+
+A report is **one cycle at a time**: a seller three cycles behind reports three times, and the gap stays visible until they do. Reporting the wrong cycle is refused rather than accepted out of order, so nothing is skipped over. A **repeat is answered, not refused** — a retry from a vendor's own integration is not an error and telling them it is teaches them nothing. The operator may file a report **on a seller's behalf**, which is what happens when a seller tells us by email, and the row says so rather than pretending the seller filed it.
+
+Both sides get the screen. The operator's **Renewals** desk plans the run before it is pressed, lists who is late in three bands — watch, chase, escalate — and can record a report taken on a call. The seller's **Renewals** page shows the renewals that are theirs, in date order, with one action: report the cycle that is due. It shows **the subscription, never the subscriber** — a seller's answer to "which renewals are mine" does not come with the marketplace's customer list attached, and that narrowing is enforced by the database rather than by the screen.
+
+The customer's own line reads differently on each side of the split. A date in the past on a line we bill is the defect above. On a line a seller bills, the customer's service is running and the gap is ours, so their screen says the renewal is **awaiting confirmation from the seller** rather than telling them they are overdue.
 
 
 ## 5. Architectural & Integration Blueprint

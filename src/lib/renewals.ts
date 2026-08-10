@@ -1,5 +1,5 @@
 /**
- * When a subscription renews, and what that cycle costs.
+ * When a subscription renews, who renews it, and what that cycle costs.
  *
  * `next_renewal` is the date a customer agreed to be charged on, and until now
  * nothing in this build ever moved it. Three active monthly subscriptions sat
@@ -7,12 +7,24 @@
  * renewing in the past is one that has quietly stopped billing, and it took a
  * test noticing the next morning for anybody to know.
  *
- * Every rule here has a counterpart in SQL — `cycle_length`,
- * `renew_subscriptions` — for the same reason the settlement rules do: the run
- * has to charge and roll in one transaction, so it lives in the database; and a
- * screen has to say "renews on the 9th of next month, £12.99" for a cycle
- * nobody has run yet, so it lives here too. The integration suite checks the
- * two agree on every subscription on file.
+ * The run that fixed that went too far the other way: it renewed everything,
+ * including the subscriptions the marketplace does not sell. A subscription sold
+ * by a seller is renewed by that seller — Halo Audio decides whether a Halo
+ * Music Family subscription renews on the 11th, takes the money, and tells us.
+ * A run that rolls Halo's date on Halo's behalf is asserting a renewal that may
+ * never have happened, and it hides the one fact worth knowing: that nobody has
+ * heard from Halo.
+ *
+ * So every rule here comes in two halves — what we renew, and what we are
+ * waiting on somebody else to renew. `vendor` is the whole distinction: null
+ * means the marketplace sells it and renews it; a seller id means they do.
+ *
+ * Every rule has a counterpart in SQL — `cycle_length`, `renew_subscriptions`,
+ * `report_renewal` — for the same reason the settlement rules do: the run has to
+ * charge and roll in one transaction, so it lives in the database; and a screen
+ * has to say "renews on the 9th of next month, £12.99" for a cycle nobody has
+ * run yet, so it lives here too. The integration suite checks the two agree on
+ * every subscription on file.
  *
  * Dates are ISO strings and every computation is UTC.
  */
@@ -33,6 +45,8 @@ export interface Subscription {
   price: number
   currency: string
   cycle: string | null
+  /** The seller who maintains this renewal, or null when the marketplace does. */
+  vendor?: string | null
 }
 
 export interface Charge {
@@ -148,10 +162,51 @@ export function chargeFor(s: Subscription): Charge | null {
   }
 }
 
+/* ----------------------------------------------------- who renews what -- */
+
+/** Whether this is ours to renew, or a seller's. */
+export function ownedByMarketplace(s: Pick<Subscription, 'vendor'>): boolean {
+  return !s.vendor
+}
+
+/** How many days past its date a renewal is. Never negative. */
+export function daysLate(due: string | null, on: string): number {
+  if (!due || due >= on) return 0
+  return Math.round((utc(on).getTime() - utc(due).getTime()) / 86_400_000)
+}
+
+export type Band = 'watch' | 'chase' | 'escalate'
+
+/**
+ * How hard to push the vendor.
+ *
+ * The same three bands the `renewal_watch` view uses. A day late is a vendor
+ * whose overnight job has not landed yet; a month late is a subscription
+ * somebody is still using that nobody has billed for, and those are not the
+ * same conversation.
+ */
+export function band(days: number): Band {
+  if (days >= 30) return 'escalate'
+  if (days >= 7) return 'chase'
+  return 'watch'
+}
+
+/** A vendor-maintained renewal whose date has come with nothing reported. */
+export interface Awaiting {
+  ref: string
+  product: string
+  vendor: string
+  due: string
+  daysLate: number
+  band: Band
+  why: string
+}
+
 export interface RunPlan {
   charge: Charge[]
   roll: { ref: string; from: string; to: string }[]
   skip: { ref: string; why: string }[]
+  awaiting: Awaiting[]
 }
 
 /**
@@ -160,18 +215,68 @@ export interface RunPlan {
  * The screen that offers a renewal run should be able to say what it is about
  * to charge and to whom. A button that says "run" and reports afterwards is one
  * nobody presses twice.
+ *
+ * `awaiting` is the half that is not the run's work at all. It is listed here
+ * anyway because the person about to press the button is the person who has to
+ * ring the vendor, and a run that quietly left fourteen subscriptions alone
+ * without saying so is the defect this replaced.
  */
 export function plan(subs: readonly Subscription[], on: string): RunPlan {
-  const out: RunPlan = { charge: [], roll: [], skip: [] }
+  const out: RunPlan = { charge: [], roll: [], skip: [], awaiting: [] }
   for (const s of subs) {
     if (!s.next_renewal || s.next_renewal > on) continue
     const no = skipReason(s)
     if (no) { out.skip.push({ ref: s.ref, why: no.why }); continue }
+    /* After the refusals and before the charge: a lapsed subscription is
+       nobody's to renew, so there is nothing to wait on a vendor for. */
+    if (!ownedByMarketplace(s)) {
+      const late = daysLate(s.next_renewal, on)
+      out.awaiting.push({
+        ref: s.ref, product: s.product_name, vendor: s.seller ?? s.vendor!,
+        due: s.next_renewal, daysLate: late, band: band(late),
+        why: `${s.seller ?? s.vendor} renews this one and has not reported the cycle due on ${s.next_renewal}. `
+          + 'The marketplace does not roll a date it does not own — chase the vendor.',
+      })
+      continue
+    }
     const c = chargeFor(s)
     if (c) out.charge.push(c)
     out.roll.push({ ref: s.ref, from: s.next_renewal, to: nextAfter(s.next_renewal, s.cycle, on) })
   }
   return out
+}
+
+/**
+ * Why this renewal cannot be reported, or null when it can.
+ *
+ * The same refusals `report_renewal` makes, so the seller's screen can grey the
+ * button out and say why rather than offering an action the database will throw
+ * back. A vendor who is told "no" only after pressing send learns nothing about
+ * what to do instead.
+ */
+export function reportProblem(
+  s: Subscription, period: string, on: string, reported: readonly string[] = [],
+): string | null {
+  if (ownedByMarketplace(s)) {
+    return `${s.ref} is sold by the marketplace, so there is no vendor renewal to report. The renewal run raises it.`
+  }
+  if (reported.includes(period)) {
+    return `The cycle starting ${period} has already been reported. Nothing would be raised twice.`
+  }
+  if (s.status !== 'active') return `${s.ref} is ${s.status}, so nothing renewed.`
+  if (!s.auto_renew) {
+    return `Auto-renew is off on ${s.ref}. It lapses on ${s.next_renewal ?? 'its end date'} rather than renewing.`
+  }
+  if (s.ends_at && s.next_renewal && s.ends_at <= s.next_renewal) {
+    return `${s.ref} ends on ${s.ends_at}, before the renewal on ${s.next_renewal}. Nothing renewed.`
+  }
+  if (period > on) {
+    return `A renewal cannot be reported for a cycle starting ${period}. A period that has not started has not been used.`
+  }
+  if (period !== s.next_renewal) {
+    return `The cycle due on ${s.next_renewal} is the one to report, not ${period}.`
+  }
+  return null
 }
 
 /** What a customer is told about their own subscription, on their own screen. */
@@ -183,8 +288,15 @@ export function renewalLine(s: Subscription, on: string): string {
   if (!s.next_renewal) return 'No renewal date set'
   const no = skipReason(s)
   if (no) return no.kind === 'ends' ? `Ends ${s.ends_at}` : `Lapses ${s.next_renewal}`
-  /* A date in the past on an active subscription is the defect this module was
-     written for, and a screen should say so rather than print it plainly. */
-  if (s.next_renewal < on) return `Overdue for renewal since ${s.next_renewal}`
+  if (s.next_renewal < on) {
+    /* Two different facts wear the same date. On a subscription we bill, a date
+       in the past means nobody charged for the month being used — the defect
+       this module was written for. On one a seller bills, it means the seller
+       has not told us yet; the customer's service is running and the gap is
+       ours, so saying "overdue" to them would be alarming and wrong. */
+    return ownedByMarketplace(s)
+      ? `Overdue for renewal since ${s.next_renewal}`
+      : `Renewing — awaiting confirmation from ${s.seller ?? 'the seller'}`
+  }
   return `Renews ${s.next_renewal}`
 }

@@ -104,10 +104,27 @@ describe('the consumer subscriptions', () => {
        what the screen draws. Asserting a future renewal on it was this test's
        own mistake a minute ago. */
     const today = new Date().toISOString().slice(0, 10)
+    /* Narrowed once the renewal split landed. A date in the past means two
+       different things depending on who bills it. On a line the marketplace
+       sells it is the defect above — nobody charged for the month being used.
+       On a line a seller sells, the seller renews it and reports it, and a date
+       that has gone means we have not heard from them yet; the customer's
+       service is running and the gap is ours to chase. That case is legitimate,
+       but only while it is visible, so it has to be on the chase list. */
+    const { data: owners } = await supabase.from('products').select('id, partner_id')
+    const vendorOf = new Map(((owners ?? []) as { id: string; partner_id: string | null }[])
+      .map(p => [p.id, p.partner_id]))
+    const { data: watching } = await supabase.from('renewal_watch').select('ref')
+    const chased = new Set(((watching ?? []) as { ref: string }[]).map(w => w.ref))
+
     for (const s of subs.filter(isActive)) {
       expect(s.next_renewal, `${s.ref} is active with no next renewal`).toBeTruthy()
-      expect(s.next_renewal! >= today,
-        `${s.ref} is active and its next renewal was ${s.next_renewal}`).toBe(true)
+      if (s.next_renewal! >= today) continue
+      const vendor = vendorOf.get(s.product_id) ?? null
+      expect(vendor,
+        `${s.ref} is ours to renew and its next renewal was ${s.next_renewal}`).toBeTruthy()
+      expect(chased.has(s.ref!),
+        `${s.ref} renewed on ${s.next_renewal} and nobody is chasing its seller for it`).toBe(true)
     }
     for (const s of subs.filter(x => x.status === 'paused')) {
       expect(s.resumes_at ?? s.next_renewal,

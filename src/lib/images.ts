@@ -105,6 +105,7 @@ export const PRODUCT_IMAGES: Record<string, string> = {
   'SKU-7004': `${PEXELS}/1181244/pexels-photo-1181244.jpeg${Q}`,
   'SKU-7009': `${PEXELS}/3760067/pexels-photo-3760067.jpeg${Q}`,
   'SKU-7010': `${PEXELS}/4482900/pexels-photo-4482900.jpeg${Q}`,
+  'SKU-7011': `${PEXELS}/1034812/pexels-photo-1034812.jpeg${Q}`,
 }
 
 // Category hero images

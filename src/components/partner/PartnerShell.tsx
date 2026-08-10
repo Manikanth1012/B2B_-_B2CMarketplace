@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Route, Package, ShoppingCart, ShoppingBag, Wallet, FileText,
   BarChart3, Plug, LifeBuoy, Users, History, User,
   Search, Bell as BellIcon, LogOut, Menu, X, Store, BookOpen, RotateCcw, Gift,
-  KeyRound, Monitor, Code2
+  KeyRound, Monitor, Code2, CalendarClock,
 } from 'lucide-react'
 import type { PartnerView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
@@ -39,6 +39,9 @@ const NAV_SECTIONS: { label: string; items: { id: PartnerView; label: string; ic
     items: [
       { id: 'pt-orders', label: 'Orders', icon: <ShoppingCart size={18} /> },
       { id: 'pt-wholesale', label: 'Wholesale', icon: <ShoppingBag size={18} /> },
+      /* Yours to maintain: the marketplace bills its own lines and reports
+         nothing on your behalf. */
+      { id: 'pt-renewals', label: 'Renewals', icon: <CalendarClock size={18} /> },
       { id: 'pt-refunds', label: 'Refunds', icon: <RotateCcw size={18} /> },
       { id: 'pt-rewards', label: 'Rewards', icon: <Gift size={18} /> },
       { id: 'pt-settlement', label: 'Settlement', icon: <Wallet size={18} /> },

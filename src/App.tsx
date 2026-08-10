@@ -32,6 +32,7 @@ import { AccountView } from './components/AccountView'
 import { OperatorShell } from './components/operator/OperatorShell'
 import { OperatorDashboard } from './components/operator/OperatorDashboard'
 import { OperatorAccounts } from './components/operator/OperatorAccounts'
+import { OperatorRenewals } from './components/operator/OperatorRenewals'
 import { OperatorOnboarding } from './components/operator/OperatorOnboarding'
 import { OperatorPartners } from './components/operator/OperatorPartners'
 import { OperatorCatalogue } from './components/operator/OperatorCatalogue'
@@ -67,6 +68,7 @@ import { PartnerListings } from './components/partner/PartnerListings'
 import { PartnerNewListing } from './components/partner/PartnerNewListing'
 import { PartnerOrders } from './components/partner/PartnerOrders'
 import { PartnerWholesale } from './components/partner/PartnerWholesale'
+import { PartnerRenewals } from './components/partner/PartnerRenewals'
 import { PartnerSettlement } from './components/partner/PartnerSettlement'
 import { PartnerSettlementPlan } from './components/partner/PartnerSettlementPlan'
 import { PartnerPerformance } from './components/partner/PartnerPerformance'
@@ -451,6 +453,7 @@ function AppInner() {
         {opView === 'op-catalogue' && <OperatorCatalogue focus={opFocus} />}
         {opView === 'op-settlement' && <OperatorSettlement focus={opFocus} />}
         {opView === 'op-inventory' && <OperatorInventory />}
+        {opView === 'op-renewals' && <OperatorRenewals />}
         {opView === 'op-numbers' && <OperatorNumbers />}
         {opView === 'op-tickets' && <OperatorTickets focus={opFocus} />}
         {opView === 'op-dunning' && <OperatorDunning />}
@@ -503,6 +506,7 @@ function AppInner() {
         {ptView === 'pt-newlisting' && <PartnerNewListing partnerId={session!.partnerId!} />}
         {ptView === 'pt-orders' && <PartnerOrders partnerId={session!.partnerId!} />}
         {ptView === 'pt-wholesale' && <PartnerWholesale partnerId={session!.partnerId!} />}
+        {ptView === 'pt-renewals' && <PartnerRenewals partnerId={session!.partnerId!} />}
         {ptView === 'pt-settlement' && <PartnerSettlement partnerId={session!.partnerId!} />}
         {ptView === 'pt-plan' && <PartnerSettlementPlan partnerId={session!.partnerId!} />}
         {ptView === 'pt-performance' && <PartnerPerformance />}
