@@ -6,9 +6,6 @@ import { canRaiseTicket } from '../lib/orderTickets'
 import { RaiseTicketModal } from './RaiseTicketModal'
 import { Pager, usePaging } from './Pager'
 import { useMarket } from '../lib/MarketContext'
-import { OrderParts } from './OrderParts'
-import { partsOf, summaryOf } from '../lib/orderParts'
-import type { Part } from '../lib/orderParts'
 import { paymentLabel } from '../lib/payments'
 import { loadPaymentCatalogue } from '../lib/gatewayRepo'
 import { planLine } from '../lib/gateway'
@@ -28,9 +25,6 @@ export function OrdersView() {
   const { fmtIn } = useMarket()
   const [orders, setOrders] = useState<Order[]>([])
   const [orderItems, setOrderItems] = useState<Record<string, OrderItem[]>>({})
-  /* What each order is actually doing, part by part. The single `stages` rail
-     the card used to draw was one of the two journeys a mixed basket is on. */
-  const [parts, setParts] = useState<Part[]>([])
   const [loading, setLoading] = useState(true)
   const [detailOrder, setDetailOrder] = useState<Order | null>(null)
   const [ticketOrder, setTicketOrder] = useState<Order | null>(null)
@@ -72,14 +66,6 @@ export function OrdersView() {
         if (items) itemsMap[order.id] = items as OrderItem[]
       }))
       setOrderItems(itemsMap)
-
-      /* One read for every order rather than one per order: parts are small and
-         RLS already narrows them to this buyer's own. */
-      const { data: pt } = await supabase.from('order_part')
-        .select('*').in('order_id', ords.map(o => o.id)).order('sort_order')
-      setParts(((pt ?? []) as Record<string, unknown>[]).map(r => ({
-        ...r, order_id: String(r.order_id), sort_order: Number(r.sort_order ?? 0),
-      })) as unknown as Part[])
     }
     setLoading(false)
   }, [])
@@ -134,7 +120,6 @@ export function OrdersView() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {ordersPage.rows.map((order) => {
             const items = orderItems[order.id] || []
-            const ownParts = partsOf(parts, order.id)
             const stages = order.stages || ['Ordered', 'Confirmed', 'Dispatched', 'In transit', 'Delivered']
             const currentStage = order.stage || 0
             const isDigital = order.carrier === 'Digital'
@@ -199,74 +184,50 @@ export function OrdersView() {
                   ))}
                 </div>
 
-                {/* One rail per part, not one for the order.
-                    `orders.stages` held a single journey, so a basket of a
-                    handset and an eSIM drew whichever of the two it happened to
-                    carry over both halves — the eSIM appeared to be waiting for
-                    a van. A single-part order still draws exactly one rail. */}
+                {/* Tracking pipeline */}
                 <div style={{ padding: '12px 0', borderTop: '1px solid var(--border-light)', borderBottom: '1px solid var(--border-light)', marginBottom: '12px' }}>
-                  {ownParts.length > 0 ? (
-                    <>
-                      {ownParts.length > 1 && (
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '8px' }}>
-                          {summaryOf(ownParts)}
-                        </div>
-                      )}
-                      <OrderParts parts={ownParts} />
-                    </>
-                  ) : (
-                    /* No parts on file is a record older than this change, not
-                       an order with nothing happening — so it keeps the rail it
-                       was drawn with rather than rendering as empty. */
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
-                      {stages.map((stage, i) => {
-                        const Icon = isDigital && i <= 1 ? (i === 0 ? Clock : Check) : (STAGE_ICONS[i] || Check)
-                        const done = i <= currentStage
-                        const isLast = i === stages.length - 1
-                        return (
-                          <div key={stage} style={{ display: 'flex', alignItems: 'center', flex: isLast ? '0 0 auto' : '1 1 0' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                              <div style={{
-                                width: '28px', height: '28px', borderRadius: '50%',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                background: done ? 'var(--brand-accent)' : 'var(--bg-alt)',
-                                color: done ? 'white' : 'var(--text-tertiary)',
-                              }}>
-                                <Icon size={14} />
-                              </div>
-                              <span style={{
-                                fontSize: 'var(--text-xs)', fontWeight: done ? 600 : 400,
-                                color: done ? 'var(--text)' : 'var(--text-tertiary)',
-                                whiteSpace: 'nowrap',
-                              }}>
-                                {stage}
-                              </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
+                    {stages.map((stage, i) => {
+                      const Icon = isDigital && i <= 1 ? (i === 0 ? Clock : Check) : (STAGE_ICONS[i] || Check)
+                      const done = i <= currentStage
+                      const isLast = i === stages.length - 1
+                      return (
+                        <div key={stage} style={{ display: 'flex', alignItems: 'center', flex: isLast ? '0 0 auto' : '1 1 0' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                            <div style={{
+                              width: '28px', height: '28px', borderRadius: '50%',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              background: done ? 'var(--brand-accent)' : 'var(--bg-alt)',
+                              color: done ? 'white' : 'var(--text-tertiary)',
+                              transition: 'all 200ms ease',
+                            }}>
+                              <Icon size={14} />
                             </div>
-                            {!isLast && (
-                              <div style={{
-                                flex: 1, height: '2px', margin: '0 4px', marginBottom: '18px',
-                                background: i < currentStage ? 'var(--brand-accent)' : 'var(--border-light)',
-                              }} />
-                            )}
+                            <span style={{
+                              fontSize: 'var(--text-xs)', fontWeight: done ? 600 : 400,
+                              color: done ? 'var(--text)' : 'var(--text-tertiary)',
+                              whiteSpace: 'nowrap',
+                            }}>
+                              {stage}
+                            </span>
                           </div>
-                        )
-                      })}
-                    </div>
-                  )}
+                          {!isLast && (
+                            <div style={{
+                              flex: 1, height: '2px', margin: '0 4px', marginBottom: '18px',
+                              background: i < currentStage ? 'var(--brand-accent)' : 'var(--border-light)',
+                              transition: 'background 200ms ease',
+                            }} />
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
                 </div>
 
                 {/* Footer */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                    {/* Carriage is on the part that ships and is printed
-                        there. Repeating it under the whole order was the
-                        header claiming one parcel for a basket that might have
-                        two, or none. */}
-                    {ownParts.length > 0 ? (
-                      <>
-                        <Clock size={14} /> {summaryOf(ownParts)}
-                      </>
-                    ) : order.tracking_ref ? (
+                    {order.tracking_ref ? (
                       <>
                         <Truck size={14} /> {order.carrier} · {order.tracking_ref}
                       </>

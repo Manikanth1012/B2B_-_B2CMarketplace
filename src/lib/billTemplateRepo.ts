@@ -18,8 +18,6 @@ import {
   type Audience, type BillFacts,
   canDelete, nextReference, validateTemplate, money, issuerFor, issuersByMarket, taxLabelFor,
 } from './billTemplate'
-import { statementFacts } from './documentFacts'
-import type { StatementRow } from './documentFacts'
 import { faceOfDocument, regimeFor, scannable } from './einvoice'
 import type { ClearanceRecord, Regime, DocKind } from './einvoice'
 
@@ -326,25 +324,54 @@ async function loadSamples(
       .find((s: Record<string, string>) => s.partner_id) as Record<string, string> | undefined
     if (!st) return null
 
-    /* Built by `statementFacts`, not beside it. This function used to derive
-       the same document a second time from the same row, and the two drifted:
-       when `adjustments` grew a second source the deduction sheet here went on
-       printing gross-less-deductions while `net` carried the adjustment, so the
-       preview's total no longer followed from the lines above it. One document,
-       one derivation; only the things that are genuinely the preview's — its
-       reference, its issuer, its market's tax label — are supplied here. */
-    const facts = statementFacts(st as unknown as StatementRow, {
-      issuer: null,
-      template: null,
-      reference: refOf('partner', st.partner_id),
-      taxLabel: labelFor(st.market),
-    })
+    const gross = Number(st.gross ?? 0)
+    const commission = Number(st.commission ?? 0)
+    const fees = Number(st.fees ?? 0)
+    const refunds = Number(st.refunds ?? 0)
+    const withholding = Number(st.withholding ?? 0)
+    const net = Number(st.net ?? 0)
 
     return {
-      ...facts,
+      reference: refOf('partner', st.partner_id),
+      issued: st.period, due: st.period,
+      billedTo: {
+        name: st.partner_name,
+        ref: st.partner_id ?? null,
+        lines: [`${st.order_count} orders in ${st.period}`],
+        contact: '',
+        tax: null,
+      },
       billedFrom: { ...from, mark },
+      /* A self-billing invoice reads as a deduction sheet: gross the seller
+         earned, less what the marketplace kept.
+         All of it in `usage`, none of it in `subs`. A seller statement has no
+         subscription side, so the seeded template does not carry that section —
+         and a gross figure put there would simply never print, leaving a
+         document of pure deductions whose total does not reconcile. */
+      lines: [],
+      usage: [
+        { label: 'Gross sales', detail: `${st.order_count} orders · ${st.period}`, amount: gross },
+        { label: 'Marketplace commission', detail: `${st.commission_rate ?? ''}%`, amount: -commission },
+        { label: 'Platform and payment fees', detail: st.period, amount: -fees },
+        { label: 'Refunds passed back', detail: st.period, amount: -refunds },
+      ].filter(l => l.amount !== 0),
+      credits: -withholding,
+      paid: st.status === 'paid' ? net : 0,
+      taxRate: 0,
+      tax: 0,
+      total: net,
+      rewards: null,
+      advert: null,
+      paid_already: st.status === 'paid',
       support, terms,
       howToPay: remit('partner'),
+      payRef: st.id,
+      currency: st.currency,
+      currencyMark: markFor(st.currency),
+      taxLabel: labelFor(st.market),
+      /* A self-billing statement is not a document any of these authorities
+         clears — the marketplace raises it to itself. Empty is the answer, and
+         the section renders nothing rather than an unearned stamp. */
       clearance: [], verifyUrl: null,
     }
   }
@@ -434,33 +461,26 @@ export async function saveTemplate(
   }
 }
 
-/**
- * What is on the template, and in what order.
- *
- * `ids` is now an ORDERED list, not a set. It used to be treated as a set and
- * the position taken from the catalogue's global `sort_order`, so the
- * per-template column was written once at insert with a figure that had
- * nothing to do with this template and never touched again. Every template on
- * the marketplace printed its blocks in one fixed order as a result.
- *
- * Dropped before renumbered, and renumbered from a base above every existing
- * position. The table has one row per position per template, and moving two
- * sections past each other by writing their final numbers directly collides on
- * the way through — a swap has to pass through a position nothing else holds.
- */
 async function reconcileSections(
   templateId: string, ids: readonly string[], all: readonly Section[],
 ): Promise<Result> {
   const { data: current, error: readErr } = await supabase
-    .from('invoice_template_sections').select('section_id, sort_order').eq('template_id', templateId)
+    .from('invoice_template_sections').select('section_id').eq('template_id', templateId)
   if (readErr) return { ok: false, reason: friendly(readErr.message) }
 
-  const held = new Map((current ?? []).map(r => [r.section_id as string, Number(r.sort_order)]))
+  const held = new Set((current ?? []).map(r => r.section_id as string))
   const want = new Set(ids)
-  const dropping = [...held.keys()].filter(s => !want.has(s))
 
-  /* Removals first: a section on its way off the template must not be counted
-     when the survivors are renumbered around it. */
+  const adding = [...want].filter(s => !held.has(s))
+  const dropping = [...held].filter(s => !want.has(s))
+
+  if (adding.length) {
+    const order = new Map(all.map(s => [s.id, s.sort_order]))
+    const { error } = await supabase.from('invoice_template_sections').insert(
+      adding.map(section_id => ({ template_id: templateId, section_id, sort_order: order.get(section_id) ?? 0 })))
+    if (error) return { ok: false, reason: friendly(error.message) }
+  }
+
   for (const section_id of dropping) {
     const { data, error } = await supabase.from('invoice_template_sections')
       .delete().eq('template_id', templateId).eq('section_id', section_id).select('section_id')
@@ -468,83 +488,7 @@ async function reconcileSections(
     if (!data?.length) return { ok: false, reason: REFUSED }
   }
 
-  const park = Math.max(0, ...held.values()) + 1000
-  const adding = ids.filter(s => !held.has(s))
-  if (adding.length) {
-    /* Parked above everything, then renumbered down with the rest. Inserting at
-       the final position would collide with whatever holds it today. Ascending
-       among themselves, so a brand-new template — where every row is an insert
-       — is already in document order before the passes run. */
-    const { error } = await supabase.from('invoice_template_sections').insert(
-      adding.map((section_id, n) => ({ template_id: templateId, section_id, sort_order: park + n })))
-    if (error) return { ok: false, reason: friendly(error.message) }
-  }
-
-  /* The order the operator arranged, written as consecutive positions.
-   *
-   * Two passes, because one row cannot be moved onto a position a neighbour
-   * still holds. And each pass in the direction that keeps every intermediate
-   * state legal: `guard_section_order` fires per row against whatever the
-   * others hold at that instant, so a renumbering that is correct only once it
-   * finishes is refused halfway through.
-   *
-   *   up, in reverse — the last section is parked first, so a top-anchored
-   *     block is never left holding a number above one that is not
-   *   down, in order — every section lands below the ones already placed, so a
-   *     block that must follow the summary is placed after the summary is
-   *
-   * Getting either direction wrong makes this refuse its own writes, which is
-   * how the first draft of it failed.
-   */
-  const base = Math.max(park + ids.length, ...held.values()) + 1000
-  for (let n = ids.length - 1; n >= 0; n--) {
-    const { error } = await supabase.from('invoice_template_sections')
-      .update({ sort_order: base + n }).eq('template_id', templateId).eq('section_id', ids[n])
-    if (error) return { ok: false, reason: friendly(error.message) }
-  }
-  for (let n = 0; n < ids.length; n++) {
-    const { error } = await supabase.from('invoice_template_sections')
-      .update({ sort_order: n + 1 }).eq('template_id', templateId).eq('section_id', ids[n])
-    /* The database checks the same ordering rule, so a move the screen let
-       through and the rule refuses arrives here as its own sentence rather
-       than as a constraint name. */
-    if (error) return { ok: false, reason: friendly(error.message) }
-  }
-
-  /* Not read any more — the order comes from `ids`. Kept in the signature
-     because callers pass the catalogue for validation and it would be a
-     confusing thing to remove from one and not the other. */
-  void all
   return { ok: true }
-}
-
-/* ------------------------------------------------------ a section of words -- */
-
-/**
- * A heading and free text, written for one template.
- *
- * Through the database rather than an insert: the id has to be derived from
- * the template that owns it and the position has to land at the end of that
- * template's list, and a client that computed either would eventually compute
- * it differently from the next client.
- */
-export async function addCustomSection(
-  templateId: string, heading: string, body: string,
-): Promise<Result & { id?: string }> {
-  const { data, error } = await supabase.rpc('add_custom_section', {
-    p_template: templateId, p_heading: heading, p_body: body,
-  })
-  if (error) return { ok: false, reason: friendly(error.message) }
-  return { ok: true, id: data as string, note: `“${heading.trim()}” added to this template.` }
-}
-
-/** Removing one takes it off the template with it — nothing else uses it. */
-export async function removeCustomSection(id: string): Promise<Result> {
-  const { data, error } = await supabase.from('invoice_sections')
-    .delete().eq('id', id).eq('custom', true).select('id')
-  if (error) return { ok: false, reason: friendly(error.message) }
-  if (!data?.length) return { ok: false, reason: REFUSED }
-  return { ok: true, note: 'Section removed.' }
 }
 
 /**

@@ -23,7 +23,7 @@ import { useMarket } from '../../lib/MarketContext'
    reload. `orders` had no policy letting a seller read the orders they have to
    pack, which is why. It has one now, so this reads the table. */
 export function PartnerOrders({ partnerId }: { partnerId: string }) {
-  const [book, setBook] = useState<OrderBook>({ orders: [], lines: [], mine: new Set(), parts: [] })
+  const [book, setBook] = useState<OrderBook>({ orders: [], lines: [], mine: new Set() })
   const [loading, setLoading] = useState(true)
   const [viewing, setViewing] = useState<SellerOrder | null>(null)
   const [failing, setFailing] = useState<SellerOrder | null>(null)

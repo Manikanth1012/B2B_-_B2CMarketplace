@@ -127,9 +127,9 @@ export function OperatorOnboarding() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
         <div>
-          <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Onboarding</h1>
+          <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Partner onboarding</h1>
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            Sellers and businesses · seven gates for a seller, {SLA_DAYS} working days end to end · {inFlight.length} seller{inFlight.length === 1 ? '' : 's'} in flight
+            Seven gates, {SLA_DAYS} working days end to end · {inFlight.length} application{inFlight.length === 1 ? '' : 's'} in flight
           </p>
         </div>
         <Btn onClick={() => setAddPartnerModal(true)}>Onboard one yourself</Btn>

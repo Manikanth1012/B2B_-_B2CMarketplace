@@ -97,10 +97,6 @@ export interface Statement {
      exactly the correction the marketplace made in their favour. Optional
      because rows read before notes existed do not carry it. */
   adjustments?: number
-  /* What those adjustments are made of — notes, wholesale charges, or both.
-     Kept because the seller's statement names the source in words, and naming
-     the wrong one is worse than naming none. */
-  adjustment_detail?: unknown
   status: string
   order_count: number
   /* The two legs. `currency` is what the statement was computed in — the

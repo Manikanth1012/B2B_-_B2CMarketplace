@@ -130,19 +130,9 @@ describe('the note book the operator works from', () => {
       for (const n of mine) {
         expect(named.has(n.id), `${n.id} says it settled on ${s.id}, which does not name it`).toBe(true)
       }
-      /* And the stored total is the sum of what the statement itemises rather
-         than an assertion.
-
-         It used to be the sum of the notes, because notes were the only thing
-         `adjustments` held. Wholesale a partner buys from the marketplace lands
-         in the same figure now, so summing only the notes reports a
-         disagreement on every reseller's statement. Summing the itemisation is
-         the stronger check in any case: it holds whatever else arrives in that
-         column later, and it is the itemisation a seller reconciles against. */
-      const derived = Math.round(
-        s.adjustment_detail.reduce(
-          (a, d) => a + (d.kind === 'credit' ? Number(d.amount) : -Number(d.amount)), 0) * 100) / 100
-      expect(Number(s.adjustments), `${s.id} adjustments disagree with what it itemises`).toBe(derived)
+      /* And the stored total is the sum of the notes rather than an assertion. */
+      const derived = Math.round(mine.reduce((a, n) => a + signedAmount(n), 0) * 100) / 100
+      expect(Number(s.adjustments), `${s.id} adjustments disagree with its notes`).toBe(derived)
     }
   })
 

@@ -394,32 +394,7 @@ export function creditProblems(
     if (s.reserve_held > 0 && s.reserve_pct === 0) {
       out.push(`${s.partner_id} has a reserve held against a rate of zero.`)
     }
-    /* The other direction, which is the one that was true of seven sellers for
-       as long as the reserve was a sentence nobody withheld. Checking only for
-       money held with no policy behind it meant the check could never fire on
-       the failure that had actually happened.
-
-       Not immediately, though. A rate set last week has had no settlement to
-       apply on, and calling that a disagreement would make the check cry wolf
-       every time somebody sets a rate. Retention happens when a period closes,
-       so the rate is given a cycle to take effect — past that, nothing held
-       means nothing is applying it. */
-    const daysOn = s.reviewed_on ? daysBetween(s.reviewed_on, today) : 0
-    if (s.reserve_pct > 0 && s.reserve_held === 0 && daysOn > 35) {
-      out.push(`${s.partner_id} is on a ${s.reserve_pct}% rolling reserve set on ${s.reviewed_on} `
-        + 'and nothing has been retained under it since. A settlement has closed in that time, so the rate is not being applied.')
-    }
   }
 
   return out
-}
-
-/* Whole days between two ISO dates, UTC. Written here rather than reached for
-   because this module is otherwise free of date arithmetic and a Date built
-   from a bare date string is UTC midnight either way. */
-function daysBetween(from: string, to: string): number {
-  const a = Date.parse(`${from}T00:00:00Z`)
-  const b = Date.parse(`${to}T00:00:00Z`)
-  if (Number.isNaN(a) || Number.isNaN(b)) return 0
-  return Math.round((b - a) / 86_400_000)
 }

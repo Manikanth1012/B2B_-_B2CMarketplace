@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Pager, usePaging } from '../Pager'
-import { Plus, Copy, Trash2, Pencil, Lock, ArrowLeft, ChevronUp, ChevronDown } from 'lucide-react'
+import { Plus, Copy, Trash2, Pencil, Lock, ArrowLeft } from 'lucide-react'
 import {
   SectionCard, EmptyState, Btn, FormField, TextInput, TextArea, Select,
   Table, Td, toast, ConfirmDialog,
@@ -10,13 +10,12 @@ import { BillDocument } from '../BillDocument'
 import { OperatorClearance } from './OperatorClearance'
 import {
   loadBillTemplates, saveTemplate, duplicateTemplate, deleteTemplate,
-  assignTemplate, removeOverride, saveIssuer, addCustomSection, removeCustomSection,
+  assignTemplate, removeOverride, saveIssuer,
 } from '../../lib/billTemplateRepo'
 import type { BillTemplateBook, Draft } from '../../lib/billTemplateRepo'
 import {
   sectionsOn, offeredTo, canRemove, canAdd, warningsFor, validateTemplate,
   nextReference, referencePattern, validateNumbering, canDelete, usedBy, suppressed, templateFor,
-  moved, orderProblem,
 } from '../../lib/billTemplate'
 import type { Template, Audience, Section } from '../../lib/billTemplate'
 
@@ -57,15 +56,7 @@ export function OperatorBillTemplates() {
       <TemplateEditor
         book={book}
         template={editing === 'new' ? null : editing}
-        /* Reloaded before the editor closes, not after. The other way round,
-           the list is rendered from the book as it was and reopening the
-           template shows the layout that was just replaced — which is only
-           invisible because a person is slower than a round trip. */
-        onDone={async () => { await reload(); setEditing(null) }}
-        /* Reload without leaving. Adding a section used to go through `onDone`,
-           which closes the editor — so writing a footer threw away whatever
-           reordering had not been saved yet. */
-        onRefresh={reload}
+        onDone={async () => { setEditing(null); await reload() }}
         onCancel={() => setEditing(null)}
       />
     )
@@ -223,9 +214,9 @@ function blankDraft(): Draft {
 }
 
 function TemplateEditor(
-  { book, template, onDone, onRefresh, onCancel }: {
+  { book, template, onDone, onCancel }: {
     book: BillTemplateBook; template: Template | null
-    onDone: () => Promise<void>; onRefresh: () => Promise<void>; onCancel: () => void
+    onDone: () => Promise<void>; onCancel: () => void
   },
 ) {
   const [draft, setDraft] = useState<Draft>(() =>
@@ -260,56 +251,8 @@ function TemplateEditor(
     } else {
       const check = canAdd(s, draft.audience)
       if (!check.ok) { toast(check.reason, 'error'); return }
-      /* At the position the catalogue gives it, not at the end. Appending put
-         a newly ticked "Amount due panel" below the payment slip, which is not
-         a document, and left the operator to walk it back up by hand. */
-      setIds(prev => {
-        const at = new Map(book.sections.map(x => [x.id, x.sort_order]))
-        const mine = at.get(s.id) ?? Number.MAX_SAFE_INTEGER
-        const before = prev.findIndex(id => (at.get(id) ?? 0) > mine)
-        const next = [...prev]
-        next.splice(before < 0 ? prev.length : before, 0, s.id)
-        return orderProblem(next, book.sections) ? [...prev, s.id] : next
-      })
+      setIds(prev => [...prev, s.id])
     }
-  }
-
-  /* Sections this template could carry: the built-ins, plus the ones written
-     for this template. Another template's own sections are not offered here —
-     that is what makes them its own. */
-  const offered = useMemo(
-    () => book.sections.filter(s => !s.custom || s.owner_template === template?.id),
-    [book.sections, template?.id])
-  const available = useMemo(
-    () => offered.filter(s => !ids.includes(s.id)),
-    [offered, ids])
-
-  const [ownHeading, setOwnHeading] = useState('')
-  const [ownBody, setOwnBody] = useState('')
-  const [addingOwn, setAddingOwn] = useState(false)
-
-  const addOwn = async () => {
-    if (!template) return
-    setAddingOwn(true)
-    const r = await addCustomSection(template.id, ownHeading, ownBody)
-    setAddingOwn(false)
-    if (!r.ok) { toast(r.reason, 'error'); return }
-    toast(r.note ?? 'Added')
-    setOwnHeading(''); setOwnBody('')
-    /* The catalogue is reloaded because the row was written by the database —
-       guessing its id or its position here is how the screen and the record
-       come to disagree. The editor stays open, and the new section joins the
-       list at the end, which is where the database put it. */
-    setIds(prev => [...prev, r.id!])
-    await onRefresh()
-  }
-
-  const dropCustom = async (s: Section) => {
-    const r = await removeCustomSection(s.id)
-    if (!r.ok) { toast(r.reason, 'error'); return }
-    setIds(prev => prev.filter(x => x !== s.id))
-    toast(r.note ?? 'Removed')
-    await onRefresh()
   }
 
   const warnings = useMemo(
@@ -385,113 +328,38 @@ function TemplateEditor(
             </FormField>
           </SectionCard>
 
-          {/* On the document, in the order it prints. The list used to be the
-              whole catalogue in catalogue order with ticks beside it, which
-              said nothing about where a block would land — and the per-template
-              order it was hiding was a column nothing wrote. Split in two: what
-              is on the document and in what order, then what is available to
-              add. */}
           <SectionCard pad title="Sections"
-            subtitle={`${ids.length} of ${offered.length} on this document, in the order they print`}>
+            subtitle={`${ids.length} of ${book.sections.length} on this document`}>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-              {ids.map((id, n) => {
-                const s = book.sections.find(x => x.id === id)
-                if (!s) return null
-                const up = moved(ids, id, -1, book.sections)
-                const down = moved(ids, id, 1, book.sections)
+              {book.sections.map(s => {
+                const on = ids.includes(s.id)
+                const allowed = offeredTo(s, draft.audience)
+                const why = !allowed
+                  ? (canAdd(s, draft.audience) as { ok: false; reason: string }).reason
+                  : s.locked ? 'Cannot be switched off.' : null
                 return (
-                  <div key={id} style={{
-                    display: 'flex', gap: '8px', alignItems: 'flex-start',
-                    padding: '8px 10px', borderRadius: 'var(--radius)', background: 'var(--info-bg)',
+                  <label key={s.id} title={why ?? undefined} style={{
+                    display: 'flex', gap: '10px', alignItems: 'flex-start',
+                    padding: '8px 10px', borderRadius: 'var(--radius)',
+                    background: on ? 'var(--info-bg)' : 'transparent',
+                    opacity: allowed ? 1 : 0.45,
+                    cursor: allowed && !s.locked ? 'pointer' : 'not-allowed',
                   }}>
-                    {/* Disabled rather than absent where the move is one the
-                        document could not be printed from — an arrow that
-                        silently does nothing reads as broken. The title says
-                        which rule stopped it. */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', flexShrink: 0 }}>
-                      <ArrowBtn dir="up" disabled={!up} onClick={() => up && setIds(up)}
-                        why={n === 0 ? 'Already first.' : orderProblem(swap(ids, n, n - 1), book.sections)} />
-                      <ArrowBtn dir="down" disabled={!down} onClick={() => down && setIds(down)}
-                        why={n === ids.length - 1 ? 'Already last.' : orderProblem(swap(ids, n, n + 1), book.sections)} />
-                    </div>
-                    <span style={{ minWidth: 0, flex: 1 }}>
+                    <input type="checkbox" checked={on} disabled={!allowed || s.locked}
+                      onChange={() => toggle(s)} style={{ marginTop: 3, cursor: 'inherit' }} />
+                    <span style={{ minWidth: 0 }}>
                       <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>
-                        {n + 1}. {s.label}
+                        {s.label}
                         {s.locked && <Lock size={11} style={{ marginLeft: 6, verticalAlign: '-1px', color: 'var(--text-tertiary)' }} />}
                       </span>
                       <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                        {s.custom ? s.body : s.note}
+                        {allowed ? s.note : why}
                       </span>
                     </span>
-                    {!s.locked && (
-                      <Btn variant="secondary" size="sm"
-                        onClick={() => (s.custom ? void dropCustom(s) : toggle(s))}>
-                        {s.custom ? 'Delete' : 'Remove'}
-                      </Btn>
-                    )}
-                  </div>
+                  </label>
                 )
               })}
             </div>
-          </SectionCard>
-
-          {available.length > 0 && (
-            <SectionCard pad title="Not on this document"
-              subtitle="Added at the position the catalogue gives it; move it from there.">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                {available.map(s => {
-                  const allowed = offeredTo(s, draft.audience)
-                  const why = allowed ? null
-                    : (canAdd(s, draft.audience) as { ok: false; reason: string }).reason
-                  return (
-                    <label key={s.id} title={why ?? undefined} style={{
-                      display: 'flex', gap: '10px', alignItems: 'flex-start',
-                      padding: '8px 10px', borderRadius: 'var(--radius)',
-                      opacity: allowed ? 1 : 0.45, cursor: allowed ? 'pointer' : 'not-allowed',
-                    }}>
-                      <input type="checkbox" checked={false} disabled={!allowed}
-                        onChange={() => toggle(s)} style={{ marginTop: 3, cursor: 'inherit' }} />
-                      <span style={{ minWidth: 0 }}>
-                        <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>{s.label}</span>
-                        <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                          {allowed ? s.note : why}
-                        </span>
-                      </span>
-                    </label>
-                  )
-                })}
-              </div>
-            </SectionCard>
-          )}
-
-          {/* A heading and words, for this template alone. Deliberately not a
-              seventeenth kind of data block: every built-in section renders
-              figures the marketplace computes, and a template is not a place to
-              invent numbers. */}
-          <SectionCard pad title="A section of your own"
-            subtitle="A heading and text, written for this template and offered to no other.">
-            {!template ? (
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', margin: 0 }}>
-                Save the template first. A section has to belong to something before it can be written.
-              </p>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <FormField label="Heading">
-                  <TextInput value={ownHeading} onChange={e => setOwnHeading(e.target.value)}
-                    placeholder="Regulatory notice" />
-                </FormField>
-                <FormField label="What it says">
-                  <TextArea rows={3} value={ownBody} onChange={e => setOwnBody(e.target.value)}
-                    placeholder="Printed on every document issued on this template." />
-                </FormField>
-                <div>
-                  <Btn size="sm" disabled={addingOwn || !ownHeading.trim() || !ownBody.trim()}
-                    onClick={() => void addOwn()}>
-                    <Plus size={12} /> Add a section
-                  </Btn>
-                </div>
-              </div>
-            )}
           </SectionCard>
 
           <SectionCard pad title="How it is formatted">
@@ -574,7 +442,7 @@ function TemplateEditor(
             <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '10px' }}>
               A real {previewAudience} document, redrawn as you tick a section.
             </p>
-            <BillDocument template={draft} ids={ids} facts={facts} sections={book.sections}
+            <BillDocument template={draft} ids={ids} facts={facts}
               reference={nextReference(draft, { party: facts?.billedTo.ref ?? undefined })} />
           </div>
 
@@ -831,38 +699,5 @@ function BillingIdentity({ book, onChanged }: { book: BillTemplateBook; onChange
         </div>
       </SectionCard>
     </>
-  )
-}
-
-
-/* The list with two entries exchanged, for asking `orderProblem` why an arrow
-   is disabled. `moved` returns null on a refused move and null cannot say
-   which rule refused it. */
-function swap(ids: readonly string[], a: number, b: number): string[] {
-  const next = [...ids]
-  ;[next[a], next[b]] = [next[b], next[a]]
-  return next
-}
-
-/* A disabled arrow that says why. One that is simply absent leaves an operator
-   to guess whether the section cannot move or the screen is broken. */
-function ArrowBtn(
-  { dir, disabled, onClick, why }: {
-    dir: 'up' | 'down'; disabled: boolean; onClick: () => void; why: string | null
-  },
-) {
-  const Icon = dir === 'up' ? ChevronUp : ChevronDown
-  return (
-    <button type="button" onClick={onClick} disabled={disabled}
-      aria-label={dir === 'up' ? 'Move up' : 'Move down'}
-      title={disabled ? (why ?? 'It cannot move that way.') : undefined}
-      style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        width: 20, height: 17, padding: 0, cursor: disabled ? 'not-allowed' : 'pointer',
-        border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-        background: 'white', color: disabled ? 'var(--gray-300)' : 'var(--text-secondary)',
-      }}>
-      <Icon size={12} />
-    </button>
   )
 }

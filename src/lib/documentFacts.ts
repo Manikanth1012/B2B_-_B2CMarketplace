@@ -13,7 +13,6 @@
 import type { BillFacts, Issuer, Template } from './billTemplate'
 import { money } from './billTemplate'
 import { markFor } from './money'
-import { adjustmentSources } from './wholesale'
 import type { Currency } from './money'
 
 export interface Party {
@@ -174,12 +173,6 @@ export interface StatementRow {
   status: string
   order_count: number
   currency?: string
-  /* What the run added or took off after the deduction stack: credit and debit
-     notes, and wholesale the seller bought from the marketplace. It is part of
-     `net`, so a document that prints the stack without it prints a total that
-     does not follow from the lines above it. */
-  adjustments?: number
-  adjustment_detail?: unknown
 }
 
 /**
@@ -192,21 +185,6 @@ export interface StatementRow {
  * would simply never print, leaving a page of pure deductions with a positive
  * total that does not add up.
  */
-/**
- * What to call the adjustment line, given what it is made of.
- *
- * `adjustments` meant credit and debit notes until partners could buy wholesale
- * from the marketplace, and both now land in the same figure. "Adjustments by
- * note" on a statement whose whole adjustment is a connectivity pack names a
- * document that does not exist.
- */
-function adjustmentLabel(detail: unknown): string {
-  const { notes, charges } = adjustmentSources(detail)
-  if (notes > 0 && charges > 0) return 'Notes and wholesale'
-  if (charges > 0) return 'Wholesale you bought from us'
-  return 'Credit and debit notes'
-}
-
 export function statementFacts(
   st: StatementRow,
   ctx: { issuer: Issuer | null; template: Template | null; reference?: string; currencies?: Currency[]; taxLabel?: string },
@@ -216,7 +194,6 @@ export function statementFacts(
   const fees = Number(st.fees)
   const refunds = Number(st.refunds)
   const withholding = Number(st.withholding)
-  const adjustments = Number(st.adjustments ?? 0)
   const net = Number(st.net)
 
   return {
@@ -237,11 +214,6 @@ export function statementFacts(
       { label: 'Marketplace commission', detail: st.commission_rate ? `${st.commission_rate}%` : '', amount: -commission },
       { label: 'Platform and payment fees', detail: st.period, amount: -fees },
       { label: 'Refunds passed back', detail: st.period, amount: -refunds },
-      /* Named by what it is actually made of. `net` already carries it, so
-         leaving it off made the deduction sheet stop adding up — which is the
-         one thing a bill may not do, and exactly the failure this document's
-         reconciliation check exists to catch. */
-      { label: adjustmentLabel(st.adjustment_detail), detail: st.period, amount: adjustments },
     ].filter(l => l.amount !== 0),
     credits: -withholding,
     paid: st.status === 'paid' ? net : 0,

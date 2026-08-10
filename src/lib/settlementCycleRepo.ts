@@ -59,12 +59,6 @@ export interface AccruingRow {
   market: string
   tax_residence: string
   treaty_on_file: boolean
-  /* The rolling reserve. It came onto the view for the same reason
-     `carried_in` did: without it the card projected a payment nobody was going
-     to make, wrong by the whole retention. */
-  reserve_pct: number
-  reserve_matured: number
-  reserve_held: number
 }
 
 export interface Run {
@@ -106,7 +100,6 @@ const num = <T>(row: T, keys: readonly string[]): T => {
 const ACCRUAL_FIGURES = [
   'gross', 'commission', 'fees', 'refunds', 'net', 'lines',
   'held_back', 'carried_in', 'minimum_payout', 'hold_days',
-  'reserve_pct', 'reserve_matured', 'reserve_held',
 ] as const
 
 export async function loadCycleBook(): Promise<CycleBook> {

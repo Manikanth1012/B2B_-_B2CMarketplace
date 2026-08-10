@@ -21,14 +21,14 @@ import { supabase } from './supabase'
 import { signIn, signOut } from './authRepo'
 import {
   loadBillTemplates, saveTemplate, duplicateTemplate, deleteTemplate,
-  assignTemplate, removeOverride, saveIssuer, addCustomSection, removeCustomSection,
+  assignTemplate, removeOverride, saveIssuer,
 } from './billTemplateRepo'
 import type { BillTemplateBook, Draft } from './billTemplateRepo'
 import {
   sectionsOn, canRemove, canAdd, canDelete, templateFor, nextReference,
-  validateTemplate, warningsFor, blocksFor, orderProblem, moved,
+  validateTemplate, warningsFor, blocksFor,
 } from './billTemplate'
-import type { Template, Issuer, Section, TemplateSection } from './billTemplate'
+import type { Template, Issuer } from './billTemplate'
 
 const OPERATOR = { email: 'anika.sharma@aventa.com', password: 'operator123' }
 const PARTNER = { email: 'rajesh.kumar@nimbussensors.com', password: 'partner123' }
@@ -44,10 +44,7 @@ const draftOf = (over: Partial<Draft> = {}): Draft => ({
   ...over,
 })
 
-/* In document order, because the order is now the thing being saved. `fiscal`
-   is here because it is locked — a template without it is one `validateTemplate`
-   refuses, which is the point of locking it. */
-const CORE = ['masthead', 'parties', 'hero', 'tax', 'summary', 'fiscal', 'howtopay', 'support']
+const CORE = ['masthead', 'parties', 'hero', 'tax', 'summary', 'howtopay', 'support']
 
 let book: BillTemplateBook
 const made: string[] = []
@@ -59,28 +56,20 @@ describe('the seeded catalogue', () => {
     expect(book.loadError, book.loadError).toBeUndefined()
   })
 
-  /* Counted rather than named, and the built-ins separated from anything an
-     operator wrote for one template — a count that moves every time somebody
-     adds a footer is a test that fails for the wrong reason. */
-  it('offers a catalogue of built-in sections, in a settled order', () => {
-    const builtIn = book.sections.filter(s => !s.custom)
-    expect(builtIn.length).toBeGreaterThanOrEqual(17)
-    expect(builtIn.map(s => s.id))
-      .toEqual([...builtIn].sort((a, b) => a.sort_order - b.sort_order).map(s => s.id))
+  it('has the sixteen sections the builder offers', () => {
+    expect(book.sections.length).toBe(16)
+    expect(book.sections.map(s => s.id)).toEqual([...book.sections].sort((a, b) => a.sort_order - b.sort_order).map(s => s.id))
   })
 
-  /* Five now. The fiscal stamp joined them: switching it off is only harmless
-     on the documents that never needed one, and there is no per-market switch
-     to make that distinction with. */
-  it('locks exactly the five that make a document a bill', () => {
+  it('locks exactly the four that make a document a bill', () => {
     expect(book.sections.filter(s => s.locked).map(s => s.id).sort())
-      .toEqual(['fiscal', 'masthead', 'parties', 'summary', 'tax'])
+      .toEqual(['masthead', 'parties', 'summary', 'tax'])
   })
 
-  it('carries all five on every template', () => {
+  it('carries all four on every template', () => {
     for (const t of book.templates) {
       const ids = sectionsOn(t, book.sections, book.chosen).map(s => s.id)
-      for (const need of ['masthead', 'parties', 'tax', 'summary', 'fiscal']) {
+      for (const need of ['masthead', 'parties', 'tax', 'summary']) {
         expect(ids, `${t.name} is missing ${need}`).toContain(need)
       }
     }
@@ -566,118 +555,5 @@ describe('the tax on a document', () => {
     /* The sample documents are drawn for the default market. */
     expect(book.samples.consumer!.taxRate).toBeGreaterThan(0)
     expect(book.samples.enterprise!.taxRate).toBeGreaterThan(0)
-  })
-})
-
-
-/* Two things this screen offered no way to do, and one of them was a column the
-   table has always had and nothing ever wrote. */
-describe('the order a template prints in, and sections of its own', () => {
-  const OWNER = 'BT-CON'
-  let written: string | null = null
-
-  beforeAll(async () => { await signIn(OPERATOR.email, OPERATOR.password) }, 30_000)
-
-  afterAll(async () => {
-    if (written) await supabase.from('invoice_sections').delete().eq('id', written)
-    await signOut()
-  })
-
-  it('gives every template its own order, not one copied from the catalogue', async () => {
-    const { data, error } = await supabase.from('invoice_template_sections')
-      .select('template_id, section_id, sort_order')
-    expect(error, error?.message).toBeNull()
-    const rows = (data ?? []) as { template_id: string; section_id: string; sort_order: number }[]
-    expect(rows.length).toBeGreaterThan(0)
-
-    /* One position per section per template, or the document order is decided
-       by whatever the database returns first. */
-    const seen = new Set<string>()
-    for (const r of rows) {
-      const key = `${r.template_id}@${r.sort_order}`
-      expect(seen.has(key), `${r.template_id} has two sections at ${r.sort_order}`).toBe(false)
-      seen.add(key)
-    }
-  })
-
-  it('refuses an order the document could not be printed from, and says which rule', async () => {
-    const bad = await supabase.from('invoice_template_sections')
-      .update({ sort_order: 99 }).eq('template_id', OWNER).eq('section_id', 'masthead')
-    expect(bad.error, 'the masthead was moved below the body').not.toBeNull()
-    expect(bad.error!.message).toMatch(/opens the document/)
-
-    const stamp = await supabase.from('invoice_template_sections')
-      .update({ sort_order: 1 }).eq('template_id', OWNER).eq('section_id', 'fiscal')
-    expect(stamp.error, 'the fiscal stamp was moved above the total').not.toBeNull()
-    expect(stamp.error!.message).toMatch(/follows the total/)
-  })
-
-  /* The same rule evaluated in TypeScript, against the real catalogue rather
-     than a fixture — the anchors are data, and a fixture cannot notice one
-     that was never set. */
-  it('agrees with the module about what the real catalogue permits', async () => {
-    const { data } = await supabase.from('invoice_sections').select('*').order('sort_order')
-    const all = (data ?? []) as Section[]
-    const { data: chosen } = await supabase.from('invoice_template_sections')
-      .select('template_id, section_id, sort_order').eq('template_id', OWNER)
-    const ids = (chosen as TemplateSection[] ?? [])
-      .slice().sort((a, b) => a.sort_order - b.sort_order).map(c => c.section_id)
-
-    /* What is on file prints. */
-    expect(orderProblem(ids, all), 'the live template is in an order it refuses').toBeNull()
-    /* And the two refusals the database just made, made here too. */
-    const summary = ids.indexOf('summary')
-    const fiscal = ids.indexOf('fiscal')
-    if (fiscal >= 0 && summary >= 0) {
-      const swapped = [...ids]
-      ;[swapped[summary], swapped[fiscal]] = [swapped[fiscal], swapped[summary]]
-      expect(orderProblem(swapped, all)).toMatch(/refers back to the total/)
-    }
-    /* Not masthead-past-parties: both open the document, and exchanging two
-       top-anchored blocks is an ordinary preference. The refused move is one
-       that takes an anchor past a block that is not one. */
-    const firstFree = ids.find(id => (all.find(s => s.id === id)?.anchor ?? null) === null)!
-    expect(moved(ids, firstFree, -1, all), 'a body block moved above the parties block').toBeNull()
-  })
-
-  it('writes a section of words, on its own template and no other', async () => {
-    const r = await addCustomSection(OWNER, 'Regulatory notice', 'Printed on every document issued on this template.')
-    expect(r.ok, !r.ok ? r.reason : '').toBe(true)
-    written = r.id!
-
-    const { data } = await supabase.from('invoice_sections').select('*').eq('id', written)
-    const sec = ((data ?? []) as Section[])[0]
-    expect(sec.custom).toBe(true)
-    expect(sec.owner_template).toBe(OWNER)
-    expect(sec.heading).toBe('Regulatory notice')
-    /* Never locked: locking somebody's own footer against them is a rule with
-       no argument behind it. */
-    expect(sec.locked).toBe(false)
-
-    /* And it landed on the template that owns it. */
-    const { data: on } = await supabase.from('invoice_template_sections')
-      .select('section_id').eq('template_id', OWNER).eq('section_id', written)
-    expect((on ?? []).length).toBe(1)
-  })
-
-  it('refuses one with nothing to say', async () => {
-    for (const [heading, body, why] of [
-      ['   ', 'Something', /needs a heading/],
-      ['Something', '  ', /needs something to say/],
-    ] as const) {
-      const r = await addCustomSection(OWNER, heading, body)
-      expect(r.ok, `"${heading}"/"${body}" was accepted`).toBe(false)
-      if (!r.ok) expect(r.reason).toMatch(why)
-    }
-  })
-
-  it('takes it off the template when it is deleted', async () => {
-    const r = await addCustomSection(OWNER, 'Probe', 'Written and removed by the integration suite.')
-    expect(r.ok).toBe(true)
-    const gone = await removeCustomSection(r.id!)
-    expect(gone.ok, !gone.ok ? gone.reason : '').toBe(true)
-    const { data } = await supabase.from('invoice_template_sections')
-      .select('section_id').eq('section_id', r.id!)
-    expect((data ?? []).length, 'the section was deleted and left on the template').toBe(0)
   })
 })

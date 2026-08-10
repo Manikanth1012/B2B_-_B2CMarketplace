@@ -5,7 +5,6 @@ import {
   assetsFor, assetsByKind, assetKind, assetMeta, fileSize, duration,
   publishedTo, personaLabel, faqsFor, faqsByTopic, searchFaqs, helpfulness,
   validateAudience, validateArticle, validateFaq, canLink, kbWarnings,
-  embeddable, embedUrl, blockProblem, bodyProblem, blocksOf, blankBlock, BLOCK_LABEL,
 } from './kb'
 import type { KbArticle, KbAsset, KbFaq } from './kb'
 
@@ -14,7 +13,7 @@ const art = (over: Partial<KbArticle> = {}): KbArticle => ({
   kind: 'howto', title: 'Onboard a seller',
   mins: 5, updated: '21 Jul 2026', view: 'op-onboarding',
   roles: [], tags: ['partners', 'onboarding'],
-  summary: 'How the seven gates work', body: [{ kind: 'prose', heading: 'Why', text: 'Because' }],
+  summary: 'How the seven gates work', body: [['Why', 'Because']],
   status: 'published', sort_order: 0, ...over,
 })
 
@@ -419,78 +418,5 @@ describe('what the operator should be worried about', () => {
     const fresh = faq({ id: 'fresh', asked: 2, helpful: 0 })
     const text = kbWarnings(full, [...fullFaqs, fresh]).map(w => w.text).join(' | ')
     expect(text).not.toMatch(/rarely found helpful/)
-  })
-})
-
-
-/* Every article in this marketplace was prose about a user interface with no
-   picture of it. A block is now words, a picture or a video. */
-describe('the blocks an article is made of', () => {
-  it('accepts a URL a person would actually paste, and converts it', () => {
-    expect(embedUrl('https://www.youtube.com/watch?v=dQw4w9WgXcQ'))
-      .toBe('https://www.youtube.com/embed/dQw4w9WgXcQ')
-    expect(embedUrl('https://youtu.be/dQw4w9WgXcQ'))
-      .toBe('https://www.youtube.com/embed/dQw4w9WgXcQ')
-    expect(embedUrl('https://vimeo.com/76979871'))
-      .toBe('https://player.vimeo.com/video/76979871')
-    expect(embedUrl('https://player.vimeo.com/video/76979871'))
-      .toBe('https://player.vimeo.com/video/76979871')
-  })
-
-  /* The whole trick a suffix match falls for. */
-  it('matches the host and not the end of it', () => {
-    expect(embeddable('https://notyoutube.com/watch?v=1')).toBe(false)
-    expect(embeddable('https://youtube.com.evil.test/watch?v=1')).toBe(false)
-    expect(embeddable('https://www.youtube.com/watch?v=1')).toBe(true)
-  })
-
-  it('will not frame anything that is not https, or not a URL at all', () => {
-    expect(embeddable('http://www.youtube.com/watch?v=1')).toBe(false)
-    expect(embeddable('javascript:alert(1)')).toBe(false)
-    expect(embeddable('')).toBe(false)
-    expect(embedUrl('https://example.com/v')).toBeNull()
-  })
-
-  it('refuses a block that has nothing to show', () => {
-    expect(blockProblem({ kind: 'prose', heading: '', text: 'x' })).toMatch(/needs a heading/)
-    expect(blockProblem({ kind: 'prose', heading: 'x', text: '  ' })).toMatch(/heading over a gap/)
-    expect(blockProblem({ kind: 'image', heading: 'x', src: '', alt: 'y' })).toMatch(/needs a picture/)
-    expect(blockProblem({ kind: 'video', heading: 'x', url: 'https://example.com/v' }))
-      .toMatch(/not a host this marketplace will frame/)
-  })
-
-  /* On a help page the reader most likely to need the picture described is the
-     one who cannot see it. */
-  it('requires alt text on every picture', () => {
-    expect(blockProblem({ kind: 'image', heading: 'x', src: 'https://a/b.png', alt: '' }))
-      .toMatch(/alt text/)
-    expect(blockProblem({ kind: 'image', heading: 'x', src: 'https://a/b.png', alt: 'The screen' }))
-      .toBeNull()
-  })
-
-  it('names the first block that is wrong, not the count of them', () => {
-    expect(bodyProblem([])).toMatch(/no blocks is a title/)
-    expect(bodyProblem([
-      { kind: 'prose', heading: 'Fine', text: 'Yes' },
-      { kind: 'image', heading: 'Broken', src: 'https://a/b.png', alt: '' },
-    ])).toMatch(/alt text/)
-    expect(bodyProblem([{ kind: 'prose', heading: 'Fine', text: 'Yes' }])).toBeNull()
-  })
-
-  /* A fixture or an export written before the migration is still a pair, and a
-     reader that renders nothing for one silently drops an article's content. */
-  it('still reads a body written as pairs', () => {
-    const out = blocksOf([['Why', 'Because'], { kind: 'prose', heading: 'And', text: 'So' }])
-    expect(out).toEqual([
-      { kind: 'prose', heading: 'Why', text: 'Because' },
-      { kind: 'prose', heading: 'And', text: 'So' },
-    ])
-    expect(blocksOf(null)).toEqual([])
-  })
-
-  it('starts each kind of block from a blank that is the right shape', () => {
-    expect(blankBlock('image')).toEqual({ kind: 'image', heading: '', src: '', alt: '' })
-    expect(blankBlock('video')).toEqual({ kind: 'video', heading: '', url: '' })
-    expect(Object.keys(BLOCK_LABEL)).toEqual(['prose', 'image', 'video'])
   })
 })

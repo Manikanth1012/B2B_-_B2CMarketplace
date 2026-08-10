@@ -1,15 +1,4 @@
-/* What came in through the public forms, and what the desk does about it.
- *
- * Both forms. A seller applying through "Apply to sell" and a company asking
- * for an account through "Open a business account" arrive in the same queue and
- * are decided by the same person; accepting the first creates a partner with
- * seven gates, accepting the second creates an enterprise account with six, and
- * the code has branched on `kind_of` for both since the business form shipped.
- *
- * Every string on this screen said sellers, though — the card was subtitled
- * "What came in through Apply to sell" and the empty state sent you to the
- * partner page. An operator looking for a pending company would not have opened
- * it, and with the table empty would have concluded the feature did not exist.
+/* What came in through "Apply to sell", and what the desk does about it.
  *
  * The screen this sits on already had a queue — of partners part-way through
  * their gates. That is the step *after* this one: those sellers exist, hold a
@@ -84,7 +73,7 @@ export function ApplicationsQueue({ onAccepted }: {
 
   if (loading) {
     return (
-      <SectionCard title="Applications" subtitle="Sellers and businesses, in the order they have been waiting">
+      <SectionCard title="Applications" subtitle="What came in through Apply to sell">
         <div style={{ padding: '28px', textAlign: 'center' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
       </SectionCard>
     )
@@ -102,7 +91,7 @@ export function ApplicationsQueue({ onAccepted }: {
            "Nothing has come in through Apply to sell yet" directly above them. */
         subtitle={
           apps.length === 0
-            ? 'Nothing has come in from either form yet'
+            ? 'Nothing has come in through Apply to sell yet'
             : [
                 q.waiting.length ? `${q.waiting.length} waiting on the desk` : 'Nothing waiting on the desk',
                 q.drafts.length ? `${q.drafts.length} still being filled in` : null,
@@ -117,7 +106,7 @@ export function ApplicationsQueue({ onAccepted }: {
         )}
 
         {apps.length === 0 ? (
-          <EmptyState message="No applications. Sellers apply from the partner page under Apply to sell; companies from Open a business account." />
+          <EmptyState message="No applications. The public form is on the partner page under Apply to sell." />
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 340px) 1fr', gap: '0', alignItems: 'stretch' }}
                className="onb-split">

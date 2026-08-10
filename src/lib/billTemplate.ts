@@ -26,20 +26,7 @@ export interface Section {
   note: string
   locked: boolean
   audiences: Audience[]
-  /* The catalogue's own order. Only a starting position now — where a section
-     actually sits on a document is `TemplateSection.sort_order`, which is per
-     template, because one template's layout is not another's. */
   sort_order: number
-  /* A heading and free text an operator wrote for one template. Every built-in
-     section renders figures the marketplace computes; a custom one says
-     something and calculates nothing, which is the whole distinction. */
-  custom?: boolean
-  owner_template?: string | null
-  heading?: string | null
-  body?: string | null
-  /* Where it may sit. 'top' for the blocks that identify the document,
-     'after' for the ones that refer back to the total, null for the rest. */
-  anchor?: 'top' | 'after' | null
 }
 
 export interface Template {
@@ -176,78 +163,11 @@ export function issuersByMarket(
 
 /* ------------------------------------------------------------ what is on -- */
 
-/**
- * The sections on this template, in the order this template prints them.
- *
- * `chosen` has carried a per-template `sort_order` since the table existed and
- * this sorted by the catalogue's global one instead — so every template on the
- * marketplace printed its blocks in one fixed order, and the column meant to
- * vary them was read by nothing and written by nothing.
- *
- * Falls back to the catalogue position where a template row has none, which is
- * what a section added before any of this looks like.
- */
 export function sectionsOn(
   template: Template, all: readonly Section[], chosen: readonly TemplateSection[],
 ): Section[] {
-  const at = new Map(
-    chosen.filter(c => c.template_id === template.id).map(c => [c.section_id, c.sort_order]))
-  return all
-    .filter(s => at.has(s.id))
-    .sort((a, b) => (at.get(a.id) ?? a.sort_order) - (at.get(b.id) ?? b.sort_order))
-}
-
-/* ---------------------------------------------------------------- ordering -- */
-
-/**
- * Whether a section list is one a document can be printed from.
- *
- * The order is not free, and the reasons are on the sections themselves.
- * "Summary and total" says of itself that it *reconciles every block above it*
- * — put it above the charges and the document makes a false statement about
- * its own arithmetic. The masthead is the masthead because it is first. The
- * fiscal stamp stamps the total it follows.
- *
- * The database evaluates the same rule in `guard_section_order`. This one is so
- * the screen can grey out an arrow rather than accept a move and then relay a
- * trigger's exception.
- */
-export function orderProblem(ids: readonly string[], all: readonly Section[]): string | null {
-  const by = new Map(all.map(s => [s.id, s]))
-  const anchorAt = (i: number) => by.get(ids[i])?.anchor ?? null
-
-  const lastTop = ids.reduce((n, _, i) => (anchorAt(i) === 'top' ? i : n), -1)
-  const firstFree = ids.findIndex((_, i) => anchorAt(i) !== 'top')
-  if (lastTop >= 0 && firstFree >= 0 && lastTop > firstFree) {
-    return `${by.get(ids[lastTop])?.label} opens the document and cannot sit below ${by.get(ids[firstFree])?.label}.`
-  }
-
-  const summary = ids.indexOf('summary')
-  if (summary >= 0) {
-    const early = ids.findIndex((id, i) => by.get(id)?.anchor === 'after' && i < summary)
-    if (early >= 0) {
-      return `${by.get(ids[early])?.label} refers back to the total, so it cannot sit above Summary and total.`
-    }
-  }
-  return null
-}
-
-/**
- * The list with one section moved a place, or null where the move is one the
- * document could not be printed from.
- *
- * Null rather than a clamped list: an arrow that silently does nothing is
- * indistinguishable from a broken one, so the caller disables it instead.
- */
-export function moved(
-  ids: readonly string[], id: string, dir: -1 | 1, all: readonly Section[],
-): string[] | null {
-  const i = ids.indexOf(id)
-  const j = i + dir
-  if (i < 0 || j < 0 || j >= ids.length) return null
-  const next = [...ids]
-  ;[next[i], next[j]] = [next[j], next[i]]
-  return orderProblem(next, all) ? null : next
+  const mine = new Set(chosen.filter(c => c.template_id === template.id).map(c => c.section_id))
+  return all.filter(s => mine.has(s.id)).sort((a, b) => a.sort_order - b.sort_order)
 }
 
 export function has(ids: readonly string[], id: string): boolean {

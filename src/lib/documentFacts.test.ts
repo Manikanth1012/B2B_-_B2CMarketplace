@@ -180,39 +180,3 @@ describe('whether a document adds up', () => {
     expect(reconciles({ ...f, total: f.total + 0.005 })).toBe(true)
   })
 })
-
-/* `adjustments` is part of `net`. A statement that printed the deduction stack
-   without it printed a total that did not follow from the lines above it —
-   which is the one thing a bill may not do. It was wrong for notes and nothing
-   sampled a statement that carried one; wholesale made it the common case. */
-describe('an adjustment on a seller statement', () => {
-  const withAdj = (adjustments: number, detail: unknown) => statementFacts(
-    { ...STATEMENT, adjustments, adjustment_detail: detail,
-      net: STATEMENT.net + adjustments },
-    { issuer: ISSUER, template: TEMPLATE })
-
-  it('reconciles once the adjustment is on the page', () => {
-    expect(reconciles(withAdj(-112.45, [{ charge_id: 'PC-1' }]))).toBe(true)
-    expect(reconciles(withAdj(1284.4, [{ note_id: 'CN-1' }]))).toBe(true)
-  })
-
-  it('names it by what it is made of', () => {
-    const wholesale = withAdj(-112.45, [{ charge_id: 'PC-1' }])
-    expect(wholesale.usage.find(l => l.amount === -112.45)?.label)
-      .toBe('Wholesale you bought from us')
-
-    const note = withAdj(1284.4, [{ note_id: 'CN-1' }])
-    expect(note.usage.find(l => l.amount === 1284.4)?.label).toBe('Credit and debit notes')
-
-    const both = withAdj(-50, [{ note_id: 'CN-1' }, { charge_id: 'PC-1' }])
-    expect(both.usage.find(l => l.amount === -50)?.label).toBe('Notes and wholesale')
-  })
-
-  /* A statement with nothing adjusted gets no line — an empty row on a
-     document is one a seller has to read past. */
-  it('prints no line where there is nothing to say', () => {
-    const none = statementFacts(STATEMENT, { issuer: ISSUER, template: TEMPLATE })
-    expect(none.usage.some(l => /wholesale|note/i.test(l.label))).toBe(false)
-    expect(reconciles(none)).toBe(true)
-  })
-})

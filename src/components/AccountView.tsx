@@ -27,7 +27,7 @@ import { BillDocument } from './BillDocument'
 import { loadClearanceFor } from '../lib/einvoiceRepo'
 import { Pager, usePaging } from './Pager'
 import { useMarket } from '../lib/MarketContext'
-import { byCurrency, formatGroups, money } from '../lib/money'
+import { byCurrency, money } from '../lib/money'
 import { templateForBill, sectionIds, factsFor, asText, fileNameFor } from '../lib/consumerBillDoc'
 import { loadBillBook } from '../lib/consumerBillDocRepo'
 import { billPdf, pdfNameFor, saveBlob } from '../lib/billPdf'
@@ -1565,30 +1565,9 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
      rate would show a figure that was never charged and never quoted. */
   const billMoney = (b: ConsumerBill | undefined) =>
     b ? fmtIn(b.total, b.currency ?? 'USD', { asOf: b.fx_as_of ?? b.issued }) : '—'
-  /**
-   * A total per currency, each in its own money.
-   *
-   * Two things were wrong with the previous line, and the comment directly
-   * above says both of them about the row below it.
-   *
-   * It converted. `fmtIn` restates a foreign figure in the account's currency
-   * at a date, and with no date it uses today's — so Wanjiru Kamau's July
-   * dollar bill appeared here as KSh 3,164.11 at the August rate while the
-   * table two inches below printed KSh 3,145.74 at the bill's own. One bill,
-   * two conversions, on one screen. A group total has no honest date to
-   * convert at anyway: it spans several documents struck on different days.
-   * So `bare` — each group in the currency it is actually owed in.
-   *
-   * And it joined the groups with a plus. `byCurrency` exists to stop
-   * shillings being added to dollars, and then the join invited the reader to
-   * do it by hand: "KSh 7,645.01 + $24.49" reads as one sum and is two debts.
-   * `formatGroups` is the codebase's own answer and separates them.
-   */
   const totalsFor = (rows: ConsumerBill[]) =>
-    formatGroups(
-      byCurrency(rows.map(b => money(b.total, b.currency ?? 'USD'))),
-      (amount: number, currency: string) => fmtIn(amount, currency, { bare: true }),
-    )
+    byCurrency(rows.map(b => money(b.total, b.currency ?? 'USD')))
+      .map(t => fmtIn(t.total.amount, t.currency)).join('  +  ') || '—'
 
   const due = totalsFor(openBills)
   const paid = totalsFor(bills.filter((b) => b.status === 'paid'))
@@ -1700,7 +1679,7 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
       {viewing && book && template && (
         <Modal title={`${template.doc_title} — ${viewing.period}`} onClose={() => setViewing(null)} wide>
           <BillDocument template={template} ids={ids} facts={factsFor(viewing, book)}
-            sections={book.sections} clearance={stamp ?? undefined} />
+            clearance={stamp ?? undefined} />
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '20px' }}>
             <button onClick={() => setViewing(null)} style={billBtn}>Close</button>
             <button onClick={() => downloadBill(viewing, 'txt')} style={billBtn}>Plain text</button>

@@ -25,8 +25,6 @@ interface Row {
   currency: string
   payout_currency: string
   payout_net: number
-  reserve_withheld?: number
-  reserve_released?: number
   fx_rate: number
   fx_as_of: string
   gross: number
@@ -123,14 +121,7 @@ describe('what a seller is actually paid', () => {
     /* Plausibility. Every check above compares a row to itself or to a rate,
        and all of them would pass on an unconverted figure relabelled. */
     const small = rows.filter(r =>
-      ['INR', 'KES'].includes(r.payout_currency)
-      /* Above zero. A statement can legitimately settle to nothing — a reseller
-         whose wholesale came to more than the quarter earned pays out zero and
-         carries the rest — and zero is zero at every rate, so it is the one
-         figure that carries no evidence of whether it was converted. Flagging
-         it would report a currency bug on a statement that has no currency
-         question in it. */
-      && Number(r.payout_net) > 0 && Number(r.payout_net) < 10000)
+      ['INR', 'KES'].includes(r.payout_currency) && Number(r.payout_net) < 10000)
     expect(small.map(r => `${r.id}: ${r.payout_net} ${r.payout_currency}`)).toEqual([])
   })
 })
