@@ -240,7 +240,7 @@ function RuleRow({ entry, busy, sample, onEnabled, onKind, onReset }: {
                   display: 'flex', alignItems: 'center', gap: '4px',
                   padding: '6px 12px', borderRadius: 'var(--radius-full)',
                   border: `1px solid ${on ? 'var(--brand-accent)' : 'var(--border)'}`,
-                  background: on ? 'var(--brand-accent)' : 'var(--surface, white)',
+                  background: on ? 'var(--brand-accent-dark)' : 'var(--surface, white)',
                   color: on ? 'white' : 'var(--text-secondary)',
                   fontSize: 'var(--text-xs)', fontWeight: 600,
                   cursor: busy ? 'wait' : 'pointer',
@@ -261,7 +261,7 @@ function RuleRow({ entry, busy, sample, onEnabled, onKind, onReset }: {
           title={rule.mandatory ? 'This one cannot be switched off — choose where it reaches you instead' : undefined}
           style={{
             width: '44px', height: '24px', borderRadius: '12px', flexShrink: 0,
-            background: entry.enabled ? 'var(--brand-accent)' : 'var(--border)',
+            background: entry.enabled ? 'var(--brand-accent-dark)' : 'var(--border)',
             border: 'none', cursor: rule.mandatory ? 'not-allowed' : 'pointer',
             position: 'relative', transition: 'background 200ms ease',
             opacity: rule.mandatory ? 0.6 : 1,
@@ -318,7 +318,7 @@ function HistoryList({ log }: { log: LogEntry[] }) {
           <button key={s} onClick={() => setState(s)} style={{
             padding: '4px 12px', borderRadius: 'var(--radius-full)', cursor: 'pointer',
             border: `1px solid ${state === s ? 'var(--brand-accent)' : 'var(--border)'}`,
-            background: state === s ? 'var(--brand-accent)' : 'transparent',
+            background: state === s ? 'var(--brand-accent-dark)' : 'transparent',
             color: state === s ? 'white' : 'var(--text-secondary)',
             fontSize: 'var(--text-xs)', fontWeight: 600,
           }}>

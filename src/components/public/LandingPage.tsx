@@ -1,21 +1,25 @@
-import { useState, useEffect } from 'react'
-import { Carousel } from './Carousel'
-import { CategoryRail } from './CategoryRail'
+import { useState, useEffect, useCallback } from 'react'
 import { PromoStrip } from './PromoStrip'
-import { HERO, CAROUSEL, BANNERS } from '../../lib/assets'
-import { withCaptions } from '../../lib/carousel'
-import { loadPromoBanners, loadCategories, loadCatalogue, countByCategory } from '../../lib/storefrontRepo'
+import { PublicProductModal } from './PublicProductModal'
+import { HomeHero } from './home/HomeHero'
+import { CategorySection } from './home/CategorySection'
+import { FeaturedSection } from './home/FeaturedSection'
+import { WhyAventa } from './home/WhyAventa'
+import { EcosystemStrip } from './home/EcosystemStrip'
+import { BANNERS } from '../../lib/assets'
+import { loadPromoBanners, loadCategories, loadCatalogue } from '../../lib/storefrontRepo'
 import { loadPriceBook, loadCopyBook, repriceAll } from '../../lib/moneyRepo'
 import { useMarket } from '../../lib/MarketContext'
-import {
-  promoStrip, retailCategories, enterpriseCategories,
-  type PromoSlide,
-} from '../../lib/storefront'
+import { promoStrip, type PromoSlide } from '../../lib/storefront'
+import { featuredProducts, ecosystemSellers } from '../../lib/home'
 import type { Category, Product } from '../../types'
 import type { PublicPage } from '../../types/view'
 import { marketProse } from '../../lib/money'
 
-export function LandingPage({ onNavigate }: { onNavigate: (p: PublicPage) => void }) {
+export function LandingPage({ onNavigate, onAddToBasket }: {
+  onNavigate: (p: PublicPage) => void
+  onAddToBasket: (p: Product) => void
+}) {
   const { book, market, currency } = useMarket()
   const markets = marketProse(book.markets)
   /* The chosen currency, not the market's default. Reading the default here
@@ -24,80 +28,37 @@ export function LandingPage({ onNavigate }: { onNavigate: (p: PublicPage) => voi
   const currencyCode = currency?.code ?? market?.currency ?? 'USD'
   const [slides, setSlides] = useState<PromoSlide[]>([])
   const [categories, setCategories] = useState<Category[]>([])
-  /* Counted per rail, not once. A retail tile that counts the whole shelf
-     promises ten products and opens on four — the per-seat security bundles and
-     the fifty-unit fleet packs on it are not sold to a retail customer. */
   const [catalogue, setCatalogue] = useState<Product[]>([])
+  const [open, setOpen] = useState<Product | null>(null)
+  const close = useCallback(() => setOpen(null), [])
 
   useEffect(() => {
+    let live = true
     /* Three independent reads. Any of them coming back empty degrades one band of
        the page rather than failing the page, which is why none of them throws. */
-    loadPromoBanners().then(b => setSlides(promoStrip(b, BANNERS)))
-    loadCategories().then(setCategories)
+    loadPromoBanners().then(b => { if (live) setSlides(promoStrip(b, BANNERS)) })
+    loadCategories().then(c => { if (live) setCategories(c) })
     /* Priced for the market too. A shopper who sees $18.00 before signing in
        and ₹1,599.00 after has been shown two different shops. */
     Promise.all([loadCatalogue(), loadPriceBook(currencyCode), loadCopyBook()])
-      .then(([rows, book, copy]) => setCatalogue(repriceAll(rows, book, currencyCode, copy)))
+      .then(([rows, prices, copy]) => {
+        if (live) setCatalogue(repriceAll(rows, prices, currencyCode, copy))
+      })
     /* The currency is a dependency: without it this closes over the first one
        it saw and the page keeps showing that market's prices forever. */
+    return () => { live = false }
   }, [currencyCode])
-
-  const retail = retailCategories(categories)
-  const enterprise = enterpriseCategories(categories)
-  const retailCounts = countByCategory(catalogue, 'consumer')
-  const enterpriseCounts = countByCategory(catalogue, 'enterprise')
 
   return (
     <>
-      {/* Hero */}
-      <section style={{ position: 'relative', background: 'var(--brand-navy)', color: 'white', overflow: 'hidden' }}>
-        <img src={HERO} alt="" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.25 }} />
-        <div className="container" style={{ position: 'relative', paddingTop: '64px', paddingBottom: '64px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '48px', alignItems: 'center' }}>
-          <div>
-            <h1 style={{ fontSize: 'var(--text-5xl)', fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.02em' }}>
-              One marketplace.<br />Every kind of buyer.
-            </h1>
-            <p style={{ fontSize: 'var(--text-lg)', color: 'rgba(255,255,255,0.75)', marginTop: '20px', maxWidth: '460px' }}>
-              Devices, add-ons, security and IoT — sold by verified partners, settled by the marketplace,
-              {markets ? ` across ${markets}` : ''}.
-            </p>
-            <div style={{ display: 'flex', gap: '12px', marginTop: '32px', flexWrap: 'wrap' }}>
-              <button className="btn btn-primary btn-lg" onClick={() => onNavigate('retail')}>Shop retail</button>
-              <button className="btn btn-secondary btn-lg" style={{ background: 'rgba(255,255,255,0.1)', color: 'white', borderColor: 'rgba(255,255,255,0.2)' }} onClick={() => onNavigate('enterprise')}>
-                For business
-              </button>
-              <button className="btn btn-secondary btn-lg" style={{ background: 'rgba(255,255,255,0.1)', color: 'white', borderColor: 'rgba(255,255,255,0.2)' }} onClick={() => onNavigate('partner')}>
-                Sell with us
-              </button>
-            </div>
-          </div>
-          <Carousel slides={withCaptions(CAROUSEL)} alt="What you can buy here" />
-        </div>
-      </section>
-
-      {/* Promo strip — the operator's live storefront banners. The copy is theirs;
-          pausing a banner in their console takes it off this page. */}
+      <HomeHero markets={markets} onNavigate={onNavigate} />
+      {/* The operator's live banners. Pausing one in their console takes it off this page. */}
       <PromoStrip slides={slides} onNavigate={onNavigate} />
-
-      {/* The rails show the marketplace's own categories, split by the audience
-          each one records, rather than a hand-kept list of pictures. Reselling is
-          not among them: the Partner category sells white-label storefronts and
-          wholesale packs to resellers, and neither a shopper nor an enterprise
-          buyer can order one — it is reached from "Sell with us" instead. */}
-      <CategoryRail
-        title="Retail products"
-        subtitle="Plans, devices, entertainment and connected home"
-        categories={retail}
-        counts={retailCounts}
-        onNavigate={onNavigate}
-      />
-      <CategoryRail
-        title="Enterprise products"
-        subtitle="IoT, security and devices for your estate"
-        categories={enterprise}
-        counts={enterpriseCounts}
-        onNavigate={onNavigate}
-      />
+      <CategorySection categories={categories} catalogue={catalogue} onNavigate={onNavigate} />
+      <FeaturedSection products={featuredProducts(catalogue, categories, 4, currencyCode)} onOpen={setOpen} onNavigate={onNavigate} />
+      <WhyAventa />
+      <EcosystemStrip sellers={ecosystemSellers(catalogue, 8)} />
+      <PublicProductModal product={open} onClose={close} onAddToBasket={onAddToBasket} />
     </>
   )
 }

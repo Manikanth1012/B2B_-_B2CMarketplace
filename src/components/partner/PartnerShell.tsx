@@ -109,7 +109,7 @@ export function PartnerShell({ view, onNavigate, onSignOut, children }: PartnerS
                 fontWeight: 700,
                 textTransform: 'uppercase',
                 letterSpacing: '0.05em',
-                color: 'rgba(255,255,255,0.4)',
+                color: 'rgba(255,255,255,0.62)',
                 marginBottom: '4px',
               }}>
                 {section.label}

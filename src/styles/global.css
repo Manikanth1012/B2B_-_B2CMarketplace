@@ -1,16 +1,23 @@
 :root {
-  /* Brand palette — deep navy primary with a warm accent */
-  --brand-navy: #0B1F3A;
-  --brand-navy-light: #142A4A;
-  --brand-navy-dark: #060F1F;
-  --brand-accent: #00A6A6;
-  --brand-accent-light: #00C9C9;
-  --brand-accent-dark: #007575;   /* 5.50:1 both ways — use for small teal text and for
-                                     fills that carry a small white label. #00A6A6 is 3.00:1,
-                                     which only clears AA for large text. */
+  /* Brand palette — Aventa. Deep navy ground, electric blue to cyan accents.
+     Teal, cyan and electric are fills, icons and large type; small text uses
+     --brand-accent-dark or --blue, which clear AA (see contrast.test.ts). */
+  --brand-navy: #061B3A;
+  --brand-navy-light: #0B2850;
+  --brand-navy-dark: #03132B;
+  --brand-accent: #00C6B5;
+  --brand-accent-light: #12CDE0;
+  --brand-accent-dark: #007575;   /* 5.52:1 on white, 5.14:1 on --bg-alt — the teal for small text */
   --brand-accent-darker: #005F5F;
   --brand-gold: #F5A623;
   --brand-red: #E63946;
+
+  --blue: #0756A5;                 /* links and small accent text on light surfaces — 7.28:1 */
+  --electric: #168BFF;             /* focus rings, icons, gradients — 3.40:1, never small text */
+  --cyan: #12CDE0;                 /* primary button fill (navy label 8.84:1), accents on dark */
+  --teal: #00C6B5;                 /* fills only — 2.15:1 on white */
+  --grad-navy: linear-gradient(135deg, #03132B 0%, #061B3A 45%, #0756A5 100%);
+  --grad-cyan: linear-gradient(90deg, #168BFF 0%, #12CDE0 100%);
 
   /* Semantic colors */
   --success: #117F3A;   /* was #16A34A — 3.30:1 on white, 3.00:1 on its tint. Now 5.10 / 4.64 */
@@ -36,20 +43,22 @@
 
   /* Surfaces */
   --bg: #FFFFFF;
-  --bg-alt: #F9FAFB;
+  --bg-alt: #F4F7FC;
   --bg-card: #FFFFFF;
   --bg-hover: #F3F4F6;
-  --border: #E5E7EB;
-  --border-light: #F3F4F6;
+  --border: #E3EAF3;
+  --border-light: #EEF2F8;
 
   /* Text */
-  --text: #111827;
-  --text-secondary: #4B5563;
+  --text: #102344;
+  --text-secondary: #475569;   /* 7.06:1 on --bg-alt */
   /* Was #9CA3AF, which is 2.54:1 on white — below the 4.5:1 WCAG AA floor for
-     normal text, across 284 usages. #6B7280 is 4.80:1 and keeps the hierarchy
-     (--text #111827 > --text-secondary #4B5563 > --text-tertiary #6B7280).
+     normal text, across 284 usages. The brief's #64748B is 4.43:1 on the new
+     #F4F7FC ground, under AA, so #5B6B82 is the nearest slate that clears 4.5:1
+     on both white and --bg-alt. It keeps the hierarchy
+     (--text #102344 > --text-secondary #475569 > --text-tertiary #5B6B82).
      Every usage sits on a light surface; the dark rails use rgba(255,255,255,…). */
-  --text-tertiary: #6B7280;
+  --text-tertiary: #5B6B82;
   --text-inverse: #FFFFFF;
 
   /* Shadows */
@@ -58,6 +67,8 @@
   --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06);
   --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -2px rgba(0,0,0,0.05);
   --shadow-xl: 0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04);
+  --shadow-card: 0 1px 2px rgba(16,35,68,0.04), 0 4px 16px rgba(16,35,68,0.06);
+  --shadow-lift: 0 12px 32px -8px rgba(16,35,68,0.18);
 
   /* Radii */
   --radius-sm: 6px;
@@ -66,6 +77,7 @@
   --radius-lg: 16px;
   --radius-xl: 24px;
   --radius-full: 9999px;
+  --radius-card: 16px;
 
   /* Spacing — 8px system */
   --space-1: 4px;
@@ -181,7 +193,7 @@ input, select, textarea {
   justify-content: center;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-5);
-  border-radius: var(--radius);
+  border-radius: var(--radius-full);
   font-size: var(--text-sm);
   font-weight: 600;
   line-height: 1;
@@ -191,7 +203,7 @@ input, select, textarea {
 }
 
 .btn-primary {
-  /* Darker teal: the label is small text, and white on #00A6A6 is only 3.00:1. */
+  /* Darker teal: the label is small text. White on #00C6B5 is 2.15:1; on #007575 it is 5.52:1. */
   background: var(--brand-accent-dark);
   color: white;
 }
@@ -294,14 +306,15 @@ input, select, textarea {
 /* ---------- Cards ---------- */
 .card {
   background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
   overflow: hidden;
   transition: box-shadow var(--transition), transform var(--transition);
 }
 
 .card-hover:hover {
-  box-shadow: var(--shadow-lg);
+  box-shadow: var(--shadow-lift);
   transform: translateY(-2px);
 }
 

@@ -274,6 +274,15 @@ export function canAddToBasket(p: { stock: string }): boolean {
   return !p.stock.toLowerCase().includes('out')
 }
 
+/** Showcase order: operator-flagged bestsellers first, then what buyers rated
+    highest, then `sort_order` and id so the choice is stable between renders. */
+export function showcaseOrder(a: SellableProduct, b: SellableProduct): number {
+  return Number(b.badge === 'Bestseller') - Number(a.badge === 'Bestseller') ||
+    (b.rating ?? 0) - (a.rating ?? 0) ||
+    a.sort_order - b.sort_order ||
+    a.id.localeCompare(b.id)
+}
+
 /**
  * A few real listings to stand for a category — what a prospective seller is shown
  * under "what sells here". Showcase order, not catalogue order: what the operator
@@ -287,10 +296,6 @@ export function exampleProducts<T extends SellableProduct>(
 ): T[] {
   return products
     .filter(p => p.category_id === categoryId && isSellable(p))
-    .sort((a, b) =>
-      Number(b.badge === 'Bestseller') - Number(a.badge === 'Bestseller') ||
-      (b.rating ?? 0) - (a.rating ?? 0) ||
-      a.sort_order - b.sort_order ||
-      a.id.localeCompare(b.id))
+    .sort(showcaseOrder)
     .slice(0, limit)
 }

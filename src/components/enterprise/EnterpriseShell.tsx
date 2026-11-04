@@ -111,7 +111,7 @@ export function EnterpriseShell({ view, onNavigate, onSignOut, children }: Enter
               <div style={{
                 padding: '4px 12px', fontSize: 'var(--text-xs)', fontWeight: 700,
                 textTransform: 'uppercase', letterSpacing: '0.05em',
-                color: 'rgba(255,255,255,0.4)', marginBottom: '4px',
+                color: 'rgba(255,255,255,0.62)', marginBottom: '4px',
               }}>
                 {section.label}
               </div>

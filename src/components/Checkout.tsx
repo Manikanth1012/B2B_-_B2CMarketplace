@@ -374,7 +374,7 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                 width: '32px',
                 height: '32px',
                 borderRadius: '50%',
-                background: (step === s) || (step as string === 'confirm' && s !== 'confirm') ? 'var(--brand-accent)' : 'var(--gray-200)',
+                background: (step === s) || (step as string === 'confirm' && s !== 'confirm') ? 'var(--brand-accent-dark)' : 'var(--gray-200)',
                 color: (step === s) || (step as string === 'confirm' && s !== 'confirm') ? 'white' : 'var(--text-tertiary)',
                 display: 'flex',
                 alignItems: 'center',
@@ -517,7 +517,7 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                             cursor: off ? 'not-allowed' : 'pointer',
                           }}
                         >
-                          <div style={{ color: on ? 'var(--brand-accent)' : 'var(--text-tertiary)', marginTop: '1px' }}>
+                          <div style={{ color: on ? 'var(--brand-accent-dark)' : 'var(--text-tertiary)', marginTop: '1px' }}>
                             <MethodIcon kind={m.kind} />
                           </div>
                           <div style={{ flex: 1 }}>
@@ -530,7 +530,7 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                                   who has to open the option to find out what it
                                   would cost a month does not open it. */}
                               {!off && each != null && months != null && (
-                                <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--brand-accent)' }}>
+                                <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--brand-accent-dark)' }}>
                                   from {fmt(each)}/mo over {months} months
                                 </span>
                               )}

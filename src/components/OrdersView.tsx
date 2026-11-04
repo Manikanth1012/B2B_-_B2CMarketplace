@@ -179,7 +179,7 @@ export function OrdersView() {
                       const line = planLine(plans[order.payment_ref],
                         n => fmtIn(n, order.currency, { asOf: order.created_at?.slice(0, 10) }))
                       return line ? (
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--brand-accent)', fontWeight: 600 }}>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--brand-accent-dark)', fontWeight: 600 }}>
                           {line}
                         </div>
                       ) : null
@@ -229,7 +229,7 @@ export function OrdersView() {
                               <div style={{
                                 width: '28px', height: '28px', borderRadius: '50%',
                                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                background: done ? 'var(--brand-accent)' : 'var(--bg-alt)',
+                                background: done ? 'var(--brand-accent-dark)' : 'var(--bg-alt)',
                                 color: done ? 'white' : 'var(--text-tertiary)',
                               }}>
                                 <Icon size={14} />
@@ -449,7 +449,7 @@ function OrderDetailModal({ order, items, methods, onClose }: {
                 <div style={{
                   width: '24px', height: '24px', borderRadius: '50%',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: done ? 'var(--brand-accent)' : 'var(--bg-alt)',
+                  background: done ? 'var(--brand-accent-dark)' : 'var(--bg-alt)',
                   color: done ? 'white' : 'var(--text-tertiary)',
                   flexShrink: 0,
                 }}>
