@@ -1,0 +1,102 @@
+/* The shared component layer for the revamp. Classes rather than inline styles
+   so that hover, focus, breakpoints and reduced motion are real CSS. Colours
+   come only from tokens in global.css, which contrast.test.ts holds to AA. */
+
+:focus-visible { outline: 2px solid var(--electric); outline-offset: 2px; }
+
+/* ---------- Buttons ---------- */
+.btn-cyan { background: var(--cyan); color: var(--brand-navy); }
+.btn-cyan:hover { background: #3ED8E8; transform: translateY(-1px); box-shadow: 0 8px 24px -6px rgba(18, 205, 224, 0.55); }
+.btn-outline-light { background: rgba(255, 255, 255, 0.04); color: #fff; border-color: rgba(255, 255, 255, 0.5); }
+.btn-outline-light:hover { background: rgba(255, 255, 255, 0.12); border-color: #fff; }
+
+.ui-link {
+  display: inline-flex; align-items: center; gap: 6px; padding: 0;
+  background: none; border: none; cursor: pointer;
+  font-size: var(--text-sm); font-weight: 600; color: var(--blue);
+}
+.ui-link:hover { text-decoration: underline; }
+.ui-link--light { color: var(--cyan); }
+
+/* ---------- Section header ---------- */
+.ui-section { padding-block: 28px; }
+.ui-section-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+.ui-section-title {
+  position: relative; padding-left: 14px;
+  font-size: var(--text-2xl); font-weight: 800; line-height: 1.2; letter-spacing: -0.01em; color: var(--text);
+}
+.ui-section-title::before {
+  content: ''; position: absolute; left: 0; top: 4px; bottom: 4px; width: 4px;
+  border-radius: 4px; background: var(--grad-cyan);
+}
+.ui-section-sub { margin-top: 4px; font-size: var(--text-sm); color: var(--text-secondary); }
+
+/* ---------- Bento grid ---------- */
+.bento { display: grid; gap: 16px; grid-template-columns: repeat(var(--bento-cols, 4), minmax(0, 1fr)); }
+.bento > [data-span="2"] { grid-column: span 2; }
+.bento > [data-span="3"] { grid-column: span 3; }
+.bento > [data-rows="2"] { grid-row: span 2; }
+.bento > * { min-width: 0; display: flex; }
+.bento > * > * { flex: 1; }
+@media (max-width: 1199px) {
+  .bento { --bento-cols: 2 !important; }
+  .bento > [data-span="3"] { grid-column: span 2; }
+  .bento > [data-rows="2"] { grid-row: auto; }
+}
+@media (max-width: 767px) {
+  .bento { --bento-cols: 1 !important; }
+  .bento > [data-span] { grid-column: auto; }
+}
+
+/* ---------- Bento card ---------- */
+.bento-card {
+  position: relative; display: flex; flex-direction: column; min-width: 0;
+  padding: 24px; border-radius: var(--radius-card); overflow: hidden;
+  background: var(--bg-card); color: var(--text); box-shadow: var(--shadow-card);
+}
+.bento-card--interactive { transition: transform var(--transition), box-shadow var(--transition); }
+.bento-card--interactive:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
+.bento-card--dark { background: var(--grad-navy); color: #fff; }
+.bento-card--image { background: var(--brand-navy); color: #fff; }
+.bento-card__media { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* A floor for the copy: the artwork is arbitrary, so white text gets a navy
+   wash it can rely on rather than a tint that happens to suit today's picture. */
+.bento-card--image::after {
+  content: ''; position: absolute; inset: 0;
+  background: linear-gradient(90deg, rgba(3,19,43,0.95) 0%, rgba(3,19,43,0.84) 45%, rgba(3,19,43,0.3) 78%, rgba(3,19,43,0) 100%);
+}
+.bento-card__body { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 8px; height: 100%; }
+.bento-card__eyebrow { font-size: var(--text-sm); font-weight: 600; color: var(--cyan); }
+.bento-card--light .bento-card__eyebrow { color: var(--blue); }
+.bento-card__title { font-size: var(--text-xl); font-weight: 800; line-height: 1.2; letter-spacing: -0.01em; }
+.bento-card__text { font-size: var(--text-sm); line-height: 1.5; color: rgba(255,255,255,0.86); }
+.bento-card--light .bento-card__text { color: var(--text-secondary); }
+.bento-card__action { margin-top: auto; padding-top: 8px; }
+
+/* ---------- Status badge ---------- */
+.status-badge {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px;
+  border-radius: var(--radius-full); font-size: var(--text-xs); font-weight: 700; line-height: 1.6; white-space: nowrap;
+}
+.status-badge--success { background: var(--success-bg); color: var(--success); }
+.status-badge--warning { background: var(--warning-bg); color: var(--warning); }
+.status-badge--danger  { background: var(--danger-bg);  color: var(--danger); }
+.status-badge--info    { background: var(--info-bg);    color: var(--info); }
+.status-badge--neutral { background: var(--gray-100);   color: var(--text-secondary); }
+
+/* ---------- KPI card ---------- */
+.kpi-card { padding: 18px; gap: 4px; }
+.kpi-card__label { font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary); }
+.kpi-card__value { font-size: var(--text-2xl); font-weight: 800; letter-spacing: -0.01em; color: var(--text); line-height: 1.2; }
+.kpi-card__delta { font-size: var(--text-xs); font-weight: 700; color: var(--text-secondary); }
+.kpi-card__delta--up { color: var(--success); }
+.kpi-card__delta--down { color: var(--danger); }
+
+/* ---------- Wordmark ---------- */
+.aventa-wordmark { display: inline-flex; align-items: center; gap: 8px; color: #fff; font-weight: 600; letter-spacing: -0.01em; line-height: 1; }
+
+/* ---------- Motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .bento-card--interactive, .btn-cyan { transition: none; }
+  .bento-card--interactive:hover, .btn-cyan:hover { transform: none; }
+}
