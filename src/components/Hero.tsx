@@ -1,5 +1,6 @@
-import { Sparkles, Shield, Truck, Headphones } from 'lucide-react'
-import { BentoGrid, BentoCell, BentoCard } from './ui'
+import { Sparkles } from 'lucide-react'
+import { BentoGrid, BentoCell, BentoCard, PhotoTile } from './ui'
+import { BANNERS, CAROUSEL } from '../lib/assets'
 import { useMarket } from '../lib/MarketContext'
 import { money, rateOn, convert, charmPrice, format } from '../lib/money'
 
@@ -43,10 +44,10 @@ export function Hero({ onNavigate }: HeroProps) {
     { label: 'IoT Fleet', cat: 'iot' },
   ]
   const trust = [
-    { icon: <Truck size={18} aria-hidden="true" />, label: 'Free delivery on devices', sub: `On all orders over ${threshold}` },
-    { icon: <Shield size={18} aria-hidden="true" />, label: 'Instant activation', sub: 'eSIM and digital services' },
-    { icon: <Headphones size={18} aria-hidden="true" />, label: '24/7 support', sub: 'Across all time zones' },
-    { icon: <Sparkles size={18} aria-hidden="true" />, label: 'Reward points', sub: 'Earn on every purchase' },
+    { image: CAROUSEL[4], position: 'center 60%', label: 'Free delivery on devices', sub: `On all orders over ${threshold}` },
+    { image: CAROUSEL[0], position: 'center 40%', label: 'Instant activation', sub: 'eSIM and digital services' },
+    { image: BANNERS[1], position: 'right center', label: '24/7 support', sub: 'Across all time zones' },
+    { image: BANNERS[9], label: 'Reward points', sub: 'Earn on every purchase' },
   ]
 
   return (
@@ -87,11 +88,8 @@ export function Hero({ onNavigate }: HeroProps) {
         </BentoCell>
         {trust.map((t) => (
           <BentoCell key={t.label}>
-            <div className="bento-card bento-card--light trust-tile">
-              {t.icon}
-              <h3 className="trust-tile__title">{t.label}</h3>
-              <p className="trust-tile__text">{t.sub}</p>
-            </div>
+            {/* 'div', not h3: these sit right after the hero's h1, and an h3 there skips a level. */}
+            <PhotoTile className="trust-tile" image={t.image} imagePosition={t.position} title={t.label} text={t.sub} headingLevel="div" />
           </BentoCell>
         ))}
       </BentoGrid>
