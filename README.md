@@ -278,7 +278,7 @@ Both require `npm install jsdom`.
 
 The app is **Aventa**. Chrome is deep navy `#061B3A`, with the 6D mark beside the Aventa wordmark. The typeface is Inter, loaded in `index.html`.
 
-The Aventa wordmark is an SVG component (`AventaWordmark`) because there is no Aventa logo file to ship. The 6D mark is different: it renders only from the approved PNG in `assets/brand/` (`6d-logo-white.png` on dark chrome; `6d-logo.png` is available for light surfaces but nothing uses it yet) and is never redrawn in text, CSS or SVG. All four consoles in the React app, enterprise included, show the 6D mark in their navy rail. Only the static `enterprise.html` prototype is neutral and carries no 6D mark, so that one demos as white-label.
+The Aventa wordmark is an SVG component (`AventaWordmark`) because there is no Aventa logo file to ship. The 6D mark is different: it renders only from the approved PNG in `assets/brand/` (`6d-logo-white.png` on dark chrome; `6d-logo.png` is available for light surfaces but nothing uses it yet) and is never redrawn in text, CSS or SVG. In the React app the public storefront header shows it beside the Aventa wordmark, the signed-in consumer storefront shows it in its navy header, and the operator, partner and enterprise consoles show it in their navy rails. Only the static `enterprise.html` prototype is neutral and carries no 6D mark, so that one demos as white-label.
 
 The static HTML prototypes at the repository root were built to an earlier palette (`#0D1B4B`, Poppins, `--nim-*` tokens). That is not the look of the React app, and the prototypes were not restyled.
 
@@ -315,7 +315,7 @@ New: `--blue #0756A5`, `--electric #168BFF`, `--cyan #12CDE0`, `--teal #00C6B5`,
 | `BentoGrid` / `BentoCell` | The grid that lays out a promotional page; cells span columns and rows. |
 | `BentoCard` | A cell's surface: `light`, `dark` (navy gradient) or `image` variant. |
 | `SectionHeader` | A section title with optional subtitle and a link-style action. |
-| `StatusBadge` | A small state label; each tone carries its own icon as well as its words, so state never rests on colour alone. |
+| `StatusBadge` | A small state label; each tone carries its own icon by default; pass `icon={null}` where the words alone carry the state, as on the product card's badge. |
 | `KpiCard` | One headline figure with its label. |
 | `AventaWordmark` | The Aventa name in chrome; SVG, no logo file exists. |
 | `CategoryTile` | A marketplace category as a tile with icon or artwork and a listing count. |
