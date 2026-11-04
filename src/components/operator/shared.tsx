@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useId } from 'react'
-import { X } from 'lucide-react'
 import { StatusBadge } from '../ui/StatusBadge'
 import { statusTone } from '../../lib/consoleTone'
+import { Dialog } from '../ui/Dialog'
 
 export function fmtMoney(n: number): string {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -316,51 +316,27 @@ export interface ModalProps {
 }
 
 export function Modal({ open, onClose, title, children, footer }: ModalProps) {
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', handler)
-    return () => window.removeEventListener('keydown', handler)
-  }, [open, onClose])
-
-  if (!open) return null
-
+  /* Rendered through the shared Dialog, which brings the focus trap, the
+     return of focus to whatever opened it, Escape and the backdrop click.
+     The panel keeps `.c-modal` (640px, and `.c-modal:has(.pd--compact)` still
+     widens the enterprise listing modal); the head, body and foot are
+     Dialog's own, styled to the same measurements. */
   return (
-    <div className="c-modal-back" onClick={onClose}>
-      {/* Named as a dialog, and labelled by its own title. Without this a
-          screen reader announces the page behind it and there is nothing to say
-          which region is the one demanding an answer. */}
-      <div
-        className="c-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-label={title}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="c-modal__head">
-          <h3 className="c-modal__title">{title}</h3>
-          <button className="c-modal__close" onClick={onClose} aria-label="Close">
-            <X size={20} />
-          </button>
-        </div>
-        {/* `min-width: 0` (in .c-modal__body) is what keeps the 640px from being
-            a suggestion.
-            A column flex item's minimum width is `auto`, meaning "never narrower
-            than my content" — so one unwrappable cell inside a table in here
-            pushed the whole dialog wider than the window, and every value in it
-            was clipped at the right-hand edge with no way to scroll to them. The
-            table already carries its own `overflow-x`; this is what lets it use
-            it rather than shoving its container open. */}
-        <div className="c-modal__body">
-          {children}
-        </div>
-        {footer && (
-          <div className="c-modal__foot">
-            {footer}
-          </div>
-        )}
-      </div>
-    </div>
+    /* Named as a dialog, and labelled by its own title. Without this a
+       screen reader announces the page behind it and there is nothing to say
+       which region is the one demanding an answer. Dialog does this with
+       aria-labelledby pointing at the title. */
+    <Dialog open={open} onClose={onClose} title={title} footer={footer} className="c-modal">
+      {/* `min-width: 0` (in .ui-dialog__body, as it was in .c-modal__body) is
+          what keeps the 640px from being a suggestion.
+          A column flex item's minimum width is `auto`, meaning "never narrower
+          than my content" — so one unwrappable cell inside a table in here
+          pushed the whole dialog wider than the window, and every value in it
+          was clipped at the right-hand edge with no way to scroll to them. The
+          table already carries its own `overflow-x`; this is what lets it use
+          it rather than shoving its container open. */}
+      {children}
+    </Dialog>
   )
 }
 

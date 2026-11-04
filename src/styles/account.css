@@ -1,0 +1,115 @@
+/* ---------- Dialog (src/components/ui/Dialog.tsx) ----------
+   The panel's base rules are inside :where() so any class passed through
+   `className` (the console's .c-modal, and .c-modal:has(.pd--compact)) wins
+   over them without needing more specificity. */
+.ui-dialog-back {
+  position: fixed; inset: 0; z-index: 1000; background: rgba(6, 27, 58, 0.5);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding: 40px 16px; overflow-y: auto;
+}
+:where(.ui-dialog) {
+  background: var(--bg-card, #fff); border-radius: var(--radius-card); box-shadow: var(--shadow-xl);
+  max-width: 560px; width: 100%; margin: 0 auto;
+  display: flex; flex-direction: column; max-height: 90vh;
+}
+:where(.ui-dialog.ui-dialog--wide) { max-width: 920px; }
+:where(.ui-dialog):focus { outline: none; }
+.ui-dialog__head {
+  padding: 16px 20px; border-bottom: 1px solid var(--border-light);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0;
+}
+.ui-dialog__title { margin: 0; font-size: var(--text-lg); font-weight: 700; color: var(--text); }
+.ui-dialog__close {
+  border: none; background: none; cursor: pointer; color: var(--text-secondary);
+  padding: 8px; border-radius: 50%; display: inline-flex; min-width: 36px; min-height: 36px;
+  align-items: center; justify-content: center; flex-shrink: 0;
+}
+.ui-dialog__close:hover { background: var(--bg-alt); color: var(--text); }
+/* min-width: 0 keeps the max-width from being a suggestion: a column flex
+   item's minimum width is its content, so one unwrappable table cell would
+   otherwise push the dialog wider than the window. See Modal in
+   operator/shared.tsx. */
+.ui-dialog__body { padding: 20px; overflow-y: auto; flex: 1; min-width: 0; }
+.ui-dialog__foot {
+  padding: 12px 20px; border-top: 1px solid var(--border-light);
+  display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ui-dialog-back { animation: ui-dialog-fade 160ms ease-out; }
+  .ui-dialog { animation: ui-dialog-rise 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+  @keyframes ui-dialog-fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes ui-dialog-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+}
+
+/* ---------- Account page (src/components/account/AccountPage.tsx) ---------- */
+.acct-page { background: var(--bg-alt); min-height: 100%; padding: 32px 16px 64px; }
+.acct-page__inner { max-width: 1200px; margin: 0 auto; }
+.acct-page__head {
+  display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+  gap: 12px 24px; margin-bottom: 24px;
+}
+.acct-page__heading { min-width: 0; }
+.acct-page__title {
+  margin: 0; font-size: var(--text-3xl); font-weight: 800; line-height: 1.2;
+  letter-spacing: -0.01em; color: var(--text);
+}
+.acct-page__subtitle { margin: 6px 0 0; font-size: var(--text-base); color: var(--text-secondary); }
+.acct-page__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 640px) {
+  .acct-page { padding-top: 24px; }
+  .acct-page__title { font-size: var(--text-2xl); }
+}
+
+/* ---------- Account tabs (src/components/account/AccountTabs.tsx) ----------
+   Below 1024px: a row of chips that scrolls sideways. At 1024px and wider: a
+   sticky column on the left with the panel beside it. */
+.acct-tabs { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.acct-tabs__list {
+  display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 6px;
+  scrollbar-width: thin; -webkit-overflow-scrolling: touch;
+}
+.acct-tabs__tab {
+  display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0;
+  min-height: 44px; padding: 8px 14px; border-radius: var(--radius-full);
+  border: 1px solid var(--border-strong); background: var(--bg-card);
+  color: var(--text); font: inherit; font-size: var(--text-sm); font-weight: 600;
+  cursor: pointer; white-space: nowrap; text-align: left;
+}
+.acct-tabs__tab:hover { background: var(--bg-alt); }
+.acct-tabs__tab:focus-visible { outline: 2px solid var(--electric); outline-offset: 2px; }
+.acct-tabs__tab--active,
+.acct-tabs__tab--active:hover {
+  background: var(--brand-navy); border-color: var(--brand-navy); color: #fff;
+}
+.acct-tabs__icon { display: inline-flex; flex-shrink: 0; }
+.acct-tabs__icon svg { width: 18px; height: 18px; }
+.acct-tabs__panel { min-width: 0; }
+.acct-tabs__panel:focus { outline: none; }
+.acct-tabs__panel:focus-visible { outline: 2px solid var(--electric); outline-offset: 4px; border-radius: var(--radius-card); }
+
+@media (min-width: 1024px) {
+  .acct-tabs { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 24px; align-items: start; }
+  .acct-tabs__list {
+    position: sticky; top: 88px; flex-direction: column; gap: 2px; overflow: visible;
+    padding: 8px; background: var(--bg-card); border-radius: var(--radius-card); box-shadow: var(--shadow-card);
+  }
+  .acct-tabs__tab {
+    width: 100%; border-color: transparent; background: transparent;
+    border-radius: var(--radius-md); white-space: normal;
+  }
+  .acct-tabs__tab:hover { background: var(--bg-alt); }
+  /* The selected tab is a tint with a navy edge rather than a solid block in
+     the column, so nine of them do not read as nine buttons. */
+  .acct-tabs__tab--active,
+  .acct-tabs__tab--active:hover {
+    background: var(--bg-alt); color: var(--brand-navy);
+    box-shadow: inset 3px 0 0 var(--brand-navy);
+  }
+}
+
+/* Forced colours: the selected tab must still be told apart when fills are
+   dropped. */
+@media (forced-colors: active) {
+  .acct-tabs__tab--active { outline: 2px solid Highlight; outline-offset: -2px; }
+}

@@ -20,6 +20,17 @@ const TONES: Record<string, Tone> = {
   failing: 'danger', passed: 'success', failed: 'danger',
   /* Ticket priorities. */
   P1: 'danger', P2: 'warning', P3: 'info', P4: 'neutral',
+  /* The account screens: orders on their way are in progress, a refund or
+     member still waiting on somebody is amber, a ticket nobody has picked up
+     yet is waiting too. `refunded` is the money back, which is the outcome
+     asked for; `partial` is final but mixed, so it informs rather than
+     celebrates. */
+  placed: 'info', processing: 'info', shipped: 'info', 'in-transit': 'info',
+  'partly-failed': 'danger', refunded: 'success', cancelled: 'danger',
+  requested: 'warning', declined: 'danger', partial: 'info',
+  paid: 'success', overdue: 'danger',
+  invited: 'warning',
+  new: 'warning', inprogress: 'info', closed: 'success',
 }
 
 export function statusTone(status: string): Tone {
