@@ -8,9 +8,8 @@ brainstorm → spec → plan → build cycle when it is picked up.
 | # | Spec | Status |
 |---|---|---|
 | 1 | Foundation + public homepage | Done — merged 2026-11-04 (`5489bb2`) |
-| 2 | Commerce — retail and enterprise storefronts, product listing and detail, cart, checkout, header search | Built on branch `ui-revamp-commerce`; merge pending |
-| 3 | Operator console — grouped sidebar, bento KPI dashboard, business accounts | To do |
-| 4 | Partner portal — operator workspace language, partner navigation | To do |
+| 2 | Commerce — retail and enterprise storefronts, product listing and detail, cart, checkout, header search | Done — merged 2026-11-04 (`f5ee450`) |
+| 3 + 4 | Workspace consoles — one pass over the shared console components (`operator/shared.tsx`, used by ~80 operator, partner and enterprise screens) and the three sidebars, then the operator's bento KPI dashboard, grouped navigation and Business Accounts screen. Merged from the original specs 3 and 4 at the user's choice (2026-11-04) | Next |
 | 5 | Validation sweep across all experiences | To do |
 
 ## New enterprise features (deferred from spec 2 — 2026-11-04)
