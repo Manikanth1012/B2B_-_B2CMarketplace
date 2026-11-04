@@ -93,11 +93,13 @@
   width: 100%; min-height: 44px; padding: 10px 12px;
   border-radius: var(--radius-md); border: 1px solid var(--border-strong);
   background: #fff; font-size: var(--text-sm); color: var(--text);
-  /* Transparent, not none: forced-colors mode repaints it, so focus stays visible. */
-  outline: 2px solid transparent;
+  outline: none;
 }
 textarea.c-input { resize: vertical; min-height: 88px; }
-.c-input:focus { border-color: var(--electric); box-shadow: 0 0 0 3px rgba(22, 139, 255, 0.25); }
+/* The outline is transparent, not none, and only on focus: forced-colors mode
+   drops the box-shadow but repaints this outline, so only the focused field
+   shows one there. */
+.c-input:focus { border-color: var(--electric); box-shadow: 0 0 0 3px rgba(22, 139, 255, 0.25); outline: 2px solid transparent; }
 .c-input:disabled { background: var(--bg-alt); color: var(--text-secondary); cursor: not-allowed; }
 
 /* ---------- Button ---------- */

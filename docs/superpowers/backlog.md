@@ -57,6 +57,9 @@ restyle, and get their own spec after the revamp.
 - [ ] Table row hover overrides an inline row highlight.
 - [ ] Disabled danger and success buttons look like disabled primary.
 - [ ] PartnerDashboard "Settlement Due" colour is decorative.
+- [ ] Accounts status-chip counts ignore search.
+- [ ] Enterprise listing modal: buy panel is not sticky (spec §5); "Add to requisition" stays enabled under an "Out of stock" badge (unchanged from main).
+- [ ] Operator sidebar brand alt reads "6D Marketplace" (others "6D"); its mobile close button has no label; nav-order comment at `OperatorShell.tsx:24-27` is out of date.
 
 ## Data to check (not code)
 

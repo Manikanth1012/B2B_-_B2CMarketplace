@@ -108,6 +108,12 @@ are moved, not rewritten.
 - Disabled danger and success buttons keep their tone.
 - PartnerDashboard "Settlement Due" gets a text label so its colour is not
   the only signal.
+- Accounts chip counts follow the search, as the list does.
+- Enterprise listing modal: buy panel sticky on desktop; "Add to requisition"
+  disabled when the listing is out of stock, by the same `cardAction` rule
+  the browse cards use.
+- Operator sidebar: brand alt text and the mobile close button's label match
+  the partner and enterprise shells; the nav-order comment corrected.
 
 ### B-check. Validation sweep
 
