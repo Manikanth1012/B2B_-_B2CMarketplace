@@ -181,3 +181,54 @@
   .cat-tile:hover, .p-card:hover { transform: none; }
   .cat-tile:hover .cat-tile__media img { transform: none; }
 }
+
+/* ---------- Public header ---------- */
+.site-header { position: sticky; top: 0; z-index: 100; background: var(--brand-navy); border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+.site-header__bar { position: relative; display: flex; align-items: center; gap: 20px; height: 64px; }
+.site-header__brand { display: flex; align-items: center; gap: 14px; flex-shrink: 0; padding: 0; background: none; border: none; cursor: pointer; }
+.site-header__divider { width: 1px; height: 28px; background: rgba(255, 255, 255, 0.2); }
+.site-nav { display: flex; align-items: center; gap: 4px; flex: 1; }
+.site-nav__item {
+  display: inline-flex; align-items: center; gap: 4px; padding: 8px 12px; border: none; border-radius: var(--radius);
+  background: transparent; color: rgba(255, 255, 255, 0.86); font-size: var(--text-sm); font-weight: 600; cursor: pointer;
+  transition: background var(--transition);
+}
+.site-nav__item:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.site-nav__item[aria-current="page"], .site-nav__item[aria-expanded="true"] { background: rgba(255, 255, 255, 0.14); color: #fff; }
+.site-header__end { display: flex; align-items: center; gap: 12px; flex-shrink: 0; margin-left: auto; }
+.site-header__menu-btn { display: none; color: #fff; padding: 8px; border-radius: var(--radius); }
+.site-header__menu-btn:hover { background: rgba(255, 255, 255, 0.08); }
+@media (max-width: 899px) {
+  .site-nav { display: none; }
+  .site-nav.is-open {
+    display: flex; position: absolute; top: 64px; left: 0; right: 0; flex-direction: column; align-items: stretch;
+    padding: 12px 16px 16px; background: var(--brand-navy); border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .site-header__menu-btn { display: inline-flex; }
+}
+@media (max-width: 520px) { .site-header__divider, .site-header__6d { display: none; } }
+
+.discover { position: relative; }
+.discover__panel {
+  position: absolute; top: calc(100% + 8px); left: 0; z-index: 110; width: min(560px, 90vw);
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 12px;
+  background: var(--bg-card); border-radius: var(--radius-card); box-shadow: var(--shadow-xl);
+  animation: fadeIn var(--transition) ease-out;
+}
+@media (max-width: 899px) { .discover__panel { position: static; width: 100%; grid-template-columns: 1fr; margin-top: 4px; box-shadow: none; } }
+.discover__item {
+  display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; border: none; border-radius: var(--radius-md);
+  background: none; color: var(--text); text-align: left; cursor: pointer;
+}
+.discover__item:hover { background: var(--bg-alt); }
+.discover__icon {
+  flex-shrink: 0; width: 36px; height: 36px; border-radius: 10px; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(135deg, rgba(22, 139, 255, 0.12), rgba(18, 205, 224, 0.16)); color: var(--blue);
+}
+.discover__name { font-size: var(--text-sm); font-weight: 700; }
+.discover__meta { font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.4; }
+@media (prefers-reduced-motion: reduce) { .discover__panel { animation: none; } }
+
+/* ---------- Public footer ---------- */
+.site-footer { background: var(--brand-navy-dark); color: rgba(255, 255, 255, 0.72); }
+.site-footer__heading { margin: 0 0 12px; font-size: var(--text-xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, 0.6); }

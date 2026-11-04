@@ -1,4 +1,8 @@
+import { useState } from 'react'
+import { Menu, X } from 'lucide-react'
 import type { PublicPage } from '../../types/view'
+import { DiscoverMenu } from './DiscoverMenu'
+import { AventaWordmark } from '../ui/AventaWordmark'
 import { MarketPicker } from '../MarketPicker'
 import { useMarket } from '../../lib/MarketContext'
 import { marketProse } from '../../lib/money'
@@ -24,7 +28,7 @@ function FooterGroup({ heading, items, page, onNavigate }: {
 }) {
   return (
     <div>
-      <h2 style={{ fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.55)', fontWeight: 700, margin: '0 0 12px' }}>
+      <h2 className="site-footer__heading">
         {heading}
       </h2>
       <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -61,55 +65,40 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, children }: {
      picker and the operator's own screen list them in one order. */
   const { book } = useMarket()
   const regions = [...book.markets].sort((a, b) => a.sort_order - b.sort_order)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const go = (p: PublicPage) => { setMenuOpen(false); onNavigate(p) }
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-alt)' }}>
-      <header style={{ background: 'var(--brand-navy)', position: 'sticky', top: 0, zIndex: 100 }}>
-        <div className="container" style={{ display: 'flex', alignItems: 'center', gap: '24px', height: '64px' }}>
-          <button onClick={() => onNavigate('landing')} style={{ display: 'flex', alignItems: 'center', flexShrink: 0, background: 'none', border: 'none', cursor: 'pointer' }}>
-            <img src="/assets/brand/6d-logo-white.png" alt="6D Marketplace — home" style={{ height: '32px' }} />
+      <header className="site-header">
+        <div className="container site-header__bar">
+          <button className="site-header__brand" onClick={() => go('landing')} aria-label="Aventa marketplace — home">
+            <img className="site-header__6d" src="/assets/brand/6d-logo-white.png" alt="" style={{ height: '30px' }} />
+            <span className="site-header__divider" aria-hidden />
+            <AventaWordmark size={26} />
           </button>
 
-          <nav style={{ display: 'flex', gap: '4px', flex: 1 }} aria-label="Audiences">
+          <nav className={`site-nav${menuOpen ? ' is-open' : ''}`} aria-label="Marketplace">
+            <DiscoverMenu onNavigate={go} onDone={() => setMenuOpen(false)} />
             {NAV.map(n => (
-              <button
-                key={n.id}
-                onClick={() => onNavigate(n.id)}
-                aria-current={page === n.id ? 'page' : undefined}
-                style={{
-                  padding: 'var(--space-2) var(--space-4)', borderRadius: 'var(--radius)',
-                  border: 'none', cursor: 'pointer', fontSize: 'var(--text-sm)', fontWeight: 600,
-                  background: page === n.id ? 'rgba(255,255,255,0.14)' : 'transparent',
-                  color: page === n.id ? 'white' : 'rgba(255,255,255,0.85)',
-                  transition: 'background 150ms ease',
-                }}
-                onMouseEnter={e => { if (page !== n.id) e.currentTarget.style.background = 'rgba(255,255,255,0.08)' }}
-                onMouseLeave={e => { if (page !== n.id) e.currentTarget.style.background = 'transparent' }}
-              >
+              <button key={n.id} className="site-nav__item" onClick={() => go(n.id)}
+                aria-current={page === n.id ? 'page' : undefined}>
                 {n.label}
               </button>
             ))}
           </nav>
 
-          {/* A visitor has no account and so no home market — this is the one
-              surface where the choice is genuinely free, and it is the surface
-              most people meet first. Without it the storefront quoted every
-              visitor in rupees whatever country they were in, while the shelves
-              behind it were already priced for three markets. */}
-          <div style={{ flexShrink: 0 }}>
+          <div className="site-header__end">
+            {/* A visitor has no account and so no home market — this is the one
+                surface where the choice is genuinely free, and it is the surface
+                most people meet first. */}
             <MarketPicker />
+            <button className="btn btn-sm btn-outline-light" onClick={onDemoSignIn}>Sign in</button>
+            <button className="site-header__menu-btn" aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+              aria-expanded={menuOpen} onClick={() => setMenuOpen(o => !o)}>
+              {menuOpen ? <X size={20} /> : <Menu size={20} />}
+            </button>
           </div>
-
-          <button
-            onClick={onDemoSignIn}
-            style={{
-              padding: 'var(--space-2) var(--space-5)', borderRadius: 'var(--radius)',
-              border: '1px solid rgba(255,255,255,0.25)', background: 'transparent',
-              color: 'white', fontSize: 'var(--text-sm)', fontWeight: 600, cursor: 'pointer', flexShrink: 0,
-            }}
-          >
-            Demo sign-in
-          </button>
         </div>
       </header>
 
@@ -118,27 +107,26 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, children }: {
       {/* The site menu repeats here so someone who has read to the bottom of a long
           page can move on without scrolling back up. Sign-in is deliberately not
           among them — it lives in the header, and one way in is enough. */}
-      <footer style={{ background: 'var(--brand-navy-dark)', color: 'rgba(255,255,255,0.7)' }}>
-        <div className="container" style={{ paddingTop: '40px', paddingBottom: '32px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '32px' }}>
+      <footer className="site-footer">
+        <div className="container" style={{ paddingTop: '48px', paddingBottom: '32px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '32px' }}>
           <div style={{ minWidth: '220px' }}>
-            <img src="/assets/brand/6d-logo-white.png" alt="" style={{ height: '28px', opacity: 0.9 }} />
-            <p style={{ fontSize: 'var(--text-sm)', margin: '12px 0 0', maxWidth: '280px', lineHeight: 1.6 }}>
-              Devices, add-ons, security and IoT from verified partners — one marketplace,
-              one checkout, one settlement cycle.
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+              <img src="/assets/brand/6d-logo-white.png" alt="" style={{ height: '26px', opacity: 0.9 }} />
+              <span className="site-header__divider" aria-hidden />
+              <AventaWordmark size={22} />
+            </div>
+            <p style={{ fontSize: 'var(--text-sm)', margin: '14px 0 0', maxWidth: '300px', lineHeight: 1.6 }}>
+              One connected marketplace — devices, connectivity, security and IoT from verified
+              partners, one checkout, one settlement cycle.
             </p>
           </div>
 
           <nav aria-label="Site menu" style={{ display: 'flex', gap: '48px', flexWrap: 'wrap' }}>
-            <FooterGroup heading="Marketplace" items={FOOTER_MENU} page={page} onNavigate={onNavigate} />
+            <FooterGroup heading="Marketplace" items={FOOTER_MENU} page={page} onNavigate={go} />
             <div>
-              <h2 style={{ fontSize: 'var(--text-xs)', textTransform: 'uppercase', letterSpacing: '0.08em', color: 'rgba(255,255,255,0.55)', fontWeight: 700, margin: '0 0 12px' }}>
-                Regions
-              </h2>
+              <h2 className="site-footer__heading">Regions</h2>
               <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {/* Read from the markets table, not typed. Uganda was added to
-                    that table and taken out again inside an hour; a footer that
-                    names its regions by hand would have gone on advertising a
-                    market the storefront had stopped selling in. */}
+                {/* Read from the markets table, not typed. */}
                 {regions.map(r => (
                   <li key={r.code} style={{ fontSize: 'var(--text-sm)' }}>{r.name}</li>
                 ))}
@@ -148,8 +136,8 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, children }: {
         </div>
 
         <div className="container" style={{ paddingBottom: '28px' }}>
-          <span style={{ fontSize: 'var(--text-sm)', color: 'rgba(255,255,255,0.55)' }}>
-            © 2026 6D Marketplace{regions.length > 0 && ` · ${marketProse(regions, { conjunction: '', separator: ' · ' })}`}
+          <span style={{ fontSize: 'var(--text-sm)', color: 'rgba(255,255,255,0.6)' }}>
+            © 2026 6D Technologies · Aventa{regions.length > 0 && ` · ${marketProse(regions, { conjunction: '', separator: ' · ' })}`}
           </span>
         </div>
       </footer>
