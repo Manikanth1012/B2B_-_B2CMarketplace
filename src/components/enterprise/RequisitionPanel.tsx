@@ -72,7 +72,13 @@ export function RequisitionPanel({ onRaised }: {
   const drawer = useRef<HTMLDivElement>(null)
   useEffect(() => {
     if (!open) return
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    /* Taken before the drawer moves focus. A click that did not focus its
+       button (Safari, a programmatic click) leaves <body> active, so fall back
+       to the header control, which marks itself as the opener. */
+    const active = document.activeElement
+    const opener = active instanceof HTMLElement && active !== document.body
+      ? active
+      : document.querySelector<HTMLElement>('[data-requisition-opener]')
     drawer.current?.focus()
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
     document.addEventListener('keydown', onKey)

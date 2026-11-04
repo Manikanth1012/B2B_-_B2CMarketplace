@@ -14,6 +14,7 @@ function RequisitionButton() {
   return (
     <button
       onClick={() => setOpen(true)}
+      data-requisition-opener
       aria-label={`Requisition — ${count} ${count === 1 ? 'unit' : 'units'}`}
       style={{ padding: '8px', borderRadius: 'var(--radius)', color: 'var(--text-secondary)', position: 'relative' }}
     >

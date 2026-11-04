@@ -144,7 +144,7 @@ export function ListingLayout({
               </select>
             </label>
             <span className="listing__count" aria-live="polite">
-              {total !== undefined && total !== count ? `${count} of ${total}` : count} {count === 1 ? 'result' : 'results'}
+              {total !== undefined && total !== count ? `${count} of ${total}` : count} {(total !== undefined && total !== count ? total : count) === 1 ? 'result' : 'results'}
             </span>
           </div>
           {children}

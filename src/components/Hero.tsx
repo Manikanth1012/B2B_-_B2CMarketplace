@@ -52,7 +52,7 @@ export function Hero({ onNavigate }: HeroProps) {
   return (
     <section className="container home-band" aria-label="Welcome">
       <BentoGrid cols={4}>
-        <BentoCell span={2}>
+        <BentoCell span={2} rows={2}>
           <BentoCard variant="light" className="retail-hero">
             <span className="pill" style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               <Sparkles size={14} aria-hidden="true" />
