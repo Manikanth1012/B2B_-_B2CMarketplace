@@ -74,7 +74,9 @@ behaviour; spec 5 checks baskets carried across a market switch.
 
 The public header gains a search pill (desktop) / search icon (phone).
 Submitting navigates to the Retail page with the text pre-filled into its
-existing search filter. `PublicPage` navigation gains an optional query:
+search box — the public Retail page gains one as part of the shared listing
+toolbar (2.2); it filters the products already loaded, by the same rule the
+signed-in grid uses. `PublicPage` navigation gains an optional query:
 `onNavigate(page, { q?: string })`; `AudiencePage` passes `q` into the retail
 grid's search state. A pure helper `searchTarget(text): { page: 'retail'; q: string } | null`
 returns null for blank input.
