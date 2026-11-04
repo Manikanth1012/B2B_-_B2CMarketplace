@@ -237,8 +237,9 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
           counts={countByCategory(catalogue)}
         />
       ) : (
-        <section className="container" style={{ paddingTop: '40px', paddingBottom: '40px' }}>
+        <section style={{ paddingTop: '40px', paddingBottom: '40px' }}>
           <ListingLayout
+            headingLevel="h2"
             title={c.rail.title}
             subtitle={c.rail.subtitle}
             count={shown.length}

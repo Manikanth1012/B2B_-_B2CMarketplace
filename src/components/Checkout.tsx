@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useId } from 'react'
 import {
   Check, CreditCard, Wallet, Building2, Smartphone, MapPin, Landmark, Receipt,
   CalendarClock,
@@ -51,6 +51,7 @@ interface CheckoutProps {
 }
 
 export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) {
+  const fieldId = useId()
   const [step, setStep] = useState<'details' | 'payment' | 'confirm'>('details')
   // step can be 'confirm' after order placement
   const [name, setName] = useState('')
@@ -417,8 +418,9 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                   <Input label="Address" value={address} onChange={(v) => { setAddress(v); setChosen(null) }} full />
                   <Input label="City" value={city} onChange={(v) => { setCity(v); setChosen(null) }} />
                   <div>
-                    <label className="co__field-label">Country</label>
+                    <label className="co__field-label" htmlFor={`${fieldId}-country`}>Country</label>
                     <select
+                      id={`${fieldId}-country`}
                       value={country}
                       onChange={(e) => setCountry(e.target.value)}
                     >
@@ -668,12 +670,14 @@ function Input({ label, value, onChange, type = 'text', required, full }: {
   required?: boolean
   full?: boolean
 }) {
+  const id = useId()
   return (
     <div style={{ gridColumn: full ? '1 / -1' : undefined }}>
-      <label className="co__field-label">
+      <label className="co__field-label" htmlFor={id}>
         {label}{required && ' *'}
       </label>
       <input
+        id={id}
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}

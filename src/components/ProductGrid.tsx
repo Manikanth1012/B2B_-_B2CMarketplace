@@ -178,7 +178,7 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
 
   return (
     <section style={{ padding: categoryFilter ? '32px 0 64px' : '48px 0' }}>
-      <div className="container">
+      <>
         {categoryFilter ? (
           <ListingLayout
             title={title}
@@ -211,7 +211,7 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
             )}
           </ListingLayout>
         ) : (
-          <>
+          <div className="container">
             <SectionHeader title="Featured products" />
             {loading ? (
               <div style={{ textAlign: 'center', padding: '64px' }}>
@@ -222,7 +222,7 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
             ) : (
               <ListingGrid>{cards}</ListingGrid>
             )}
-          </>
+          </div>
         )}
 
       <CompareTray
@@ -246,7 +246,7 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
           onClose={() => setShowCompare(false)}
         />
       )}
-      </div>
+      </>
     </section>
   )
 }

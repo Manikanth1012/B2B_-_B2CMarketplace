@@ -116,8 +116,7 @@ export function ProductDetail({ product, onAddToCart, onNavigate, compact = fals
         </div>
 
         <div className={`pd${compact ? ' pd--compact' : ''}`}>
-          {/* What the product is: picture, overview, specifications, seller, reviews. */}
-          <div className="pd__main">
+          <div className="pd__gallery">
             <div className="pd__media" style={{ position: 'relative' }}>
               <img src={active.url} alt={active.alt || product.name} />
               {product.badge && (
@@ -161,149 +160,6 @@ export function ProductDetail({ product, onAddToCart, onNavigate, compact = fals
                 ))}
               </div>
             )}
-
-            <div className="pd__section">
-              <h2>Overview</h2>
-              <p style={{ fontSize: 'var(--text-base)', lineHeight: 1.7, color: 'var(--text-secondary)', maxWidth: '720px' }}>
-                {product.description}
-              </p>
-              {product.tags.length > 0 && (
-                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '12px' }}>
-                  {product.tags.map((tag) => (
-                    <span key={tag} className="pill">{tag}</span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {specEntries.length > 0 && (
-              <div className="pd__section">
-                <details className="pd-acc">
-                  <summary>Specifications</summary>
-                  <dl>
-                    {specEntries.map(([k, v]) => (
-                      <div key={k} style={{ display: 'contents' }}>
-                        <dt>{k}</dt>
-                        <dd>{v}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                </details>
-              </div>
-            )}
-
-            <div className="pd__section">
-              <h2>Seller</h2>
-              <div className="pd-acc">
-                <dl style={{ paddingTop: '16px' }}>
-                  <dt>Seller</dt><dd>{product.seller}</dd>
-                  <dt>Category</dt><dd style={{ textTransform: 'capitalize' }}>{product.sub_category || product.category_id}</dd>
-                  <dt>Pricing model</dt><dd style={{ textTransform: 'capitalize' }}>{product.model}</dd>
-                  <dt>Fulfilment</dt><dd>{fulfilInfo.label}</dd>
-                  {product.listed && (<><dt>Listed since</dt><dd>{product.listed}</dd></>)}
-                </dl>
-              </div>
-            </div>
-
-            <div className="pd__section">
-              <h2>Reviews ({product.reviews})</h2>
-              <div style={{ maxWidth: '760px' }}>
-                {/* The catalogue's all-time figure, kept as-is. The bars beside it used
-                    to be invented — 65% for the modal star, 20% below it, 5% for the
-                    rest, computed from nothing. They now come from published reviews,
-                    and say so, because two numbers that disagree are better than one
-                    that is made up. */}
-                {product.rating !== null && product.reviews > 0 && (
-                  <div style={{ display: 'flex', gap: '32px', marginBottom: '28px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 'var(--text-5xl)', fontWeight: 800, color: 'var(--text)' }}>
-                        {product.rating.toFixed(1)}
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
-                        {[1, 2, 3, 4, 5].map((n) => (
-                          <Star key={n} size={20} fill={n <= Math.round(product.rating!) ? '#F5A623' : 'none'} color={n <= Math.round(product.rating!) ? '#F5A623' : 'var(--gray-300)'} />
-                        ))}
-                      </div>
-                      <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
-                        {product.reviews.toLocaleString()} all-time
-                      </div>
-                    </div>
-
-                    <div style={{ flex: 1, minWidth: '220px' }}>
-                      {agg.count > 0 ? (
-                        <>
-                          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: '8px' }}>
-                            {agg.average} from {agg.count} review{agg.count === 1 ? '' : 's'} on the marketplace
-                          </div>
-                          {[5, 4, 3, 2, 1].map((star) => {
-                            const c = agg.distribution[star - 1]
-                            const pct = agg.count > 0 ? Math.round((c / agg.count) * 100) : 0
-                            return (
-                              <div key={star} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                                <span style={{ fontSize: 'var(--text-xs)', width: '20px' }}>{star}★</span>
-                                <div style={{ flex: 1, height: '6px', background: 'var(--gray-100)', borderRadius: '3px', overflow: 'hidden' }}>
-                                  <div style={{ width: `${pct}%`, height: '100%', background: '#F5A623' }} />
-                                </div>
-                                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', width: '28px', textAlign: 'right' }}>{c}</span>
-                              </div>
-                            )
-                          })}
-                          {/* Counted, not converted to a percentage: "2 of 3 backed by an
-                              order" and "200 of 300" are different facts about a product,
-                              and 67% hides which one you are reading. */}
-                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '8px' }}>
-                            {backing.verified} of {backing.published} backed by an order on file
-                          </div>
-                        </>
-                      ) : (
-                        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', margin: 0 }}>
-                          No reviews written on the marketplace yet.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {reviews.length === 0 ? (
-                  <p style={{ color: 'var(--text-tertiary)' }}>No reviews yet. Buy this and you can be the first.</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                    {reviews.map(r => (
-                      <div key={r.id} style={{ borderTop: '1px solid var(--border-light)', paddingTop: '16px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                          <span style={{ color: '#F5A623', letterSpacing: '1px' }}>{stars(r.rating)}</span>
-                          <span style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>{r.title}</span>
-                          {/* Badged when the order is on file, silent otherwise. There is no
-                              "unverified" badge on purpose — it reads as an accusation against
-                              someone who may simply have bought the thing before this
-                              marketplace existed. */}
-                          {PROVENANCE_BADGE[provenanceOf(r)] && (
-                            <span style={{
-                              fontSize: 'var(--text-xs)', fontWeight: 600, padding: '2px 8px',
-                              borderRadius: '10px', background: 'var(--green-50, #ECFDF3)',
-                              color: 'var(--green-700, #067647)',
-                              border: '1px solid var(--green-200, #ABEFC6)',
-                            }}>
-                              {PROVENANCE_BADGE[provenanceOf(r)]}
-                            </span>
-                          )}
-                          <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                            {r.author} · {r.submitted}
-                          </span>
-                        </div>
-                        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: '8px 0 0', lineHeight: 1.6 }}>{r.body}</p>
-                        {r.reply_text && (
-                          <div style={{ marginTop: '10px', marginLeft: '12px', paddingLeft: '12px', borderLeft: '3px solid var(--brand-accent-dark)' }}>
-                            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>{r.reply_by} replied</div>
-                            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: '3px 0 0', lineHeight: 1.55 }}>{r.reply_text}</p>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
           </div>
 
           {/* The buying decision: held in view beside the page on a desktop. */}
@@ -453,6 +309,153 @@ export function ProductDetail({ product, onAddToCart, onNavigate, compact = fals
               ))}
             </div>
           </aside>
+
+          {/* What the product is: picture, overview, specifications, seller, reviews. */}
+          <div className="pd__main">
+
+            <div className="pd__section">
+              <h2>Overview</h2>
+              <p style={{ fontSize: 'var(--text-base)', lineHeight: 1.7, color: 'var(--text-secondary)', maxWidth: '720px' }}>
+                {product.description}
+              </p>
+              {product.tags.length > 0 && (
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginTop: '12px' }}>
+                  {product.tags.map((tag) => (
+                    <span key={tag} className="pill">{tag}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {specEntries.length > 0 && (
+              <div className="pd__section">
+                <details className="pd-acc">
+                  <summary>Specifications</summary>
+                  <dl>
+                    {specEntries.map(([k, v]) => (
+                      <div key={k} style={{ display: 'contents' }}>
+                        <dt>{k}</dt>
+                        <dd>{v}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </details>
+              </div>
+            )}
+
+            <div className="pd__section">
+              <h2>Seller</h2>
+              <div className="pd-acc">
+                <dl style={{ paddingTop: '16px' }}>
+                  <dt>Seller</dt><dd>{product.seller}</dd>
+                  <dt>Category</dt><dd style={{ textTransform: 'capitalize' }}>{product.sub_category || product.category_id}</dd>
+                  <dt>Pricing model</dt><dd style={{ textTransform: 'capitalize' }}>{product.model}</dd>
+                  <dt>Fulfilment</dt><dd>{fulfilInfo.label}</dd>
+                  {product.listed && (<><dt>Listed since</dt><dd>{product.listed}</dd></>)}
+                </dl>
+              </div>
+            </div>
+
+            <div className="pd__section">
+              <h2>Reviews ({product.reviews})</h2>
+              <div style={{ maxWidth: '760px' }}>
+                {/* The catalogue's all-time figure, kept as-is. The bars beside it used
+                    to be invented — 65% for the modal star, 20% below it, 5% for the
+                    rest, computed from nothing. They now come from published reviews,
+                    and say so, because two numbers that disagree are better than one
+                    that is made up. */}
+                {product.rating !== null && product.reviews > 0 && (
+                  <div style={{ display: 'flex', gap: '32px', marginBottom: '28px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 'var(--text-5xl)', fontWeight: 800, color: 'var(--text)' }}>
+                        {product.rating.toFixed(1)}
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
+                        {[1, 2, 3, 4, 5].map((n) => (
+                          <Star key={n} size={20} fill={n <= Math.round(product.rating!) ? '#F5A623' : 'none'} color={n <= Math.round(product.rating!) ? '#F5A623' : 'var(--gray-300)'} />
+                        ))}
+                      </div>
+                      <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
+                        {product.reviews.toLocaleString()} all-time
+                      </div>
+                    </div>
+
+                    <div style={{ flex: 1, minWidth: '220px' }}>
+                      {agg.count > 0 ? (
+                        <>
+                          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: '8px' }}>
+                            {agg.average} from {agg.count} review{agg.count === 1 ? '' : 's'} on the marketplace
+                          </div>
+                          {[5, 4, 3, 2, 1].map((star) => {
+                            const c = agg.distribution[star - 1]
+                            const pct = agg.count > 0 ? Math.round((c / agg.count) * 100) : 0
+                            return (
+                              <div key={star} style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                                <span style={{ fontSize: 'var(--text-xs)', width: '20px' }}>{star}★</span>
+                                <div style={{ flex: 1, height: '6px', background: 'var(--gray-100)', borderRadius: '3px', overflow: 'hidden' }}>
+                                  <div style={{ width: `${pct}%`, height: '100%', background: '#F5A623' }} />
+                                </div>
+                                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', width: '28px', textAlign: 'right' }}>{c}</span>
+                              </div>
+                            )
+                          })}
+                          {/* Counted, not converted to a percentage: "2 of 3 backed by an
+                              order" and "200 of 300" are different facts about a product,
+                              and 67% hides which one you are reading. */}
+                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '8px' }}>
+                            {backing.verified} of {backing.published} backed by an order on file
+                          </div>
+                        </>
+                      ) : (
+                        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', margin: 0 }}>
+                          No reviews written on the marketplace yet.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {reviews.length === 0 ? (
+                  <p style={{ color: 'var(--text-tertiary)' }}>No reviews yet. Buy this and you can be the first.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    {reviews.map(r => (
+                      <div key={r.id} style={{ borderTop: '1px solid var(--border-light)', paddingTop: '16px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                          <span style={{ color: '#F5A623', letterSpacing: '1px' }}>{stars(r.rating)}</span>
+                          <span style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>{r.title}</span>
+                          {/* Badged when the order is on file, silent otherwise. There is no
+                              "unverified" badge on purpose — it reads as an accusation against
+                              someone who may simply have bought the thing before this
+                              marketplace existed. */}
+                          {PROVENANCE_BADGE[provenanceOf(r)] && (
+                            <span style={{
+                              fontSize: 'var(--text-xs)', fontWeight: 600, padding: '2px 8px',
+                              borderRadius: '10px', background: 'var(--green-50, #ECFDF3)',
+                              color: 'var(--green-700, #067647)',
+                              border: '1px solid var(--green-200, #ABEFC6)',
+                            }}>
+                              {PROVENANCE_BADGE[provenanceOf(r)]}
+                            </span>
+                          )}
+                          <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                            {r.author} · {r.submitted}
+                          </span>
+                        </div>
+                        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: '8px 0 0', lineHeight: 1.6 }}>{r.body}</p>
+                        {r.reply_text && (
+                          <div style={{ marginTop: '10px', marginLeft: '12px', paddingLeft: '12px', borderLeft: '3px solid var(--brand-accent-dark)' }}>
+                            <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>{r.reply_by} replied</div>
+                            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', margin: '3px 0 0', lineHeight: 1.55 }}>{r.reply_text}</p>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 

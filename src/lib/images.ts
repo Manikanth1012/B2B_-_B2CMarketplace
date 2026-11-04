@@ -1,6 +1,5 @@
 const PEXELS = 'https://images.pexels.com/photos'
 const Q = '?auto=compress&cs=tinysrgb&w=600'
-const Q_HERO = '?auto=compress&cs=tinysrgb&w=1280'
 
 // Verified Pexels photo URLs — all return HTTP 200
 export const PRODUCT_IMAGES: Record<string, string> = {
@@ -117,9 +116,6 @@ export const CATEGORY_IMAGES: Record<string, string> = {
   device: `${PEXELS}/699122/pexels-photo-699122.jpeg${Q}`,
   content: `${PEXELS}/2881229/pexels-photo-2881229.jpeg${Q}`,
 }
-
-// Hero section background
-export const HERO_IMAGE = `${PEXELS}/207580/pexels-photo-207580.jpeg${Q_HERO}`
 
 export function getProductImage(productId: string): string {
   return PRODUCT_IMAGES[productId] || `${PEXELS}/356056/pexels-photo-356056.jpeg${Q}`

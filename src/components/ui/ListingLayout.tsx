@@ -40,8 +40,10 @@ function FilterGroups({ filters, prefix }: { filters: FilterGroupDef[]; prefix: 
    and behind a button on a narrow one, where a side panel would leave the grid
    one card wide. */
 export function ListingLayout({
-  title, subtitle, breadcrumb, count, total, search, sort, filters, onClear, above, children,
+  title, subtitle, breadcrumb, count, total, search, sort, filters, onClear, above, children, headingLevel = 'h1',
 }: {
+  /* The public audience pages already carry an h1 in their hero. */
+  headingLevel?: 'h1' | 'h2'
   title: string
   subtitle?: string
   breadcrumb?: { label: string; onClick?: () => void }[]
@@ -54,6 +56,7 @@ export function ListingLayout({
   above?: React.ReactNode
   children: React.ReactNode
 }) {
+  const Heading = headingLevel
   const [sheet, setSheet] = useState(false)
   const opener = useRef<HTMLButtonElement>(null)
   const panel = useRef<HTMLDivElement>(null)
@@ -110,7 +113,7 @@ export function ListingLayout({
       )}
       <div className="listing__head">
         <div>
-          <h1 className="listing__title" id={headingId}>{title}</h1>
+          <Heading className="listing__title" id={headingId}>{title}</Heading>
           {subtitle && <p className="listing__sub">{subtitle}</p>}
         </div>
       </div>

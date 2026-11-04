@@ -84,7 +84,7 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, onSearch, children
      button. */
   useEffect(() => {
     if (!menuOpen) return
-    navRef.current?.querySelector<HTMLElement>('input, button, a[href]')?.focus()
+    navRef.current?.querySelector<HTMLElement>('button, a[href]')?.focus()
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       setMenuOpen(false)

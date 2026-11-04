@@ -78,18 +78,18 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
             </div>
           ) : (
             active.map((item) => (
-              <div key={item.id} className="line">
+              <div key={item.id} className="cart-line">
                 {/* Thumbnail */}
-                <div className="line__thumb">
+                <div className="cart-line__thumb">
                   <img src={getProductImage(item.product_id)} alt={item.product?.name || ''} />
                 </div>
 
                 {/* Info */}
-                <div className="line__info">
-                  <div className="line__seller">{item.product?.seller}</div>
-                  <h4 className="line__name">{item.product?.name}</h4>
-                  <div className="line__row">
-                    <div className="stepper">
+                <div className="cart-line__info">
+                  <div className="cart-line__seller">{item.product?.seller}</div>
+                  <h4 className="cart-line__name">{item.product?.name}</h4>
+                  <div className="cart-line__row">
+                    <div className="cart-stepper">
                       <button
                         onClick={() => onUpdateQuantity(item.id, item.quantity - 1)}
                         aria-label="Decrease"
@@ -104,13 +104,13 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
                         <Plus size={14} />
                       </button>
                     </div>
-                    <span className="line__price">
+                    <span className="cart-line__price">
                       {fmt((item.product?.price || 0) * item.quantity)}
                     </span>
                   </div>
                 </div>
 
-                <div className="line__actions">
+                <div className="cart-line__actions">
                   <button
                     onClick={() => onSetSaved(item.id, true)}
                     className="drawer-icon-btn"
@@ -145,16 +145,16 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
               {saved.map(item => {
                 const returnable = canMoveToBasket(item)
                 return (
-                  <div key={item.id} className="line line--saved">
-                    <div className="line__thumb">
+                  <div key={item.id} className="cart-line cart-line--saved">
+                    <div className="cart-line__thumb">
                       <img src={getProductImage(item.product_id)} alt="" />
                     </div>
-                    <div className="line__info">
-                      <div className="line__seller">{item.product?.seller}</div>
-                      <h4 className="line__name" style={{ fontWeight: 500, marginBottom: '4px' }}>
+                    <div className="cart-line__info">
+                      <div className="cart-line__seller">{item.product?.seller}</div>
+                      <h4 className="cart-line__name" style={{ fontWeight: 500, marginBottom: '4px' }}>
                         {item.product?.name}
                       </h4>
-                      <div className="line__row">
+                      <div className="cart-line__row">
                         <button
                           onClick={() => onSetSaved(item.id, false)}
                           disabled={!returnable}
@@ -164,12 +164,12 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
                         >
                           <Undo2 size={12} /> {returnable ? 'Move to basket' : 'Out of stock'}
                         </button>
-                        <span className="line__price" style={{ fontWeight: 600 }}>
+                        <span className="cart-line__price" style={{ fontWeight: 600 }}>
                           {fmt((item.product?.price || 0) * item.quantity)}
                         </span>
                       </div>
                     </div>
-                    <div className="line__actions">
+                    <div className="cart-line__actions">
                       <button
                         onClick={() => onRemove(item.id)}
                         className="drawer-icon-btn"
@@ -199,11 +199,11 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
                 figures were right and the layout said something else. */}
             {money.inclusive ? (
               <>
-                <div className="totals totals--grand">
+                <div className="cart-totals cart-totals--grand">
                   <span>Total</span>
                   <span>{fmt(money.total)}</span>
                 </div>
-                <div className="totals totals--note" style={{ marginBottom: '16px' }}>
+                <div className="cart-totals cart-totals--note" style={{ marginBottom: '16px' }}>
                   <span>
                     Includes {taxLabel}{market ? ` at ${market.tax_rate}%` : ''} — nothing is added at checkout
                   </span>
