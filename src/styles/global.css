@@ -48,6 +48,7 @@
   --bg-hover: #F3F4F6;
   --border: #E3EAF3;
   --border-light: #EEF2F8;
+  --border-strong: #7A8699;    /* 3.69:1 on --bg-card, 3.43:1 on --bg-alt — control edges (WCAG 1.4.11) */
 
   /* Text */
   --text: #102344;

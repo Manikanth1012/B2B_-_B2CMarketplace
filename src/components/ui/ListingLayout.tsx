@@ -10,19 +10,21 @@ export interface FilterGroupDef {
   onSelect: (v: string | null) => void
 }
 
-function FilterGroups({ filters }: { filters: FilterGroupDef[] }) {
+/* Both the side panel and the sheet render these groups, and radios that share a
+   name form one browser group, so each copy gets its own prefix. */
+function FilterGroups({ filters, prefix }: { filters: FilterGroupDef[]; prefix: string }) {
   return (
     <>
       {filters.filter(g => g.options.length > 0).map(g => (
         <fieldset key={g.id} className="filter-group">
           <legend className="filter-group__title">{g.title}</legend>
           <label className="filter-option">
-            <input type="radio" name={g.id} checked={g.selected === null} onChange={() => g.onSelect(null)} />
+            <input type="radio" name={`${prefix}-${g.id}`} checked={g.selected === null} onChange={() => g.onSelect(null)} />
             <span>All</span>
           </label>
           {g.options.map(o => (
             <label key={o.value} className="filter-option">
-              <input type="radio" name={g.id} checked={g.selected === o.value} onChange={() => g.onSelect(o.value)} />
+              <input type="radio" name={`${prefix}-${g.id}`} checked={g.selected === o.value} onChange={() => g.onSelect(o.value)} />
               <span>{o.label}</span>
               {o.count !== undefined && <span className="filter-option__count">{o.count}</span>}
             </label>
@@ -55,17 +57,43 @@ export function ListingLayout({
   const [sheet, setSheet] = useState(false)
   const opener = useRef<HTMLButtonElement>(null)
   const panel = useRef<HTMLDivElement>(null)
+  const searchInput = useRef<HTMLInputElement>(null)
   const headingId = useId()
+  const uid = useId()
   const active = search.value !== '' || filters.some(g => g.selected !== null)
+
+  // The opener is display:none on a wide screen. If the window was widened while
+  // the sheet was open, focus would be lost, so fall back to the search box.
+  const restoreFocus = () => {
+    const o = opener.current
+    ;(o && o.offsetParent !== null ? o : searchInput.current)?.focus()
+  }
 
   useEffect(() => {
     if (!sheet) return
     panel.current?.querySelector<HTMLElement>('input, button')?.focus()
+    // A modal sheet over a scrolling page: the page behind must not scroll.
+    const prevOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setSheet(false); opener.current?.focus() }
+      if (e.key === 'Escape') { setSheet(false); restoreFocus(); return }
+      if (e.key !== 'Tab' || !panel.current) return
+      // aria-modal alone does not trap focus, so Tab wraps inside the sheet.
+      const items = Array.from(panel.current.querySelectorAll<HTMLElement>(
+        'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'))
+      if (items.length === 0) return
+      const first = items[0]
+      const last = items[items.length - 1]
+      const current = document.activeElement
+      const inside = current instanceof Node && panel.current.contains(current)
+      if (e.shiftKey && (current === first || !inside)) { e.preventDefault(); last.focus() }
+      else if (!e.shiftKey && (current === last || !inside)) { e.preventDefault(); first.focus() }
     }
     document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('keydown', onKey)
+      document.body.style.overflow = prevOverflow
+    }
   }, [sheet])
 
   return (
@@ -95,14 +123,14 @@ export function ListingLayout({
             <span>Filters</span>
             {onClear && active && <button className="ui-link" onClick={onClear}>Clear all</button>}
           </div>
-          <FilterGroups filters={filters} />
+          <FilterGroups filters={filters} prefix={`${uid}-panel`} />
         </aside>
 
         <div className="listing__main">
           <div className="listing__toolbar">
             <label className="listing__search">
               <Search size={16} aria-hidden />
-              <input type="search" value={search.value} placeholder={search.placeholder}
+              <input ref={searchInput} type="search" value={search.value} placeholder={search.placeholder}
                 aria-label={search.placeholder} onChange={e => search.onChange(e.target.value)} />
             </label>
             <button ref={opener} className="btn btn-sm btn-secondary listing__filters-btn"
@@ -124,17 +152,17 @@ export function ListingLayout({
       </div>
 
       {sheet && (
-        <div className="sheet-backdrop" onClick={() => { setSheet(false); opener.current?.focus() }}>
+        <div className="sheet-backdrop" onClick={() => { setSheet(false); restoreFocus() }}>
           <div ref={panel} className="sheet" role="dialog" aria-modal="true" aria-label="Filters" onClick={e => e.stopPropagation()}>
             <div className="listing__panel-head">
               <span>Filters</span>
               <button className="btn btn-sm btn-ghost" aria-label="Close filters"
-                onClick={() => { setSheet(false); opener.current?.focus() }}><X size={16} /></button>
+                onClick={() => { setSheet(false); restoreFocus() }}><X size={16} /></button>
             </div>
-            <FilterGroups filters={filters} />
+            <FilterGroups filters={filters} prefix={`${uid}-sheet`} />
             <div className="sheet__foot">
               {onClear && active && <button className="btn btn-secondary" onClick={onClear}>Clear all</button>}
-              <button className="btn btn-cyan" onClick={() => { setSheet(false); opener.current?.focus() }}>
+              <button className="btn btn-cyan" onClick={() => { setSheet(false); restoreFocus() }}>
                 Show {count} {count === 1 ? 'result' : 'results'}
               </button>
             </div>

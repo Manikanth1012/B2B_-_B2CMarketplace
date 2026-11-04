@@ -52,6 +52,8 @@ const PAIRS: [fg: string, bg: string, min: number][] = [
   ['danger', 'danger-bg', 4.5],
   ['info', 'info-bg', 4.5],
   ['electric', 'bg-card', 3],           // focus ring: a UI glyph, not text
+  ['border-strong', 'bg-card', 3],      // form-control boundary (WCAG 1.4.11)
+  ['border-strong', 'bg-alt', 3],
 ]
 
 describe('design tokens', () => {
