@@ -261,7 +261,7 @@ function RuleRow({ entry, busy, sample, onEnabled, onKind, onReset }: {
           title={rule.mandatory ? 'This one cannot be switched off — choose where it reaches you instead' : undefined}
           style={{
             width: '44px', height: '24px', borderRadius: '12px', flexShrink: 0,
-            background: entry.enabled ? 'var(--brand-accent)' : 'var(--border)',
+            background: entry.enabled ? 'var(--brand-accent-dark)' : 'var(--border)',
             border: 'none', cursor: rule.mandatory ? 'not-allowed' : 'pointer',
             position: 'relative', transition: 'background 200ms ease',
             opacity: rule.mandatory ? 0.6 : 1,

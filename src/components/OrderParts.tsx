@@ -87,7 +87,7 @@ function PartRail({ part, showSeller }: { part: Part; showSeller: boolean }) {
                   <div style={{
                     width: '20px', height: '20px', borderRadius: '50%',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: done ? 'var(--brand-accent)' : 'var(--bg-alt)',
+                    background: done ? 'var(--brand-accent-dark)' : 'var(--bg-alt)',
                     color: done ? 'white' : 'var(--text-tertiary)',
                   }}>
                     {done ? <Check size={11} /> : <Clock size={11} />}
