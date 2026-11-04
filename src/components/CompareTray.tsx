@@ -229,26 +229,3 @@ const td: React.CSSProperties = {
   padding: '11px 16px', borderBottom: '1px solid var(--border-light)',
   fontSize: 'var(--text-sm)', verticalAlign: 'top',
 }
-
-/* The toggle that lives on a product card. */
-export function CompareToggle({ on, onClick, disabled }: {
-  on: boolean; onClick: () => void; disabled?: boolean
-}) {
-  return (
-    <button
-      onClick={e => { e.stopPropagation(); onClick() }}
-      disabled={disabled}
-      title={on ? 'Remove from the comparison' : disabled ? `You can compare ${COMPARE_CAP} at a time` : 'Compare'}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: '5px',
-        padding: '5px 9px', borderRadius: 'var(--radius)',
-        border: `1px solid ${on ? 'var(--brand-navy)' : 'var(--border)'}`,
-        background: on ? 'var(--brand-navy)' : 'white',
-        color: on ? 'white' : disabled ? 'var(--text-tertiary)' : 'var(--text-secondary)',
-        fontSize: 'var(--text-xs)', fontWeight: 600,
-        cursor: disabled && !on ? 'not-allowed' : 'pointer',
-      }}>
-      <Scale size={12} /> {on ? 'Comparing' : 'Compare'}
-    </button>
-  )
-}

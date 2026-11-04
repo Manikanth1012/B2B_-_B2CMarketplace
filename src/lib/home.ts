@@ -4,7 +4,7 @@
 import type { Category } from '../types'
 import type { PublicPage } from '../types/view'
 import {
-  retailCategories, categoryDestination, isSellable, showcaseOrder, soldTo,
+  retailCategories, categoryDestination, isSellable, showcaseOrder, soldTo, pricedFor,
   type SellableProduct, type Shopper,
 } from './storefront'
 import { HERO, CAROUSEL, BANNERS, HOME } from './assets'
@@ -22,9 +22,9 @@ export function featuredProducts<T extends SellableProduct & { currency?: string
   currency?: string,
 ): T[] {
   const shelves = new Set(retailCategories(categories).map(c => c.id))
-  return products
-    .filter(p => shelves.has(p.category_id) && isSellable(p) && soldTo(p, 'consumer')
-      && (!currency || !p.currency || p.currency === currency))
+  const pool = currency ? pricedFor(products, currency) : products
+  return pool
+    .filter(p => shelves.has(p.category_id) && isSellable(p) && soldTo(p, 'consumer'))
     .sort(showcaseOrder)
     .slice(0, n)
 }

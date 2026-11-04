@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useId } from 'react'
 import {
   Check, CreditCard, Wallet, Building2, Smartphone, MapPin, Landmark, Receipt,
   CalendarClock,
@@ -51,6 +51,7 @@ interface CheckoutProps {
 }
 
 export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) {
+  const fieldId = useId()
   const [step, setStep] = useState<'details' | 'payment' | 'confirm'>('details')
   // step can be 'confirm' after order placement
   const [name, setName] = useState('')
@@ -363,40 +364,19 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
 
   return (
     <section style={{ padding: '32px 0 64px' }}>
-      <div className="container" style={{ maxWidth: '900px' }}>
-        <h1 style={{ fontSize: 'var(--text-3xl)', fontWeight: 700, marginBottom: '32px' }}>Checkout</h1>
+      <div className="container">
+        <h1 style={{ fontSize: 'var(--text-3xl)', fontWeight: 700, marginBottom: '24px' }}>Checkout</h1>
 
-        {/* Steps indicator */}
-        <div style={{ display: 'flex', gap: '0', marginBottom: '32px' }}>
-          {['details', 'payment', 'confirm'].map((s, i) => (
-            <div key={s} style={{ display: 'flex', alignItems: 'center', flex: i < 2 ? 1 : 'none' }}>
-              <div style={{
-                width: '32px',
-                height: '32px',
-                borderRadius: '50%',
-                background: (step === s) || (step as string === 'confirm' && s !== 'confirm') ? 'var(--brand-accent-dark)' : 'var(--gray-200)',
-                color: (step === s) || (step as string === 'confirm' && s !== 'confirm') ? 'white' : 'var(--text-tertiary)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 700,
-              }}>
-                {i + 1}
-              </div>
-              {i < 2 && (
-                <div style={{ flex: 1, height: '2px', background: 'var(--gray-200)', margin: '0 8px' }} />
-              )}
-            </div>
-          ))}
-        </div>
-
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '32px' }}>
+        <div className="co">
           {/* Form */}
           <div>
+            <div className={`co__step${step === 'details' ? '' : ' co__step--idle'}`}>
+              <div className="co__step-head">
+                <span className="co__step-num" aria-hidden="true">1</span>
+                <h2>Delivery details</h2>
+              </div>
             {step === 'details' && (
               <div className="fade-in">
-                <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 600, marginBottom: '20px' }}>Delivery details</h2>
                 {addresses.length > 0 && (
                   <div style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                     {orderedAddresses(addresses).map(a => (
@@ -438,11 +418,11 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                   <Input label="Address" value={address} onChange={(v) => { setAddress(v); setChosen(null) }} full />
                   <Input label="City" value={city} onChange={(v) => { setCity(v); setChosen(null) }} />
                   <div>
-                    <label style={{ fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: '6px', display: 'block' }}>Country</label>
+                    <label className="co__field-label" htmlFor={`${fieldId}-country`}>Country</label>
                     <select
+                      id={`${fieldId}-country`}
                       value={country}
                       onChange={(e) => setCountry(e.target.value)}
-                      style={inputStyle}
                     >
                       {/* The markets the marketplace actually trades in, from
                           `markets` — not a hard-coded six. Singapore, Germany
@@ -469,10 +449,16 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                 </button>
               </div>
             )}
+            </div>
+
+            <div className={`co__step${step === 'payment' ? '' : ' co__step--idle'}`}>
+              <div className="co__step-head">
+                <span className="co__step-num" aria-hidden="true">2</span>
+                <h2>Payment method</h2>
+              </div>
 
             {step === 'payment' && (
               <div className="fade-in">
-                <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 600, marginBottom: '20px' }}>Payment method</h2>
                 {!catalogue ? (
                   <div style={{ textAlign: 'center', padding: '24px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
                 ) : offers.length === 0 ? (
@@ -606,32 +592,19 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                   <button onClick={() => setStep('details')} className="btn btn-secondary btn-lg">
                     Back
                   </button>
-                  <button
-                    onClick={handleSubmit}
-                    disabled={processing || !handoff.ok}
-                    className="btn btn-primary btn-lg"
-                    style={{ flex: 1 }}
-                  >
-                    {processing ? 'Taking you to the provider…' : `Pay ${fmt(total)}`}
-                  </button>
                 </div>
               </div>
             )}
+            </div>
           </div>
 
           {/* Order summary */}
-          <div style={{
-            background: 'var(--bg-alt)',
-            borderRadius: 'var(--radius-lg)',
-            padding: '20px',
-            border: '1px solid var(--border)',
-            height: 'fit-content',
-          }}>
-            <h3 style={{ fontWeight: 700, marginBottom: '16px' }}>Order Summary</h3>
+          <div className="co__summary">
+            <h3>Order Summary</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
               {cartItems.map((item) => (
-                <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-sm)' }}>
-                  <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '180px' }}>
+                <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 'var(--text-sm)' }}>
+                  <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                     {item.product?.name} × {item.quantity}
                   </span>
                   <span style={{ fontWeight: 500 }}>{fmt((item.product?.price || 0) * item.quantity)}</span>
@@ -670,21 +643,23 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                 </>
               )}
             </div>
+            {/* The place-order button sits with the total it commits to. It only
+                appears once a payment method is being chosen. */}
+            {step === 'payment' && (
+              <button
+                onClick={handleSubmit}
+                disabled={processing || !handoff.ok}
+                className="btn btn-cyan btn-lg"
+                style={{ width: '100%', marginTop: '16px' }}
+              >
+                {processing ? 'Taking you to the provider…' : `Pay ${fmt(total)}`}
+              </button>
+            )}
           </div>
         </div>
       </div>
     </section>
   )
-}
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '10px 14px',
-  borderRadius: 'var(--radius)',
-  border: '1px solid var(--border)',
-  background: 'white',
-  fontSize: 'var(--text-sm)',
-  outline: 'none',
 }
 
 function Input({ label, value, onChange, type = 'text', required, full }: {
@@ -695,16 +670,17 @@ function Input({ label, value, onChange, type = 'text', required, full }: {
   required?: boolean
   full?: boolean
 }) {
+  const id = useId()
   return (
     <div style={{ gridColumn: full ? '1 / -1' : undefined }}>
-      <label style={{ fontSize: 'var(--text-sm)', fontWeight: 500, marginBottom: '6px', display: 'block' }}>
+      <label className="co__field-label" htmlFor={id}>
         {label}{required && ' *'}
       </label>
       <input
+        id={id}
         type={type}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        style={inputStyle}
       />
     </div>
   )

@@ -137,7 +137,7 @@ Two columns on desktop, stacked on phone:
   when out of stock) — none added.
 
 Only fields already on the product are shown. `ProductDetail.tsx` keeps its
-props; `PublicProductModal` and `EnterpriseListingModal` keep using it.
+props; `PublicProductModal` keeps using it. (`EnterpriseListingModal` has its own markup and never used `ProductDetail`; it is not restyled here.)
 
 ### 2.5 Cart drawer and checkout
 

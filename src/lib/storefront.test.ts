@@ -3,7 +3,7 @@ import {
   promoStrip, bannerDestination, assignImages,
   retailCategories, enterpriseCategories, categoriesFor, shoppableBy, categoriesForPage, categoryDestination,
   soldTo, productsFor,
-  productsForPage, isSellable, canAddToBasket, exampleProducts,
+  productsForPage, isSellable, canAddToBasket, exampleProducts, pricedFor, cardAction,
   type PublicBanner, type SellableProduct,
 } from './storefront'
 import type { Category } from '../types'
@@ -354,5 +354,31 @@ describe('who a particular product is sold to', () => {
   it('still refuses a listing that is not live, whoever it is for', () => {
     const draft = product({ id: 'd', category_id: 'device', status: 'pending', audiences: ['consumer'] })
     expect(productsFor([draft], 'consumer').map(p => p.id)).toEqual([])
+  })
+})
+
+describe('pricedFor', () => {
+  const rows = [
+    { id: 'a', currency: 'INR' },
+    { id: 'b', currency: 'USD' },
+    { id: 'c' },
+  ]
+  it('keeps what is priced in the visitor’s currency and drops the rest', () => {
+    expect(pricedFor(rows, 'INR').map(r => r.id)).toEqual(['a', 'c'])
+  })
+  it('keeps rows that were never repriced, since they carry no currency to judge', () => {
+    const bare: { id: string; currency?: string } = { id: 'x' }
+    expect(pricedFor([bare], 'KES').map(r => r.id)).toEqual(['x'])
+  })
+})
+
+describe('cardAction', () => {
+  it('asks a shopper to add to the basket and a business buyer to add to the requisition', () => {
+    expect(cardAction('retail', { stock: 'In stock' })).toEqual({ label: 'Add to basket', disabled: false })
+    expect(cardAction('enterprise', { stock: 'In stock' })).toEqual({ label: 'Add to requisition', disabled: false })
+  })
+  it('will not offer what cannot be added', () => {
+    expect(cardAction('retail', { stock: 'Out of stock' })).toEqual({ label: 'Out of stock', disabled: true })
+    expect(cardAction('enterprise', { stock: 'out' })).toEqual({ label: 'Out of stock', disabled: true })
   })
 })

@@ -101,6 +101,11 @@ const STOCK_TEXT: Record<string, string> = {
   in: 'In stock', low: 'Low stock', out: 'Out of stock', preorder: 'Pre-order',
 }
 
+/** The words for a catalogue stock code; an unknown code is shown as it is. */
+export function stockLabel(stock: string): string {
+  return STOCK_TEXT[stock] ?? stock
+}
+
 const MODEL_TEXT: Record<string, string> = {
   monthly: 'Monthly subscription', annual: 'Annual subscription',
   oneoff: 'One-off purchase', usage: 'Pay per use',

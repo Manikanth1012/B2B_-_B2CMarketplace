@@ -102,7 +102,7 @@ export type PublicPage = 'landing' | 'partner' | 'retail' | 'enterprise'
    Rather than introduce one here (which would touch every console), the
    existing state machine gains a third surface. */
 export type Surface =
-  | { kind: 'public'; page: PublicPage }
+  | { kind: 'public'; page: PublicPage; q?: string }
   /* Signing in.
 
      `demo` opens the four-persona chooser with its passwords already typed in —

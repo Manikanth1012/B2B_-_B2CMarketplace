@@ -19,7 +19,7 @@ export function FeaturedSection({ products, onOpen, onNavigate }: {
         action={{ label: 'View all products', onClick: () => onNavigate('retail') }} />
       <BentoGrid cols={6}>
         {products.map(p => (
-          <BentoCell key={p.id}><ProductCard product={p} onOpen={onOpen} /></BentoCell>
+          <BentoCell key={p.id}><ProductCard product={p} onOpen={() => onOpen(p)} /></BentoCell>
         ))}
         <BentoCell span={2}>
           <BentoCard

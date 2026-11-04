@@ -1,12 +1,12 @@
 import { useId } from 'react'
-import { Zap, ShieldCheck, Globe2, Sparkles, type LucideIcon } from 'lucide-react'
-import { BentoGrid, BentoCell, SectionHeader } from '../../ui'
+import { BentoGrid, BentoCell, SectionHeader, PhotoTile } from '../../ui'
+import { BANNERS } from '../../../lib/assets'
 
-const REASONS: { icon: LucideIcon; title: string; text: string }[] = [
-  { icon: Zap, title: 'Faster time to market', text: 'List once and sell to retail, business and reseller buyers.' },
-  { icon: ShieldCheck, title: 'Enterprise-grade security', text: 'Verified sellers, reviewed listings and governed settlement.' },
-  { icon: Globe2, title: 'Global reach', text: 'Priced and settled for every market the marketplace runs in.' },
-  { icon: Sparkles, title: 'Seamless experience', text: 'One basket, one checkout and one bill across every seller.' },
+const REASONS: { image: string; position?: string; title: string; text: string }[] = [
+  { image: BANNERS[8], title: 'Faster time to market', text: 'List once and sell to retail, business and reseller buyers.' },
+  { image: BANNERS[7], title: 'Enterprise-grade security', text: 'Verified sellers, reviewed listings and governed settlement.' },
+  { image: BANNERS[4], title: 'Global reach', text: 'Priced and settled for every market the marketplace runs in.' },
+  { image: BANNERS[1], position: 'right center', title: 'Seamless experience', text: 'One basket, one checkout and one bill across every seller.' },
 ]
 
 export function WhyAventa() {
@@ -15,13 +15,9 @@ export function WhyAventa() {
     <section className="container home-band" aria-labelledby={headingId}>
       <SectionHeader id={headingId} title="Why Aventa?" />
       <BentoGrid cols={4}>
-        {REASONS.map(({ icon: Icon, title, text }) => (
+        {REASONS.map(({ image, position, title, text }) => (
           <BentoCell key={title}>
-            <div className="bento-card bento-card--light why-tile">
-              <span className="why-tile__icon"><Icon size={22} aria-hidden /></span>
-              <h3 className="why-tile__title">{title}</h3>
-              <p className="why-tile__text">{text}</p>
-            </div>
+            <PhotoTile image={image} imagePosition={position} title={title} text={text} />
           </BentoCell>
         ))}
       </BentoGrid>

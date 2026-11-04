@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Menu, X } from 'lucide-react'
+import { Menu, Search, X } from 'lucide-react'
 import type { PublicPage } from '../../types/view'
 import { DiscoverMenu } from './DiscoverMenu'
 import { AventaWordmark } from '../ui/AventaWordmark'
 import { MarketPicker } from '../MarketPicker'
 import { useMarket } from '../../lib/MarketContext'
 import { marketProse } from '../../lib/money'
+import { searchTarget } from '../../lib/listing'
 
 const NAV: { id: PublicPage; label: string }[] = [
   { id: 'partner', label: 'Partners' },
@@ -55,10 +56,11 @@ function FooterGroup({ heading, items, page, onNavigate }: {
   )
 }
 
-export function PublicShell({ page, onNavigate, onDemoSignIn, children }: {
+export function PublicShell({ page, onNavigate, onDemoSignIn, onSearch, children }: {
   page: PublicPage
   onNavigate: (p: PublicPage) => void
   onDemoSignIn: () => void
+  onSearch: (q: string) => void
   children: React.ReactNode
 }) {
   /* Sorted the way the markets table orders them, so the footer, the storefront
@@ -66,6 +68,12 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, children }: {
   const { book } = useMarket()
   const regions = [...book.markets].sort((a, b) => a.sort_order - b.sort_order)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const submitSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    const t = searchTarget(query)
+    if (t) { setMenuOpen(false); onSearch(t.q) }
+  }
   const go = (p: PublicPage) => { setMenuOpen(false); onNavigate(p) }
   const navRef = useRef<HTMLElement>(null)
   const menuBtn = useRef<HTMLButtonElement>(null)
@@ -97,6 +105,12 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, children }: {
           </button>
 
           <nav ref={navRef} className={`site-nav${menuOpen ? ' is-open' : ''}`} aria-label="Marketplace">
+            {/* Phones hide the header field; the open menu carries its own. */}
+            <form className="site-search site-search--menu" role="search" onSubmit={submitSearch}>
+              <Search size={16} aria-hidden />
+              <input type="search" value={query} onChange={e => setQuery(e.target.value)}
+                placeholder="Search products, services…" aria-label="Search the marketplace" />
+            </form>
             <DiscoverMenu onNavigate={go} onDone={() => setMenuOpen(false)} />
             {NAV.map(n => (
               <button key={n.id} className="site-nav__item" onClick={() => go(n.id)}
@@ -105,6 +119,12 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, children }: {
               </button>
             ))}
           </nav>
+
+          <form className="site-search" role="search" onSubmit={submitSearch}>
+            <Search size={16} aria-hidden />
+            <input type="search" value={query} onChange={e => setQuery(e.target.value)}
+              placeholder="Search products, services…" aria-label="Search the marketplace" />
+          </form>
 
           <div className="site-header__end">
             {/* A visitor has no account and so no home market — this is the one
