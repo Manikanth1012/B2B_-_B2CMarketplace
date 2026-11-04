@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { ChevronDown } from 'lucide-react'
 import type { Category, Product } from '../../types'
 import type { PublicPage } from '../../types/view'
@@ -18,6 +18,8 @@ export function DiscoverMenu({ onNavigate, onDone }: {
   const [categories, setCategories] = useState<Category[] | null>(null)
   const [catalogue, setCatalogue] = useState<Product[]>([])
   const root = useRef<HTMLDivElement>(null)
+  const trigger = useRef<HTMLButtonElement>(null)
+  const panelId = useId()
 
   useEffect(() => {
     if (!open || categories) return
@@ -28,7 +30,7 @@ export function DiscoverMenu({ onNavigate, onDone }: {
   useEffect(() => {
     if (!open) return
     const onDoc = (e: MouseEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false) }
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setOpen(false); trigger.current?.focus() } }
     document.addEventListener('mousedown', onDoc)
     document.addEventListener('keydown', onKey)
     return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey) }
@@ -38,27 +40,29 @@ export function DiscoverMenu({ onNavigate, onDone }: {
 
   return (
     <div className="discover" ref={root}>
-      <button className="site-nav__item" aria-expanded={open} aria-haspopup="true" onClick={() => setOpen(o => !o)}>
+      <button ref={trigger} className="site-nav__item" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(o => !o)}>
         Discover <ChevronDown size={14} aria-hidden />
       </button>
       {open && categories && categories.length > 0 && (
-        <div className="discover__panel" role="menu" aria-label="Categories">
+        <ul id={panelId} className="discover__panel" aria-label="Categories">
           {categories.map(c => {
             const Icon = categoryIcon(c.id)
             const n = catalogue.length ? tileCount(c, catalogue) : null
             return (
-              <button key={c.id} className="discover__item" role="menuitem" onClick={() => go(c)}>
+              <li key={c.id}>
+              <button className="discover__item" onClick={() => go(c)}>
                 <span className="discover__icon"><Icon size={18} aria-hidden /></span>
                 <span>
                   <span className="discover__name">{c.name}</span>
-                  <span className="discover__meta" style={{ display: 'block' }}>
+                  <span className="discover__meta">
                     {n !== null ? `${n} ${n === 1 ? 'product' : 'products'} · ` : ''}{c.audience}
                   </span>
                 </span>
               </button>
+              </li>
             )
           })}
-        </div>
+        </ul>
       )}
     </div>
   )

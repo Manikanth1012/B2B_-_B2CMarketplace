@@ -213,8 +213,9 @@
   position: absolute; top: calc(100% + 8px); left: 0; z-index: 110; width: min(560px, 90vw);
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 12px;
   background: var(--bg-card); border-radius: var(--radius-card); box-shadow: var(--shadow-xl);
-  animation: fadeIn var(--transition) ease-out;
+  animation: fadeIn var(--transition) ease-out; list-style: none; margin: 0;
 }
+.discover__panel > li { display: contents; }
 @media (max-width: 899px) { .discover__panel { position: static; width: 100%; grid-template-columns: 1fr; margin-top: 4px; box-shadow: none; } }
 .discover__item {
   display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; border: none; border-radius: var(--radius-md);
@@ -226,7 +227,7 @@
   background: linear-gradient(135deg, rgba(22, 139, 255, 0.12), rgba(18, 205, 224, 0.16)); color: var(--blue);
 }
 .discover__name { font-size: var(--text-sm); font-weight: 700; }
-.discover__meta { font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.4; }
+.discover__meta { display: block; font-size: var(--text-xs); color: var(--text-tertiary); line-height: 1.4; }
 @media (prefers-reduced-motion: reduce) { .discover__panel { animation: none; } }
 
 /* ---------- Public footer ---------- */
