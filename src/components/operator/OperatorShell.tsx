@@ -22,9 +22,11 @@ interface OperatorShellProps {
 type NavItem = { id: OperatorView; label: string; icon: React.ReactNode }
 
 /* "Operations" was eighteen items in one list, which is a list you scroll
-   rather than one you find things in. It is four groups now, split by the job
-   being done (partners, commerce, money, service). Every item kept, and the
-   order within each group is the order it had inside Operations. */
+   rather than one you find things in. It is seven groups now, split by the job
+   being done (overview, partners & accounts, commerce, finance, service,
+   platform, governance). Every item kept. The order within a group follows the
+   reading order explained beside each item below — Inventory after Renewals,
+   Revenue Share ahead of Credit — not the order it had inside Operations. */
 const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
   {
     label: 'Overview',
@@ -129,6 +131,12 @@ export function OperatorShell({ view, onNavigate, onSignOut, children }: Operato
     if (next.has(label)) next.delete(label); else next.add(label)
     return next
   })
+  const onGroupHead = (label: string, holdsActive: boolean) => {
+    /* The group holding the current page is open whatever was clicked; toggling
+       it did nothing visible and was remembered, so it stayed open after you
+       left. Nothing to toggle, so nothing to remember. */
+    if (!holdsActive) toggleGroup(label)
+  }
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-alt)', display: 'flex' }}>
@@ -150,10 +158,10 @@ export function OperatorShell({ view, onNavigate, onSignOut, children }: Operato
       >
         <div className="cpe-side__brand">
           <div className="cpe-side__logos">
-            <img src="/assets/brand/6d-logo-white.png" alt="6D Marketplace" />
+            <img src="/assets/brand/6d-logo-white.png" alt="6D Technologies" />
             <AventaWordmark size={20} />
           </div>
-          <button onClick={() => setMobileNavOpen(false)} className="show-mobile" style={{ color: 'white' }}>
+          <button onClick={() => setMobileNavOpen(false)} className="show-mobile" aria-label="Close menu" style={{ color: 'white' }}>
             <X size={20} />
           </button>
         </div>
@@ -171,10 +179,12 @@ export function OperatorShell({ view, onNavigate, onSignOut, children }: Operato
                   type="button"
                   className="op-nav__head"
                   aria-expanded={expanded}
-                  aria-controls={panelId}
-                  onClick={() => toggleGroup(section.label)}
+                  aria-disabled={holdsActive ? 'true' : undefined}
+                  aria-controls={expanded ? panelId : undefined}
+                  onClick={() => onGroupHead(section.label, holdsActive)}
                 >
                   <span>{section.label}</span>
+                  {holdsActive && <span className="sr-only"> (open — contains the current page)</span>}
                   <ChevronDown size={14} className="op-nav__chev" aria-hidden="true" />
                 </button>
                 {expanded && (

@@ -68,3 +68,12 @@
 .cpe-desc { font-size: var(--text-sm); color: var(--text-secondary); line-height: 1.6; }
 .cpe-note { display: flex; gap: 8px; align-items: flex-start; font-size: var(--text-xs); color: var(--text-secondary); line-height: 1.6; }
 .pd--compact .pd__price { font-size: var(--text-2xl); }
+
+/* The sections inside the dialog are h3 (the title is the h2). They keep the
+   look the product page's h2 sections have in product-detail.css. */
+.pd--compact .pd__section h3 { font-size: var(--text-lg); font-weight: 700; color: var(--text); margin-bottom: 8px; }
+.pd--compact .pd-acc summary h3 { display: inline; margin: 0; font-size: inherit; }
+/* The buying panel stays in view while a long specification scrolls under it.
+   Sticks to the modal body, which is the scroller; below 1024px the layout is
+   one column and it stays in the flow (product-detail.css). */
+@media (min-width: 1024px) { .pd--compact .pd__buy { position: sticky; top: 0; } }
