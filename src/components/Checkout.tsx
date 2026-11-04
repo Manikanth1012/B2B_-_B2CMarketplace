@@ -388,7 +388,7 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                           display: 'flex', alignItems: 'flex-start', gap: '10px', textAlign: 'left',
                           padding: '12px 14px', borderRadius: 'var(--radius)', cursor: 'pointer',
                           border: `1px solid ${chosen === a.id ? 'var(--brand-accent-dark)' : 'var(--border)'}`,
-                          background: chosen === a.id ? 'rgba(0,166,166,0.06)' : 'white',
+                          background: chosen === a.id ? 'rgba(0, 198, 181, 0.06)' : 'white',
                         }}
                       >
                         <MapPin size={15} style={{ marginTop: '2px', color: chosen === a.id ? 'var(--brand-accent-dark)' : 'var(--text-tertiary)', flexShrink: 0 }} />
@@ -496,7 +496,7 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                             padding: '16px',
                             borderRadius: 'var(--radius)',
                             border: on ? '2px solid var(--brand-accent)' : '1px solid var(--border)',
-                            background: on ? 'rgba(0,166,166,0.05)' : 'white',
+                            background: on ? 'rgba(0, 198, 181, 0.05)' : 'white',
                             transition: 'all 150ms ease',
                             textAlign: 'left',
                             opacity: off ? 0.55 : 1,

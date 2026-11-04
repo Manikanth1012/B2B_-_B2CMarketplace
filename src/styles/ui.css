@@ -12,6 +12,8 @@
 
 .ui-link {
   display: inline-flex; align-items: center; gap: 6px; padding: 0;
+  /* WCAG 2.5.8: a 24px-tall hit area. inline-flex + align-items keeps the label centred, so nothing shifts. */
+  min-height: 24px;
   background: none; border: none; cursor: pointer;
   font-size: var(--text-sm); font-weight: 600; color: var(--blue);
 }
@@ -262,6 +264,10 @@
 }
 .hero-title { font-size: clamp(2rem, 3.3vw, 3.25rem); font-weight: 800; line-height: 1.05; letter-spacing: -0.025em; }
 .hero-title__accent { background: var(--grad-cyan); -webkit-background-clip: text; background-clip: text; color: transparent; }
+/* The gradient is painted through transparent text; forced-colors drops the gradient and would leave the headline invisible. */
+@media (forced-colors: active) {
+  .hero-title__accent { background: none; color: CanvasText; -webkit-text-fill-color: CanvasText; }
+}
 .hero-lede { font-size: var(--text-lg); line-height: 1.55; color: rgba(255, 255, 255, 0.84); }
 .hero-ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
 .hero-art { position: absolute; right: clamp(8px, 2vw, 24px); top: 50%; transform: translateY(-50%); width: min(52%, 600px); }
