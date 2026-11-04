@@ -75,5 +75,7 @@
 .pd--compact .pd-acc summary h3 { display: inline; margin: 0; font-size: inherit; }
 /* The buying panel stays in view while a long specification scrolls under it.
    Sticks to the modal body, which is the scroller; below 1024px the layout is
-   one column and it stays in the flow (product-detail.css). */
-@media (min-width: 1024px) { .pd--compact .pd__buy { position: sticky; top: 0; } }
+   one column and it stays in the flow (product-detail.css). Scoped under .c-modal
+   so it outranks product-detail.css's `.pd--compact .pd__buy { position: static }`,
+   which is imported later; the consumer page is untouched. */
+@media (min-width: 1024px) { .c-modal .pd--compact .pd__buy { position: sticky; top: 0; } }
