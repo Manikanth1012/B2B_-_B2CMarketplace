@@ -136,14 +136,14 @@
 
 /* ---------- Product card ---------- */
 .p-card {
-  display: flex; flex-direction: column; min-width: 0; height: 100%; cursor: pointer;
+  position: relative; display: flex; flex-direction: column; min-width: 0; height: 100%; cursor: pointer;
   background: var(--bg-card); border-radius: var(--radius-card); overflow: hidden; box-shadow: var(--shadow-card);
   transition: transform var(--transition), box-shadow var(--transition);
 }
 .p-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-lift); }
 .p-card__media { position: relative; aspect-ratio: 4 / 3; background: var(--bg-alt); }
 .p-card__media img { width: 100%; height: 100%; object-fit: cover; }
-.p-card__badge { position: absolute; top: 10px; right: 10px; }
+.p-card__badge { position: absolute; top: 10px; right: 10px; z-index: 2; }
 .p-card__body { display: flex; flex-direction: column; gap: 4px; flex: 1; padding: 14px 16px 16px; }
 .p-card__name { font-size: var(--text-sm); font-weight: 700; line-height: 1.35; color: var(--text); }
 .p-card__seller { font-size: var(--text-xs); color: var(--text-tertiary); }
@@ -295,8 +295,17 @@
 
 /* ---------- Product card controls (spec 2) ---------- */
 .p-card__was { margin-left: 6px; font-size: var(--text-xs); font-weight: 500; color: var(--text-tertiary); text-decoration: line-through; }
-.p-card__actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+.p-card__actions { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
 .p-card__actions .btn { flex: 1; justify-content: center; min-height: 36px; }
 .p-card__compare { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary); cursor: pointer; }
 .p-card__compare input { width: 16px; height: 16px; accent-color: var(--blue); }
 .p-card__actions .btn:disabled { opacity: 1; background: var(--gray-100); color: var(--text-secondary); cursor: not-allowed; }
+
+/* The product name is the one control that opens the card; its ::after stretches
+   over the whole card so a click anywhere opens it, while the badge, compare box
+   and buttons sit above (z-index 2) and stay separate controls. */
+.p-card__name { margin: 0; }
+.p-card__open { all: unset; cursor: pointer; font: inherit; color: inherit; }
+.p-card__open::after { content: ''; position: absolute; inset: 0; border-radius: inherit; z-index: 1; }
+.p-card__open:focus-visible { outline: none; }
+.p-card:focus-within:has(.p-card__open:focus-visible) { outline: 2px solid var(--electric); outline-offset: 2px; }

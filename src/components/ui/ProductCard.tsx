@@ -38,8 +38,8 @@ export function stockTone(stock: string): 'success' | 'warning' | 'danger' {
 
 /* A real catalogue row: its own photograph, name, seller, description, price in
    the currency it was priced in, and rating only when buyers have left one. The
-   whole card opens the product; the button and checkbox inside stop the click
-   so buying or comparing does not also open the page. */
+   name is the button that opens the product, stretched over the whole card by CSS;
+   the basket button and checkbox sit above it as separate, reachable controls. */
 export function ProductCard({ product: p, onOpen, action, compare, showStock, notify, priceNote }: {
   product: CardProduct
   onOpen: (p: CardProduct) => void
@@ -53,20 +53,9 @@ export function ProductCard({ product: p, onOpen, action, compare, showStock, no
   const price = (n: number) => fmtIn(n, p.currency ?? currency?.code ?? 'USD')
   const outOfStock = stockTone(p.stock) === 'danger'
   const hasRating = p.rating !== null && p.rating > 0
-  const stop = (e: React.SyntheticEvent) => e.stopPropagation()
 
   return (
-    <article
-      className="p-card"
-      role="button"
-      tabIndex={0}
-      aria-label={`${p.name}, ${price(p.price)} — view details`}
-      onClick={() => onOpen(p)}
-      onKeyDown={e => {
-        if (e.target !== e.currentTarget) return
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(p) }
-      }}
-    >
+    <article className="p-card">
       <div className="p-card__media">
         <img src={getProductImage(p.id)} alt="" loading="lazy" />
         {p.badge && (
@@ -76,7 +65,10 @@ export function ProductCard({ product: p, onOpen, action, compare, showStock, no
         )}
       </div>
       <div className="p-card__body">
-        <div className="p-card__name">{p.name}</div>
+        <h3 className="p-card__name">
+          <button type="button" className="p-card__open" onClick={() => onOpen(p)}
+            aria-label={`${p.name}, ${price(p.price)} — view details`}>{p.name}</button>
+        </h3>
         <div className="p-card__seller">{p.seller}</div>
         {p.description && <p className="p-card__desc">{p.description}</p>}
         {hasRating && (
@@ -97,10 +89,10 @@ export function ProductCard({ product: p, onOpen, action, compare, showStock, no
           {!action && <span className="ui-link" aria-hidden>View details <ArrowRight size={14} /></span>}
         </div>
         {(action || compare || (notify && outOfStock)) && (
-          <div className="p-card__actions" onClick={stop} onKeyDown={stop}>
+          <div className="p-card__actions">
             {compare && (
               <label className="p-card__compare">
-                <input type="checkbox" checked={compare.checked} disabled={compare.disabled} onChange={compare.onToggle} />
+                <input type="checkbox" aria-label={`Compare ${p.name}`} checked={compare.checked} disabled={compare.disabled} onChange={compare.onToggle} />
                 Compare
               </label>
             )}
