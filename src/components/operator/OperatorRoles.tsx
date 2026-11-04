@@ -335,7 +335,7 @@ function RoleModal({ role, caps, cats, onClose, onSave }: {
                     <div key={c.id} style={{
                       display: 'flex', alignItems: 'center', gap: '12px', padding: '6px 8px',
                       borderRadius: 'var(--radius)',
-                      background: level === 'none' ? 'transparent' : 'rgba(0,166,166,0.05)',
+                      background: level === 'none' ? 'transparent' : 'rgba(0, 198, 181, 0.05)',
                     }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)' }}>{c.label}</div>
