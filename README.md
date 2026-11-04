@@ -72,12 +72,17 @@ Supabase environment variables"* in the console means this file.
 |---|---|
 | `npm run dev` | Dev server on :5173 |
 | `npm run build` | Type-check and build to `dist/` (untracked — build where you serve) |
+| `npm run assets` | Resize source artwork in `images/` to WebP in `public/assets/mp/` and regenerate `src/lib/assets.ts` |
 | `npm test` | Unit tests — no network |
 | `npm run test:integration` | Integration tests **against the live project** |
 
 `npm run test:integration` signs in as the seeded demo personas and writes to the
 real database. It cleans up after itself, but do not point it at anything you would
 mind it touching.
+
+### Artwork
+
+Source images live in `images/`, which is tracked in git. `npm run assets` (`scripts/build-assets.mjs`, using `sharp`) writes resized WebP to `public/assets/mp/`, including `home/`, and regenerates `src/lib/assets.ts`, which exports the paths the app uses (`HOME` among them). The app never references `images/` directly; change the source, rerun the script, commit both outputs.
 
 ### Serving it
 
@@ -271,25 +276,58 @@ Both require `npm install jsdom`.
 
 ## Branding
 
-As requested: the **operator, consumer and partner** portals carry 6D brand identity — the approved 6D wordmark in the rail on brand navy `#0D1B4B` chrome. The **enterprise buyer** portal is neutral and carries **no 6D mark at all**, so it demos as genuinely white-label. A test asserts that gating both ways.
+The app is **Aventa**. Chrome is deep navy `#061B3A`, with the 6D mark beside the Aventa wordmark. The typeface is Inter, loaded in `index.html`.
 
-The mark ships at `assets/brand/`:
+The Aventa wordmark is an SVG component (`AventaWordmark`) because there is no Aventa logo file to ship. The 6D mark is different: it renders only from the approved PNG in `assets/brand/` (`6d-logo-white.png` on dark chrome, `6d-logo.png` on light surfaces) and is never redrawn in text, CSS or SVG. The enterprise buyer prototype stays neutral and carries no 6D mark, so it demos as white-label.
 
-| File | Use | SHA-256 |
+The static HTML prototypes at the repository root were built to an earlier palette (`#0D1B4B`, Poppins, `--nim-*` tokens). That is not the look of the React app, and the prototypes were not restyled.
+
+---
+
+## Design system
+
+The look is defined by tokens in `src/styles/global.css`. Existing variables were repointed rather than renamed, so the inline styles that read them changed everywhere without touching component files. Spec: [`docs/superpowers/specs/2026-11-04-ui-revamp-foundation-homepage-design.md`](docs/superpowers/specs/2026-11-04-ui-revamp-foundation-homepage-design.md).
+
+| Token | Was | Now |
 |---|---|---|
-| `6d-logo-white.png` | Dark rails and the launcher header | `1aee8800…78b7a` |
-| `6d-logo.png` | Light surfaces, if needed | `3b0835ac…0cee0a` |
+| `--brand-navy` | `#0B1F3A` | `#061B3A` |
+| `--brand-navy-light` | `#142A4A` | `#0B2850` |
+| `--brand-navy-dark` | `#060F1F` | `#03132B` |
+| `--brand-accent` | `#00A6A6` | `#00C6B5` |
+| `--brand-accent-light` | `#00C9C9` | `#12CDE0` |
+| `--brand-accent-dark` | `#007575` | unchanged: the AA-safe teal for small text |
+| `--bg-alt` | `#F9FAFB` | `#F4F7FC` |
+| `--text` | `#111827` | `#102344` |
+| `--text-secondary` | `#4B5563` | `#475569` |
+| `--text-tertiary` | `#6B7280` | `#5B6B82` |
+| `--border` | `#E5E7EB` | `#E3EAF3` |
 
-Neither hash matches the one recorded in the nim-ui-design-system-v2 skill, which refers to a different file. These are the assets you supplied, used as-is and never reconstructed in text, CSS or SVG. Worth confirming with the UI-1 owner that they are the approved versions.
+New: `--blue #0756A5`, `--electric #168BFF`, `--cyan #12CDE0`, `--teal #00C6B5`, `--grad-navy`, `--grad-cyan`, `--shadow-card`, `--shadow-lift`, `--radius-card` (16px).
 
-Brand identity is applied to the application chrome only. The workspace surface stays on the nim contract tokens in every portal, so switching brand does not change density, type, state colour or behaviour — which is the point of a white-label platform.
+`--text-tertiary` is `#5B6B82`, not the `#64748B` the design brief suggested: that slate measures 4.43:1 on the new `#F4F7FC` ground, under AA. `#5B6B82` clears 4.5:1 on both white and `--bg-alt`.
 
-Two notes worth raising before this goes in front of anyone:
+**Colour roles.** Teal, cyan and electric (and the brief's success green) are for fills, icons and large type. Small text uses the AA-safe tokens: `--brand-accent-dark` or `--blue` for accents, `--success`, `--warning`, `--danger` and `--info` for state. `src/lib/contrast.test.ts` reads `global.css` and fails if any text/surface pairing the design uses drops under AA. It also scans `src/**/*.tsx` and fails if a line sets `color:` to exactly `var(--brand-accent)`, because the light teal is 2.15:1 on white.
 
-1. **6D Energy Orange `#F4651F` is deliberately absent.** It sits within a few points of the contract's AI-only accent `#EE743B`, and the contract states orange is not a primary CTA colour and must not dominate. Using the brand orange for buttons would make AI surfaces indistinguishable from ordinary ones.
-2. **Primary buttons fill with `--nim-primary-600`, not `-500`.** White on `primary-500` measures 3.00:1 against a 4.5:1 requirement. `primary-500` keeps its contract role as the link, selection and focus-ring colour.
+**Shared components** live in `src/components/ui/`, are class-based, and are styled by `src/styles/ui.css` (imported in `src/main.tsx` after `global.css`).
 
-The official 6D mark renders only from the approved asset at `assets/brand/6d-logo-white.png`. It is never reconstructed in text, CSS or SVG. The asset is not bundled — drop the approved PNG into `assets/brand/` and it appears in every portal with no code change.
+| Component | Use it for |
+|---|---|
+| `BentoGrid` / `BentoCell` | The grid that lays out a promotional page; cells span columns and rows. |
+| `BentoCard` | A cell's surface: `light`, `dark` (navy gradient) or `image` variant. |
+| `SectionHeader` | A section title with optional subtitle and a link-style action. |
+| `StatusBadge` | A small state label that carries text, not colour alone. |
+| `KpiCard` | One headline figure with its label. |
+| `AventaWordmark` | The Aventa name in chrome; SVG, no logo file exists. |
+| `CategoryTile` | A marketplace category as a tile with icon or artwork and a listing count. |
+| `ProductCard` | A product in a grid or shelf (`badgeTone` maps its badge). |
+| `NetworkGlobe` | The decorative globe on promotional surfaces. |
+| `categoryIcon` | Maps a category id to its icon. |
+
+Homepage decisions (which products are featured, which sellers appear, tile counts, per-category artwork) live in `src/lib/home.ts` (`featuredProducts`, `ecosystemSellers`, `tileCount`, `categoryVisual`, `HOME_ART`) and are tested in `src/lib/home.test.ts`.
+
+**Where the futuristic treatment goes.** Navy gradients, the globe and glow belong on discovery and promotional surfaces only. Transactional and operational screens (checkout, orders, settlement, the consoles) stay light and plain, because people there are reading figures and need nothing competing with them.
+
+**The revamp is five specs.** This is spec 1, the foundation and public homepage. The rest: 2, commerce (storefronts, product pages, cart and checkout, header search); 3, operator console; 4, partner portal; 5, a validation sweep.
 
 ---
 
