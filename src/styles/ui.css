@@ -321,7 +321,7 @@
 .p-card__open { all: unset; cursor: pointer; font: inherit; color: inherit; }
 .p-card__open::after { content: ''; position: absolute; inset: 0; border-radius: inherit; z-index: 1; }
 .p-card__open:focus-visible { outline: none; }
-.p-card__open:focus-visible::after { outline: 2px solid var(--electric); outline-offset: 2px; }
+.p-card__open:focus-visible::after { outline: 3px solid var(--electric); outline-offset: -3px; }
 
 /* ---------- Listing layout (spec 2) ---------- */
 .listing { padding-block: 24px 48px; }

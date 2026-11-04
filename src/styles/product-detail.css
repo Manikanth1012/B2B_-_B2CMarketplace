@@ -18,7 +18,7 @@
    panel stays narrow, and nothing sticks to a viewport the modal scrolls in. */
 .pd--compact { grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr); gap: 24px; }
 .pd--compact .pd__buy { position: static; }
-@media (max-width: 1023px) { .pd, .pd--compact { grid-template-columns: minmax(0, 1fr); grid-template-areas: "media" "buy" "details"; } .pd__buy { position: static; } }
+@media (max-width: 1023px) { .pd, .pd--compact { grid-template-columns: minmax(0, 1fr); grid-template-areas: "media" "buy" "details"; } .pd__buy { position: static; } .pd__media { aspect-ratio: 16 / 9; max-height: 360px; } }
 @media (max-width: 767px) {
   .pd__bar {
     display: flex; position: sticky; bottom: 0; z-index: 50; align-items: center; justify-content: space-between; gap: 12px;
