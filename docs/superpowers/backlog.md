@@ -9,8 +9,8 @@ brainstorm → spec → plan → build cycle when it is picked up.
 |---|---|---|
 | 1 | Foundation + public homepage | Done — merged 2026-11-04 (`5489bb2`) |
 | 2 | Commerce — retail and enterprise storefronts, product listing and detail, cart, checkout, header search | Done — merged 2026-11-04 (`f5ee450`) |
-| 3 + 4 | Workspace consoles — one pass over the shared console components (`operator/shared.tsx`, used by ~80 operator, partner and enterprise screens) and the three sidebars, then the operator's bento KPI dashboard, grouped navigation and Business Accounts screen. Merged from the original specs 3 and 4 at the user's choice (2026-11-04) | Built on branch `ui-revamp-consoles`; merge pending |
-| 5 | Validation sweep across all experiences | To do |
+| 3 + 4 | Workspace consoles — one pass over the shared console components (`operator/shared.tsx`, used by ~80 operator, partner and enterprise screens) and the three sidebars, then the operator's bento KPI dashboard, grouped navigation and Business Accounts screen. Merged from the original specs 3 and 4 at the user's choice (2026-11-04) | Done — merged 2026-11-04 (`49f40da`) |
+| 5 | Account screens (Orders, Subscriptions, Rewards, My account) and validation sweep across all experiences — spec `2026-11-04-ui-revamp-account-validation-design.md` | Planned; build next |
 
 ## New enterprise features (deferred from spec 2 — 2026-11-04)
 
