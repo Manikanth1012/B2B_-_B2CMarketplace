@@ -69,6 +69,11 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, onSearch, children
   const regions = [...book.markets].sort((a, b) => a.sort_order - b.sort_order)
   const [menuOpen, setMenuOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const submitSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    const t = searchTarget(query)
+    if (t) { setMenuOpen(false); onSearch(t.q) }
+  }
   const go = (p: PublicPage) => { setMenuOpen(false); onNavigate(p) }
   const navRef = useRef<HTMLElement>(null)
   const menuBtn = useRef<HTMLButtonElement>(null)
@@ -101,11 +106,7 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, onSearch, children
 
           <nav ref={navRef} className={`site-nav${menuOpen ? ' is-open' : ''}`} aria-label="Marketplace">
             {/* Phones hide the header field; the open menu carries its own. */}
-            <form className="site-search site-search--menu" role="search" onSubmit={e => {
-              e.preventDefault()
-              const t = searchTarget(query)
-              if (t) { setMenuOpen(false); onSearch(t.q) }
-            }}>
+            <form className="site-search site-search--menu" role="search" onSubmit={submitSearch}>
               <Search size={16} aria-hidden />
               <input type="search" value={query} onChange={e => setQuery(e.target.value)}
                 placeholder="Search products, services…" aria-label="Search the marketplace" />
@@ -119,15 +120,11 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, onSearch, children
             ))}
           </nav>
 
-          <form className="site-search" role="search" onSubmit={e => {
-              e.preventDefault()
-              const t = searchTarget(query)
-              if (t) { setMenuOpen(false); onSearch(t.q) }
-            }}>
-              <Search size={16} aria-hidden />
-              <input type="search" value={query} onChange={e => setQuery(e.target.value)}
-                placeholder="Search products, services…" aria-label="Search the marketplace" />
-            </form>
+          <form className="site-search" role="search" onSubmit={submitSearch}>
+            <Search size={16} aria-hidden />
+            <input type="search" value={query} onChange={e => setQuery(e.target.value)}
+              placeholder="Search products, services…" aria-label="Search the marketplace" />
+          </form>
 
           <div className="site-header__end">
             {/* A visitor has no account and so no home market — this is the one

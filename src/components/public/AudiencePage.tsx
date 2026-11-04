@@ -82,6 +82,9 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
   const c = CONFIG[page]
   const [catalogue, setCatalogue] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  /* Until the catalogue arrives the shelf is empty, which must not read as
+     "nothing matches". */
+  const [loaded, setLoaded] = useState(false)
   /* Which product is open. Held here rather than inside the grid because the
      partner page shows categories instead of a grid, and the modal belongs to
      the page either way. */
@@ -90,9 +93,10 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
   useEffect(() => {
     /* Priced for the market too. A shopper who sees $18.00 before signing in
        and ₹1,599.00 after has been shown two different shops. */
-    Promise.all([loadCatalogue(), loadPriceBook(currencyCode), loadCopyBook()])
-      .then(([rows, book, copy]) => setCatalogue(repriceAll(rows, book, currencyCode, copy)))
-    loadCategories().then(setCategories)
+    /* Categories are awaited too: the shelf is empty until both are in, and that
+       must not flash "nothing here". */
+    Promise.all([loadCatalogue(), loadPriceBook(currencyCode), loadCopyBook(), loadCategories()])
+      .then(([rows, book, copy, cats]) => { setCatalogue(repriceAll(rows, book, currencyCode, copy)); setCategories(cats); setLoaded(true) })
     /* The currency is a dependency: without it this closes over the first one
        it saw and the page keeps showing that market's prices forever. */
   }, [currencyCode])
@@ -240,7 +244,16 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
             ]}
             onClear={clearFilters}
           >
-            {shown.length === 0 ? (
+            {!loaded ? (
+              <div style={{ textAlign: 'center', padding: '64px' }}>
+                <div className="spinner" style={{ margin: '0 auto' }} />
+              </div>
+            ) : shelf.length === 0 ? (
+              <EmptyListing
+                title="Nothing here for your market yet"
+                text={`No products on this page are priced for ${market?.name ?? 'your market'} yet. Try another market from the picker in the header.`}
+              />
+            ) : shown.length === 0 ? (
               <EmptyListing title="No products match" text="Try a different search or clear the filters." onClear={clearFilters} />
             ) : (
               <ListingGrid>
