@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Menu, X } from 'lucide-react'
 import type { PublicPage } from '../../types/view'
 import { DiscoverMenu } from './DiscoverMenu'
@@ -67,6 +67,24 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, children }: {
   const regions = [...book.markets].sort((a, b) => a.sort_order - b.sort_order)
   const [menuOpen, setMenuOpen] = useState(false)
   const go = (p: PublicPage) => { setMenuOpen(false); onNavigate(p) }
+  const navRef = useRef<HTMLElement>(null)
+  const menuBtn = useRef<HTMLButtonElement>(null)
+
+  /* The nav precedes the header's end cluster in the DOM, so below 900px Tab
+     from the menu button would skip past the opened menu into the page. Move
+     focus into the menu when it opens; Escape closes it and returns to the
+     button. */
+  useEffect(() => {
+    if (!menuOpen) return
+    navRef.current?.querySelector<HTMLElement>('button, a[href]')?.focus()
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      setMenuOpen(false)
+      menuBtn.current?.focus()
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [menuOpen])
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg-alt)' }}>
@@ -78,7 +96,7 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, children }: {
             <AventaWordmark size={26} />
           </button>
 
-          <nav className={`site-nav${menuOpen ? ' is-open' : ''}`} aria-label="Marketplace">
+          <nav ref={navRef} className={`site-nav${menuOpen ? ' is-open' : ''}`} aria-label="Marketplace">
             <DiscoverMenu onNavigate={go} onDone={() => setMenuOpen(false)} />
             {NAV.map(n => (
               <button key={n.id} className="site-nav__item" onClick={() => go(n.id)}
@@ -94,7 +112,7 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, children }: {
                 most people meet first. */}
             <MarketPicker />
             <button className="btn btn-sm btn-outline-light" onClick={onDemoSignIn}>Sign in</button>
-            <button className="site-header__menu-btn" aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+            <button ref={menuBtn} className="site-header__menu-btn" aria-label={menuOpen ? 'Close menu' : 'Open menu'}
               aria-expanded={menuOpen} onClick={() => setMenuOpen(o => !o)}>
               {menuOpen ? <X size={20} /> : <Menu size={20} />}
             </button>

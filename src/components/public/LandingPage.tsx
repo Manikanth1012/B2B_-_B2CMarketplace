@@ -33,16 +33,20 @@ export function LandingPage({ onNavigate, onAddToBasket }: {
   const close = useCallback(() => setOpen(null), [])
 
   useEffect(() => {
+    let live = true
     /* Three independent reads. Any of them coming back empty degrades one band of
        the page rather than failing the page, which is why none of them throws. */
-    loadPromoBanners().then(b => setSlides(promoStrip(b, BANNERS)))
-    loadCategories().then(setCategories)
+    loadPromoBanners().then(b => { if (live) setSlides(promoStrip(b, BANNERS)) })
+    loadCategories().then(c => { if (live) setCategories(c) })
     /* Priced for the market too. A shopper who sees $18.00 before signing in
        and ₹1,599.00 after has been shown two different shops. */
     Promise.all([loadCatalogue(), loadPriceBook(currencyCode), loadCopyBook()])
-      .then(([rows, prices, copy]) => setCatalogue(repriceAll(rows, prices, currencyCode, copy)))
+      .then(([rows, prices, copy]) => {
+        if (live) setCatalogue(repriceAll(rows, prices, currencyCode, copy))
+      })
     /* The currency is a dependency: without it this closes over the first one
        it saw and the page keeps showing that market's prices forever. */
+    return () => { live = false }
   }, [currencyCode])
 
   return (
@@ -51,7 +55,7 @@ export function LandingPage({ onNavigate, onAddToBasket }: {
       {/* The operator's live banners. Pausing one in their console takes it off this page. */}
       <PromoStrip slides={slides} onNavigate={onNavigate} />
       <CategorySection categories={categories} catalogue={catalogue} onNavigate={onNavigate} />
-      <FeaturedSection products={featuredProducts(catalogue, categories, 4)} onOpen={setOpen} onNavigate={onNavigate} />
+      <FeaturedSection products={featuredProducts(catalogue, categories, 4, currencyCode)} onOpen={setOpen} onNavigate={onNavigate} />
       <WhyAventa />
       <EcosystemStrip sellers={ecosystemSellers(catalogue, 8)} />
       <PublicProductModal product={open} onClose={close} onAddToBasket={onAddToBasket} />

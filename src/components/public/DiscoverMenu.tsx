@@ -38,6 +38,11 @@ export function DiscoverMenu({ onNavigate, onDone }: {
 
   const go = (c: Category) => { setOpen(false); onDone?.(); onNavigate(categoryDestination(c)) }
 
+  /* Categories read and came back empty: there is nothing to discover, and a
+     button that opens nothing is worse than none. Before the first read
+     (null) it stays, so it can be opened. */
+  if (categories && categories.length === 0) return null
+
   return (
     <div className="discover" ref={root}>
       <button ref={trigger} className="site-nav__item" aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(o => !o)}>

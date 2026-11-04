@@ -4,21 +4,27 @@
 import type { Category } from '../types'
 import type { PublicPage } from '../types/view'
 import {
-  categoriesFor, categoryDestination, isSellable, showcaseOrder, soldTo,
+  retailCategories, categoryDestination, isSellable, showcaseOrder, soldTo,
   type SellableProduct, type Shopper,
 } from './storefront'
 import { HERO, CAROUSEL, BANNERS, HOME } from './assets'
 
-/** The products in the Featured band: live, on a shelf a retail visitor can buy
-    from, sold to consumers, in showcase order. */
-export function featuredProducts<T extends SellableProduct>(
+/** The products in the Featured band: live, on a shelf the retail page lists
+    (so "View all products" always shows them), sold to consumers, in showcase
+    order. Given `currency`, a product priced in any other is left out: one not
+    priced for the visitor's market would print a base-currency amount under the
+    local symbol, and is usually a seller not approved in that market. A product
+    with no `currency` field is kept. */
+export function featuredProducts<T extends SellableProduct & { currency?: string }>(
   products: readonly T[],
   categories: readonly Category[],
   n = 4,
+  currency?: string,
 ): T[] {
-  const shelves = new Set(categoriesFor(categories, 'consumer').map(c => c.id))
+  const shelves = new Set(retailCategories(categories).map(c => c.id))
   return products
-    .filter(p => shelves.has(p.category_id) && isSellable(p) && soldTo(p, 'consumer'))
+    .filter(p => shelves.has(p.category_id) && isSellable(p) && soldTo(p, 'consumer')
+      && (!currency || !p.currency || p.currency === currency))
     .sort(showcaseOrder)
     .slice(0, n)
 }

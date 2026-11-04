@@ -41,6 +41,31 @@ describe('featuredProducts', () => {
     expect(featuredProducts(rows, CATS).map(p => p.id)).toEqual(['b', 'c', 'a', 'd'])
   })
 
+  it('leaves out a shelf promoted only to enterprise, which the retail page does not list', () => {
+    const cats = [...CATS, cat('biz', ['consumer', 'enterprise'], 'Enterprise')]
+    const rows = [prod({ id: 'ok' }), prod({ id: 'hidden', category_id: 'biz' })]
+    expect(featuredProducts(rows, cats).map(p => p.id)).toEqual(['ok'])
+  })
+
+  describe('by currency', () => {
+    const priced = (id: string, currency: string) => ({ ...prod({ id }), currency })
+    const rows = [priced('inr', 'INR'), priced('usd', 'USD')]
+
+    it('drops a product priced in another currency than the visitor’s', () => {
+      expect(featuredProducts(rows, CATS, 4, 'INR').map(p => p.id)).toEqual(['inr'])
+    })
+    it('keeps every product priced in that currency', () => {
+      const two = [priced('a', 'INR'), priced('b', 'INR')]
+      expect(featuredProducts(two, CATS, 4, 'INR')).toHaveLength(2)
+    })
+    it('keeps all when no currency is given', () => {
+      expect(featuredProducts(rows, CATS)).toHaveLength(2)
+    })
+    it('keeps a product that carries no currency', () => {
+      expect(featuredProducts([prod({ id: 'bare' })], CATS, 4, 'INR')).toHaveLength(1)
+    })
+  })
+
   it('returns at most n', () => {
     const rows = Array.from({ length: 9 }, (_, i) => prod({ id: `p${i}` }))
     expect(featuredProducts(rows, CATS, 4)).toHaveLength(4)

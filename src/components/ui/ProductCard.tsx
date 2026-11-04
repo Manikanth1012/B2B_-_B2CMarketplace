@@ -27,7 +27,7 @@ export function ProductCard({ product: p, onOpen }: {
       className="p-card"
       role="button"
       tabIndex={0}
-      aria-label={`${p.name} — view details`}
+      aria-label={`${p.name}, ${fmt(p.price)} — view details`}
       onClick={() => onOpen(p)}
       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(p) } }}
     >

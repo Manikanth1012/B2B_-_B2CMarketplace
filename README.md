@@ -264,7 +264,7 @@ Both require `npm install jsdom`.
 
 **AI is confined and sourced.** Orange appears only on AI surfaces and never as a filled CTA. Every insight carries a confidence label, including *Low confidence — partial evidence* where the data genuinely does not settle the question. Every assistant answer cites which record sets it read.
 
-**State never depends on colour alone.** Status chips carry a shape, meters carry a diagonal pattern above 75% and 90%, and the six marketplace category badges each carry their own icon — so a vertical is identifiable in monochrome.
+**State never depends on colour alone.** Status chips carry a shape by default (the product card's badge relies on its words), meters carry a diagonal pattern above 75% and 90%, and the six marketplace category badges each carry their own icon — so a vertical is identifiable in monochrome.
 
 **Shapes are SVG, not Unicode.** They were originally typed as dingbats — U+25C9, U+25B2, U+25D0, U+2713 and so on. Poppins carries no glyph for any of them, so on a machine without a symbol fallback font every status chip rendered as a `?` box. All of them are now inline SVG. A test walks every screen of every persona and fails if a single dingbat character reaches the DOM.
 
@@ -315,7 +315,7 @@ New: `--blue #0756A5`, `--electric #168BFF`, `--cyan #12CDE0`, `--teal #00C6B5`,
 | `BentoGrid` / `BentoCell` | The grid that lays out a promotional page; cells span columns and rows. |
 | `BentoCard` | A cell's surface: `light`, `dark` (navy gradient) or `image` variant. |
 | `SectionHeader` | A section title with optional subtitle and a link-style action. |
-| `StatusBadge` | A small state label; each tone carries its own icon by default; pass `icon={null}` where the words alone carry the state, as on the product card's badge. |
+| `StatusBadge` | A small state label; the four state tones (success, warning, danger, info) each carry their own icon by default and neutral carries none; pass `icon={null}` where the words alone carry the state, as on the product card's badge. |
 | `KpiCard` | One headline figure with its label. |
 | `AventaWordmark` | The Aventa name in chrome; SVG, no logo file exists. |
 | `CategoryTile` | A marketplace category as a tile with icon or artwork and a listing count. |

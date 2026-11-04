@@ -110,7 +110,7 @@
 .cat-row { display: grid; gap: 16px; grid-template-columns: repeat(var(--cat-cols, 6), minmax(0, 1fr)); }
 @media (max-width: 1199px) { .cat-row { --cat-cols: 3 !important; } }
 @media (max-width: 767px) {
-  .cat-row { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding-bottom: 8px; }
+  .cat-row { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; padding: 4px 4px 8px; }
   .cat-row > * { flex: 0 0 72%; scroll-snap-align: start; }
 }
 .cat-tile {

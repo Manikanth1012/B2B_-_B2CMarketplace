@@ -81,7 +81,7 @@ const PERSONA_META: Record<Persona, { label: string; sub: string; user: string; 
     icon: <ShoppingBag size={24} />,
     accentBg: 'rgba(0,166,166,0.2)',
     accentFg: 'var(--brand-accent-light)',
-    accentColor: 'var(--brand-accent)',
+    accentColor: 'var(--brand-accent-dark)',
   },
   operator: {
     label: 'Operator Admin',
