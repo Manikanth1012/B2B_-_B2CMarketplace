@@ -9,7 +9,7 @@ brainstorm → spec → plan → build cycle when it is picked up.
 |---|---|---|
 | 1 | Foundation + public homepage | Done — merged 2026-11-04 (`5489bb2`) |
 | 2 | Commerce — retail and enterprise storefronts, product listing and detail, cart, checkout, header search | Done — merged 2026-11-04 (`f5ee450`) |
-| 3 + 4 | Workspace consoles — one pass over the shared console components (`operator/shared.tsx`, used by ~80 operator, partner and enterprise screens) and the three sidebars, then the operator's bento KPI dashboard, grouped navigation and Business Accounts screen. Merged from the original specs 3 and 4 at the user's choice (2026-11-04) | Next |
+| 3 + 4 | Workspace consoles — one pass over the shared console components (`operator/shared.tsx`, used by ~80 operator, partner and enterprise screens) and the three sidebars, then the operator's bento KPI dashboard, grouped navigation and Business Accounts screen. Merged from the original specs 3 and 4 at the user's choice (2026-11-04) | Built on branch `ui-revamp-consoles`; merge pending |
 | 5 | Validation sweep across all experiences | To do |
 
 ## New enterprise features (deferred from spec 2 — 2026-11-04)
@@ -44,7 +44,19 @@ restyle, and get their own spec after the revamp.
 - [ ] The enterprise Marketplace filter hardcodes iot/security/device while the tiles come from data.
 - [ ] The product page "Notify me when available" line is inert.
 - [ ] Cart stepper buttons are below the 44px touch target.
-- [ ] Enterprise listing modal (`EnterpriseListingModal`) was not restyled in spec 2 — it never used `ProductDetail`; restyle in spec 3/4.
+
+## Carried over from the consoles spec (non-blocking)
+
+- [ ] Operator nav: clicking the forced-open active group's header does nothing visible.
+- [ ] Operator nav: `aria-controls` points at an unmounted panel.
+- [ ] Quick actions leaves half a row empty when there are no alerts.
+- [ ] Accounts tests lack no-steps and due-today boundary cases.
+- [ ] The Waiting chip ignores search.
+- [ ] Listing modal heading styles are inconsistent.
+- [ ] Stat and section cards have no border on white surfaces.
+- [ ] Table row hover overrides an inline row highlight.
+- [ ] Disabled danger and success buttons look like disabled primary.
+- [ ] PartnerDashboard "Settlement Due" colour is decorative.
 
 ## Data to check (not code)
 
