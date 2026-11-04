@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { X, Minus, Plus, Trash2, ShoppingBag, Bookmark, Undo2 } from 'lucide-react'
 import type { CartItem } from '../types'
 import { getProductImage } from '../lib/images'
@@ -29,6 +30,14 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
   const { market, fmt } = useMarket()
   const money = basketMoney(items, Number(market?.tax_rate ?? 0))
   const taxLabel = market?.tax_label ?? 'Tax'
+
+  /* Escape closes the drawer — listened for only while it is open. */
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, onClose])
 
   return (
     <>
