@@ -179,7 +179,7 @@ export function OrdersView() {
                       const line = planLine(plans[order.payment_ref],
                         n => fmtIn(n, order.currency, { asOf: order.created_at?.slice(0, 10) }))
                       return line ? (
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--brand-accent)', fontWeight: 600 }}>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--brand-accent-dark)', fontWeight: 600 }}>
                           {line}
                         </div>
                       ) : null

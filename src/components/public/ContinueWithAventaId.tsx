@@ -304,6 +304,6 @@ function Confirm({ begun, busy, password, onPassword, onConfirm }: {
 
 const link: React.CSSProperties = {
   background: 'none', border: 'none', padding: 0, cursor: 'pointer',
-  color: 'var(--brand-accent)', fontSize: 'inherit', fontWeight: 600,
+  color: 'var(--brand-accent-dark)', fontSize: 'inherit', fontWeight: 600,
   textDecoration: 'underline', textUnderlineOffset: '3px',
 }

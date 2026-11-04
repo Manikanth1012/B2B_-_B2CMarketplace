@@ -530,7 +530,7 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                                   who has to open the option to find out what it
                                   would cost a month does not open it. */}
                               {!off && each != null && months != null && (
-                                <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--brand-accent)' }}>
+                                <span style={{ fontSize: '10px', fontWeight: 700, color: 'var(--brand-accent-dark)' }}>
                                   from {fmt(each)}/mo over {months} months
                                 </span>
                               )}

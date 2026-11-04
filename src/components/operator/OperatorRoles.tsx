@@ -323,7 +323,7 @@ function RoleModal({ role, caps, cats, onClose, onSave }: {
                     rows when the intent is "everything in support". */}
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <button type="button" onClick={() => setArea(group.area, 'full')}
-                    style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700, color: 'var(--brand-accent)' }}>All</button>
+                    style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700, color: 'var(--brand-accent-dark)' }}>All</button>
                   <button type="button" onClick={() => setArea(group.area, 'none')}
                     style={{ border: 'none', background: 'none', cursor: 'pointer', fontSize: '11px', fontWeight: 700, color: 'var(--text-tertiary)' }}>None</button>
                 </div>
