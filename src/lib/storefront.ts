@@ -299,3 +299,23 @@ export function exampleProducts<T extends SellableProduct>(
     .sort(showcaseOrder)
     .slice(0, limit)
 }
+
+/**
+ * The products a visitor's market can actually be sold. A row the price book
+ * does not price in that currency comes back from `reprice` in its base
+ * currency instead, and printing it under the local symbol is a wrong price —
+ * and usually a seller not approved in that market. Rows that were never
+ * repriced carry no currency and are kept, since there is nothing to judge.
+ */
+export function pricedFor<T extends { currency?: string }>(products: readonly T[], currency: string): T[] {
+  return products.filter(p => !p.currency || p.currency === currency)
+}
+
+/** What a product card's main button says, and whether it can be pressed. */
+export function cardAction(
+  context: 'retail' | 'enterprise',
+  p: { stock: string },
+): { label: string; disabled: boolean } {
+  if (!canAddToBasket(p)) return { label: 'Out of stock', disabled: true }
+  return { label: context === 'enterprise' ? 'Add to requisition' : 'Add to basket', disabled: false }
+}
