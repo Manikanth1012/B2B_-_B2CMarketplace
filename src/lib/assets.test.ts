@@ -1,13 +1,18 @@
 import { describe, it, expect } from 'vitest'
 import { statSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { HERO, CAROUSEL, BANNERS, DEVICE_THUMBS, RETAIL_PRODUCTS, ENTERPRISE_PRODUCTS } from './assets'
+import { HERO, CAROUSEL, BANNERS, DEVICE_THUMBS, RETAIL_PRODUCTS, ENTERPRISE_PRODUCTS, HOME } from './assets'
 
 const onDisk = (p: string) => join('public', p.replace(/^\//, ''))
 const all = [HERO, ...CAROUSEL, ...BANNERS, ...DEVICE_THUMBS,
-             ...RETAIL_PRODUCTS.map(p => p.src), ...ENTERPRISE_PRODUCTS.map(p => p.src)]
+             ...RETAIL_PRODUCTS.map(p => p.src), ...ENTERPRISE_PRODUCTS.map(p => p.src),
+             ...Object.values(HOME)]
 
 describe('asset manifest', () => {
+  it('has the homepage set', () => {
+    expect(HOME.categoryDevice).toBe('/assets/mp/home/cat-device.webp')
+  })
+
   it('has the expected counts', () => {
     expect(CAROUSEL).toHaveLength(5)
     expect(BANNERS).toHaveLength(12)

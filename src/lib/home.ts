@@ -7,7 +7,7 @@ import {
   categoriesFor, categoryDestination, isSellable, showcaseOrder, soldTo,
   type SellableProduct, type Shopper,
 } from './storefront'
-import { HERO, CAROUSEL, BANNERS } from './assets'
+import { HERO, CAROUSEL, BANNERS, HOME } from './assets'
 
 /** The products in the Featured band: live, on a shelf a retail visitor can buy
     from, sold to consumers, in showcase order. */
@@ -57,7 +57,7 @@ export interface Visual { src: string; position?: string }
 /* Scenic slices first so the row reads like one set; see the spec, 2.4. */
 const CATEGORY_VISUALS: Record<string, Visual> = {
   consumer: { src: HERO, position: 'center 40%' },
-  device: { src: HERO, position: 'center 40%' },          // Task 3 → HOME.categoryDevice
+  device: { src: HOME.categoryDevice },
   content: { src: CAROUSEL[1], position: 'center 30%' },
   iot: { src: CAROUSEL[2], position: 'center 25%' },
   security: { src: CAROUSEL[3], position: 'center 35%' },
