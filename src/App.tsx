@@ -417,6 +417,7 @@ function AppInner() {
         page={surface.page}
         onNavigate={(page) => { setSurface({ kind: 'public', page }); window.scrollTo({ top: 0 }) }}
         onDemoSignIn={() => setSurface({ kind: 'login', demo: true })}
+        onSearch={(q) => { setSurface({ kind: 'public', page: 'retail', q }); window.scrollTo({ top: 0 }) }}
       >
         {surface.page === 'landing' && (
           <LandingPage
@@ -432,7 +433,10 @@ function AppInner() {
         )}
         {surface.page !== 'landing' && (
           <AudiencePage
+            /* A new search remounts the page so its filters start from the query. */
+            key={`${surface.page}:${surface.q ?? ''}`}
             page={surface.page}
+            initialQuery={surface.q}
             onSignIn={(p) => setSurface({ kind: 'login', prefill: p })}
             onApply={() => { setSurface({ kind: 'apply' }); window.scrollTo({ top: 0 }) }}
             onResumeApplication={() => { setSurface({ kind: 'apply', resume: true }); window.scrollTo({ top: 0 }) }}

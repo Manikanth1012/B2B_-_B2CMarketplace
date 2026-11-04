@@ -1,12 +1,15 @@
-import { useState, useEffect } from 'react'
-import { PublicProductGrid } from './PublicProductGrid'
+import { useState, useEffect, useMemo } from 'react'
 import { PublicProductModal } from './PublicProductModal'
 import { CategoryShowcase } from './CategoryShowcase'
 import { BANNERS } from '../../lib/assets'
 import { loadCatalogue, loadCategories, countByCategory } from '../../lib/storefrontRepo'
 import { loadPriceBook, loadCopyBook, repriceAll } from '../../lib/moneyRepo'
 import { useMarket } from '../../lib/MarketContext'
-import { productsForPage, categoriesForPage } from '../../lib/storefront'
+import { productsForPage, categoriesForPage, pricedFor, cardAction } from '../../lib/storefront'
+import { filterProducts, SORT_OPTIONS } from '../../lib/listing'
+import type { SortKey } from '../../lib/listing'
+import { stockLabel } from '../../lib/compare'
+import { ProductCard, ListingLayout, ListingGrid, EmptyListing } from '../ui'
 import type { Category, Product } from '../../types'
 import type { PublicPage, Persona } from '../../types/view'
 
@@ -52,8 +55,10 @@ const CONFIG: Record<Aud, {
   },
 }
 
-export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onRegister, onApplyBusiness, onResumeBusiness, onAddToBasket }: {
+export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onRegister, onApplyBusiness, onResumeBusiness, onAddToBasket, initialQuery }: {
   page: Aud
+  /* A search from the header lands here with its words already applied. */
+  initialQuery?: string
   onSignIn: (p: Persona) => void
   onApply: () => void
   /* Applying takes several sittings, so coming back needs its own way in
@@ -94,7 +99,23 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
 
   /* The same rows the operator's catalogue holds — name, seller, price, rating —
      narrowed to the categories this page covers and to what is actually live. */
-  const products = productsForPage(catalogue, categories, page)
+  /* The whole shelf, not the first twelve: filtering and counting have to see
+     everything, and the market rule hides what this market does not price. */
+  const shelf = useMemo(
+    () => pricedFor(productsForPage(catalogue, categories, page, Infinity), currencyCode),
+    [catalogue, categories, page, currencyCode],
+  )
+  const [search, setSearch] = useState(initialQuery ?? '')
+  const [sub, setSub] = useState<string | null>(null)
+  const [stock, setStock] = useState<string | null>(null)
+  const [sort, setSort] = useState('featured')
+  const shown = useMemo(
+    () => filterProducts(shelf, { search, sub, stock, sort: sort as SortKey }),
+    [shelf, search, sub, stock, sort],
+  )
+  const subCategories = useMemo(() => Array.from(new Set(shelf.map(p => p.sub_category))).sort(), [shelf])
+  const stocks = useMemo(() => Array.from(new Set(shelf.map(p => p.stock))), [shelf])
+  const clearFilters = () => { setSearch(''); setSub(null); setStock(null) }
 
   return (
     <>
@@ -199,13 +220,44 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
           counts={countByCategory(catalogue)}
         />
       ) : (
-        <PublicProductGrid
-          title={c.rail.title}
-          subtitle={c.rail.subtitle}
-          products={products}
-          onAdd={onAddToBasket}
-          onOpen={setViewing}
-        />
+        <section className="container" style={{ paddingTop: '40px', paddingBottom: '40px' }}>
+          <ListingLayout
+            title={c.rail.title}
+            subtitle={c.rail.subtitle}
+            count={shown.length}
+            total={shelf.length}
+            search={{ value: search, onChange: setSearch, placeholder: 'Search this shelf' }}
+            sort={{ value: sort, options: SORT_OPTIONS, onChange: setSort }}
+            filters={[
+              {
+                id: 'sub', title: 'Type', selected: sub, onSelect: setSub,
+                options: subCategories.map(s => ({ value: s, label: s, count: shelf.filter(p => p.sub_category === s).length })),
+              },
+              {
+                id: 'stock', title: 'Availability', selected: stock, onSelect: setStock,
+                options: stocks.map(v => ({ value: v, label: stockLabel(v), count: shelf.filter(p => p.stock === v).length })),
+              },
+            ]}
+            onClear={clearFilters}
+          >
+            {shown.length === 0 ? (
+              <EmptyListing title="No products match" text="Try a different search or clear the filters." onClear={clearFilters} />
+            ) : (
+              <ListingGrid>
+                {shown.map(p => (
+                  <ProductCard
+                    key={p.id}
+                    product={p}
+                    onOpen={() => setViewing(p)}
+                    action={{ ...cardAction('retail', p), onClick: () => onAddToBasket(p) }}
+                    showStock
+                    priceNote={p.unit ?? undefined}
+                  />
+                ))}
+              </ListingGrid>
+            )}
+          </ListingLayout>
+        </section>
       )}
 
       <PublicProductModal

@@ -206,6 +206,18 @@
   }
   .site-header__menu-btn { display: inline-flex; }
 }
+.site-search {
+  display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px; width: min(320px, 28vw);
+  border-radius: var(--radius-full); background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.72);
+}
+.site-search input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; color: #fff; font-size: var(--text-sm); }
+.site-search input::placeholder { color: rgba(255, 255, 255, 0.72); }
+.site-search:focus-within { border-color: var(--cyan); }
+/* The copy inside the mobile menu only exists for phones. */
+.site-search--menu { display: none; }
+@media (max-width: 1100px) { .site-search { width: 200px; } }
+@media (max-width: 899px) { .site-search { display: none; } .site-nav.is-open .site-search--menu { display: flex; width: 100%; } }
 @media (max-width: 520px) { .site-header__divider, .site-header__6d { display: none; } }
 
 .discover { position: relative; }
