@@ -45,9 +45,7 @@ restyle, and get their own spec after the revamp.
 - [ ] The enterprise Marketplace filter hardcodes iot/security/device while the tiles come from data.
 - [ ] The product page "Notify me when available" line is inert.
 - [ ] Cart stepper buttons are below the 44px touch target.
-- [ ] Checkout field labels are not tied to their inputs (`htmlFor`).
-- [ ] The product card focus ring relies on `:has()`.
-- [ ] Hero trust-tile headings skip a level.
+- [ ] Enterprise listing modal (`EnterpriseListingModal`) was not restyled in spec 2 — it never used `ProductDetail`; restyle in spec 3/4.
 
 ## Data to check (not code)
 

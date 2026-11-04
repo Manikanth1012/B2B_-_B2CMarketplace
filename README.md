@@ -308,6 +308,8 @@ New: `--blue #0756A5`, `--electric #168BFF`, `--cyan #12CDE0`, `--teal #00C6B5`,
 
 **Colour roles.** Teal, cyan and electric (and the brief's success green) are for fills, icons and large type. Small text uses the AA-safe tokens: `--brand-accent-dark` or `--blue` for accents, `--success`, `--warning`, `--danger` and `--info` for state. `src/lib/contrast.test.ts` reads `global.css` and fails if any text/surface pairing the design uses drops under AA: 4.5:1 for text, 3:1 for UI glyphs such as the `--electric` focus ring. It also scans `src/**/*.tsx` and fails if a line sets `color:` to exactly `var(--brand-accent)`, because the light teal is 2.15:1 on white.
 
+On the enterprise catalogue, "Add to requisition" is disabled for out-of-stock listings (the shared `cardAction` rule).
+
 **Shared components** live in `src/components/ui/`, are class-based, and are styled by `src/styles/ui.css` (imported in `src/main.tsx` after `global.css`).
 
 | Component | Use it for |
