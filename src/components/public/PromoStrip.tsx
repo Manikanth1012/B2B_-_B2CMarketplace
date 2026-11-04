@@ -16,22 +16,16 @@ export function PromoStrip({ slides, onNavigate }: {
 
   return (
     <section
-      className="container"
+      className="container home-band"
       aria-label="Marketplace offers"
-      style={{ padding: '32px 24px', display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}
+      style={{ paddingBlock: '8px' }}
     >
+      <div className="promo-row">
       {slides.map(({ banner, image }) => (
         <button
           key={banner.id}
           onClick={() => onNavigate(bannerDestination(banner))}
-          style={{
-            position: 'relative', display: 'block', width: '100%', padding: 0,
-            border: 'none', borderRadius: 'var(--radius-md)', overflow: 'hidden',
-            cursor: 'pointer', textAlign: 'left', background: 'var(--brand-navy)',
-            aspectRatio: '1000 / 240',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.boxShadow = 'var(--shadow-lg)' }}
-          onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
+          className="promo-tile"
         >
           <img
             src={image}
@@ -81,6 +75,7 @@ export function PromoStrip({ slides, onNavigate }: {
           </div>
         </button>
       ))}
+      </div>
     </section>
   )
 }

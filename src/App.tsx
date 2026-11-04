@@ -418,7 +418,18 @@ function AppInner() {
         onNavigate={(page) => { setSurface({ kind: 'public', page }); window.scrollTo({ top: 0 }) }}
         onDemoSignIn={() => setSurface({ kind: 'login', demo: true })}
       >
-        {surface.page === 'landing' && <LandingPage onNavigate={(page) => { setSurface({ kind: 'public', page }); window.scrollTo({ top: 0 }) }} />}
+        {surface.page === 'landing' && (
+          <LandingPage
+            onNavigate={(page) => { setSurface({ kind: 'public', page }); window.scrollTo({ top: 0 }) }}
+            /* Same as the audience pages: the basket needs an owner, so the first
+               add sends the visitor to sign in and completes it afterwards. */
+            onAddToBasket={(p) => {
+              setPendingProduct(p)
+              setSurface({ kind: 'login', prefill: 'consumer' })
+              window.scrollTo({ top: 0 })
+            }}
+          />
+        )}
         {surface.page !== 'landing' && (
           <AudiencePage
             page={surface.page}
