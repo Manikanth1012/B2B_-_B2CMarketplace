@@ -29,3 +29,6 @@ dist/
 # run, named with a timestamp. Build artefacts of the build tool itself, and
 # they appear on any machine that runs the dev server.
 vite.config.ts.timestamp-*
+
+# Agents' git worktrees must never be committed.
+.claude/worktrees/

@@ -325,6 +325,26 @@ New: `--blue #0756A5`, `--electric #168BFF`, `--cyan #12CDE0`, `--teal #00C6B5`,
 
 Homepage decisions (which products are featured, which sellers appear, tile counts, per-category artwork) live in `src/lib/home.ts` (`featuredProducts`, `ecosystemSellers`, `tileCount`, `categoryVisual`, `HOME_ART`) and are tested in `src/lib/home.test.ts`.
 
+**Shop screens (spec 2).** The product card, the listing skeleton and the market rule are shared so the retail and enterprise shops cannot drift apart.
+
+`ProductCard` takes five optional props. The name is the open control, a button stretched over the whole card by CSS, so a click anywhere opens the product while screen readers still reach the separate buttons inside.
+
+- `action`: the main button (`label`, `onClick`, `disabled`); without it the card shows "View details" instead.
+- `compare`: a Compare checkbox (`checked`, `onToggle`, `disabled`).
+- `showStock`: a stock badge under the description.
+- `notify`: a "Notify me" button that replaces the action when the product is out of stock.
+- `priceNote`: text beside the price, overriding the product's unit (for example "per month").
+
+`ListingLayout` (`src/components/ui/ListingLayout.tsx`) is the one skeleton for every shop listing: title, breadcrumb, search, sort, count and filters. Filters sit in a side panel from 1024px up and in a focus-trapped bottom sheet below, where a side panel would leave the grid one card wide. `ListingGrid` lays out the cards and `EmptyListing` says when nothing matches; its `actionLabel` renames the clear button.
+
+**The market rule.** `pricedFor` (`src/lib/storefront.ts`) hides from shop listings any product not priced in the visitor's currency, because the repricer returns such a row in its base currency and showing it under a local symbol would be a wrong price. Retail listings share `filterProducts` and `SORT_OPTIONS` (`src/lib/listing.ts`), and `cardAction` decides what a card's button says: add to basket, add to requisition on the enterprise shop, or a disabled "Out of stock".
+
+**Form borders.** `--border-strong` (`#7A8699`) is the edge of form controls and steppers, at least 3:1 on `--bg-card` and `--bg-alt` (WCAG 1.4.11). `--border` stays for decorative dividers. `contrast.test.ts` holds both ratios.
+
+**Per-area stylesheets.** Beside `ui.css`, `src/styles/product-detail.css`, `enterprise-storefront.css` and `checkout.css` hold the styles of those areas; `src/main.tsx` imports them after `ui.css`.
+
+**Header search.** The public header's search opens the Retail page with the query applied (`searchTarget` in `src/lib/listing.ts`); a blank query does nothing.
+
 **Where the futuristic treatment goes.** Navy gradients, the globe and glow belong on discovery and promotional surfaces only. Transactional and operational screens (checkout, orders, settlement, the consoles) stay light and plain, because people there are reading figures and need nothing competing with them.
 
 **The revamp is five specs.** This is spec 1, the foundation and public homepage. The rest: 2, commerce (storefronts, product pages, cart and checkout, header search); 3, operator console; 4, partner portal; 5, a validation sweep.

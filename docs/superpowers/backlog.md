@@ -8,7 +8,7 @@ brainstorm → spec → plan → build cycle when it is picked up.
 | # | Spec | Status |
 |---|---|---|
 | 1 | Foundation + public homepage | Done — merged 2026-11-04 (`5489bb2`) |
-| 2 | Commerce — retail and enterprise storefronts, product listing and detail, cart, checkout, header search | Spec written — `docs/superpowers/specs/2026-11-04-ui-revamp-commerce-design.md` |
+| 2 | Commerce — retail and enterprise storefronts, product listing and detail, cart, checkout, header search | Built on branch `ui-revamp-commerce`; merge pending |
 | 3 | Operator console — grouped sidebar, bento KPI dashboard, business accounts | To do |
 | 4 | Partner portal — operator workspace language, partner navigation | To do |
 | 5 | Validation sweep across all experiences | To do |
@@ -36,6 +36,18 @@ restyle, and get their own spec after the revamp.
 - [ ] Remove the now-unused `Carousel.tsx` and `lib/carousel.ts`.
 - [ ] Forced-colours fallback for the gradient headline text.
 - [ ] `.ui-link` touch target size against WCAG 2.5.8 (24px).
+
+## Carried over from spec 2 reviews (non-blocking)
+
+- [ ] Consumer category tiles no longer show operator blurbs (`CategoryTile` has no description slot).
+- [ ] `loadPriceBook`/`loadCopyBook` swallow errors, so a failed price-book read shows the "nothing priced for your market" message — fix in `src/lib/moneyRepo.ts`.
+- [ ] The requisition drawer has no focus trap.
+- [ ] The enterprise Marketplace filter hardcodes iot/security/device while the tiles come from data.
+- [ ] The product page "Notify me when available" line is inert.
+- [ ] Cart stepper buttons are below the 44px touch target.
+- [ ] Checkout field labels are not tied to their inputs (`htmlFor`).
+- [ ] The product card focus ring relies on `:has()`.
+- [ ] Hero trust-tile headings skip a level.
 
 ## Data to check (not code)
 
