@@ -5,6 +5,7 @@ import './styles/global.css'
 import './styles/ui.css'
 import './styles/product-detail.css'
 import './styles/enterprise-storefront.css'
+import './styles/checkout.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
