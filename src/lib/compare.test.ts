@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   COMPARE_CAP, toggleCompare, capHint, canCompare, compareRows, oneCurrency,
-  differingOnly, sameCount, highlightNote, onePaymentModel, priceComparable,
+  differingOnly, sameCount, highlightNote, onePaymentModel, priceComparable, stockLabel,
 } from './compare'
 import type { Comparable } from './compare'
 
@@ -216,5 +216,17 @@ describe('the note under the table', () => {
       p({ id: '2', price: 999, currency: 'KES', rating: null, reviews: 0 }),
     ], money)
     expect(highlightNote(rows)).toContain('Nothing is highlighted')
+  })
+})
+
+describe('stockLabel', () => {
+  it('turns catalogue codes into words', () => {
+    expect(stockLabel('in')).toBe('In stock')
+    expect(stockLabel('low')).toBe('Low stock')
+    expect(stockLabel('out')).toBe('Out of stock')
+    expect(stockLabel('preorder')).toBe('Pre-order')
+  })
+  it('passes an unknown value through unchanged', () => {
+    expect(stockLabel('backorder')).toBe('backorder')
   })
 })
