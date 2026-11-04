@@ -378,7 +378,7 @@ export function EnterpriseProfile({ anchor }: { anchor?: string }) {
               <StatCard label="Committed" value={money0(credit.committed)} sublabel="Invoiced and not yet paid" />
               <StatCard label="Headroom" value={money0(credit.headroom)}
                         color={credit.state === 'clear' ? undefined : credit.state === 'watch' ? 'var(--warning)' : 'var(--danger)'}
-                        sublabel={`${credit.pct}% of the line drawn`} />
+                        sublabel={`${credit.pct}% of the line drawn · ${credit.state === 'clear' ? 'comfortable' : credit.state === 'watch' ? 'getting close' : 'at the limit'}`} />
               <StatCard label="Next review" value={review.due ? day(review.due) : '—'}
                         color={review.overdue ? 'var(--danger)' : undefined}
                         sublabel={review.overdue ? 'Overdue' : review.inDays !== null ? `in ${review.inDays} days` : ''} />

@@ -92,7 +92,9 @@
 .c-input {
   width: 100%; min-height: 44px; padding: 10px 12px;
   border-radius: var(--radius-md); border: 1px solid var(--border-strong);
-  background: #fff; font-size: var(--text-sm); color: var(--text); outline: none;
+  background: #fff; font-size: var(--text-sm); color: var(--text);
+  /* Transparent, not none: forced-colors mode repaints it, so focus stays visible. */
+  outline: 2px solid transparent;
 }
 textarea.c-input { resize: vertical; min-height: 88px; }
 .c-input:focus { border-color: var(--electric); box-shadow: 0 0 0 3px rgba(22, 139, 255, 0.25); }

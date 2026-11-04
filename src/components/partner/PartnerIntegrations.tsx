@@ -216,7 +216,7 @@ export function PartnerIntegrations({ partnerId }: { partnerId: string }) {
                   color={uncovered.length ? 'var(--danger)' : 'var(--success)'} />
         <StatCard label="Call success"
                   value={allCalls ? `${Math.round((good / allCalls) * 100)}%` : '—'}
-                  sublabel={allCalls ? `${allCalls - good} failed of ${allCalls} recorded` : 'Nothing called yet'}
+                  sublabel={allCalls ? `${allCalls - good} failed of ${allCalls} recorded${good / allCalls < 0.9 ? ' · below 90% success' : ''}` : 'Nothing called yet'}
                   color={allCalls && good / allCalls < 0.9 ? 'var(--danger)' : undefined} />
         <StatCard label="Average round trip" value={avgMs === null ? '—' : `${avgMs}ms`}
                   sublabel={latencies.length ? `Over ${latencies.length} calls` : 'Nothing timed yet'} />

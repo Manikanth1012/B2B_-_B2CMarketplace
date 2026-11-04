@@ -94,12 +94,12 @@ export function PartnerDeveloper({ partnerId }: { partnerId: string }) {
         <StatCard label="Sandbox calls" value={fmtInt(sandboxUsage.calls)}
                   sublabel={sandboxUsage.successRate === null
                     ? 'Nothing called yet'
-                    : `${sandboxUsage.successRate}% succeeded · busiest day ${fmtInt(sandboxUsage.peakDay)} of ${fmtInt(LIMITS.sandbox.quota)}`}
+                    : `${sandboxUsage.successRate}% succeeded · busiest day ${fmtInt(sandboxUsage.peakDay)} of ${fmtInt(LIMITS.sandbox.quota)}${sandboxUsage.nearLimit ? ' · near the daily limit' : ''}`}
                   color={sandboxUsage.nearLimit ? 'var(--warning)' : undefined} />
         <StatCard label="Production calls" value={fmtInt(liveUsage.calls)}
                   sublabel={liveUsage.calls === 0
                     ? 'No production access yet'
-                    : `${liveUsage.successRate}% succeeded · busiest day ${fmtInt(liveUsage.peakDay)} of ${fmtInt(LIMITS.production.quota)}`}
+                    : `${liveUsage.successRate}% succeeded · busiest day ${fmtInt(liveUsage.peakDay)} of ${fmtInt(LIMITS.production.quota)}${liveUsage.nearLimit ? ' · near the daily limit' : ''}`}
                   color={liveUsage.nearLimit ? 'var(--warning)' : undefined} />
         <StatCard label="Waiting on the marketplace" value={String(pending.length)}
                   sublabel={pending.length ? 'Production requests being decided' : 'Nothing outstanding'}
