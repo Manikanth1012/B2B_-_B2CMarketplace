@@ -82,7 +82,7 @@ mind it touching.
 
 ### Artwork
 
-Source images live in `images/`, which is tracked in git. `npm run assets` (`scripts/build-assets.mjs`, using `sharp`) writes resized WebP to `public/assets/mp/`, including `home/`, and regenerates `src/lib/assets.ts`, which exports the paths the app uses (`HOME` among them). The app never references `images/` directly; change the source, rerun the script, commit both outputs.
+Source images live in `images/`, which is tracked in git. `npm run assets` (`scripts/build-assets.mjs`, using `sharp`) slices the sprite sheets (carousel, banners, device collage), crops individual photographs, and writes the resulting WebP to `public/assets/mp/` (including `home/`). It also copies the brand marks from `assets/brand/` into `public/assets/brand/`, and regenerates `src/lib/assets.ts`, which exports the paths the app uses (`HOME` among them). The app never references `images/` directly; change the source, rerun the script, commit both outputs.
 
 ### Serving it
 
@@ -278,7 +278,7 @@ Both require `npm install jsdom`.
 
 The app is **Aventa**. Chrome is deep navy `#061B3A`, with the 6D mark beside the Aventa wordmark. The typeface is Inter, loaded in `index.html`.
 
-The Aventa wordmark is an SVG component (`AventaWordmark`) because there is no Aventa logo file to ship. The 6D mark is different: it renders only from the approved PNG in `assets/brand/` (`6d-logo-white.png` on dark chrome, `6d-logo.png` on light surfaces) and is never redrawn in text, CSS or SVG. The enterprise buyer prototype stays neutral and carries no 6D mark, so it demos as white-label.
+The Aventa wordmark is an SVG component (`AventaWordmark`) because there is no Aventa logo file to ship. The 6D mark is different: it renders only from the approved PNG in `assets/brand/` (`6d-logo-white.png` on dark chrome; `6d-logo.png` is available for light surfaces but nothing uses it yet) and is never redrawn in text, CSS or SVG. All four consoles in the React app, enterprise included, show the 6D mark in their navy rail. Only the static `enterprise.html` prototype is neutral and carries no 6D mark, so that one demos as white-label.
 
 The static HTML prototypes at the repository root were built to an earlier palette (`#0D1B4B`, Poppins, `--nim-*` tokens). That is not the look of the React app, and the prototypes were not restyled.
 
@@ -306,7 +306,7 @@ New: `--blue #0756A5`, `--electric #168BFF`, `--cyan #12CDE0`, `--teal #00C6B5`,
 
 `--text-tertiary` is `#5B6B82`, not the `#64748B` the design brief suggested: that slate measures 4.43:1 on the new `#F4F7FC` ground, under AA. `#5B6B82` clears 4.5:1 on both white and `--bg-alt`.
 
-**Colour roles.** Teal, cyan and electric (and the brief's success green) are for fills, icons and large type. Small text uses the AA-safe tokens: `--brand-accent-dark` or `--blue` for accents, `--success`, `--warning`, `--danger` and `--info` for state. `src/lib/contrast.test.ts` reads `global.css` and fails if any text/surface pairing the design uses drops under AA. It also scans `src/**/*.tsx` and fails if a line sets `color:` to exactly `var(--brand-accent)`, because the light teal is 2.15:1 on white.
+**Colour roles.** Teal, cyan and electric (and the brief's success green) are for fills, icons and large type. Small text uses the AA-safe tokens: `--brand-accent-dark` or `--blue` for accents, `--success`, `--warning`, `--danger` and `--info` for state. `src/lib/contrast.test.ts` reads `global.css` and fails if any text/surface pairing the design uses drops under AA: 4.5:1 for text, 3:1 for UI glyphs such as the `--electric` focus ring. It also scans `src/**/*.tsx` and fails if a line sets `color:` to exactly `var(--brand-accent)`, because the light teal is 2.15:1 on white.
 
 **Shared components** live in `src/components/ui/`, are class-based, and are styled by `src/styles/ui.css` (imported in `src/main.tsx` after `global.css`).
 
@@ -315,7 +315,7 @@ New: `--blue #0756A5`, `--electric #168BFF`, `--cyan #12CDE0`, `--teal #00C6B5`,
 | `BentoGrid` / `BentoCell` | The grid that lays out a promotional page; cells span columns and rows. |
 | `BentoCard` | A cell's surface: `light`, `dark` (navy gradient) or `image` variant. |
 | `SectionHeader` | A section title with optional subtitle and a link-style action. |
-| `StatusBadge` | A small state label that carries text, not colour alone. |
+| `StatusBadge` | A small state label; each tone carries its own icon as well as its words, so state never rests on colour alone. |
 | `KpiCard` | One headline figure with its label. |
 | `AventaWordmark` | The Aventa name in chrome; SVG, no logo file exists. |
 | `CategoryTile` | A marketplace category as a tile with icon or artwork and a listing count. |
