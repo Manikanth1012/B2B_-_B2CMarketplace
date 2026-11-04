@@ -14,8 +14,11 @@
   padding: 16px 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
 }
-.cpe-side__logos { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.cpe-side__divider { width: 1px; height: 22px; background: rgba(255, 255, 255, 0.28); flex-shrink: 0; }
+/* 216px of content width cannot hold the 6D mark (~121px at 22px tall) and the
+   wordmark (~85px) on one line, so the wordmark sits beneath the mark. */
+.cpe-side__logos { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-width: 0; overflow: hidden; }
+.cpe-side__logos img { height: 22px; flex-shrink: 0; }
+.cpe-side__divider { display: none; }
 .cpe-side__nav { flex: 1; padding: 12px 8px; }
 .cpe-side__group { margin-bottom: 20px; }
 .cpe-side__heading {

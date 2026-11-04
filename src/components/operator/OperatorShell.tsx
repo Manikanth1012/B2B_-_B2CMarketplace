@@ -148,10 +148,10 @@ export function OperatorShell({ view, onNavigate, onSignOut, children }: Operato
         }}
         className="op-sidebar"
       >
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <img src="/assets/brand/6d-logo-white.png" alt="6D Marketplace" style={{ height: '28px' }} />
-            <AventaWordmark size={22} />
+        <div className="cpe-side__brand">
+          <div className="cpe-side__logos">
+            <img src="/assets/brand/6d-logo-white.png" alt="6D Marketplace" />
+            <AventaWordmark size={20} />
           </div>
           <button onClick={() => setMobileNavOpen(false)} className="show-mobile" style={{ color: 'white' }}>
             <X size={20} />

@@ -96,9 +96,9 @@ export function EnterpriseShell({ view, onNavigate, onSignOut, children }: Enter
         {/* The approved 6D mark, then the Aventa wordmark beside it. */}
         <div className="cpe-side__brand">
           <div className="cpe-side__logos">
-            <img src="/assets/brand/6d-logo-white.png" alt="6D" style={{ height: '28px' }} />
+            <img src="/assets/brand/6d-logo-white.png" alt="6D" />
             <span className="cpe-side__divider" aria-hidden />
-            <AventaWordmark size={24} />
+            <AventaWordmark size={20} />
           </div>
           <button onClick={() => setMobileNavOpen(false)} className="show-mobile" aria-label="Close menu" style={{ color: 'white' }}>
             <X size={20} />
