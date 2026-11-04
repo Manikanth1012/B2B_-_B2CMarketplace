@@ -1,0 +1,43 @@
+# UI revamp — backlog
+
+Work agreed but not yet scheduled into a spec. Each item becomes its own
+brainstorm → spec → plan → build cycle when it is picked up.
+
+## Revamp specs
+
+| # | Spec | Status |
+|---|---|---|
+| 1 | Foundation + public homepage | Done — merged 2026-11-04 (`5489bb2`) |
+| 2 | Commerce — retail and enterprise storefronts, product listing and detail, cart, checkout, header search | Spec written — `docs/superpowers/specs/2026-11-04-ui-revamp-commerce-design.md` |
+| 3 | Operator console — grouped sidebar, bento KPI dashboard, business accounts | To do |
+| 4 | Partner portal — operator workspace language, partner navigation | To do |
+| 5 | Validation sweep across all experiences | To do |
+
+## New enterprise features (deferred from spec 2 — 2026-11-04)
+
+The revamp brief asks for these on the enterprise storefront. None exist in
+the app today, and each needs database tables with RLS, an operator-side
+screen to answer it, and notifications — so they are features, not a
+restyle, and get their own spec after the revamp.
+
+- [ ] **Request a quote** — buyer asks for pricing on a listing or a basket; operator/seller responds.
+- [ ] **Request a demo** — buyer books a demo of a product or service.
+- [ ] **Contact Sales** — a tracked enquiry rather than a mailto link.
+- [ ] **Enterprise enquiry tracking** — the buyer's list of quotes, demos and enquiries with status.
+- [ ] **Configurable product bundles** — buyer assembles a bundle with options and gets one price.
+
+## Carried over from spec 1 reviews (non-blocking)
+
+- [ ] Product detail fulfilment icon and remaining decorative glyphs in the light teal (`ProductDetail.tsx:29`) — move to `--brand-accent-dark`.
+- [ ] Extend the contrast guard to colours passed through variables and props (`accentColor`, `catColors`), and to white glyphs on accent fills.
+- [ ] Stale `rgba(0,166,166,…)` tints of the old teal (Checkout, LoginScreen, OperatorShell, OperatorRoles, Hero).
+- [ ] One Escape closes both the mobile menu and the Discover panel; close the inner layer first.
+- [ ] `BentoCard` heading level prop — hero side cards render `h3` before any `h2`.
+- [ ] Remove the now-unused `Carousel.tsx` and `lib/carousel.ts`.
+- [ ] Forced-colours fallback for the gradient headline text.
+- [ ] `.ui-link` touch target size against WCAG 2.5.8 (24px).
+
+## Data to check (not code)
+
+- [ ] Beacon IoT Care (SKU-7011) has no INR price — confirm that is intended (seller not approved in India).
+- [ ] 14 integration tests fail against the shared live database (contract renewals, credit, settlement, subscription dates) — the seed data has drifted since it was written.
