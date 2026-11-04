@@ -69,7 +69,7 @@ export function PartnerDashboard({ partnerId, onNavigate }: {
       </div>
 
       {/* Stat cards */}
-      <div className="stat-row">
+      <div className="cpe-kpis">
         <StatCard label="Gross Merchandise Value" value={`$${fmtMoney(gmv)}`} sublabel={`${fmtInt(PARTNER_ORDERS.length)} orders`} color="var(--brand-navy)" />
         <StatCard label="Orders to Fulfil" value={fmtInt(openOrders.length)} sublabel={failedOrders.length ? `${failedOrders.length} failed and need action` : 'Nothing overdue'} color="var(--brand-accent-dark)" />
         <StatCard label="Settlement Due" value={`$${fmtMoney(dueSettlement)}`} sublabel={`Next payout ${PARTNER_SETTLEMENTS[0]?.due || '—'}`} color="var(--success)" />
@@ -77,7 +77,7 @@ export function PartnerDashboard({ partnerId, onNavigate }: {
       </div>
 
       {/* Charts row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }} className="op-grid-2col">
+      <div className="cpe-panels">
         <SectionCard title="Gross Value by Listing" subtitle="Last 90 days · gross order value before commission">
           <div style={{ padding: '20px' }}>
             {liveListings.map((l, i) => {
@@ -126,7 +126,7 @@ export function PartnerDashboard({ partnerId, onNavigate }: {
       </div>
 
       {/* Orders + Rating */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }} className="op-grid-2col">
+      <div className="cpe-panels">
         <SectionCard
           title="Orders Needing You"
           subtitle={`${openOrders.length + failedOrders.length} require action`}
