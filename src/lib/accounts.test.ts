@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  stepsOf, progressOf, isLate, whereTheyAre, rollup, matches, deskOrder, shopperLine,
+  stepsOf, progressOf, isLate, whereTheyAre, rollup, matches, deskOrder, shopperLine, inBand, bandCounts,
 } from './accounts'
 import type { Account, Step, StepState, Shopper } from './accounts'
 
@@ -237,5 +237,46 @@ describe('identifying a retail customer', () => {
     const s = shopper({ id: 'cp-449118', user_id: null })
     expect(s.id).toBeTruthy()
     expect(shopperLine(s)).toBe('IN')
+  })
+})
+
+/* The chips and the summary cards must never disagree, so both read the same
+   predicate. */
+describe('narrowing the book by where it stands', () => {
+  const steps = [
+    ...ladder(['done', 'done'], 'ENT-A'),
+    ...ladder(['done', 'due'], 'ENT-B'),
+    ...ladder(['done', 'overdue'], 'ENT-C'),
+  ]
+  const accounts = [
+    acct({ id: 'ENT-A', company: 'Alpha' }),
+    acct({ id: 'ENT-B', company: 'Bravo' }),
+    acct({ id: 'ENT-C', company: 'Charlie' }),
+  ]
+  const today = '2026-08-10'
+  const names = (band: Parameters<typeof inBand>[3]) =>
+    accounts.filter(a => inBand(a, steps, today, band)).map(a => a.company)
+
+  it('keeps everybody under "all"', () => {
+    expect(names('all')).toEqual(['Alpha', 'Bravo', 'Charlie'])
+  })
+  it('splits onboarded from part-way through', () => {
+    expect(names('onboarded')).toEqual(['Alpha'])
+    expect(names('inFlight')).toEqual(['Bravo', 'Charlie'])
+  })
+  it('finds the overdue, even on an onboarded account whose review is late', () => {
+    expect(names('overdue')).toEqual(['Charlie'])
+    const withReview = [...steps, step({ id: 'r', account_id: 'ENT-A', gate_id: null, state: 'due', due_on: '2026-01-01', sort_order: 9 })]
+    expect(inBand(accounts[0], withReview, today, 'overdue')).toBe(true)
+    expect(inBand(accounts[0], withReview, today, 'onboarded')).toBe(true)
+  })
+  it('matches no account for "waiting", which are applications not accounts', () => {
+    expect(names('waiting')).toEqual([])
+  })
+  it('counts exactly what rollup counts', () => {
+    const r = rollup({ accounts, steps, waiting: 4, today })
+    expect(bandCounts(accounts, steps, today, 4)).toEqual({
+      all: r.accounts, onboarded: r.onboarded, inFlight: r.inFlight, overdue: r.overdue, waiting: r.waiting,
+    })
   })
 })

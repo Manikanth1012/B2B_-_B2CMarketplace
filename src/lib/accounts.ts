@@ -143,22 +143,46 @@ export interface Rollup {
   waiting: number
 }
 
+/* Where an account stands, for the status chips and the summary cards alike.
+   One predicate each, so a card that says 3 and a chip that lists 2 cannot
+   happen. The bands overlap on purpose: an onboarded account whose yearly
+   review is late is both onboarded and overdue, as the row already says. */
+export type Band = 'all' | 'onboarded' | 'inFlight' | 'overdue' | 'waiting'
+
+/** Whether a gate or the review has run past its date. */
+function isOverdueAccount(p: Progress, today: string): boolean {
+  return [p.next, p.review].some(x => !!x && (x.state === 'overdue' || isLate(x, today)))
+}
+
+export function inBand(
+  a: Account, steps: readonly Step[], today: string, band: Band,
+): boolean {
+  if (band === 'all') return true
+  /* Applications are not accounts, so none of the book is "waiting". */
+  if (band === 'waiting') return false
+  const p = progressOf(stepsOf(steps, a.id))
+  if (band === 'onboarded') return p.complete
+  if (band === 'inFlight') return !p.complete
+  return isOverdueAccount(p, today)
+}
+
+export function bandCounts(
+  accounts: readonly Account[], steps: readonly Step[], today: string, waiting: number,
+): Record<Band, number> {
+  const count = (band: Band) => accounts.filter(a => inBand(a, steps, today, band)).length
+  return {
+    all: accounts.length, onboarded: count('onboarded'), inFlight: count('inFlight'),
+    overdue: count('overdue'), waiting,
+  }
+}
+
 export function rollup(
   { accounts, steps, waiting, today }: {
     accounts: readonly Account[]; steps: readonly Step[]; waiting: number; today: string
   },
 ): Rollup {
-  let onboarded = 0
-  let inFlight = 0
-  let overdue = 0
-  for (const a of accounts) {
-    const p = progressOf(stepsOf(steps, a.id))
-    if (p.complete) onboarded++
-    else inFlight++
-    const late = [p.next, p.review].some(x => !!x && (x.state === 'overdue' || isLate(x, today)))
-    if (late) overdue++
-  }
-  return { accounts: accounts.length, onboarded, inFlight, overdue, waiting }
+  const c = bandCounts(accounts, steps, today, waiting)
+  return { accounts: c.all, onboarded: c.onboarded, inFlight: c.inFlight, overdue: c.overdue, waiting }
 }
 
 /* --------------------------------------------------------------- searching -- */
@@ -179,7 +203,7 @@ export function deskOrder(
 ): Account[] {
   const rank = (a: Account) => {
     const p = progressOf(stepsOf(steps, a.id))
-    if ([p.next, p.review].some(x => !!x && (x.state === 'overdue' || isLate(x, today)))) return 0
+    if (isOverdueAccount(p, today)) return 0
     if (!p.complete) return 1
     return 2
   }
