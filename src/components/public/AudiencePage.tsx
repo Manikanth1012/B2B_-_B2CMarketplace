@@ -85,21 +85,34 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
   /* Until the catalogue arrives the shelf is empty, which must not read as
      "nothing matches". */
   const [loaded, setLoaded] = useState(false)
+  /* Bumped by Try again to re-run the load. */
+  const [reloadKey, setReloadKey] = useState(0)
   /* Which product is open. Held here rather than inside the grid because the
      partner page shows categories instead of a grid, and the modal belongs to
      the page either way. */
   const [viewing, setViewing] = useState<Product | null>(null)
 
   useEffect(() => {
+    let live = true
+    setLoaded(false)
     /* Priced for the market too. A shopper who sees $18.00 before signing in
        and ₹1,599.00 after has been shown two different shops. */
     /* Categories are awaited too: the shelf is empty until both are in, and that
        must not flash "nothing here". */
     Promise.all([loadCatalogue(), loadPriceBook(currencyCode), loadCopyBook(), loadCategories()])
-      .then(([rows, book, copy, cats]) => { setCatalogue(repriceAll(rows, book, currencyCode, copy)); setCategories(cats); setLoaded(true) })
+      .then(([rows, book, copy, cats]) => {
+        if (!live) return
+        setCatalogue(repriceAll(rows, book, currencyCode, copy))
+        setCategories(cats)
+        setLoaded(true)
+      })
+      /* A rejection must not leave the spinner up; an empty catalogue then
+         reads as "couldn't load". */
+      .catch(() => { if (live) setLoaded(true) })
     /* The currency is a dependency: without it this closes over the first one
        it saw and the page keeps showing that market's prices forever. */
-  }, [currencyCode])
+    return () => { live = false }
+  }, [currencyCode, reloadKey])
 
   /* The same rows the operator's catalogue holds — name, seller, price, rating —
      narrowed to the categories this page covers and to what is actually live. */
@@ -248,6 +261,15 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
               <div style={{ textAlign: 'center', padding: '64px' }}>
                 <div className="spinner" style={{ margin: '0 auto' }} />
               </div>
+            ) : catalogue.length === 0 ? (
+              /* The loaders return nothing on any error, so a wholly empty
+                 catalogue is a failed load, not a claim about this market. */
+              <EmptyListing
+                title="We couldn't load the products"
+                text="Please check your connection and try again."
+                onClear={() => setReloadKey(k => k + 1)}
+                actionLabel="Try again"
+              />
             ) : shelf.length === 0 ? (
               <EmptyListing
                 title="Nothing here for your market yet"

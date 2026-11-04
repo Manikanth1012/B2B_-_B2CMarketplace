@@ -177,12 +177,12 @@ export function ListingGrid({ children }: { children: React.ReactNode }) {
   return <div className="listing__grid">{children}</div>
 }
 
-export function EmptyListing({ title, text, onClear }: { title: string; text: string; onClear?: () => void }) {
+export function EmptyListing({ title, text, onClear, actionLabel = 'Clear all' }: { title: string; text: string; onClear?: () => void; actionLabel?: string }) {
   return (
     <div className="listing__empty">
       <h2>{title}</h2>
       <p>{text}</p>
-      {onClear && <button className="btn btn-secondary" onClick={onClear}>Clear all</button>}
+      {onClear && <button className="btn btn-secondary" onClick={onClear}>{actionLabel}</button>}
     </div>
   )
 }
