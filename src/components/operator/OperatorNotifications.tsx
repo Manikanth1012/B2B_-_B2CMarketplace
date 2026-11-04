@@ -110,7 +110,7 @@ export function OperatorNotifications() {
         <StatCard label="Live rules" value={fmtInt(book.rules.filter(r => r.enabled).length)}
                   sublabel={`${fmtInt(book.rules.filter(r => r.mandatory).length)} cannot be switched off · ${fmtInt(book.rules.filter(r => !r.enabled).length)} paused`} />
         <StatCard label="Reached its recipient" value={summary.rate === null ? '—' : `${summary.rate}%`}
-                  sublabel={`${fmtInt(summary.delivered)} of ${fmtInt(summary.attempted)} attempted · ${fmtInt(summary.suppressed)} deliberately not sent`}
+                  sublabel={`${fmtInt(summary.delivered)} of ${fmtInt(summary.attempted)} attempted · ${fmtInt(summary.suppressed)} deliberately not sent${summary.rate === null ? '' : summary.rate < 95 ? ' · below the 95% target' : ' · on target'}`}
                   color={summary.rate !== null && summary.rate < 95 ? 'var(--warning)' : 'var(--success)'} />
         {/* Per currency, never one number. Route Mobile bills Kenya in
             shillings and India in rupees; adding those together produces a

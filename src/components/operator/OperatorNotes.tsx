@@ -143,7 +143,7 @@ function Exposure({ book, policy }: { book: NoteBook; policy: NotePolicy }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
       <StatCard label="Agreed, not yet settled" value={cash(e.committed)}
-        sublabel="Lands on the next run" color="var(--primary)" />
+        sublabel="Lands on the next run" color="var(--info)" />
       <StatCard label="Still being decided" value={cash(e.awaiting)}
         sublabel="Drafts and notes short a signature" />
       <StatCard label="Under dispute" value={cash(e.disputed)}

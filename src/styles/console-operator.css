@@ -1,0 +1,83 @@
+/* Operator console: sidebar groups and dashboard. Loaded after console.css. */
+
+/* ---------- Sidebar ---------- */
+.op-nav { flex: 1; padding: 12px 8px; }
+.op-nav__group { margin-bottom: 6px; }
+
+/* Group heading: a button that opens and closes its group. 0.62 white on the
+   navy is 4.5:1 or better (the spec 1 fix), so the colour stays as is. */
+.op-nav__head {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+  padding: 8px 12px; border: none; background: transparent; cursor: pointer;
+  border-radius: var(--radius);
+  font: inherit; font-size: var(--text-xs); font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em; text-align: left;
+  color: rgba(255, 255, 255, 0.62);
+}
+.op-nav__head:hover { color: #fff; background: rgba(255, 255, 255, 0.06); }
+.op-nav__chev { transition: transform 150ms ease; transform: rotate(-90deg); flex-shrink: 0; }
+.op-nav__head[aria-expanded="true"] .op-nav__chev { transform: rotate(0deg); }
+
+.op-nav__items { display: flex; flex-direction: column; gap: 2px; padding-bottom: 6px; }
+
+.op-nav__item {
+  position: relative; display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 10px 12px; border: none; background: transparent; cursor: pointer;
+  border-radius: var(--radius);
+  font: inherit; font-size: var(--text-sm); font-weight: 500; text-align: left;
+  color: rgba(255, 255, 255, 0.78);
+  transition: background 150ms ease, color 150ms ease;
+}
+.op-nav__icon { display: inline-flex; color: rgba(255, 255, 255, 0.62); }
+.op-nav__item:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
+.op-nav__item:hover .op-nav__icon { color: #fff; }
+
+/* Active: a cyan bar on the left and a soft white fill. The bar is 3px of
+   cyan against navy, well over the 3:1 an indicator needs. */
+.op-nav__item[aria-current="page"] {
+  background: rgba(255, 255, 255, 0.12); color: #fff; font-weight: 600;
+}
+.op-nav__item[aria-current="page"]::before {
+  content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px;
+  border-radius: 0 3px 3px 0; background: var(--cyan);
+}
+.op-nav__item[aria-current="page"] .op-nav__icon { color: var(--cyan); }
+
+.op-nav__head:focus-visible, .op-nav__item:focus-visible {
+  outline: 2px solid var(--cyan); outline-offset: -2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .op-nav__chev, .op-nav__item { transition: none; }
+}
+@media (forced-colors: active) {
+  .op-nav__item[aria-current="page"] { outline: 2px solid Highlight; }
+}
+
+/* ---------- Dashboard ---------- */
+.op-dash { display: flex; flex-direction: column; gap: 16px; }
+
+/* A stat card that goes somewhere fills its bento cell like one that doesn't. */
+.op-go { display: flex; border-radius: var(--radius-card); }
+.op-go > * { flex: 1; }
+.op-go[role="link"] { cursor: pointer; }
+.op-go[role="link"]:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+.op-alert {
+  display: flex; align-items: flex-start; gap: 10px; padding: 14px 16px;
+  background: #FEF3C7; color: #92400E; font-size: var(--text-sm); line-height: 1.5;
+}
+.op-alert__icon { flex-shrink: 0; margin-top: 1px; }
+.op-alert__actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.op-alert--clear { background: var(--success-bg); color: var(--success); }
+
+.op-quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 16px; }
+@media (max-width: 767px) { .op-quick { grid-template-columns: 1fr; } }
+.op-quick__link {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: #fff; color: var(--text); font: inherit; font-size: var(--text-sm); font-weight: 600;
+  cursor: pointer; text-align: left;
+}
+.op-quick__link:hover { border-color: var(--blue); background: var(--bg-alt); }
+.op-quick__link:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }

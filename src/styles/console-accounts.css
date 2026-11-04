@@ -1,0 +1,18 @@
+/* Status chips on the Business Accounts screen: a radio group of pills.
+   Unselected: white with a strong border; selected: navy fill, white text. */
+.acct-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.acct-chip {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 36px;
+  padding: 0 14px; border-radius: 999px; cursor: pointer;
+  background: #fff; color: var(--text); border: 1px solid var(--border-strong);
+  font: inherit; font-size: var(--text-sm); font-weight: 600; white-space: nowrap;
+}
+.acct-chip:hover { background: var(--bg-alt); }
+.acct-chip:focus-visible { outline: 2px solid var(--brand-navy, #0a2540); outline-offset: 2px; }
+.acct-chip[aria-checked="true"] {
+  background: var(--brand-navy, #0a2540); color: #fff; border-color: var(--brand-navy, #0a2540);
+}
+.acct-chip__n { font-variant-numeric: tabular-nums; font-weight: 700; }
+@media (forced-colors: active) {
+  .acct-chip[aria-checked="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+}

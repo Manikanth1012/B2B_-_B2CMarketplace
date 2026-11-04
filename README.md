@@ -310,6 +310,28 @@ New: `--blue #0756A5`, `--electric #168BFF`, `--cyan #12CDE0`, `--teal #00C6B5`,
 
 On the enterprise catalogue, "Add to requisition" is disabled for out-of-stock listings (the shared `cardAction` rule).
 
+**Consoles.** The operator, partner and enterprise consoles share one set of components in `src/components/operator/shared.tsx`:
+
+- `StatCard` is the KPI card. Its coloured status dot is `aria-hidden`, so the sublabel has to say the meaning in words; never leave it to the colour.
+- `SectionCard` and `Table` are the content containers.
+- `StatusPill` and `PriorityPill` render through `StatusBadge`, taking their tone from `statusTone` in `src/lib/consoleTone.ts`. Unlisted statuses are neutral.
+- `Btn` has the variants `primary`, `secondary`, `danger`, `success` and `accent`. `accent` is for a screen's single main action.
+- Form controls are 44px tall with a `--border-strong` border.
+
+Styles live in `src/styles/console.css` (shared components), with `console-operator.css`, `console-accounts.css` and `console-partner-enterprise.css` for each area.
+
+The operator sidebar (`OperatorShell.tsx`) is grouped; the group holding the current screen is always open.
+
+- Overview: Dashboard
+- Partners & accounts: Onboarding, Accounts, Sellers, Catalogue Review
+- Commerce: Orders, Renewals, Inventory & WMS, Numbers & SIMs, Refunds, Rewards
+- Finance: Settlement Runs, Revenue Share, Credit & Exposure, Collections, Wallets, Credit & Debit Notes, General Ledger, Bill Templates, Markets & Currencies
+- Service: Tickets & SLA, Disputes, Agreements
+- Platform: Developer Portal, Promotions, Storefront Banners, Notifications, Channels
+- Governance: Shelves & Rules, Reviews, Content Feedback, Roles & Users, Audit Trail, Knowledge base
+
+On Business Accounts, the status chips filter with `inBand` and the summary cards count with `bandCounts` (both in `src/lib/accounts.ts`), so a chip and its card cannot disagree.
+
 **Shared components** live in `src/components/ui/`, are class-based, and are styled by `src/styles/ui.css` (imported in `src/main.tsx` after `global.css`).
 
 | Component | Use it for |

@@ -9,9 +9,9 @@ import { useMarket } from '../../lib/MarketContext'
 import { loadAccountBook } from '../../lib/accountsRepo'
 import type { AccountBook } from '../../lib/accountsRepo'
 import {
-  stepsOf, progressOf, isLate, whereTheyAre, rollup, matches, deskOrder, shopperLine,
+  stepsOf, progressOf, isLate, whereTheyAre, rollup, matches, deskOrder, shopperLine, inBand,
 } from '../../lib/accounts'
-import type { Account, Step } from '../../lib/accounts'
+import type { Account, Step, Band } from '../../lib/accounts'
 import type { OperatorView } from '../../types/view'
 
 /* Who the marketplace's customers are, and where each of them has got to.
@@ -33,6 +33,17 @@ import type { OperatorView } from '../../types/view'
  * drift from the first.
  */
 
+/* Chips, in the order the summary cards read. Their counts come from `rollup`
+   and their filter from `inBand` — the same predicates — so a chip can never
+   promise more or fewer rows than the card above it. */
+const BANDS: { id: Band; label: string }[] = [
+  { id: 'all', label: 'All' },
+  { id: 'onboarded', label: 'Onboarded' },
+  { id: 'inFlight', label: 'Part-way through' },
+  { id: 'overdue', label: 'Overdue' },
+  { id: 'waiting', label: 'Waiting' },
+]
+
 const TODAY = new Date().toISOString().slice(0, 10)
 
 export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView) => void }) {
@@ -40,6 +51,7 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
   const [book, setBook] = useState<AccountBook | null>(null)
   const [tab, setTab] = useState<'business' | 'retail'>('business')
   const [q, setQ] = useState('')
+  const [band, setBand] = useState<Band>('all')
   const [openId, setOpenId] = useState<string | null>(null)
 
   const reload = useCallback(async () => setBook(await loadAccountBook()), [])
@@ -49,8 +61,8 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
   const steps = book?.steps ?? []
 
   const ordered = useMemo(
-    () => deskOrder(accounts.filter(a => matches(a, q)), steps, TODAY),
-    [accounts, steps, q])
+    () => deskOrder(accounts.filter(a => matches(a, q) && inBand(a, steps, TODAY, band)), steps, TODAY),
+    [accounts, steps, q, band])
   const shoppers = useMemo(
     () => (book?.shoppers ?? []).filter(s =>
       !q.trim() || [s.name, s.email ?? '', s.market ?? ''].some(v => v.toLowerCase().includes(q.trim().toLowerCase()))),
@@ -58,7 +70,7 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
 
   /* Above the loading guard — a hook after an early return runs on some renders
      and not others. */
-  const bizPage = usePaging(ordered, { resetKey: q + tab })
+  const bizPage = usePaging(ordered, { resetKey: q + tab + band })
   const retailPage = usePaging(shoppers, { resetKey: q + tab })
 
   if (!book) {
@@ -66,6 +78,22 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
   }
 
   const totals = rollup({ accounts, steps, waiting: book.waiting, today: TODAY })
+  const bandCount: Record<Band, number> = {
+    all: totals.accounts, onboarded: totals.onboarded, inFlight: totals.inFlight,
+    overdue: totals.overdue, waiting: totals.waiting,
+  }
+  /* Arrow keys move between the chips, as a radio group does; only the
+     selected chip is in the tab order. */
+  const onChipKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const dir = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1
+      : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0
+    if (!dir) return
+    e.preventDefault()
+    const i = BANDS.findIndex(b => b.id === band)
+    const next = BANDS[(i + dir + BANDS.length) % BANDS.length].id
+    setBand(next)
+    e.currentTarget.querySelector<HTMLButtonElement>(`[data-band="${next}"]`)?.focus()
+  }
   const open = openId ? accounts.find(a => a.id === openId) ?? null : null
 
   return (
@@ -127,11 +155,36 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
         </div>
       </div>
 
+      {tab === 'business' && (
+        <div className="acct-chips" role="radiogroup" aria-label="Filter by status" onKeyDown={onChipKey}>
+          {BANDS.map(b => (
+            <button key={b.id} type="button" role="radio" data-band={b.id}
+              aria-checked={band === b.id} tabIndex={band === b.id ? 0 : -1}
+              className="acct-chip" onClick={() => setBand(b.id)}>
+              {b.label} <span className="acct-chip__n">{fmtInt(bandCount[b.id])}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
       {tab === 'business' ? (
         <SectionCard title="Business accounts"
           subtitle="Whoever needs something doing about them, first.">
-          {ordered.length === 0 ? (
-            <EmptyState message={q ? 'No company matches that.' : 'No business accounts yet.'} />
+          {band === 'waiting' ? (
+            <>
+              <EmptyState message={totals.waiting
+                ? 'Companies who are waiting have applied but are not accounts yet, so they are not in this list.'
+                : 'Nobody is waiting to be decided.'} />
+              {onNavigate && totals.waiting > 0 && (
+                <div style={{ padding: '0 20px 16px', textAlign: 'center' }}>
+                  <Btn variant="secondary" onClick={() => onNavigate('op-onboarding')}>
+                    <Inbox size={14} /> Open the queue
+                  </Btn>
+                </div>
+              )}
+            </>
+          ) : ordered.length === 0 ? (
+            <EmptyState message={q || band !== 'all' ? 'No company matches that.' : 'No business accounts yet.'} />
           ) : (
             <>
               <Table headers={['Company', 'Market', 'Terms', 'Credit', 'Onboarding', 'Where they are', '']}>

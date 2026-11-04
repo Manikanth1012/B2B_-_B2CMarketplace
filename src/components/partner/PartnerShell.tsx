@@ -9,6 +9,7 @@ import {
 import type { PartnerView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
 import { AccountMenu } from '../AccountMenu'
+import { AventaWordmark } from '../ui'
 
 interface PartnerShellProps {
   view: PartnerView
@@ -76,65 +77,33 @@ export function PartnerShell({ view, onNavigate, onSignOut, children }: PartnerS
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-alt)', display: 'flex' }}>
       {/* Sidebar */}
-      <aside
-        style={{
-          width: 256,
-          flexShrink: 0,
-          background: 'var(--brand-navy)',
-          color: 'white',
-          display: mobileNavOpen ? 'flex' : 'none',
-          flexDirection: 'column',
-          position: 'fixed',
-          top: 0, left: 0, bottom: 0,
-          zIndex: 200,
-          overflowY: 'auto',
-        }}
-        className="op-sidebar"
-      >
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <img src="/assets/brand/6d-logo-white.png" alt="6D Marketplace" style={{ height: '28px' }} />
+      <aside className="op-sidebar cpe-side" style={{ display: mobileNavOpen ? 'flex' : 'none' }}>
+        {/* The approved 6D mark, then the Aventa wordmark beside it. */}
+        <div className="cpe-side__brand">
+          <div className="cpe-side__logos">
+            <img src="/assets/brand/6d-logo-white.png" alt="6D" />
+            <span className="cpe-side__divider" aria-hidden />
+            <AventaWordmark size={20} />
           </div>
-          <button onClick={() => setMobileNavOpen(false)} className="show-mobile" style={{ color: 'white' }}>
+          <button onClick={() => setMobileNavOpen(false)} className="show-mobile" aria-label="Close menu" style={{ color: 'white' }}>
             <X size={20} />
           </button>
         </div>
 
-        <nav style={{ flex: 1, padding: '12px 8px' }}>
+        <nav className="cpe-side__nav" aria-label="Console">
           {NAV_SECTIONS.map((section) => (
-            <div key={section.label} style={{ marginBottom: '20px' }}>
-              <div style={{
-                padding: '4px 12px',
-                fontSize: 'var(--text-xs)',
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                color: 'rgba(255,255,255,0.62)',
-                marginBottom: '4px',
-              }}>
-                {section.label}
-              </div>
+            <div key={section.label} className="cpe-side__group">
+              <div className="cpe-side__heading">{section.label}</div>
               {section.items.map((item) => {
                 const active = view === item.id
                 return (
                   <button
                     key={item.id}
                     onClick={() => { onNavigate(item.id); setMobileNavOpen(false) }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '10px',
-                      width: '100%', padding: '10px 12px',
-                      borderRadius: 'var(--radius)',
-                      fontSize: 'var(--text-sm)', fontWeight: 500,
-                      color: active ? 'white' : 'rgba(255,255,255,0.65)',
-                      background: active ? 'rgba(124,99,214,0.25)' : 'transparent',
-                      border: 'none', cursor: 'pointer',
-                      transition: 'all 150ms ease',
-                      textAlign: 'left',
-                    }}
-                    onMouseEnter={(e) => { if (!active) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'white' } }}
-                    onMouseLeave={(e) => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.65)' } }}
+                    className={`cpe-side__item${active ? ' is-active' : ''}`}
+                    aria-current={active ? 'page' : undefined}
                   >
-                    <span style={{ color: active ? '#B8A4E8' : 'rgba(255,255,255,0.5)' }}>{item.icon}</span>
+                    <span className="cpe-side__icon">{item.icon}</span>
                     {item.label}
                   </button>
                 )
@@ -143,23 +112,9 @@ export function PartnerShell({ view, onNavigate, onSignOut, children }: PartnerS
           ))}
         </nav>
 
-        <div style={{ padding: '12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-          <button
-            onClick={onSignOut}
-            style={{
-              display: 'flex', alignItems: 'center', gap: '10px',
-              width: '100%', padding: '10px 12px',
-              borderRadius: 'var(--radius)',
-              fontSize: 'var(--text-sm)', fontWeight: 500,
-              color: 'rgba(255,255,255,0.65)',
-              background: 'transparent', border: 'none', cursor: 'pointer',
-              transition: 'all 150ms ease',
-            }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'white' }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.65)' }}
-          >
-            <LogOut size={18} />
-            Sign out
+        <div className="cpe-side__foot">
+          <button onClick={onSignOut} className="cpe-side__item">
+            <span className="cpe-side__icon"><LogOut size={18} /></span> Sign out
           </button>
         </div>
       </aside>

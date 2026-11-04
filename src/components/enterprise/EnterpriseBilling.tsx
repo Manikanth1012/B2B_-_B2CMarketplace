@@ -151,7 +151,7 @@ export function EnterpriseBilling() {
                     ? `${money(com.renewing)} renewing · ${money(com.suspended)} running to contract end`
                     : `${book.subscriptions.filter(s => s.status === 'active').length} subscriptions`} />
         <StatCard label="Budget used" value={`${budget.pct}%`}
-                  sublabel={`${money0(budget.spent)} of ${money0(budget.budget)} · ${budget.yearPct}% of the year gone`}
+                  sublabel={`${money0(budget.spent)} of ${money0(budget.budget)} · ${budget.yearPct}% of the year gone · ${budget.ahead ? 'ahead of the year' : 'not ahead of the year'}`}
                   color={budget.ahead ? 'var(--warning)' : 'var(--success)'} />
         <StatCard label="Sellers on one invoice" value={fmtInt(sellers.size)}
                   sublabel="The marketplace settles each of them separately" />

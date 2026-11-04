@@ -3,11 +3,12 @@ import {
   Star,
   LayoutDashboard, Building2, Users, Package, DollarSign, Warehouse, Ticket,
   Shield, Code, Megaphone, Tag, TrendingUp, Settings,
-  Search, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store, Wallet as WalletIcon, MessageSquareWarning, RotateCcw, Gift, Scale, BookText, Radio, Receipt, LibraryBig, Globe,
+  Search, ChevronDown, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store, Wallet as WalletIcon, MessageSquareWarning, RotateCcw, Gift, Scale, BookText, Radio, Receipt, LibraryBig, Globe,
   User, KeyRound, Monitor, Smartphone, Layers, FileText, PackageSearch, Landmark, FileSignature, CalendarClock } from 'lucide-react'
 import type { OperatorView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
 import { AccountMenu } from '../AccountMenu'
+import { AventaWordmark } from '../ui'
 
 interface OperatorShellProps {
   view: OperatorView
@@ -18,11 +19,22 @@ interface OperatorShellProps {
   children: React.ReactNode
 }
 
-const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; icon: React.ReactNode }[] }[] = [
+type NavItem = { id: OperatorView; label: string; icon: React.ReactNode }
+
+/* "Operations" was eighteen items in one list, which is a list you scroll
+   rather than one you find things in. It is four groups now, split by the job
+   being done (partners, commerce, money, service). Every item kept, and the
+   order within each group is the order it had inside Operations. */
+const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
   {
     label: 'Overview',
     items: [
       { id: 'op-dashboard', label: 'Dashboard', icon: <LayoutDashboard size={18} /> },
+    ]
+  },
+  {
+    label: 'Partners & accounts',
+    items: [
       { id: 'op-onboarding', label: 'Onboarding', icon: <Users size={18} /> },
       { id: 'op-accounts', label: 'Accounts', icon: <Building2 size={18} /> },
       { id: 'op-partners', label: 'Sellers', icon: <Store size={18} /> },
@@ -30,32 +42,30 @@ const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; i
     ]
   },
   {
-    label: 'Operations',
+    label: 'Commerce',
     items: [
-      { id: 'op-settlement', label: 'Settlement Runs', icon: <DollarSign size={18} /> },
-      { id: 'op-inventory', label: 'Inventory & WMS', icon: <Warehouse size={18} /> },
       /* Above tickets: a ticket is what somebody says about an order, and the
          order is the thing itself. Support reads them in that direction. */
       { id: 'op-orders', label: 'Orders', icon: <PackageSearch size={18} /> },
       /* Beside orders, above numbers: a renewal is the order that keeps
          happening, and half of them are a seller's to make happen. */
       { id: 'op-renewals', label: 'Renewals', icon: <CalendarClock size={18} /> },
+      { id: 'op-inventory', label: 'Inventory & WMS', icon: <Warehouse size={18} /> },
       { id: 'op-numbers', label: 'Numbers & SIMs', icon: <Smartphone size={18} /> },
-      { id: 'op-tickets', label: 'Tickets & SLA', icon: <Ticket size={18} /> },
-      /* Below tickets and separate from them on purpose. A ticket is a question
-         and the worst case is somebody is annoyed; a dispute holds money and has
-         a clock on it, and merging the two makes every question look like a
-         claim. */
-      { id: 'op-disputes', label: 'Disputes', icon: <Scale size={18} /> },
+      { id: 'op-refunds', label: 'Refunds', icon: <RotateCcw size={18} /> },
+      { id: 'op-rewards', label: 'Rewards', icon: <Gift size={18} /> },
+    ]
+  },
+  {
+    label: 'Finance',
+    items: [
+      { id: 'op-settlement', label: 'Settlement Runs', icon: <DollarSign size={18} /> },
+      { id: 'op-revshare', label: 'Revenue Share', icon: <Scale size={18} /> },
       /* Above collections: credit decides who may owe us, collections chases
          what they already do. Read in that order or the second is a surprise. */
       { id: 'op-credit', label: 'Credit & Exposure', icon: <Landmark size={18} /> },
-      { id: 'op-contracts', label: 'Agreements', icon: <FileSignature size={18} /> },
       { id: 'op-dunning', label: 'Collections', icon: <TrendingUp size={18} /> },
       { id: 'op-wallets', label: 'Wallets', icon: <WalletIcon size={18} /> },
-      { id: 'op-refunds', label: 'Refunds', icon: <RotateCcw size={18} /> },
-      { id: 'op-rewards', label: 'Rewards', icon: <Gift size={18} /> },
-      { id: 'op-revshare', label: 'Revenue Share', icon: <Scale size={18} /> },
       /* Beside revenue share rather than beside billing: a note is what the
          marketplace pays a seller outside the commission model, and the two are
          read together when somebody is asking why a payout moved. */
@@ -63,6 +73,18 @@ const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; i
       { id: 'op-ledger', label: 'General Ledger', icon: <BookText size={18} /> },
       { id: 'op-billtemplates', label: 'Bill Templates', icon: <Receipt size={18} /> },
       { id: 'op-markets', label: 'Markets & Currencies', icon: <Globe size={18} /> },
+    ]
+  },
+  {
+    label: 'Service',
+    items: [
+      { id: 'op-tickets', label: 'Tickets & SLA', icon: <Ticket size={18} /> },
+      /* Below tickets and separate from them on purpose. A ticket is a question
+         and the worst case is somebody is annoyed; a dispute holds money and has
+         a clock on it, and merging the two makes every question look like a
+         claim. */
+      { id: 'op-disputes', label: 'Disputes', icon: <Scale size={18} /> },
+      { id: 'op-contracts', label: 'Agreements', icon: <FileSignature size={18} /> },
     ]
   },
   {
@@ -99,6 +121,14 @@ const NAV_SECTIONS: { label: string; items: { id: OperatorView; label: string; i
 
 export function OperatorShell({ view, onNavigate, onSignOut, children }: OperatorShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  /* Which groups the person has opened by hand. Component state only: a fresh
+     session starts with just the group you are in open. */
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set())
+  const toggleGroup = (label: string) => setOpenGroups(prev => {
+    const next = new Set(prev)
+    if (next.has(label)) next.delete(label); else next.add(label)
+    return next
+  })
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-alt)', display: 'flex' }}>
@@ -118,56 +148,57 @@ export function OperatorShell({ view, onNavigate, onSignOut, children }: Operato
         }}
         className="op-sidebar"
       >
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <img src="/assets/brand/6d-logo-white.png" alt="6D Marketplace" style={{ height: '28px' }} />
+        <div className="cpe-side__brand">
+          <div className="cpe-side__logos">
+            <img src="/assets/brand/6d-logo-white.png" alt="6D Marketplace" />
+            <AventaWordmark size={20} />
           </div>
           <button onClick={() => setMobileNavOpen(false)} className="show-mobile" style={{ color: 'white' }}>
             <X size={20} />
           </button>
         </div>
 
-        <nav style={{ flex: 1, padding: '12px 8px' }}>
-          {NAV_SECTIONS.map((section) => (
-            <div key={section.label} style={{ marginBottom: '20px' }}>
-              <div style={{
-                padding: '4px 12px',
-                fontSize: 'var(--text-xs)',
-                fontWeight: 700,
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-                color: 'rgba(255,255,255,0.62)',
-                marginBottom: '4px',
-              }}>
-                {section.label}
+        <nav className="op-nav" aria-label="Operator console">
+          {NAV_SECTIONS.map((section) => {
+            const holdsActive = section.items.some(i => i.id === view)
+            /* The group you are standing in is always open: collapsing it
+               would hide the item that says where you are. */
+            const expanded = holdsActive || openGroups.has(section.label)
+            const panelId = `op-group-${section.label.replace(/\W+/g, '-').toLowerCase()}`
+            return (
+              <div key={section.label} className="op-nav__group">
+                <button
+                  type="button"
+                  className="op-nav__head"
+                  aria-expanded={expanded}
+                  aria-controls={panelId}
+                  onClick={() => toggleGroup(section.label)}
+                >
+                  <span>{section.label}</span>
+                  <ChevronDown size={14} className="op-nav__chev" aria-hidden="true" />
+                </button>
+                {expanded && (
+                  <div id={panelId} className="op-nav__items">
+                    {section.items.map((item) => {
+                      const active = view === item.id
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="op-nav__item"
+                          aria-current={active ? 'page' : undefined}
+                          onClick={() => { onNavigate(item.id); setMobileNavOpen(false) }}
+                        >
+                          <span className="op-nav__icon">{item.icon}</span>
+                          {item.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
-              {section.items.map((item) => {
-                const active = view === item.id
-                return (
-                  <button
-                    key={item.id}
-                    onClick={() => { onNavigate(item.id); setMobileNavOpen(false) }}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: '10px',
-                      width: '100%', padding: '10px 12px',
-                      borderRadius: 'var(--radius)',
-                      fontSize: 'var(--text-sm)', fontWeight: 500,
-                      color: active ? 'white' : 'rgba(255,255,255,0.65)',
-                      background: active ? 'rgba(0,166,166,0.2)' : 'transparent',
-                      border: 'none', cursor: 'pointer',
-                      transition: 'all 150ms ease',
-                      textAlign: 'left',
-                    }}
-                    onMouseEnter={(e) => { if (!active) { e.currentTarget.style.background = 'rgba(255,255,255,0.06)'; e.currentTarget.style.color = 'white' } }}
-                    onMouseLeave={(e) => { if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = 'rgba(255,255,255,0.65)' } }}
-                  >
-                    <span style={{ color: active ? 'var(--brand-accent-light)' : 'rgba(255,255,255,0.5)' }}>{item.icon}</span>
-                    {item.label}
-                  </button>
-                )
-              })}
-            </div>
-          ))}
+            )
+          })}
         </nav>
 
         <div style={{ padding: '12px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>

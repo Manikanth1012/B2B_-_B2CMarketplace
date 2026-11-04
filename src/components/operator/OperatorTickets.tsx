@@ -279,7 +279,7 @@ export function OperatorTickets({ focus = null }: { focus?: string | null } = {}
                 <TextArea value={reply} onChange={(e) => setReply(e.target.value)} placeholder="Reply to ticket..." />
                 <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
                   <Btn size="sm" onClick={handleReply} disabled={!reply.trim()}>Reply</Btn>
-                  <Select style={{ width: 'auto', padding: '6px 10px' }} value={selected.owner || ''} onChange={(e) => handleAssign(selected.id, e.target.value)}>
+                  <Select style={{ width: 'auto', minHeight: 'auto', padding: '6px 10px' }} value={selected.owner || ''} onChange={(e) => handleAssign(selected.id, e.target.value)}>
                     <option value="">Assign to...</option>
                     <option>Support Agent</option><option>Finance Team</option><option>Integrations Team</option><option>Catalogue Team</option>
                   </Select>

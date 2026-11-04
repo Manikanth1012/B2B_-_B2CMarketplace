@@ -38,7 +38,7 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div className="cpe-dash-head">
         <div>
           <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Procurement Dashboard</h1>
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
@@ -68,12 +68,12 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
       ))}
 
       {/* Stat cards */}
-      <div className="stat-row">
+      <div className="cpe-kpis">
         <StatCard label="Committed monthly" value={money(com.billed)}
                   sublabel={com.suspended ? `${money(com.renewing)} renewing · ${money(com.suspended)} running to contract end` : `${book?.subscriptions.filter(s => s.status === 'active').length ?? 0} active subscriptions`}
                   color="var(--brand-navy)" />
         <StatCard label="Budget used" value={budget ? `${budget.pct}%` : '—'}
-                  sublabel={budget ? `${money0(budget.spent)} of ${money0(budget.budget)} · ${money0(budget.left)} left · ${budget.yearPct}% of the year gone` : ''}
+                  sublabel={budget ? `${money0(budget.spent)} of ${money0(budget.budget)} · ${money0(budget.left)} left · ${budget.yearPct}% of the year gone · ${budget.ahead ? 'ahead of the year' : 'not ahead of the year'}` : ''}
                   color={budget?.ahead ? 'var(--warning)' : 'var(--brand-accent-dark)'} />
         <StatCard label="Awaiting approval" value={fmtInt(queue.length)}
                   sublabel={`${money(queue.reduce((a, r) => a + Number(r.amount), 0))} of requests`} color="var(--warning)" />
@@ -110,7 +110,7 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
       </SectionCard>
 
       {/* Spend charts */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }} className="op-grid-2col">
+      <div className="cpe-panels">
         <SectionCard title="Spend against budget" subtitle="Financial year to date">
           <div style={{ padding: '20px' }}>
             {['Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul'].map((m, i) => {
@@ -156,7 +156,7 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
       </div>
 
       {/* Pending approvals + Orders */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }} className="op-grid-2col">
+      <div className="cpe-panels">
         <SectionCard title="Waiting on an approver" subtitle={`${queue.length} pending`}>
           <div style={{ padding: '0 20px 20px' }}>
             {queue.map(a => (

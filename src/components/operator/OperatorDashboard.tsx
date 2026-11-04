@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { TrendingUp, TrendingDown, TriangleAlert } from 'lucide-react'
+import { TrendingUp, TrendingDown, TriangleAlert, ArrowRight } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import type { OperatorProfile, OperatorTicket, SettlementStatement, Category, OperatorListing } from '../../types'
 import { StatCard, SectionCard, Table, Td, StatusPill, PriorityPill, fmtInt, Btn } from './shared'
@@ -7,6 +7,16 @@ import { useMarket } from '../../lib/MarketContext'
 import { ColumnChart, DonutChart, SERIES, seriesColour } from './charts'
 import { monthlyStats, verticalSplit, inversionInsight, type MonthRow, type VerticalRow } from '../../lib/operatorStats'
 import type { OperatorView } from '../../types/view'
+import { BentoGrid, BentoCell } from '../ui'
+
+/* Views that exist today, and nothing else: a shortcut to a screen that is not
+   there would be the dashboard promising something the console cannot do. */
+const QUICK_ACTIONS: { to: OperatorView; label: string }[] = [
+  { to: 'op-catalogue', label: 'Catalogue Review' },
+  { to: 'op-settlement', label: 'Settlement Runs' },
+  { to: 'op-tickets', label: 'Tickets & SLA' },
+  { to: 'op-onboarding', label: 'Onboarding' },
+]
 
 /* A dashboard lists work. It was listing it and then stopping: the operator
    could read that five settlements were awaiting approval and had no way to
@@ -78,70 +88,99 @@ export function OperatorDashboard(
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div className="op-dash">
       <div>
         <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Operator Dashboard</h1>
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>{profile.operator_name} · Marketplace overview</p>
       </div>
 
-      <div className="stat-row">
+      <BentoGrid cols={4}>
         {/* A rollup over orders placed in rupees, shillings and dirhams. It is
             already converted — that is what a reporting figure is — and now it
             says so, because "$4.2m GMV" and "$4.2m in the bank" are different
             claims and the screen was making the second one by accident. */}
-        <StatCard label={`Total GMV, in ${reportingCurrency}`} value={report(profile.gmv)}
-                  sublabel={`${fmtInt(profile.total_orders)} orders · ${report(profile.avg_order_value)} avg`} color="var(--brand-navy)" />
-        <StatCard label={`Commission, in ${reportingCurrency}`} value={report(profile.commission)}
-                  sublabel={`${profile.commission_rate}% blended take`} color="var(--brand-accent-dark)" />
-        <Go to="op-partners" go={onNavigate}>
-          <StatCard label="Active Partners" value={fmtInt(profile.active_partners)} sublabel={`${profile.pending_applications} pending applications`} />
-        </Go>
-        <Go to="op-tickets" go={onNavigate}>
-          <StatCard label="Open Tickets" value={fmtInt(profile.open_tickets)} sublabel={`${profile.sla_breaches} SLA breaches`} color={profile.sla_breaches > 0 ? 'var(--danger)' : undefined} />
-        </Go>
-      </div>
-
-      <div className="stat-row">
-        <Go to="op-settlement" go={onNavigate}>
-          <StatCard label="Settlements Due" value={fmtInt(profile.settlement_due)} sublabel="Awaiting approval" color="var(--warning)" />
-        </Go>
-        <Go to="op-refunds" go={onNavigate}>
-          <StatCard label="Refund Requests" value={fmtInt(profile.refund_requests)} sublabel="Pending decision" />
-        </Go>
-        <Go to="op-dunning" go={onNavigate}>
-          <StatCard label="Dunning Cases" value={fmtInt(profile.dunning_cases)} sublabel="Active collections" color="var(--danger)" />
-        </Go>
-        <Go to="op-dunning" go={onNavigate}>
-          <StatCard label="Churn Risk" value={fmtInt(profile.churn_risk)} sublabel="Accounts flagged" color="var(--warning)" />
-        </Go>
-      </div>
+        <BentoCell>
+          <StatCard label={`Total GMV, in ${reportingCurrency}`} value={report(profile.gmv)}
+                    sublabel={`${fmtInt(profile.total_orders)} orders · ${report(profile.avg_order_value)} avg`} color="var(--brand-navy)" />
+        </BentoCell>
+        <BentoCell>
+          <StatCard label={`Commission, in ${reportingCurrency}`} value={report(profile.commission)}
+                    sublabel={`${profile.commission_rate}% blended take`} color="var(--brand-accent-dark)" />
+        </BentoCell>
+        <BentoCell>
+          <Go to="op-partners" go={onNavigate}>
+            <StatCard label="Active Partners" value={fmtInt(profile.active_partners)} sublabel={`${profile.pending_applications} pending applications`} />
+          </Go>
+        </BentoCell>
+        <BentoCell>
+          <Go to="op-tickets" go={onNavigate}>
+            <StatCard label="Open Tickets" value={fmtInt(profile.open_tickets)} sublabel={`${profile.sla_breaches} SLA breaches`} color={profile.sla_breaches > 0 ? 'var(--danger)' : undefined} />
+          </Go>
+        </BentoCell>
+        <BentoCell>
+          <Go to="op-settlement" go={onNavigate}>
+            <StatCard label="Settlements Due" value={fmtInt(profile.settlement_due)} sublabel="Awaiting approval" color="var(--warning)" />
+          </Go>
+        </BentoCell>
+        <BentoCell>
+          <Go to="op-refunds" go={onNavigate}>
+            <StatCard label="Refund Requests" value={fmtInt(profile.refund_requests)} sublabel="Pending decision" />
+          </Go>
+        </BentoCell>
+        <BentoCell>
+          <Go to="op-dunning" go={onNavigate}>
+            <StatCard label="Dunning Cases" value={fmtInt(profile.dunning_cases)} sublabel="Active collections" color="var(--danger)" />
+          </Go>
+        </BentoCell>
+        <BentoCell>
+          <Go to="op-dunning" go={onNavigate}>
+            <StatCard label="Churn Risk" value={fmtInt(profile.churn_risk)} sublabel="Accounts flagged" color="var(--warning)" />
+          </Go>
+        </BentoCell>
+      </BentoGrid>
 
       {/* What is actually waiting on this person, first — the prototype leads with
-          it, and a dashboard that opens with a chart buries the work. */}
-      {(queue.length > 0 || applications > 0) && (
-        <div style={{
-          display: 'flex', alignItems: 'flex-start', gap: '10px',
-          background: '#FEF3C7', border: '1px solid #FCD34D',
-          borderRadius: 'var(--radius)', padding: '12px 14px',
-        }}>
-          <TriangleAlert size={17} style={{ color: '#92400E', flexShrink: 0, marginTop: '1px' }} />
-          <div style={{ fontSize: 'var(--text-sm)', color: '#92400E', lineHeight: 1.5 }}>
-            <strong>{queue.length} listing{queue.length === 1 ? '' : 's'} and {applications} partner application{applications === 1 ? '' : 's'} are waiting on you.</strong>
-            <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
-              {queue.length > 0 && (
-                <Btn size="sm" variant="secondary" onClick={() => onNavigate?.('op-catalogue', { focus: queue[0].product_id })}>
-                  Review the first listing
-                </Btn>
-              )}
-              {applications > 0 && (
-                <Btn size="sm" variant="secondary" onClick={() => onNavigate?.('op-onboarding')}>
-                  Open partner onboarding
-                </Btn>
-              )}
+          it, and a dashboard that opens with a chart buries the work. It is the
+          "Operational alerts" card now; the quick actions beside it go only to
+          screens that already exist. */}
+      <BentoGrid cols={4}>
+        {(queue.length > 0 || applications > 0) && (
+          <BentoCell span={2}>
+            <SectionCard title="Operational alerts" subtitle="Work waiting on you">
+              <div className="op-alert">
+                <TriangleAlert size={17} className="op-alert__icon" />
+                <div>
+                  <strong>{queue.length} listing{queue.length === 1 ? '' : 's'} and {applications} partner application{applications === 1 ? '' : 's'} are waiting on you.</strong>
+                  <div className="op-alert__actions">
+                    {queue.length > 0 && (
+                      <Btn size="sm" variant="secondary" onClick={() => onNavigate?.('op-catalogue', { focus: queue[0].product_id })}>
+                        Review the first listing
+                      </Btn>
+                    )}
+                    {applications > 0 && (
+                      <Btn size="sm" variant="secondary" onClick={() => onNavigate?.('op-onboarding')}>
+                        Open partner onboarding
+                      </Btn>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </SectionCard>
+          </BentoCell>
+        )}
+        <BentoCell span={2}>
+          <SectionCard title="Quick actions" subtitle="Jump to the screens you use most">
+            <div className="op-quick">
+              {QUICK_ACTIONS.map(q => (
+                <button key={q.to} type="button" className="op-quick__link" onClick={() => onNavigate?.(q.to)}>
+                  {q.label}
+                  <ArrowRight size={16} aria-hidden="true" />
+                </button>
+              ))}
             </div>
-          </div>
-        </div>
-      )}
+          </SectionCard>
+        </BentoCell>
+      </BentoGrid>
 
       <SectionCard title="Marketplace categories" subtitle="One platform, one settlement engine, six commercial propositions">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '12px', padding: '4px' }}>
@@ -189,7 +228,8 @@ export function OperatorDashboard(
         </div>
       </SectionCard>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: '20px' }} className="op-grid-2col">
+      <BentoGrid cols={3}>
+        <BentoCell span={2}>
         <SectionCard title="Order count against gross value" subtitle="Two measures, two charts — never one axis carrying both">
           <div style={{ padding: '4px' }}>
             <ColumnChart label="Orders by marketplace" data={split.orders} format={fmtInt} colour={SERIES[0]} />
@@ -201,7 +241,9 @@ export function OperatorDashboard(
             </p>
           </div>
         </SectionCard>
+        </BentoCell>
 
+        <BentoCell>
         <SectionCard title="Revenue mix" subtitle="Commission by marketplace">
           <div style={{ padding: '8px 4px' }}>
             <DonutChart
@@ -212,7 +254,8 @@ export function OperatorDashboard(
             />
           </div>
         </SectionCard>
-      </div>
+        </BentoCell>
+      </BentoGrid>
 
       <SectionCard title="Revenue Forecast" subtitle={`Linear trend × seasonal index · Backtest error: ${profile.forecast_accuracy}%`}>
         <div style={{ padding: '20px' }}>
@@ -236,7 +279,8 @@ export function OperatorDashboard(
         </div>
       </SectionCard>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }} className="op-grid-2col">
+      <BentoGrid cols={2}>
+        <BentoCell>
         <SectionCard title="Pending Settlements"
           subtitle={`${statements.length} awaiting approval · a row opens the statement`}
           action={statements.length > 0
@@ -263,7 +307,9 @@ export function OperatorDashboard(
             ))}
           </Table>
         </SectionCard>
+        </BentoCell>
 
+        <BentoCell>
         <SectionCard title="Open Tickets"
           subtitle={`${openTickets.length} open · ${breachedTickets.length} breached · a row opens the ticket`}
           action={<Btn variant="secondary" size="sm" onClick={() => onNavigate?.('op-tickets')}>See all</Btn>}>
@@ -280,7 +326,8 @@ export function OperatorDashboard(
             ))}
           </Table>
         </SectionCard>
-      </div>
+        </BentoCell>
+      </BentoGrid>
     </div>
   )
 }
@@ -297,10 +344,9 @@ function Go(
 ) {
   if (!go) return <>{children}</>
   return (
-    <div role="link" tabIndex={0}
+    <div role="link" tabIndex={0} className="op-go"
       onClick={() => go(to)}
-      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(to) } }}
-      style={{ cursor: 'pointer', borderRadius: 'var(--radius-md)' }}>
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(to) } }}>
       {children}
     </div>
   )

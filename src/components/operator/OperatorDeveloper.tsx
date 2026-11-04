@@ -140,7 +140,7 @@ export function OperatorDeveloper() {
         <StatCard label="Sandbox traffic" value={fmtInt(sandboxUse.calls)}
                   sublabel={sandboxUse.successRate === null ? 'No calls recorded' : `${sandboxUse.successRate}% succeeded`} />
         <StatCard label="Production traffic" value={fmtInt(liveUse.calls)}
-                  sublabel={liveUse.successRate === null ? 'No calls recorded' : `${liveUse.successRate}% succeeded`}
+                  sublabel={liveUse.successRate === null ? 'No calls recorded' : `${liveUse.successRate}% succeeded${liveUse.successRate < 95 ? ' · below 95%' : ''}`}
                   color={liveUse.successRate !== null && liveUse.successRate < 95 ? 'var(--danger)' : undefined} />
       </div>
 

@@ -15,6 +15,8 @@
 import { useState, useEffect } from 'react'
 import { Star, Package } from 'lucide-react'
 import { Modal, Btn, EmptyState, fmtInt, StatusPill } from '../operator/shared'
+import { StatusBadge, stockTone } from '../ui'
+import { stockLabel } from '../../lib/compare'
 import { Callout } from '../OnboardingJourney'
 import { supabase } from '../../lib/supabase'
 import { getProductImage } from '../../lib/images'
@@ -84,119 +86,131 @@ export function EnterpriseListingModal(
       open
       onClose={onClose}
       title={listing.name}
-      footer={
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
-          <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
-            {money(listing.price)}{monthly ? `${listing.unit ? ` ${listing.unit}` : ''}/mo` : listing.unit ? ` ${listing.unit}` : ''}
-          </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <Btn variant="secondary" onClick={onClose}>Close</Btn>
-            <Btn variant="primary" onClick={() => { onAdd(listing); onClose() }}>Add to requisition</Btn>
-          </div>
-        </div>
-      }>
+      footer={<Btn variant="secondary" onClick={onClose}>Close</Btn>}>
+      {/* Laid out as the storefront's product page is (product-detail.css):
+          photograph and overview on the left, the buying panel on the right.
+          The same fields as before; the price and the Add action moved out of
+          the footer into the panel, where the decision is made. */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         {extra.loadError && <Callout tone="danger" title="Some of this did not load">{extra.loadError}</Callout>}
 
-        {/* Already held — first, because it changes whether to add it at all. */}
-        {held.length > 0 && (
-          <Callout tone="warning" title={`This account already holds ${held.length === 1 ? 'this' : `${held.length} of these`}`}>
-            {held.map(h => (
-              <div key={h.id} style={{ marginTop: '4px' }}>
-                {fmtInt(h.quantity)} {h.unit} on {h.cost_centre ?? 'no cost centre'}, {h.seats_used} assigned
-                {h.status === 'suspended' ? ' — suspended' : `, renewing ${day(h.renews)}`}.
-                {h.seats_used < h.quantity && ` ${h.quantity - h.seats_used} are sitting idle.`}
-              </div>
-            ))}
-            Assigning what is already licensed costs nothing. Buying more of it costs money.
-          </Callout>
-        )}
-
-        <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', gap: '18px', alignItems: 'start' }} className="op-grid-2col">
-          <div>
-            <div style={{ borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1px solid var(--border)', background: 'var(--bg-alt)' }}>
-              <img src={gallery[Math.min(shown, gallery.length - 1)]} alt={pictures[shown]?.alt ?? ''}
-                   style={{ width: '100%', height: '160px', objectFit: 'cover', display: 'block' }} />
+        <div className="pd pd--compact">
+          <div className="pd__gallery">
+            <div className="pd__media">
+              <img src={gallery[Math.min(shown, gallery.length - 1)]} alt={pictures[shown]?.alt ?? ''} />
             </div>
             {gallery.length > 1 && (
-              <div style={{ display: 'flex', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+              <div className="cpe-thumbs">
                 {gallery.map((u, i) => (
                   <button key={u + i} onClick={() => setShown(i)}
                           aria-label={`Picture ${i + 1} of ${gallery.length}`}
-                          style={{
-                            width: '46px', height: '38px', padding: 0, cursor: 'pointer',
-                            borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--bg-alt)',
-                            border: `2px solid ${i === shown ? 'var(--brand-accent-dark)' : 'var(--border)'}`,
-                          }}>
-                    <img src={u} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                          aria-pressed={i === shown}
+                          className={`cpe-thumb${i === shown ? ' is-on' : ''}`}>
+                    <img src={u} alt="" />
                   </button>
                 ))}
               </div>
             )}
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+          <aside className="pd__buy" aria-label="Buy this listing">
+            <div className="pd__price">
+              {money(listing.price)}
+              {monthly && <span className="cpe-per">{listing.unit ? ` ${listing.unit}` : ''}/mo</span>}
+              {!monthly && listing.unit && <span className="cpe-per"> {listing.unit}</span>}
+            </div>
+            <div><StatusBadge tone={stockTone(listing.stock)}>{stockLabel(listing.stock)}</StatusBadge></div>
+
+            {/* Already held — first, because it changes whether to add it at all. */}
+            {held.length > 0 && (
+              <Callout tone="warning" title={`This account already holds ${held.length === 1 ? 'this' : `${held.length} of these`}`}>
+                {held.map(h => (
+                  <div key={h.id} style={{ marginTop: '4px' }}>
+                    {fmtInt(h.quantity)} {h.unit} on {h.cost_centre ?? 'no cost centre'}, {h.seats_used} assigned
+                    {h.status === 'suspended' ? ' — suspended' : `, renewing ${day(h.renews)}`}.
+                    {h.seats_used < h.quantity && ` ${h.quantity - h.seats_used} are sitting idle.`}
+                  </div>
+                ))}
+                Assigning what is already licensed costs nothing. Buying more of it costs money.
+              </Callout>
+            )}
+
+            <Btn variant="primary" onClick={() => { onAdd(listing); onClose() }}>Add to requisition</Btn>
+
+            <div className="cpe-note">
+              <Package size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
+              Adding this puts it on a requisition. Nothing is ordered and nothing is charged until the
+              requisition is approved by whoever the account's policy names for the amount.
+            </div>
+          </aside>
+
+          <div className="pd__main">
+            <div className="cpe-desc">
               {listing.description || 'No description was supplied for this listing.'}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px 20px' }}>
-              <Fact label="Sold by" value={listing.seller} />
-              <Fact label="Category" value={listing.sub_category ?? listing.category_id} />
-              <Fact label="Billing" value={monthly ? 'Recurring, cancellable at renewal' : 'One-off purchase'} />
-              <Fact label="Fulfilled" value={fulfilment(extra.fulfil)} />
-              <Fact label="Availability" value={availability(listing.stock)} />
-              <Fact label="Rated"
-                    value={listing.rating > 0 ? `${listing.rating} from ${fmtInt(listing.reviews)} reviews` : 'Not rated yet'} />
-            </div>
-
             {listing.rating > 0 && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '10px', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
                 <Star size={13} style={{ color: '#F5A623' }} fill="#F5A623" />
                 {listing.rating} · {fmtInt(listing.reviews)} reviews from buyers on this marketplace
               </div>
             )}
-          </div>
-        </div>
 
-        {/* What has to be bought with it. A requisition approved without these
-            comes back as a support ticket the week the thing is provisioned. */}
-        {extra.rules.length > 0 && (
-          <div>
-            <Heading>What this needs alongside it</Heading>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {extra.rules.map((r, i) => (
-                <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'baseline', fontSize: 'var(--text-sm)' }}>
-                  <StatusPill status={r.kind === 'requires' ? 'pending' : 'active'} />
-                  <span style={{ color: 'var(--text-secondary)' }}>
-                    {r.targets.join(', ')}{r.why ? ` — ${r.why}` : ''}
-                  </span>
+            {/* What has to be bought with it. A requisition approved without these
+                comes back as a support ticket the week the thing is provisioned. */}
+            {extra.rules.length > 0 && (
+              <div className="pd__section">
+                <h2>What this needs alongside it</h2>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  {extra.rules.map((r, i) => (
+                    <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'baseline', fontSize: 'var(--text-sm)' }}>
+                      <StatusPill status={r.kind === 'requires' ? 'pending' : 'active'} />
+                      <span style={{ color: 'var(--text-secondary)' }}>
+                        {r.targets.join(', ')}{r.why ? ` — ${r.why}` : ''}
+                      </span>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div>
-          <Heading>Specification</Heading>
-          {specs.length === 0
-            ? <EmptyState message="The seller has not published a specification for this listing." />
-            : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 20px' }}>
-                {specs.map(([k, v]) => (
-                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 'var(--text-sm)', borderBottom: '1px solid var(--border-light)', paddingBottom: '4px' }}>
-                    <span style={{ color: 'var(--text-tertiary)' }}>{k}</span>
-                    <span style={{ color: 'var(--text)', textAlign: 'right' }}>{String(v)}</span>
-                  </div>
-                ))}
               </div>
             )}
-        </div>
 
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
-          <Package size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
-          Adding this puts it on a requisition. Nothing is ordered and nothing is charged until the
-          requisition is approved by whoever the account's policy names for the amount.
+            <div className="pd__section">
+              {specs.length === 0
+                ? (
+                  <>
+                    <h2>Specification</h2>
+                    <EmptyState message="The seller has not published a specification for this listing." />
+                  </>
+                )
+                : (
+                  <details className="pd-acc" open>
+                    <summary>Specification</summary>
+                    <dl>
+                      {specs.map(([k, v]) => (
+                        <div key={k} style={{ display: 'contents' }}>
+                          <dt>{k}</dt>
+                          <dd>{String(v)}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </details>
+                )}
+            </div>
+
+            <div className="pd__section">
+              <h2>Seller</h2>
+              <div className="pd-acc">
+                <dl style={{ paddingTop: '16px' }}>
+                  <dt>Sold by</dt><dd>{listing.seller}</dd>
+                  <dt>Category</dt><dd>{listing.sub_category ?? listing.category_id}</dd>
+                  <dt>Billing</dt><dd>{monthly ? 'Recurring, cancellable at renewal' : 'One-off purchase'}</dd>
+                  <dt>Fulfilled</dt><dd>{fulfilment(extra.fulfil)}</dd>
+                  <dt>Availability</dt><dd>{availability(listing.stock)}</dd>
+                  <dt>Rated</dt><dd>{listing.rating > 0 ? `${listing.rating} from ${fmtInt(listing.reviews)} reviews` : 'Not rated yet'}</dd>
+                </dl>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </Modal>
@@ -227,22 +241,4 @@ function availability(stock: string): string {
     case 'preorder': return 'Pre-order'
     default: return stock
   }
-}
-
-function Heading({ children }: { children: React.ReactNode }) {
-  return (
-    <div style={{
-      fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em',
-      color: 'var(--text-tertiary)', marginBottom: '6px',
-    }}>{children}</div>
-  )
-}
-
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)' }}>{label}</div>
-      <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text)', marginTop: '1px' }}>{value}</div>
-    </div>
-  )
 }

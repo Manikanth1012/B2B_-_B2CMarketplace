@@ -24,7 +24,7 @@ export function PartnerPerformance() {
         <StatCard label="Listing views" value={fmtInt(views)} sublabel="Last 90 days" />
         <StatCard label="Orders" value={fmtInt(totalOrders)} sublabel={`Conversion ${conversion}%`} color="var(--brand-accent-dark)" />
         <StatCard label="Average order value" value={`$${fmtMoney(totalOrders ? totalGmv / totalOrders : 0)}`} sublabel="Bundles lift this materially" color="var(--brand-navy)" />
-        <StatCard label="Return rate" value="2.1%" sublabel="Marketplace median for hardware is 3.4%" color="var(--success)" />
+        <StatCard label="Return rate" value="2.1%" sublabel="Marketplace median for hardware is 3.4% · this is below it" color="var(--success)" />
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }} className="op-grid-2col">
