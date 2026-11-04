@@ -56,12 +56,13 @@ change everywhere without touching component files.
 | `--bg-alt` | `#F9FAFB` | `#F4F7FC` |
 | `--text` | `#111827` | `#102344` |
 | `--text-secondary` | `#4B5563` | `#475569` |
-| `--text-tertiary` | `#6B7280` | `#64748B` |
+| `--text-tertiary` | `#6B7280` | `#5B6B82` |
 | `--border` | `#E5E7EB` | `#E3EAF3` |
 
-`--text-secondary` takes `#475569` rather than the brief's `#64748B`: the
-brief's value becomes the tertiary step so the three-step ink hierarchy
-survives, and `#64748B` clears 4.5:1 on white but not on every tint.
+The brief's secondary text `#64748B` measures 4.76:1 on white but 4.43:1 on
+the new `#F4F7FC` page ground — under AA. So `--text-secondary` is `#475569`
+(7.06:1) and `--text-tertiary` is `#5B6B82` (5.05:1), the nearest slate that
+clears 4.5:1 on both surfaces. The three-step ink hierarchy survives.
 
 New tokens:
 
@@ -165,13 +166,17 @@ destination audience (existing `countByCategory`). Click →
 
 | Category id | Image source |
 |---|---|
-| `device` | phone / tablet photographs from `images/device_*` |
-| `consumer` | phone carousel tile |
-| `content` | streaming carousel tile |
-| `iot` | network-city banner |
-| `security` | shield banner |
-| `partner` | handshake banner |
+| `consumer` | `hero.webp` — hand holding a phone (from `images/Mobile.png`) |
+| `device` | new crop of `images/device_01_android_phone…png` |
+| `content` | carousel tile 2 — streaming on a TV |
+| `iot` | carousel tile 3 — connected smart home |
+| `security` | carousel tile 4 — shield and padlock |
+| `partner` | banner 4 — handshake (positioned right) |
 | anything else | gradient fallback with the category's lucide icon |
+
+The scenic carousel and banner slices are preferred over the product-on-white
+photographs so the row reads like the sample; the device tile is the one
+exception, as there is no scenic device image.
 
 ### 2.5 Featured products + promo card
 
@@ -216,12 +221,12 @@ fade. All animation is disabled under `prefers-reduced-motion: reduce`.
 
 ## 3. Images
 
-`scripts/build-assets.mjs` gains a homepage step that writes resized WebP to
-`public/assets/mp/home/` and exports a `HOME` manifest in `src/lib/assets.ts`:
-two hero side-card crops (1200×800), one per category tile (640×400), and the
-promo-card crop (1200×600). Sources are the banner and carousel slices already
-produced plus individual PNGs from `images/`. The 1–2 MB originals are never
-served.
+The hero side cards and the promo card reuse banner slices already produced
+by `npm run assets` (banner 6 — IoT factory, banner 4 — handshake, banner 1 —
+blue wave); the category tiles reuse carousel slices and `hero.webp` as listed
+in 2.4. The only new output is the device tile: `scripts/build-assets.mjs`
+gains a step writing `public/assets/mp/home/cat-device.webp` (640×400) and a
+`HOME` export in `src/lib/assets.ts`. The 1–2 MB originals are never served.
 
 The comments in `build-assets.mjs` and the generated header in `assets.ts`
 that call `images/` gitignored are corrected — the folder is now tracked.
