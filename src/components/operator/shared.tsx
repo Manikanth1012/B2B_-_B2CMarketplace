@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback, useId } from 'react'
 import { X } from 'lucide-react'
+import { StatusBadge } from '../ui/StatusBadge'
+import { statusTone } from '../../lib/consoleTone'
 
 export function fmtMoney(n: number): string {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -26,75 +28,13 @@ export function fmtDateTime(s: string | null): string {
    like anything else in flight — and without the override the pill printed the
    colour token instead of the state: "current" where it meant "Despatched". */
 export function StatusPill({ status, label }: { status: string; label?: string }) {
-  const map: Record<string, { bg: string; color: string }> = {
-    pending: { bg: 'var(--warning-bg)', color: 'var(--warning)' },
-    approved: { bg: 'var(--success-bg)', color: 'var(--success)' },
-    rejected: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
-    cleared: { bg: 'var(--success-bg)', color: 'var(--success)' },
-    current: { bg: 'var(--info-bg)', color: 'var(--info)' },
-    open: { bg: 'var(--info-bg)', color: 'var(--info)' },
-    resolved: { bg: 'var(--success-bg)', color: 'var(--success)' },
-    active: { bg: 'var(--success-bg)', color: 'var(--success)' },
-    paused: { bg: 'var(--warning-bg)', color: 'var(--warning)' },
-    escalated: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
-    degraded: { bg: 'var(--warning-bg)', color: 'var(--warning)' },
-    healthy: { bg: 'var(--success-bg)', color: 'var(--success)' },
-    live: { bg: 'var(--success-bg)', color: 'var(--success)' },
-    draft: { bg: 'var(--bg-alt)', color: 'var(--text-tertiary)' },
-    deprecated: { bg: 'var(--warning-bg)', color: 'var(--warning)' },
-    sunset: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
-    supported: { bg: 'var(--info-bg)', color: 'var(--info)' },
-    /* The developer portal's own words. They were being mapped onto the
-       nearest existing status, which meant a deprecated API version rendered a
-       pill reading "pending" — the pill said something the row did not. */
-    retired: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
-    revoked: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
-    expired: { bg: 'var(--gray-100)', color: 'var(--text-secondary)' },
-    rotating: { bg: 'var(--warning-bg)', color: 'var(--warning)' },
-    refused: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
-    suspended: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
-    sandbox: { bg: 'var(--info-bg)', color: 'var(--info)' },
-    production: { bg: 'var(--success-bg)', color: 'var(--success)' },
-    required: { bg: 'var(--warning-bg)', color: 'var(--warning)' },
-    delivered: { bg: 'var(--success-bg)', color: 'var(--success)' },
-    unhandled: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
-    timeout: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
-    /* Gateway integration. `configured` is not `verified` — one says every
-       field is filled in, the other says somebody proved it works — so they
-       carry different colours as well as different words. */
-    not_configured: { bg: 'var(--gray-100)', color: 'var(--text-secondary)' },
-    configured: { bg: 'var(--info-bg)', color: 'var(--info)' },
-    verified: { bg: 'var(--success-bg)', color: 'var(--success)' },
-    failing: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
-    passed: { bg: 'var(--success-bg)', color: 'var(--success)' },
-    failed: { bg: 'var(--danger-bg)', color: 'var(--danger)' },
-  }
-  const s = map[status] || { bg: 'var(--gray-100)', color: 'var(--text-secondary)' }
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: '4px',
-      padding: '2px 10px', borderRadius: 'var(--radius-full)',
-      fontSize: 'var(--text-xs)', fontWeight: 600,
-      background: s.bg, color: s.color,
-    }}>
-      {(label ?? status).replace(/_/g, ' ')}
-    </span>
-  )
+  /* The status-to-tone map lives in lib/consoleTone.ts so it can be tested; the
+     badge brings its own shape so a state never rests on colour alone. */
+  return <StatusBadge tone={statusTone(status)}>{(label ?? status).replace(/_/g, ' ')}</StatusBadge>
 }
 
 export function PriorityPill({ priority }: { priority: string }) {
-  const map: Record<string, { bg: string; color: string }> = {
-    P1: { bg: '#FEE2E2', color: 'var(--danger)' },
-    P2: { bg: '#FEF3C7', color: 'var(--warning)' },
-    P3: { bg: '#DBEAFE', color: 'var(--info)' },
-    P4: { bg: '#F3F4F6', color: '#6B7280' },
-  }
-  const s = map[priority] || { bg: '#F3F4F6', color: '#6B7280' }
-  return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 'var(--radius-sm)', fontSize: 'var(--text-xs)', fontWeight: 700, background: s.bg, color: s.color }}>
-      {priority}
-    </span>
-  )
+  return <StatusBadge tone={statusTone(priority)}>{priority}</StatusBadge>
 }
 
 /**
@@ -107,11 +47,11 @@ export function PriorityPill({ priority }: { priority: string }) {
  */
 export function SectionCard({ title, subtitle, children, action, anchor, pad }: { title: string; subtitle?: string; children: React.ReactNode; action?: React.ReactNode; anchor?: string; pad?: boolean }) {
   return (
-    <div id={anchor} style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden', scrollMarginTop: '84px' }}>
-      <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+    <div id={anchor} className="c-section">
+      <div className="c-section__head">
         <div>
-          <h3 style={{ fontSize: 'var(--text-base)', fontWeight: 700, color: 'var(--text)' }}>{title}</h3>
-          {subtitle && <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>{subtitle}</p>}
+          <h3 className="c-section__title">{title}</h3>
+          {subtitle && <p className="c-section__sub">{subtitle}</p>}
         </div>
         {action}
       </div>
@@ -129,7 +69,7 @@ export function SectionCard({ title, subtitle, children, action, anchor, pad }: 
        * need. The last row's own margin is pulled back so the padding below a
        * form is the padding and not the padding plus a field's tail. */}
       {pad
-        ? <div style={{ padding: '18px 20px 4px' }}>{children}</div>
+        ? <div className="c-section__body--pad">{children}</div>
         : children}
     </div>
   )
@@ -137,10 +77,13 @@ export function SectionCard({ title, subtitle, children, action, anchor, pad }: 
 
 export function StatCard({ label, value, sublabel, color }: { label: string; value: string; sublabel?: string; color?: string }) {
   return (
-    <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '20px' }}>
-      <div style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</div>
-      <div style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: color || 'var(--text)', marginTop: '4px' }}>{value}</div>
-      {sublabel && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>{sublabel}</div>}
+    <div className="c-stat">
+      <div className="c-stat__label">
+        {color && <span className="c-stat__dot" style={{ background: color }} aria-hidden="true" />}
+        {label}
+      </div>
+      <div className="c-stat__value">{value}</div>
+      {sublabel && <div className="c-stat__sub">{sublabel}</div>}
     </div>
   )
 }
@@ -258,31 +201,21 @@ const padFor = (columns: number): string =>
 export function Table({ headers, children }: { headers: Header[]; children: React.ReactNode }) {
   const fromCells = alignmentsFrom(children, headers.length)
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{
+    <div className="c-table-wrap">
+      <table className="c-table" style={{
         ['--cell-pad' as string]: padFor(headers.length),
-        width: '100%', borderCollapse: 'collapse', tableLayout: 'auto',
-        /* 13px rather than 14. Across a nine-column table that is most of a
-           column, and at this size it is still a comfortable read — these are
-           dense records, not prose. */
-        fontSize: 'var(--text-table)',
-        /* The floor. See above: without it a column can be narrower than the
-           longest word it holds, and the browser breaks the word. */
-        minWidth: 'min-content',
+        /* 13px rather than 14 (--text-table, in .c-table). Across a nine-column
+           table that is most of a column, and at this size it is still a
+           comfortable read — these are dense records, not prose.
+
+           `min-width: min-content`, also in .c-table, is the floor. See above:
+           without it a column can be narrower than the longest word it holds,
+           and the browser breaks the word. */
       }}>
         <thead>
-          <tr style={{ borderBottom: '2px solid var(--border)' }}>
+          <tr>
             {headers.map((h, i) => (
-              <th key={i} style={{
-                textAlign: typeof h === 'string' ? fromCells[i] : h.align,
-                padding: '10px var(--cell-pad, 10px)',
-                fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-tertiary)',
-                textTransform: 'uppercase', letterSpacing: '0.04em', lineHeight: 1.25,
-                /* A header may wrap between its words — "SETTLEMENT / PLAN" is
-                   fine and cheap — but never inside one. "SUBSCRI / BERS" is
-                   not a word anybody is looking for. */
-                overflowWrap: 'normal', wordBreak: 'keep-all',
-              }}>{headerLabel(h)}</th>
+              <th key={i} style={{ textAlign: typeof h === 'string' ? fromCells[i] : h.align }}>{headerLabel(h)}</th>
             ))}
           </tr>
         </thead>
@@ -309,9 +242,8 @@ export function Table({ headers, children }: { headers: Header[]; children: Reac
 export function Td({ children, right, style }: { children: React.ReactNode; right?: boolean; style?: React.CSSProperties }) {
   const bounded = style !== undefined && ('maxWidth' in style || 'width' in style)
   return (
-    <td style={{
-      padding: '12px var(--cell-pad, 10px)', borderBottom: '1px solid var(--border-light)',
-      textAlign: right ? 'right' : 'left', color: 'var(--text)', verticalAlign: 'middle',
+    <td className="c-td" style={{
+      textAlign: right ? 'right' : 'left',
       ...(right && !bounded
         ? { whiteSpace: 'nowrap' as const }
         /* `overflowWrap`, not `wordBreak`: break inside a word only when the
@@ -364,9 +296,10 @@ export function Id({ children }: { children: string }) {
    `LTX-RDX-1101-260802075150876` are over it and wrap at their separators. */
 const SHORT_ID = 18
 
-export function EmptyState({ message }: { message: string }) {
+export function EmptyState({ message, icon }: { message: string; icon?: React.ReactNode }) {
   return (
-    <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>
+    <div className="c-empty">
+      {icon && <div className="c-empty__icon" aria-hidden="true">{icon}</div>}
       {message}
     </div>
   )
@@ -393,53 +326,36 @@ export function Modal({ open, onClose, title, children, footer }: ModalProps) {
   if (!open) return null
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 1000,
-        background: 'rgba(0,0,0,0.4)',
-        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
-        padding: '40px 16px',
-        overflowY: 'auto',
-      }}
-    >
+    <div className="c-modal-back" onClick={onClose}>
       {/* Named as a dialog, and labelled by its own title. Without this a
           screen reader announces the page behind it and there is nothing to say
           which region is the one demanding an answer. */}
       <div
+        className="c-modal"
         role="dialog"
         aria-modal="true"
         aria-label={title}
         onClick={(e) => e.stopPropagation()}
-        style={{
-          background: 'white', borderRadius: 'var(--radius-md)', boxShadow: 'var(--shadow-lg)',
-          maxWidth: '640px', width: '100%', margin: '0 auto',
-          display: 'flex', flexDirection: 'column',
-          maxHeight: '90vh',
-        }}
       >
-        <div style={{
-          padding: '16px 20px', borderBottom: '1px solid var(--border-light)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          flexShrink: 0,
-        }}>
-          <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--text)' }}>{title}</h3>
-          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-tertiary)', padding: '4px' }}>
+        <div className="c-modal__head">
+          <h3 className="c-modal__title">{title}</h3>
+          <button className="c-modal__close" onClick={onClose} aria-label="Close">
             <X size={20} />
           </button>
         </div>
-        {/* `minWidth: 0` is what keeps the 640px above from being a suggestion.
+        {/* `min-width: 0` (in .c-modal__body) is what keeps the 640px from being
+            a suggestion.
             A column flex item's minimum width is `auto`, meaning "never narrower
             than my content" — so one unwrappable cell inside a table in here
             pushed the whole dialog wider than the window, and every value in it
             was clipped at the right-hand edge with no way to scroll to them. The
             table already carries its own `overflow-x`; this is what lets it use
             it rather than shoving its container open. */}
-        <div style={{ padding: '20px', overflowY: 'auto', flex: 1, minWidth: 0 }}>
+        <div className="c-modal__body">
           {children}
         </div>
         {footer && (
-          <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border-light)', display: 'flex', gap: '8px', justifyContent: 'flex-end', flexShrink: 0 }}>
+          <div className="c-modal__foot">
             {footer}
           </div>
         )}
@@ -481,73 +397,53 @@ export function FormField({ label, children, required, hint }: { label: string; 
     : children
 
   return (
-    <div style={{ marginBottom: '16px' }}>
+    <div className="c-field">
       <label htmlFor={single ? ((single.props as { id?: string }).id ?? id) : undefined}
-        style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--text)', marginBottom: '6px' }}>
-        {label}{required && <span style={{ color: 'var(--danger)' }}> *</span>}
+        className="c-field__label">
+        {label}{required && <span className="c-field__req"> *</span>}
       </label>
       {bound}
-      {hint && <div id={hintId} style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>{hint}</div>}
+      {hint && <div id={hintId} className="c-field__hint">{hint}</div>}
     </div>
   )
 }
 
+/* Controls are 44px tall with a --border-strong edge (3:1 against white) and an
+   electric focus ring, all in .c-input. A caller's own `style` and `className`
+   still win/merge as before. */
+const inputClass = (extra?: string) => extra ? `c-input ${extra}` : 'c-input'
+
 export function TextInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input {...props} style={{
-    width: '100%', padding: '10px 12px',
-    borderRadius: 'var(--radius)', border: '1px solid var(--border)',
-    fontSize: 'var(--text-sm)', color: 'var(--text)', outline: 'none',
-    ...props.style,
-  }} />
+  return <input {...props} className={inputClass(props.className)} />
 }
 
 export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} style={{
-    width: '100%', padding: '10px 12px',
-    borderRadius: 'var(--radius)', border: '1px solid var(--border)',
-    fontSize: 'var(--text-sm)', color: 'var(--text)', outline: 'none',
-    resize: 'vertical', minHeight: '60px',
-    ...props.style,
-  }} />
+  return <textarea {...props} className={inputClass(props.className)} />
 }
 
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} style={{
-    width: '100%', padding: '10px 12px',
-    borderRadius: 'var(--radius)', border: '1px solid var(--border)',
-    fontSize: 'var(--text-sm)', color: 'var(--text)', outline: 'none',
-    background: 'white',
-    ...props.style,
-  }} />
+  return <select {...props} className={inputClass(props.className)} />
 }
 
-export function Btn({ variant = 'primary', size = 'md', children, ...props }: {
-  variant?: 'primary' | 'secondary' | 'danger' | 'success'
+export function Btn({ variant = 'primary', size = 'md', children, className, ...props }: {
+  /* `accent` is the cyan call to action: one per screen, for its main step. */
+  variant?: 'primary' | 'secondary' | 'danger' | 'success' | 'accent'
   size?: 'sm' | 'md'
   children: React.ReactNode
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
-  const bg = variant === 'danger' ? 'var(--danger)' : variant === 'success' ? 'var(--success)' : variant === 'secondary' ? 'var(--bg-alt)' : 'var(--brand-navy)'
-  const color = variant === 'secondary' ? 'var(--text-secondary)' : 'white'
   /* A small button is the one that appears four-at-a-time in a table cell,
      where 12px each side is 96px of whitespace across the group — enough on
-     its own to push the last column off the edge. 10px still reads as a
-     button and gives the columns beside it room. */
-  const pad = size === 'sm' ? '6px 10px' : '10px 16px'
+     its own to push the last column off the edge. 10px (in .c-btn--sm) still
+     reads as a button and gives the columns beside it room.
+
+     `white-space: nowrap` and the inline-flex layout (in .c-btn) are why a
+     label is one thing to press: in a narrow table cell "Duplicate" was coming
+     out as "Duplica / te", which reads as two words and makes the button two
+     rows tall. Icon and text are laid out there too, rather than by each caller
+     wrapping them in a flex. */
+  const classes = ['c-btn', `c-btn--${variant}`, size === 'sm' && 'c-btn--sm', className].filter(Boolean).join(' ')
   return (
-    <button {...props} style={{
-      padding: pad, borderRadius: 'var(--radius)',
-      background: bg, color, border: variant === 'secondary' ? '1px solid var(--border)' : 'none',
-      fontSize: size === 'sm' ? 'var(--text-xs)' : 'var(--text-sm)',
-      fontWeight: 600, cursor: props.disabled ? 'not-allowed' : 'pointer',
-      opacity: props.disabled ? 0.5 : 1,
-      /* A label is one thing to press, so it stays on one line. In a narrow
-         table cell "Duplicate" was coming out as "Duplica / te", which reads as
-         two words and makes the button two rows tall. Icon and text are laid
-         out here too, rather than by each caller wrapping them in a flex. */
-      whiteSpace: 'nowrap',
-      display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
-      ...props.style,
-    }}>
+    <button {...props} className={classes}>
       {children}
     </button>
   )
@@ -573,7 +469,7 @@ export function ConfirmDialog({ open, onClose, onConfirm, title, message, confir
         </>
       }
     >
-      <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>{message}</p>
+      <p className="c-modal__message">{message}</p>
     </Modal>
   )
 }
