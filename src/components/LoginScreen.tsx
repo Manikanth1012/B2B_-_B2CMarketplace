@@ -462,7 +462,7 @@ export function LoginScreen(
                     transition: 'all 150ms ease',
                   }}
                   onMouseEnter={(e) => { if (!loading) e.currentTarget.style.background = 'var(--brand-accent-dark)' }}
-                  onMouseLeave={(e) => { if (!loading) e.currentTarget.style.background = 'var(--brand-accent)' }}
+                  onMouseLeave={(e) => { if (!loading) e.currentTarget.style.background = 'var(--brand-accent-dark)' }}
                 >
                   {loading ? (
                     <><Loader2 size={20} className="spin" /> Signing in…</>

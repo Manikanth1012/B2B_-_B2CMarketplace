@@ -363,7 +363,7 @@ export function ProductDetail({ product, onAddToCart, onNavigate, compact = fals
                   padding: '12px 20px',
                   fontWeight: 600,
                   fontSize: 'var(--text-sm)',
-                  color: activeTab === tab.id ? 'var(--brand-accent)' : 'var(--text-tertiary)',
+                  color: activeTab === tab.id ? 'var(--brand-accent-dark)' : 'var(--text-tertiary)',
                   borderBottom: activeTab === tab.id ? '2px solid var(--brand-accent)' : '2px solid transparent',
                   transition: 'all 150ms ease',
                   marginBottom: '-1px',

@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
+import { join, relative } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { contrast, readTokens } from './contrast'
 
 describe('contrast()', () => {
@@ -64,5 +66,30 @@ describe('design tokens', () => {
     expect(tokens['brand-navy-dark']).toBe('#03132B')
     expect(tokens['cyan']).toBe('#12CDE0')
     expect(tokens['bg-alt']).toBe('#F4F7FC')
+  })
+})
+
+/* Small text and labels never take the light teal. --brand-accent is 2.15:1 on
+   white, so any `color:` on a line that names it is a regression. The exact
+   token is matched, so --brand-accent-dark and -light are not caught. Fills,
+   borders and icons may still use it. */
+function tsxFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const p = join(dir, name)
+    if (statSync(p).isDirectory()) return tsxFiles(p)
+    return name.endsWith('.tsx') ? [p] : []
+  })
+}
+
+describe('small text never takes the light teal', () => {
+  it('no color: line in src/**/*.tsx names var(--brand-accent)', () => {
+    const offenders: string[] = []
+    const pattern = /(?:(?:^|[^A-Za-z])color\s*:|\.style\.color\s*=)[^\n]*var\(--brand-accent\)/
+    for (const file of tsxFiles(fileURLToPath(new URL('../', import.meta.url)))) {
+      readFileSync(file, 'utf8').split(/\r?\n/).forEach((line, i) => {
+        if (pattern.test(line)) offenders.push(`${relative(process.cwd(), file)}:${i + 1}`)
+      })
+    }
+    expect(offenders).toEqual([])
   })
 })

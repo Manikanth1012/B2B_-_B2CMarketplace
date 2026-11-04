@@ -180,7 +180,7 @@ export function AccountView({ initialTab, onWatchesChanged }: {
                 border: 'none',
                 background: 'none',
                 borderBottom: active ? '3px solid var(--brand-accent)' : '3px solid transparent',
-                color: active ? 'var(--brand-accent)' : 'var(--text-secondary)',
+                color: active ? 'var(--brand-accent-dark)' : 'var(--text-secondary)',
                 fontWeight: active ? 700 : 500,
                 fontSize: 'var(--text-sm)',
                 cursor: 'pointer',
@@ -1077,7 +1077,7 @@ function HouseholdTab({ members: initialMembers, currency, showToast }: {
                 {/* Avatar */}
                 <div style={{
                   width: '44px', height: '44px', borderRadius: '50%',
-                  background: m.is_you ? 'var(--brand-accent)' : 'var(--bg-alt)',
+                  background: m.is_you ? 'var(--brand-accent-dark)' : 'var(--bg-alt)',
                   color: m.is_you ? 'white' : 'var(--text-secondary)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontWeight: 700, fontSize: 'var(--text-sm)', flexShrink: 0,
@@ -2018,7 +2018,7 @@ function TicketDetailModal({ ticket, onClose, showToast }: { ticket: ConsumerTic
                 <div style={{
                   maxWidth: '80%', padding: '12px 16px',
                   borderRadius: 'var(--radius-lg)',
-                  background: isMe ? 'var(--brand-accent)' : 'var(--bg-alt)',
+                  background: isMe ? 'var(--brand-accent-dark)' : 'var(--bg-alt)',
                   color: isMe ? 'white' : 'var(--text)',
                   fontSize: 'var(--text-sm)',
                 }}>

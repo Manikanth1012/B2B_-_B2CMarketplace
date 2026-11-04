@@ -203,7 +203,7 @@ input, select, textarea {
 }
 
 .btn-primary {
-  /* Darker teal: the label is small text, and white on #00A6A6 is only 3.00:1. */
+  /* Darker teal: the label is small text. White on #00C6B5 is 2.15:1; on #007575 it is 5.52:1. */
   background: var(--brand-accent-dark);
   color: white;
 }
