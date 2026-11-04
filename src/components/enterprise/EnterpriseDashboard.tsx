@@ -73,7 +73,7 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
                   sublabel={com.suspended ? `${money(com.renewing)} renewing · ${money(com.suspended)} running to contract end` : `${book?.subscriptions.filter(s => s.status === 'active').length ?? 0} active subscriptions`}
                   color="var(--brand-navy)" />
         <StatCard label="Budget used" value={budget ? `${budget.pct}%` : '—'}
-                  sublabel={budget ? `${money0(budget.spent)} of ${money0(budget.budget)} · ${money0(budget.left)} left · ${budget.yearPct}% of the year gone · ${budget.ahead ? 'ahead of the year' : 'in line with the year'}` : ''}
+                  sublabel={budget ? `${money0(budget.spent)} of ${money0(budget.budget)} · ${money0(budget.left)} left · ${budget.yearPct}% of the year gone · ${budget.ahead ? 'ahead of the year' : 'not ahead of the year'}` : ''}
                   color={budget?.ahead ? 'var(--warning)' : 'var(--brand-accent-dark)'} />
         <StatCard label="Awaiting approval" value={fmtInt(queue.length)}
                   sublabel={`${money(queue.reduce((a, r) => a + Number(r.amount), 0))} of requests`} color="var(--warning)" />
