@@ -9,7 +9,7 @@ import { useMarket } from '../../lib/MarketContext'
 import { loadAccountBook } from '../../lib/accountsRepo'
 import type { AccountBook } from '../../lib/accountsRepo'
 import {
-  stepsOf, progressOf, isLate, whereTheyAre, rollup, matches, deskOrder, shopperLine, inBand,
+  stepsOf, progressOf, isLate, whereTheyAre, rollup, matches, deskOrder, shopperLine, inBand, bandCounts, waitingFor,
 } from '../../lib/accounts'
 import type { Account, Step, Band } from '../../lib/accounts'
 import type { OperatorView } from '../../types/view'
@@ -78,10 +78,11 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
   }
 
   const totals = rollup({ accounts, steps, waiting: book.waiting, today: TODAY })
-  const bandCount: Record<Band, number> = {
-    all: totals.accounts, onboarded: totals.onboarded, inFlight: totals.inFlight,
-    overdue: totals.overdue, waiting: totals.waiting,
-  }
+  /* The chips count the list the search leaves, not the whole book, so "Overdue
+     3" never sits above a list of one. The summary cards above stay on the
+     whole book — they describe the book, not the search. */
+  const bandCount = bandCounts(
+    accounts.filter(a => matches(a, q)), steps, TODAY, waitingFor(book.waiting, q))
   /* Arrow keys move between the chips, as a radio group does; only the
      selected chip is in the tab order. */
   const onChipKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -172,7 +173,9 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
           subtitle="Whoever needs something doing about them, first.">
           {band === 'waiting' ? (
             <>
-              <EmptyState message={totals.waiting
+              <EmptyState message={totals.waiting && q.trim()
+                ? 'Applications are not accounts, so a search does not reach them. Clear the search to see how many are waiting.'
+                : totals.waiting
                 ? 'Companies who are waiting have applied but are not accounts yet, so they are not in this list.'
                 : 'Nobody is waiting to be decided.'} />
               {onNavigate && totals.waiting > 0 && (

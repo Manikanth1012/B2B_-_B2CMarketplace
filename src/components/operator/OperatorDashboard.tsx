@@ -87,6 +87,20 @@ export function OperatorDashboard(
     setStatements(prev => prev.filter(s => s.id !== id))
   }
 
+  const hasAlerts = queue.length > 0 || applications > 0
+  const quickActions = (
+    <SectionCard title="Quick actions" subtitle="Jump to the screens you use most">
+      <div className={`op-quick${hasAlerts ? '' : ' op-quick--wide'}`}>
+        {QUICK_ACTIONS.map(q => (
+          <button key={q.to} type="button" className="op-quick__link" onClick={() => onNavigate?.(q.to)}>
+            {q.label}
+            <ArrowRight size={16} aria-hidden="true" />
+          </button>
+        ))}
+      </div>
+    </SectionCard>
+  )
+
   return (
     <div className="op-dash">
       <div>
@@ -143,8 +157,7 @@ export function OperatorDashboard(
           it, and a dashboard that opens with a chart buries the work. It is the
           "Operational alerts" card now; the quick actions beside it go only to
           screens that already exist. */}
-      <BentoGrid cols={4}>
-        {(queue.length > 0 || applications > 0) && (
+      {hasAlerts && <BentoGrid cols={4}>
           <BentoCell span={2}>
             <SectionCard title="Operational alerts" subtitle="Work waiting on you">
               <div className="op-alert">
@@ -167,20 +180,11 @@ export function OperatorDashboard(
               </div>
             </SectionCard>
           </BentoCell>
-        )}
-        <BentoCell span={2}>
-          <SectionCard title="Quick actions" subtitle="Jump to the screens you use most">
-            <div className="op-quick">
-              {QUICK_ACTIONS.map(q => (
-                <button key={q.to} type="button" className="op-quick__link" onClick={() => onNavigate?.(q.to)}>
-                  {q.label}
-                  <ArrowRight size={16} aria-hidden="true" />
-                </button>
-              ))}
-            </div>
-          </SectionCard>
-        </BentoCell>
-      </BentoGrid>
+        <BentoCell span={2}>{quickActions}</BentoCell>
+      </BentoGrid>}
+      {/* With nothing waiting there is no alerts card to sit beside, and a
+          half-width card left half the row empty. It takes the whole row. */}
+      {!hasAlerts && quickActions}
 
       <SectionCard title="Marketplace categories" subtitle="One platform, one settlement engine, six commercial propositions">
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: '12px', padding: '4px' }}>

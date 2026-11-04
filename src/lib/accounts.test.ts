@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  stepsOf, progressOf, isLate, whereTheyAre, rollup, matches, deskOrder, shopperLine, inBand, bandCounts,
+  stepsOf, progressOf, isLate, whereTheyAre, rollup, matches, deskOrder, shopperLine, inBand, bandCounts, waitingFor,
 } from './accounts'
 import type { Account, Step, StepState, Shopper } from './accounts'
 
@@ -273,10 +273,46 @@ describe('narrowing the book by where it stands', () => {
   it('matches no account for "waiting", which are applications not accounts', () => {
     expect(names('waiting')).toEqual([])
   })
+  /* An account with no onboarding rows has no gates, so it is not complete and
+     nothing can be late: part-way through, never onboarded, never overdue. */
+  it('puts an account with no steps in flight, and never overdue', () => {
+    const bare = acct({ id: 'ENT-NONE', company: 'Bare' })
+    expect(inBand(bare, steps, today, 'inFlight')).toBe(true)
+    expect(inBand(bare, steps, today, 'onboarded')).toBe(false)
+    expect(inBand(bare, steps, today, 'overdue')).toBe(false)
+  })
+  /* The boundary: a step due today has not run past its date yet. */
+  it('does not call a step overdue on the day it is due', () => {
+    const dueToday = [step({ id: 'd', account_id: 'ENT-D', gate_id: 'g', state: 'due', done_on: null, due_on: today })]
+    const d = acct({ id: 'ENT-D', company: 'Delta' })
+    expect(inBand(d, dueToday, today, 'overdue')).toBe(false)
+    expect(inBand(d, dueToday, today, 'inFlight')).toBe(true)
+    expect(inBand(d, dueToday, '2026-08-11', 'overdue')).toBe(true)
+  })
+  /* The screen counts the chips on the list the search leaves, so a chip and
+     the rows under it agree while somebody is searching. */
+  it('counts only the accounts it is given, so a searched list gives searched counts', () => {
+    const searched = accounts.filter(a => matches(a, 'charlie'))
+    expect(bandCounts(searched, steps, today, 0)).toEqual({
+      all: 1, onboarded: 0, inFlight: 1, overdue: 1, waiting: 0,
+    })
+  })
   it('counts exactly what rollup counts', () => {
     const r = rollup({ accounts, steps, waiting: 4, today })
     expect(bandCounts(accounts, steps, today, 4)).toEqual({
       all: r.accounts, onboarded: r.onboarded, inFlight: r.inFlight, overdue: r.overdue, waiting: r.waiting,
     })
+  })
+})
+
+describe('the waiting chip while somebody is searching', () => {
+  it('shows the whole queue when nothing is typed', () => {
+    expect(waitingFor(4, '')).toBe(4)
+    expect(waitingFor(4, '   ')).toBe(4)
+  })
+  /* Applications are not accounts and carry none of the text a search reads,
+     so none of them can match one. */
+  it('shows none of it once there is search text', () => {
+    expect(waitingFor(4, 'charlie')).toBe(0)
   })
 })
