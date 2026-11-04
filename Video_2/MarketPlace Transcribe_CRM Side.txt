@@ -1,0 +1,13 @@
+Marketplace Transcription
+
+00:00 – 00:23 — In this demo, we will show the Marketplace in CRM. First, the user logs into the CRM system and is navigated to the dashboard.
+
+00:24 – 00:43 — In the search bar, we enter the customer's MSISDN. The user is then redirected to the Service Level page, where the service-level details are displayed.
+
+00:44 – 00:47 — We will now navigate to the Subscription Cart.
+
+00:48 – 01:08 — On clicking the Subscription Cart, we can see the products added to the cart. We can remove old products from the cart. A confirmation warning window then pops up.
+
+01:09 – 01:18 — We can add one or more products to the cart. The added products are displayed in the cart.
+
+01:19 – 01:25 — We can now proceed to checkout. Upon successful completion, an order-creation success message is displayed.

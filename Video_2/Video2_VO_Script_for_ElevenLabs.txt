@@ -1,0 +1,141 @@
+VIDEO 2 — "One Customer, Any Channel" (Omnichannel Experience)
+VO script for ElevenLabs (Text to Speech / Speech Synthesis)
+================================================================
+
+VOICE PROMPT — SAME AS VIDEO 1 (use in ElevenLabs Voice Design / Voice
+Library search, or reuse the exact voice/voice ID picked for Video 1):
+
+  "Warm, confident East African English narrator, 30s–40s, calm and
+  professional business tone, clear articulation, moderate pace,
+  Kenyan English accent, suited for a corporate explainer/product
+  video — not a hard-sell ad voice."
+
+  Use the same voice (male or female, whichever was selected for Video 1)
+  so the two videos sound like one series.
+
+RECOMMENDED SETTINGS — SAME AS VIDEO 1:
+  Model:              Eleven Multilingual v2 (or Eleven v3 if you have it)
+  Stability:           45–55%
+  Similarity:          75–85%
+  Style exaggeration:  15–25% (keep low — calm, credible tone, not an
+                       energetic ad read)
+  Speed:               1.0x (default)
+
+HOW TO GENERATE:
+  Generate the 9 segments below separately (as listed) rather than one
+  long block — each one maps to a labelled beat in the script doc, so
+  you can regenerate a single segment without redoing the whole track.
+  Target durations are shown so you can sanity-check pacing after
+  generation; don't force it to hit the number exactly.
+
+  NOTE — v3 update: the standalone "Transition — The Handoff" segment
+  (previously #6, 06_transition_handoff.mp3) has been removed. The
+  handoff is now spoken inside Segment 2 instead ("...after connected
+  with Otieno on call..."). If you already generated the old 9-clip set,
+  only Segment 2 needs to be re-recorded — everything else is unchanged
+  and can be reused as-is.
+
+  NOTE — v4 update: a new beat, ACT 4B — LINKED OR NOT, is inserted
+  between Act 4 and Segment 1 (see item 4B below). It only needs
+  recording once — everything you already have (01/02/03/04/05/07/08/09)
+  stays as-is and does NOT need to be regenerated or renumbered.
+
+================================================================
+1. ACT 1 — HOOK  (target ~14s)
+================================================================
+A customer starts a purchase online. Then life happens — a question
+comes up, and they pick up the phone instead. What happens next usually
+means starting over: re-explaining who they are, what they picked, and
+where they got to.
+
+================================================================
+2. ACT 2 — PROBLEM  (target ~12s)
+================================================================
+For the customer, that's frustrating. For the operator, it's a lost
+sale and a longer call — because the agent who picks up has no idea
+what's already sitting in that customer's basket.
+
+================================================================
+3. ACT 3 — SOLUTION INTRO  (target ~10s)
+================================================================
+This is the Marketplace and Canvas BSS's Customer 360 — built on the
+same 6D data model, so the shopper's basket and the agent's view of that
+customer tell the same story.
+
+================================================================
+4. ACT 4 — MECHANISM  (target ~16s)
+================================================================
+Every product, price, and customer profile is modelled once, aligned to
+TM Forum's SID information framework — so whichever door a customer
+walks through, self-service storefront or Customer 360 in the contact
+centre, they're looking at the same record.
+
+================================================================
+4B. ACT 4B — LINKED OR NOT  (target ~17s)  [NEW — v4]
+================================================================
+Not every Marketplace shopper is an Operator customer. Some check out
+as Marketplace-only, with nothing to link — and that's fine. But when a
+profile is linked, like Otieno's, Marketplace and Canvas BSS are
+reading the exact same Party record — the same customer, from both
+sides.
+
+================================================================
+5. SEGMENT 1 — THE MARKETPLACE: OTIENO SHOPS  (target ~36s)
+================================================================
+Otieno Odhiambo signs into the Marketplace on his phone. Browsing
+Digital Content, he tries a few things — adding a gaming pass, then
+swapping it out — before settling on PlayForge Cloud Gaming and a
+Travel eSIM for an upcoming trip, ten gigabytes, thirty days. Both go
+into his basket. He moves to checkout, confirms his delivery details,
+and sees his total — twenty-four dollars forty-nine, tax included.
+Then, at the payment step, he pauses. He'd rather just talk it through
+— so he calls Customer Care.
+
+================================================================
+6. SEGMENT 2 — CANVAS BSS: KIM TAKES THE CALL  (target ~52s)
+================================================================
+On the other end, agent Kim signs into Canvas BSS. She searches
+Otieno's number after connected with Otieno on call and lands straight
+on his Customer 360 — profile, account, active service, and AI Insights
+already flagging his upgrade potential. One click into his Subscription
+Cart, and she's looking at the exact same two items, the exact same
+twenty-four forty-nine, that he left behind in the Marketplace. No
+re-explaining required. Otieno asks her to swap out the eSIM for a
+different validity — she removes it, confirms the change, and adds it
+back — then, seeing his trip dates on file, suggests a streaming add-on
+for the flight. He agrees. She checks out on his behalf. Order placed —
+successfully, and worth more than the basket he almost abandoned.
+
+================================================================
+7. ACT 8 — BUSINESS OUTCOMES  (target ~14s)
+================================================================
+The result: no repeat-explaining, faster call resolution, a stalled
+sale rescued instead of lost, and an upsell that AI Insights made
+obvious — all from one consistent view of the customer.
+
+================================================================
+8. ACT 9 — CLOSING TAGLINE  (target ~10s)
+================================================================
+One customer. One record. Any channel they choose — the Marketplace and
+Canvas BSS, working from the same page.
+
+================================================================
+FILE NAMING (when you export, please keep this order so I can line them
+up against the TIME codes in the main script doc):
+================================================================
+01_hook.mp3
+02_problem.mp3
+03_solution_intro.mp3
+04_mechanism.mp3
+04b_linked_identity.mp3   (NEW — v4; sits between 04 and 05, keeps
+                           01/02/03/04/05/07/08/09 untouched)
+05_segment1_marketplace.mp3
+07_segment2_crm.mp3   (re-record this one — text changed in v3; keep the
+                        filename "07_..." so it still lines up with the
+                        existing 01/02/03/04/05/08/09 clips you already
+                        generated)
+08_outcomes.mp3
+09_tagline.mp3
+
+NOTE: 06_transition_handoff.mp3 is retired — remove it from the edit
+timeline/asset list rather than regenerating it.
