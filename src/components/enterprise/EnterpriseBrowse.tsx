@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react'
-import { Search, Star } from 'lucide-react'
-import { SectionCard, Btn, toast } from '../operator/shared'
-/* The same resolver the storefront and the basket use. A business buyer and a
-   shopper are looking at one `products` row — SKU-4001 is the same handset on
-   both shelves — so the photo has to come from one place or the two screens
-   quietly disagree about what is being sold. */
-import { getProductImage } from '../../lib/images'
+import type { CSSProperties } from 'react'
+import { toast } from '../operator/shared'
+/* The card resolves its photo with the same resolver the storefront and the
+   basket use (`getProductImage`). A business buyer and a shopper are looking at
+   one `products` row — SKU-4001 is the same handset on both shelves — so the
+   photo has to come from one place or the two screens quietly disagree about
+   what is being sold. */
+import { ProductCard, ListingLayout, ListingGrid, EmptyListing, CategoryTile, categoryIcon } from '../ui'
+import { pricedFor, cardAction } from '../../lib/storefront'
+import { categoryVisual } from '../../lib/home'
 import { useRequisition } from '../../lib/RequisitionContext'
 import type { EnterpriseListing as Listing } from '../../lib/enterpriseRepo'
 
@@ -26,7 +29,7 @@ import { useAccountMoney } from './money'
 import { useMarket } from '../../lib/MarketContext'
 import type { Policy, Subscription } from '../../lib/enterprise'
 import { EnterpriseListingModal } from './EnterpriseListingModal'
-import { CompareTray, CompareTable, CompareToggle } from '../CompareTray'
+import { CompareTray, CompareTable } from '../CompareTray'
 import { toggleCompare, COMPARE_CAP } from '../../lib/compare'
 import type { Comparable } from '../../lib/compare'
 
@@ -151,7 +154,12 @@ export function EnterpriseBrowse() {
     else if (r.note) toast(r.note, 'info')
   }
 
-  let results = listings ?? []
+  /* Only what the account's currency actually prices. `currency` on a listing
+     falls back to USD when the price book has no row for the account's
+     currency, so without this a buyer in rupees would see a dollar figure on a
+     shelf they cannot buy from. */
+  const priced = pricedFor(listings ?? [], currency ?? '')
+  let results = priced
   if (vertical) results = results.filter(p => p.category_id === vertical)
   if (category) results = results.filter(p => p.sub_category === category)
   if (query) {
@@ -164,145 +172,114 @@ export function EnterpriseBrowse() {
     : sort === 'rating' ? (b.rating || 0) - (a.rating || 0)
     : (b.reviews || 0) - (a.reviews || 0))
 
-  const all = listings ?? []
+  const all = priced
   const cats = Array.from(new Set((vertical ? all.filter(p => p.category_id === vertical) : all)
     .map(p => p.sub_category).filter((c): c is string => !!c)))
-  const filtering = vertical || category || query
+  /* One tile per shelf that has something priced for this account. */
+  const shelves = Array.from(new Set(all.map(p => p.category_id)))
 
   const reset = () => { setVertical(null); setCategory(null); setQuery('') }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>{vertical ? VERTICAL_NAMES[vertical] : 'Business Catalogue'}</h1>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            {results.length} of {all.length} listings approved for business accounts · sold by {new Set(results.map(p => p.seller)).size} sellers
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <div style={{ position: 'relative' }}>
-            <input
-              type="text" placeholder="Search the catalogue" value={query}
-              onChange={e => setQuery(e.target.value)}
-              style={{ width: '200px', padding: '6px 10px 6px 30px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', fontSize: 'var(--text-sm)', outline: 'none', color: 'var(--text)' }}
-            />
-            <Search size={14} style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-          </div>
-          <select value={sort} onChange={e => setSort(e.target.value)} style={{ padding: '6px 10px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', fontSize: 'var(--text-sm)', outline: 'none', background: 'white' }}>
-            <option value="popular">Most popular</option>
-            <option value="rating">Highest rated</option>
-            <option value="priceup">Price: low to high</option>
-            <option value="pricedown">Price: high to low</option>
-          </select>
-        </div>
-      </div>
-
-      <div style={{
-        padding: '14px 18px', borderRadius: 'var(--radius-md)',
-        background: 'var(--info-bg)', border: '1px solid var(--info)',
-        fontSize: 'var(--text-sm)', color: 'var(--info)',
-      }}>
-        Everything here is pre-approved for business purchase. {policy
-          ? `Anything at or above ${money0(Number(policy.threshold))} needs finance approval before the order is placed${policy.security_signoff ? '; security purchases also need IT sign-off whatever they cost' : ''}.`
-          : 'Your account’s approval thresholds are loading.'}
-        {/* Said only where there is a choice to have made. An account in India
-            never sees it, because India trades in rupees alone. */}
-        {offered.length > 1 && (
-          <div style={{ fontSize: 'var(--text-xs)', marginTop: '8px' }}>
-            {currency === primary
-              ? `Priced in ${currency}. This account may also buy in ${offered.filter(c => c !== primary).join(' or ')} — the currency picker in the header changes it.`
-              : `Priced in ${currency}. The ${money0(Number(policy?.threshold ?? 0))} threshold stays in ${primary}, and a requisition raised in ${currency} is converted to it at the rate on the day it is raised.`}
-          </div>
-        )}
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '230px 1fr', gap: '16px' }} className="op-grid-2col">
-        {/* Facets */}
-        <aside style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', alignSelf: 'start', position: 'sticky', top: '80px' }}>
-          <div style={{ padding: '12px', borderBottom: '1px solid var(--border-light)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <strong style={{ fontSize: 'var(--text-sm)' }}>Filters</strong>
-            {filtering && <button onClick={reset} style={{ background: 'none', border: 'none', color: 'var(--brand-accent-dark)', fontSize: 'var(--text-xs)', cursor: 'pointer' }}>Clear all</button>}
-          </div>
-          <div style={{ padding: '12px', borderBottom: '1px solid var(--border-light)' }}>
-            <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', marginBottom: '8px' }}>Marketplace</div>
-            {['iot', 'security', 'device'].map(v => (
-              <label key={v} style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', cursor: 'pointer', fontSize: 'var(--text-sm)' }}>
-                <input type="checkbox" checked={vertical === v} onChange={() => { setVertical(vertical === v ? null : v); setCategory(null) }} />
-                <span>{VERTICAL_NAMES[v]?.replace(' Marketplace', '')}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{all.filter(p => p.category_id === v).length}</span>
-              </label>
-            ))}
-          </div>
-          <div style={{ padding: '12px' }}>
-            <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)', marginBottom: '8px' }}>Category</div>
-            {cats.map(c => (
-              <label key={c} style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px', cursor: 'pointer', fontSize: 'var(--text-sm)' }}>
-                <input type="checkbox" checked={category === c} onChange={() => setCategory(category === c ? null : c)} />
-                <span>{c}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{all.filter(p => p.sub_category === c && (!vertical || p.category_id === vertical)).length}</span>
-              </label>
-            ))}
-          </div>
-        </aside>
-
-        {/* Results */}
-        <div>
-          {/* "Nothing matches" while the catalogue is still in flight would tell
-              a buyer their filters excluded everything, which is a different
-              and wrong statement. */}
-          {listings === null ? (
-            <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
-          ) : results.length > 0 ? (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '14px' }}>
-              {results.map(p => (
-                <div key={p.id} style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden', display: 'flex', flexDirection: 'column', cursor: 'pointer', transition: 'border-color 150ms ease' }}
-                  onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--brand-accent)'}
-                  onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
-                  onClick={() => setViewing(p)}
-                  title="Open this listing"
-                >
-                  <div style={{ height: '120px', background: 'var(--bg-alt)' }}>
-                    <img src={getProductImage(p.id)} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+      <ListingLayout
+        title={vertical ? VERTICAL_NAMES[vertical] : 'Business Catalogue'}
+        subtitle={`${results.length} of ${all.length} listings approved for business accounts · sold by ${new Set(results.map(p => p.seller)).size} sellers`}
+        count={results.length}
+        total={all.length}
+        search={{ value: query, onChange: setQuery, placeholder: 'Search the catalogue' }}
+        sort={{
+          value: sort, onChange: setSort,
+          options: [
+            { value: 'popular', label: 'Most popular' },
+            { value: 'rating', label: 'Highest rated' },
+            { value: 'priceup', label: 'Price: low to high' },
+            { value: 'pricedown', label: 'Price: high to low' },
+          ],
+        }}
+        filters={[
+          {
+            id: 'vertical', title: 'Marketplace', selected: vertical,
+            onSelect: v => { setVertical(v); setCategory(null) },
+            options: ['iot', 'security', 'device'].map(v => ({
+              value: v, label: VERTICAL_NAMES[v]?.replace(' Marketplace', '') ?? v,
+              count: all.filter(p => p.category_id === v).length,
+            })),
+          },
+          {
+            id: 'category', title: 'Category', selected: category, onSelect: setCategory,
+            options: cats.map(c => ({
+              value: c, label: c,
+              count: all.filter(p => p.sub_category === c && (!vertical || p.category_id === vertical)).length,
+            })),
+          },
+        ]}
+        onClear={reset}
+        above={
+          <>
+            <div className="info-strip">
+              <div>
+                Everything here is pre-approved for business purchase. {policy
+                  ? `Anything at or above ${money0(Number(policy.threshold))} needs finance approval before the order is placed${policy.security_signoff ? '; security purchases also need IT sign-off whatever they cost' : ''}.`
+                  : 'Your account’s approval thresholds are loading.'}
+                {/* Said only where there is a choice to have made. An account in India
+                    never sees it, because India trades in rupees alone. */}
+                {offered.length > 1 && (
+                  <div style={{ fontSize: 'var(--text-xs)', marginTop: '8px' }}>
+                    {currency === primary
+                      ? `Priced in ${currency}. This account may also buy in ${offered.filter(c => c !== primary).join(' or ')} — the currency picker in the header changes it.`
+                      : `Priced in ${currency}. The ${money0(Number(policy?.threshold ?? 0))} threshold stays in ${primary}, and a requisition raised in ${currency} is converted to it at the rate on the day it is raised.`}
                   </div>
-                  <div style={{ padding: '12px', flex: 1, display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                    <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{p.name}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{p.seller} · {p.sub_category}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.4 }}>{p.description}</div>
-                    {p.rating > 0 && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
-                        <Star size={12} style={{ color: '#F5A623' }} fill="#F5A623" />
-                        {p.rating} ({p.reviews})
-                      </div>
-                    )}
-                  </div>
-                  <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border-light)', background: 'var(--bg-alt)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div>
-                      <span style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>{money(p.price)}</span>
-                      {p.model === 'monthly' && <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{p.unit ? ` ${p.unit}/mo` : '/mo'}</span>}
-                    </div>
-                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                      <CompareToggle
-                        on={comparing.includes(p.id)}
-                        disabled={comparing.length >= COMPARE_CAP && !comparing.includes(p.id)}
-                        onClick={() => pick(p.id)}
-                      />
-                      <Btn variant="primary" size="sm" onClick={(e) => { e.stopPropagation(); addToRequisition(p) }}>Add</Btn>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <SectionCard title="Nothing matches" subtitle="Your filters exclude all listings">
-              <div style={{ padding: '40px 20px', textAlign: 'center', color: 'var(--text-tertiary)' }}>
-                <p>No business listings match those filters.</p>
-                <Btn variant="primary" size="sm" style={{ marginTop: '12px' }} onClick={reset}>Clear filters</Btn>
+                )}
               </div>
-            </SectionCard>
-          )}
-        </div>
-      </div>
+            </div>
+            {shelves.length > 0 && (
+              <div className="cat-row cat-row--compact" style={{ '--cat-cols': Math.min(shelves.length, 6), marginBottom: '16px' } as CSSProperties}>
+                {shelves.map(id => (
+                  <CategoryTile
+                    key={id}
+                    name={VERTICAL_NAMES[id]?.replace(' Marketplace', '') ?? id}
+                    count={all.filter(p => p.category_id === id).length}
+                    visual={categoryVisual(id)}
+                    icon={categoryIcon(id)}
+                    onClick={() => { setVertical(id); setCategory(null) }}
+                  />
+                ))}
+              </div>
+            )}
+          </>
+        }
+      >
+        {/* "Nothing matches" while the catalogue is still in flight would tell
+            a buyer their filters excluded everything, which is a different
+            and wrong statement. */}
+        {listings === null ? (
+          <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
+        ) : results.length > 0 ? (
+          <ListingGrid>
+            {results.map(p => {
+              const a = cardAction('enterprise', p)
+              return (
+                <ProductCard
+                  key={p.id}
+                  product={p}
+                  onOpen={() => setViewing(p)}
+                  action={{ label: a.label, disabled: a.disabled, onClick: () => addToRequisition(p) }}
+                  compare={{
+                    checked: comparing.includes(p.id),
+                    disabled: comparing.length >= COMPARE_CAP && !comparing.includes(p.id),
+                    onToggle: () => pick(p.id),
+                  }}
+                  showStock
+                  priceNote={p.model === 'monthly' ? (p.unit ? ` ${p.unit}/mo` : '/mo') : undefined}
+                />
+              )
+            })}
+          </ListingGrid>
+        ) : (
+          <EmptyListing title="Nothing matches" text="No business listings match those filters." onClear={reset} />
+        )}
+      </ListingLayout>
 
       <CompareTray
         picks={picks}

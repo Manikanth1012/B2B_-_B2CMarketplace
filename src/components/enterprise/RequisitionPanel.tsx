@@ -9,7 +9,7 @@
  * A buyer should learn that ₹2,40,000 of sensors needs finance approval before
  * they have written a justification, not after.
  */
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { X, Trash2, TriangleAlert as AlertTriangle, Check } from 'lucide-react'
 import { Btn, toast } from '../operator/shared'
 import { useRequisition } from '../../lib/RequisitionContext'
@@ -65,6 +65,19 @@ export function RequisitionPanel({ onRaised }: {
   /* Cleared once it has actually been raised, not on every close — a buyer who
      shuts the panel to go and check a budget should not lose their reasoning. */
   useEffect(() => { if (!basket.lines.length) { setDraft(BLANK); setAttempted(false) } }, [basket.lines.length])
+
+  /* Escape closes it, and focus goes back to whatever opened it. The panel is a
+     modal dialog, so leaving focus on a control that has just been unmounted
+     would drop a keyboard user at the top of the page. */
+  const drawer = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    drawer.current?.focus()
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('keydown', onKey)
+    return () => { document.removeEventListener('keydown', onKey); opener?.focus() }
+  }, [open, setOpen])
 
   if (!open) return null
 
@@ -147,17 +160,15 @@ export function RequisitionPanel({ onRaised }: {
   return (
     <div
       onClick={() => setOpen(false)}
-      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.4)', display: 'flex', justifyContent: 'flex-end' }}
+      className="req-drawer-backdrop"
     >
       <div
+        ref={drawer} tabIndex={-1}
         role="dialog" aria-modal="true" aria-label="Requisition"
         onClick={e => e.stopPropagation()}
-        style={{
-          width: 'min(560px, 100%)', background: 'var(--bg-alt)', height: '100%',
-          display: 'flex', flexDirection: 'column', boxShadow: 'var(--shadow-lg)',
-        }}
+        className="req-drawer"
       >
-        <header style={{ padding: '16px 20px', background: 'white', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <header className="req-drawer__head">
           <div>
             <strong style={{ fontSize: 'var(--text-base)' }}>Requisition</strong>
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
@@ -170,7 +181,7 @@ export function RequisitionPanel({ onRaised }: {
           </button>
         </header>
 
-        <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div className="req-drawer__body">
           {basket.lines.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '48px 20px', color: 'var(--text-tertiary)', fontSize: 'var(--text-sm)' }}>
               <p>Nothing here yet.</p>
@@ -277,7 +288,7 @@ export function RequisitionPanel({ onRaised }: {
         </div>
 
         {basket.lines.length > 0 && (
-          <footer style={{ padding: '14px 20px', background: 'white', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <footer className="req-drawer__foot">
             {/* The reason the button is off, rather than a button that is off
                 and says nothing. */}
             {me && !me.can_raise ? (
@@ -291,14 +302,14 @@ export function RequisitionPanel({ onRaised }: {
             )}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between' }}>
               <Btn variant="secondary" size="sm" onClick={() => { empty(); toast('Emptied', 'info') }}>Empty it</Btn>
-              <Btn variant="primary" onClick={raise} disabled={blocked || busy}>
+              <button className="btn btn-cyan" onClick={raise} disabled={blocked || busy}>
                 {/* Never "Raise and order": raising writes a pending
                     requisition and nothing else. Confirming it on Approvals is
                     what places the order, even when nobody else has to sign. */}
                 {busy ? 'Raising…'
                   : v?.need === 'none' ? `Raise — ${money(total, basket.currency)}`
                   : `Raise for approval — ${money(total, basket.currency)}`}
-              </Btn>
+              </button>
             </div>
           </footer>
         )}
