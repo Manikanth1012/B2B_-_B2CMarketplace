@@ -89,7 +89,8 @@ export function EnquiryList({
         </div>
       </div>
 
-      <SectionCard title={title} subtitle={subtitle ?? 'Whatever is waiting on you comes first. Open a row to read it and act on it.'}>
+      {/* Straight under the screen's h1, so an h2, not the card's usual h3. */}
+      <SectionCard level={2} title={title} subtitle={subtitle ?? 'Whatever is waiting on you comes first. Open a row to read it and act on it.'}>
         {rows.length === 0 ? (
           <EmptyState message={enquiries.length === 0 ? 'Nothing has been asked yet.' : 'Nothing matches these filters.'} />
         ) : (

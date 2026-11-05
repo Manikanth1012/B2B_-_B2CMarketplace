@@ -2,7 +2,7 @@
 // consoles (buyer, seller, operator) agree on what "waiting on you" means.
 // No supabase import: it must stay testable in Node.
 
-import { waitingOn, enquiryState } from './enquiries'
+import { waitingOn, enquiryState, isTerminal } from './enquiries'
 import type { Enquiry, EnquiryLine, EnquiryType, Role } from './enquiries'
 
 export type Chip = 'all' | 'mine' | 'theirs' | 'closed'
@@ -62,6 +62,15 @@ export function filterEnquiries(
       .some(s => s.toLowerCase().includes(q)))
     .slice()
     .sort((a, b) => rank(a) - rank(b) || (b.updated_at < a.updated_at ? -1 : b.updated_at > a.updated_at ? 1 : 0))
+}
+
+/** Still open and untouched for more than `days` days: the operator's age
+    filter. A finished enquiry is waiting on nobody, however old it is, so it
+    never counts. `days` of 0 or less lets everything through. */
+export function waitingOver(e: Pick<Enquiry, 'type' | 'status' | 'updated_at'>, days: number, now: number): boolean {
+  if (days <= 0) return true
+  if (isTerminal(e.type, e.status)) return false
+  return now - Date.parse(e.updated_at) > days * 86_400_000
 }
 
 /** Who answers it, in words. */

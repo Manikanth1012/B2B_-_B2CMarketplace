@@ -225,6 +225,19 @@ export async function loadFloors(productIds: string[]): Promise<{ ok: true; floo
   }
 }
 
+/** Every seller, by name: who the operator can pass an enquiry to, and how
+    the desk's list names who answers. A failure is an empty list and the
+    reason; the screen falls back to ids. */
+export async function listPartners(): Promise<{ ok: true; partners: { id: string; name: string }[] } | { ok: false; error: string }> {
+  try {
+    const { data, error } = await supabase.from('partners').select('id,name').order('name')
+    if (error) return { ok: false, error: error.message }
+    return { ok: true, partners: (data ?? []) as { id: string; name: string }[] }
+  } catch (err) {
+    return { ok: false, error: errorText(err) }
+  }
+}
+
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }

@@ -34,7 +34,8 @@ const TERMINAL: Record<EnquiryType, readonly EnquiryStatus[]> = {
   demo: ['done', 'declined', 'withdrawn'],
   sales: ['closed'],
 }
-const isTerminal = (type: EnquiryType, status: EnquiryStatus) => TERMINAL[type].includes(status)
+/** Finished: accepted, declined, withdrawn, done or closed, as its type has it. */
+export const isTerminal = (type: EnquiryType, status: EnquiryStatus) => TERMINAL[type].includes(status)
 
 /** The seller an enquiry goes to: the one partner all lines share, else null (the operator desk). */
 export function routeTo(lines: readonly { partner_id: string | null }[]): string | null {

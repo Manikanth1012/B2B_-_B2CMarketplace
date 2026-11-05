@@ -328,7 +328,7 @@ The operator sidebar (`OperatorShell.tsx`) is grouped; the group holding the cur
 - Partners & accounts: Onboarding, Accounts, Sellers, Catalogue Review
 - Commerce: Orders, Renewals, Inventory & WMS, Numbers & SIMs, Refunds, Rewards
 - Finance: Settlement Runs, Revenue Share, Credit & Exposure, Collections, Wallets, Credit & Debit Notes, General Ledger, Bill Templates, Markets & Currencies
-- Service: Tickets & SLA, Disputes, Agreements
+- Service: Tickets & SLA, Enquiries, Disputes, Agreements
 - Platform: Developer Portal, Promotions, Storefront Banners, Notifications, Channels
 - Governance: Shelves & Rules, Reviews, Content Feedback, Roles & Users, Audit Trail, Knowledge base
 

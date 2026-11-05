@@ -10,11 +10,11 @@ import { DeclineForm } from '../enquiries/DeclineForm'
 import { Dialog } from '../ui/Dialog'
 import { Callout } from '../OnboardingJourney'
 import { Select, toast, fmtDateTime } from './shared'
-import { loadEnquiries, reply, markDone, closeEnquiry, sendQuote, decline, confirmSlot, proposeSlot } from '../../lib/enquiryRepo'
+import { loadEnquiries, listPartners, reply, markDone, closeEnquiry, sendQuote, decline, confirmSlot, proposeSlot } from '../../lib/enquiryRepo'
 import type { EnquiryBook } from '../../lib/enquiryRepo'
 import type { Action, Enquiry } from '../../lib/enquiries'
+import { waitingOver } from '../../lib/enquiryList'
 import type { Chip, TypeFilter } from '../../lib/enquiryList'
-import { supabase } from '../../lib/supabase'
 
 /* Everything that has been asked, and the desk's own to answer.
    The enquiries table may not exist yet (the migration is applied by hand), so
@@ -25,7 +25,6 @@ import { supabase } from '../../lib/supabase'
 const NO_FLOORS: Readonly<Record<string, number>> = {}
 
 const EMPTY: EnquiryBook = { enquiries: [], lines: [], slots: [], messages: [], events: [], loadError: null }
-const DAY = 86_400_000
 
 const AGE = [
   { id: 'any', label: 'Any age', days: 0 },
@@ -67,9 +66,7 @@ export function OperatorEnquiries() {
   useEffect(() => { void refresh() }, [refresh])
   useEffect(() => {
     let live = true
-    Promise.resolve(supabase.from('partners').select('id,name').order('name'))
-      .then(r => { if (live && r.data) setPartners(r.data as PartnerChoice[]) })
-      .catch(() => { /* names fall back to ids */ })
+    void listPartners().then(r => { if (live && r.ok) setPartners(r.partners) })   // names fall back to ids
     return () => { live = false }
   }, [])
 
@@ -81,12 +78,17 @@ export function OperatorEnquiries() {
     const ids = [...new Set(book.enquiries.map(e => e.partner_id).filter((x): x is string => x !== null))]
     return ids.map(id => ({ id, name: nameOf(id) })).sort((a, b) => a.name.localeCompare(b.name))
   }, [book.enquiries, nameOf])
+  /* A seller filtered on who no longer holds anything (after a reassign) would
+     leave the select showing a value with no option. Back to everyone. */
+  useEffect(() => {
+    if (who !== 'any' && who !== 'desk' && !present.some(p => p.id === who)) setWho('any')
+  }, [who, present])
 
   const extraFilter = useCallback((e: Enquiry) => {
     if (who === 'desk' && e.partner_id !== null) return false
     if (who !== 'any' && who !== 'desk' && e.partner_id !== who) return false
     const days = AGE.find(a => a.id === age)?.days ?? 0
-    if (days > 0 && !(Date.now() - Date.parse(e.updated_at) > days * DAY)) return false
+    if (!waitingOver(e, days, Date.now())) return false
     return true
   }, [who, age])
 

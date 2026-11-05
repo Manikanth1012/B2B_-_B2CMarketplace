@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   bandOf, chipCounts, filterEnquiries, answererName, isClosed, localToIso,
-  liveQuoteLineIds, acceptedQuoteStanding, quoteChanged,
+  liveQuoteLineIds, acceptedQuoteStanding, quoteChanged, waitingOver,
 } from './enquiryList'
 import type { Enquiry, EnquiryLine } from './enquiries'
 
@@ -163,5 +163,27 @@ describe('localToIso', () => {
   it('refuses nothing and nonsense', () => {
     expect(localToIso('')).toBeNull()
     expect(localToIso('soon')).toBeNull()
+  })
+})
+
+describe('waitingOver', () => {
+  const now = Date.parse('2026-11-05T12:00:00Z')
+  const old = '2026-10-25T12:00:00Z'      // eleven days ago
+  it('counts an open enquiry untouched for longer than the days given', () => {
+    expect(waitingOver({ type: 'quote', status: 'submitted', updated_at: old }, 7, now)).toBe(true)
+    expect(waitingOver({ type: 'quote', status: 'submitted', updated_at: '2026-11-04T12:00:00Z' }, 2, now)).toBe(false)
+  })
+  it('never counts a finished one, however old', () => {
+    for (const [type, status] of [['quote', 'accepted'], ['quote', 'declined'], ['quote', 'withdrawn'],
+      ['demo', 'done'], ['demo', 'declined'], ['sales', 'closed']] as const) {
+      expect(waitingOver({ type, status, updated_at: old }, 2, now), `${type} ${status}`).toBe(false)
+    }
+  })
+  it('keeps a scheduled demo and an answered sales question, which are still open', () => {
+    expect(waitingOver({ type: 'demo', status: 'scheduled', updated_at: old }, 7, now)).toBe(true)
+    expect(waitingOver({ type: 'sales', status: 'answered', updated_at: old }, 7, now)).toBe(true)
+  })
+  it('lets everything through when no age is chosen', () => {
+    expect(waitingOver({ type: 'sales', status: 'closed', updated_at: old }, 0, now)).toBe(true)
   })
 })
