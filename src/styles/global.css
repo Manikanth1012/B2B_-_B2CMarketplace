@@ -11,8 +11,9 @@
   --brand-accent-darker: #005F5F;
   --brand-gold: #F5A623;
   /* Rating stars: the stars alone carry the rating, so they need text contrast.
-     #F5A623 was 2.03:1 on white; this is 4.92:1 (4.58:1 on --bg-alt). */
-  --star: #A16207;
+     #F5A623 was 2.03:1 on white; this is 5.78:1, and ≥4.73:1 on every
+     status tint (a flagged review row sits on --danger-bg). */
+  --star: #8F5A06;
   --brand-red: #E63946;
 
   --blue: #0756A5;                 /* links and small accent text on light surfaces — 7.28:1 */
@@ -60,9 +61,9 @@
      normal text, across 284 usages. The brief's #64748B is 4.43:1 on the new
      #F4F7FC ground, under AA, so #5B6B82 is the nearest slate that clears 4.5:1
      on both white and --bg-alt. It keeps the hierarchy
-     (--text #102344 > --text-secondary #475569 > --text-tertiary #5B6B82).
+     (--text #102344 > --text-secondary #475569 > --text-tertiary #556479).
      Every usage sits on a light surface; the dark rails use rgba(255,255,255,…). */
-  --text-tertiary: #5B6B82;
+  --text-tertiary: #556479;   /* ≥4.93:1 on every status tint (#5B6B82 was 4.44 on --danger-bg) */
   --text-inverse: #FFFFFF;
 
   /* Shadows */
