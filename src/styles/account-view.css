@@ -1,0 +1,174 @@
+/* ---------- My account (src/components/AccountView.tsx) ----------
+   The consumer account screen on the shared account layer: AccountPage and
+   AccountTabs (account.css) hold the page; these rules are the cards, lists,
+   tables and figures inside the active tab. White cards on the --bg-alt page,
+   no gradients. Small teal text is --brand-accent-dark, never --brand-accent. */
+
+/* Vertical rhythm for a tab's cards. */
+.av-stack { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+
+/* Profile: one column, two from 1200px. Documents spans both. */
+.av-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; align-items: start; }
+@media (min-width: 1200px) {
+  .av-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.av-grid__full { grid-column: 1 / -1; }
+
+/* Two form fields side by side, stacked on a phone. */
+.av-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 599px) {
+  .av-two { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ---------- Cards (BentoCard with className="av-card") ---------- */
+.av-card .bento-card__body { gap: 0; }
+.av-card .bento-card__title {
+  display: flex; align-items: center; gap: 10px; margin: 0 0 20px;
+  font-size: var(--text-lg); font-weight: 700; letter-spacing: 0; color: var(--text);
+}
+/* With a subtitle the gap moves below the subtitle instead. */
+.av-card .bento-card__title:has(+ .bento-card__text) { margin-bottom: 4px; }
+.av-card .bento-card__text { margin: 0 0 20px; font-size: var(--text-sm); color: var(--text-secondary); }
+.av-card__icon { display: inline-flex; flex-shrink: 0; color: var(--brand-accent-dark); }
+/* The body is a flex column; a lone button in it keeps its own width. */
+.av-card .bento-card__body > button { align-self: flex-start; }
+.av-card__actions { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+
+/* The account's own card components (PrivacyCard, AddressBookCard,
+   MyNumberCard, StockWatchCard, MyReviewsCard) draw their own header, so they
+   take the BentoCard surface as a class rather than the component. */
+.av-panel {
+  min-width: 0; padding: 24px; background: var(--bg-card); color: var(--text);
+  border-radius: var(--radius-card); box-shadow: var(--shadow-card);
+}
+.av-panel--flush { padding: 0; overflow: hidden; }
+
+/* An explanatory note above a card: white, so it does not vanish into the
+   --bg-alt page it now sits on. */
+.av-note {
+  display: flex; gap: 12px; align-items: flex-start; padding: 16px 20px;
+  background: var(--bg-card); border-radius: var(--radius-card); box-shadow: var(--shadow-card);
+}
+.av-note__icon { flex-shrink: 0; margin-top: 2px; color: var(--brand-accent-dark); }
+.av-note__text { font-size: var(--text-sm); line-height: 1.6; color: var(--text-secondary); }
+
+/* ---------- Figures above a table ---------- */
+.av-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; }
+.av-stat {
+  min-width: 0; padding: 20px; background: var(--bg-card);
+  border-radius: var(--radius-card); box-shadow: var(--shadow-card);
+}
+.av-stat__head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.av-stat__icon { display: inline-flex; color: var(--brand-accent-dark); }
+.av-stat__label { font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary); }
+.av-stat__value { font-size: var(--text-2xl); font-weight: 800; line-height: 1.2; overflow-wrap: anywhere; color: var(--text); }
+
+/* ---------- Security: a settings list ---------- */
+.av-settings { list-style: none; margin: 0; padding: 0; }
+.av-setting {
+  display: flex; align-items: center; gap: 12px; padding: 14px 0;
+  border-bottom: 1px solid var(--border-light);
+}
+.av-setting:last-child { border-bottom: none; }
+.av-setting__icon { display: inline-flex; flex-shrink: 0; color: var(--text-tertiary); }
+.av-setting__text { flex: 1; min-width: 0; }
+.av-setting__label { font-size: var(--text-sm); font-weight: 600; color: var(--text); }
+.av-setting__value { font-size: var(--text-xs); line-height: 1.5; color: var(--text-tertiary); }
+.av-setting--positive .av-setting__icon,
+.av-setting--positive .av-setting__value { color: var(--success); }
+.av-setting__action { flex-shrink: 0; }
+@media (max-width: 479px) {
+  .av-setting { flex-wrap: wrap; }
+  .av-setting__action { margin-left: 28px; }
+}
+
+/* A secondary button as a class, for where hover and focus need CSS. */
+.av-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  min-height: 44px; min-width: 44px; padding: 8px 16px; border-radius: var(--radius);
+  font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer;
+}
+.av-btn--secondary { border: 1px solid var(--border-strong); background: var(--bg-card); color: var(--text-secondary); }
+.av-btn--secondary:hover { background: var(--bg-alt); color: var(--text); }
+
+/* ---------- Household ---------- */
+.av-member { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 16px 0; }
+.av-member__who { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+
+/* ---------- Tables (Activity, Bills, Refunds, Support) ----------
+   A table at 768px and wider. Below that each row is a stacked card of
+   label/value pairs; the labels are the cells' data-label, shown by ::before. */
+.av-table-wrap { overflow-x: auto; min-width: 0; }
+.av-table { width: 100%; border-collapse: collapse; font-size: var(--text-table, var(--text-sm)); }
+.av-table th {
+  text-align: left; padding: 10px 12px; font-size: var(--text-xs); font-weight: 600;
+  color: var(--text-secondary); border-bottom: 2px solid var(--border); white-space: nowrap;
+}
+.av-table td { padding: 12px; vertical-align: top; border-bottom: 1px solid var(--border-light); }
+.av-table tbody tr:last-child td { border-bottom: none; }
+.av-table .av-num { text-align: right; }
+.av-table__main { min-width: 220px; }
+.av-nowrap { white-space: nowrap; }
+.av-muted { font-size: var(--text-xs); color: var(--text-tertiary); }
+.av-table--clickable tbody tr { cursor: pointer; }
+.av-table--clickable tbody tr:hover td { background: var(--bg-alt); }
+
+/* The ticket subject: a button that reads as the row's title. */
+.av-linkbtn {
+  display: inline-flex; align-items: center; gap: 4px; min-height: 44px; padding: 0;
+  border: none; background: none; cursor: pointer; text-align: left;
+  font: inherit; font-size: var(--text-sm); font-weight: 600; color: var(--text);
+}
+.av-linkbtn:hover span { text-decoration: underline; }
+.av-linkbtn svg { flex-shrink: 0; color: var(--text-tertiary); }
+
+@media (max-width: 767px) {
+  .av-table, .av-table tbody, .av-table tr, .av-table td { display: block; width: 100%; }
+  /* The header row is still there for a screen reader; it is the stacked
+     labels that a sighted reader uses. */
+  .av-table thead {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0, 0, 0, 0); white-space: nowrap;
+  }
+  .av-table tr {
+    padding: 12px 14px; margin-bottom: 12px;
+    border: 1px solid var(--border-light); border-radius: var(--radius-md, 12px);
+  }
+  .av-table tbody tr:last-child { margin-bottom: 0; }
+  /* Label in the left column, everything the cell holds in the right one —
+     a cell with several lines (a refund's notes) stacks them there. */
+  .av-table td {
+    display: grid; grid-template-columns: minmax(84px, 34%) minmax(0, 1fr); column-gap: 12px; row-gap: 0;
+    padding: 6px 0; border-bottom: none; text-align: left; min-width: 0;
+  }
+  .av-table td > * { grid-column: 2; min-width: 0; }
+  .av-table td > .status-badge { justify-self: start; }
+  .av-table td::before {
+    content: attr(data-label); grid-column: 1; grid-row: 1 / span 12;
+    font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary); padding-top: 2px;
+  }
+  .av-table .av-num { text-align: left; }
+  .av-table__main { min-width: 0; }
+  .av-nowrap { white-space: normal; }
+}
+
+/* ---------- Dialog extras ---------- */
+.av-dialog-sub {
+  display: block; margin-top: 2px; font-size: var(--text-sm); font-weight: 400; color: var(--text-secondary);
+}
+
+/* ---------- Loading and toast ---------- */
+.av-loading { padding: 64px 0; text-align: center; font-size: var(--text-lg); color: var(--text-secondary); }
+.av-toast-region {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  z-index: 300; width: max-content; max-width: calc(100vw - 32px);
+}
+.av-toast {
+  background: var(--brand-navy); color: #fff; padding: 12px 24px;
+  border-radius: var(--radius-lg); font-size: var(--text-sm); font-weight: 600; box-shadow: var(--shadow-lg);
+}
+
+/* Forced colours: the cards lose their shadow, so give them an edge. */
+@media (forced-colors: active) {
+  .av-stat, .av-note, .av-card, .av-panel { border: 1px solid CanvasText; }
+}

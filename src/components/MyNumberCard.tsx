@@ -40,17 +40,14 @@ export function MyNumberCard({ userId }: { userId: string | null }) {
      not got any" is an answer somebody may want to act on. */
   if (!subscriber) {
     return (
-      <div style={{
-        background: 'white', border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-md)', padding: '16px 18px',
-      }}>
-        <h3 style={{
+      <div className="av-panel">
+        <h2 style={{
           fontSize: 'var(--text-base)', fontWeight: 700, color: 'var(--text)',
           display: 'flex', gap: '8px', alignItems: 'center',
         }}>
           <Smartphone size={16} style={{ color: 'var(--text-tertiary)' }} />
           No mobile number or SIM
-        </h3>
+        </h2>
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginTop: '6px', lineHeight: 1.5 }}>
           This is a marketplace account. You can buy from any seller here without being an Aventa mobile
           customer, and a number and a SIM come with a network subscription rather than with the account —
@@ -73,24 +70,21 @@ export function MyNumberCard({ userId }: { userId: string | null }) {
   const devices = rows.filter(r => r.kind === 'iccid' && r.stock_serial)
 
   return (
-    <div style={{
-      background: 'white', border: '1px solid var(--border)',
-      borderRadius: 'var(--radius-md)', overflow: 'hidden',
-    }}>
-      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-light)' }}>
-        <h3 style={{
+    <div className="av-panel av-panel--flush">
+      <div style={{ padding: '18px 24px', borderBottom: '1px solid var(--border-light)' }}>
+        <h2 style={{
           fontSize: 'var(--text-base)', fontWeight: 700, color: 'var(--text)',
           display: 'flex', gap: '8px', alignItems: 'center',
         }}>
           <Smartphone size={16} style={{ color: 'var(--brand-navy)' }} />
           Your number and SIM
-        </h3>
+        </h2>
         <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
           What the network has allocated to you.
         </p>
       </div>
 
-      <div style={{ padding: '14px 18px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+      <div style={{ padding: '16px 24px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
         {msisdn.map(m => {
           const sim = sims.find(s => s.id === m.paired_with) ?? sims[0]
           const profile = sim ? profiles.find(p => p.iccid === sim.value) : undefined
