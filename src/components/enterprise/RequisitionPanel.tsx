@@ -332,10 +332,22 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
               </div>
             )}
             {/* Asking the seller to price the basket first. The basket stays as it is. */}
-            {toQuote.length > 0 && (
-              <Btn variant="secondary" onClick={() => setQuoting(true)} style={{ minHeight: '44px' }}>
-                Request a quote for this basket
-              </Btn>
+            {/* Not offered to a member who cannot raise: raise_quote refuses them. */}
+            {toQuote.length > 0 && !(me && !me.can_raise) && (
+              <>
+                <Btn variant="secondary" onClick={() => setQuoting(true)} style={{ minHeight: '44px' }}>
+                  Request a quote for this basket
+                </Btn>
+                {/* A quote is in the account's currency, and its lines can only
+                    join a requisition in that currency. */}
+                {account && basket.currency && basket.currency !== account.currency && (
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+                    A quote comes back in {account.currency}, your account&rsquo;s currency, not the {basket.currency} this
+                    requisition is priced in. Once accepted, its lines go into a requisition in {account.currency}, so
+                    this one would have to be raised or emptied first.
+                  </div>
+                )}
+              </>
             )}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between' }}>
               <Btn variant="secondary" size="sm" onClick={() => { empty(); toast('Emptied', 'info') }}>Empty it</Btn>
@@ -354,7 +366,7 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
     </div>
     {/* A sibling of the drawer, not inside it: a click on its backdrop must
         not reach the drawer's, which would close the drawer as well. */}
-    <RaiseQuoteDialog open={quoting} seed={toQuote} onClose={() => setQuoting(false)}
+    <RaiseQuoteDialog open={quoting} seed={toQuote} currency={account?.currency} shownIn={basket.currency || null} onClose={() => setQuoting(false)}
       onRaised={() => {
         setQuoting(false)
         toast('Quote request sent. Your requisition is unchanged.', 'success')

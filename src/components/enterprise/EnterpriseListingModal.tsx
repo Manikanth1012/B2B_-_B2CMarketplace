@@ -243,6 +243,7 @@ export function EnterpriseListingModal(
     </Modal>
     {/* Over the listing, which stays open behind; only the top dialog traps. */}
     <RaiseQuoteDialog open={asking === 'quote'} seed={[{ product_id: listing.id, name: listing.name, quantity: 1 }]}
+      shownIn={listing.currency}
       onClose={() => setAsking(null)} onRaised={() => asked('Quote request')} />
     <RaiseDemoDialog open={asking === 'demo'} product={{ id: listing.id, name: listing.name }}
       onClose={() => setAsking(null)} onRaised={() => asked('Demo request')} />
