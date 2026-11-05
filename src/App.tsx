@@ -67,6 +67,7 @@ import { PartnerOnboarding } from './components/partner/PartnerOnboarding'
 import { PartnerListings } from './components/partner/PartnerListings'
 import { PartnerNewListing } from './components/partner/PartnerNewListing'
 import { PartnerOrders } from './components/partner/PartnerOrders'
+import { PartnerEnquiries } from './components/partner/PartnerEnquiries'
 import { PartnerWholesale } from './components/partner/PartnerWholesale'
 import { PartnerRenewals } from './components/partner/PartnerRenewals'
 import { PartnerSettlement } from './components/partner/PartnerSettlement'
@@ -520,6 +521,7 @@ function AppInner() {
         {ptView === 'pt-listings' && <PartnerListings partnerId={session!.partnerId!} onNewListing={() => setPtView('pt-newlisting')} />}
         {ptView === 'pt-newlisting' && <PartnerNewListing partnerId={session!.partnerId!} />}
         {ptView === 'pt-orders' && <PartnerOrders partnerId={session!.partnerId!} />}
+        {ptView === 'pt-enquiries' && <PartnerEnquiries partnerId={session!.partnerId!} />}
         {ptView === 'pt-wholesale' && <PartnerWholesale partnerId={session!.partnerId!} />}
         {ptView === 'pt-renewals' && <PartnerRenewals partnerId={session!.partnerId!} />}
         {ptView === 'pt-settlement' && <PartnerSettlement partnerId={session!.partnerId!} />}

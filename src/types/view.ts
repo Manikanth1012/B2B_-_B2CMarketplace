@@ -43,6 +43,7 @@ export type PartnerView =
   | 'pt-listings'
   | 'pt-newlisting'
   | 'pt-orders'
+  | 'pt-enquiries'
   | 'pt-wholesale'
   | 'pt-renewals'
   | 'pt-settlement'
