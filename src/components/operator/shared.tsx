@@ -366,8 +366,11 @@ export function FormField({ label, children, required, hint }: { label: string; 
     ? React.cloneElement(single as React.ReactElement<Record<string, unknown>>, {
       id: (single.props as { id?: string }).id ?? id,
       /* The hint is part of the field's description, not decoration beside it —
-         "One line per line, as it should be printed" is instruction. */
-      'aria-describedby': hint ? hintId : undefined,
+         "One line per line, as it should be printed" is instruction. A
+         description the caller gave (an error message under the field) is
+         kept beside it, not overwritten. */
+      'aria-describedby': [(single.props as { 'aria-describedby'?: string })['aria-describedby'], hint ? hintId : undefined]
+        .filter(Boolean).join(' ') || undefined,
       'aria-required': required || undefined,
     })
     : children

@@ -4,10 +4,13 @@ import { EnquiryDetail } from '../enquiries/EnquiryDetail'
 import type { ActionPayload } from '../enquiries/EnquiryDetail'
 import { ReassignDialog } from '../enquiries/ReassignDialog'
 import type { PartnerChoice } from '../enquiries/ReassignDialog'
-import { QuoteDialog, DeclineDialog, ConfirmSlotDialog, ProposeSlotDialog } from './OperatorEnquiryForms'
+import { QuoteResponseForm } from '../enquiries/QuoteResponseForm'
+import { SlotResponseForm } from '../enquiries/SlotResponseForm'
+import { DeclineForm } from '../enquiries/DeclineForm'
+import { Dialog } from '../ui/Dialog'
 import { Callout } from '../OnboardingJourney'
-import { Select, toast } from './shared'
-import { loadEnquiries, reply, markDone, closeEnquiry } from '../../lib/enquiryRepo'
+import { Select, toast, fmtDateTime } from './shared'
+import { loadEnquiries, reply, markDone, closeEnquiry, sendQuote, decline, confirmSlot, proposeSlot } from '../../lib/enquiryRepo'
 import type { EnquiryBook } from '../../lib/enquiryRepo'
 import type { Action, Enquiry } from '../../lib/enquiries'
 import type { Chip, TypeFilter } from '../../lib/enquiryList'
@@ -16,6 +19,10 @@ import { supabase } from '../../lib/supabase'
 /* Everything that has been asked, and the desk's own to answer.
    The enquiries table may not exist yet (the migration is applied by hand), so
    a failed load is a calm notice, never a crash. */
+
+/* The desk quotes with the same forms as a seller. No floors: a price floor is
+   a seller's own agreed minimum, and the desk has none. */
+const NO_FLOORS: Readonly<Record<string, number>> = {}
 
 const EMPTY: EnquiryBook = { enquiries: [], lines: [], slots: [], messages: [], events: [], loadError: null }
 const DAY = 86_400_000
@@ -105,6 +112,13 @@ export function OperatorEnquiries() {
   const open = book.enquiries.find(e => e.id === openId) ?? null
 
   const finished = async (msg: string) => { setForm(null); await refresh(); toast(msg) }
+  /* For the shared forms: the error to show in the form, or null once it went
+     through and the dialog has closed. */
+  const answered = async (r: { ok: true } | { ok: false; error: string }, msg: string): Promise<string | null> => {
+    if (!r.ok) return r.error
+    await finished(msg)
+    return null
+  }
 
   const onAction = async (action: Action, payload?: ActionPayload) => {
     if (!open) return
@@ -164,16 +178,29 @@ export function OperatorEnquiries() {
         </div>
       )}
 
-      {open && form?.kind === 'quote' && (
-        <QuoteDialog key={open.id} open onClose={close} enquiry={open} today={today}
-          lines={book.lines.filter(l => l.enquiry_id === open.id)} onDone={() => finished('Quote sent.')} />
-      )}
-      {open && form?.kind === 'decline' && <DeclineDialog open onClose={close} enquiry={open} onDone={() => finished('Declined.')} />}
-      {open && form?.kind === 'propose' && <ProposeSlotDialog open onClose={close} enquiryId={open.id} onDone={() => finished('Time suggested.')} />}
-      {open && form?.kind === 'confirm' && (
-        <ConfirmSlotDialog open onClose={close} slotId={form.slotId}
-          needsPlace={!(confirmSlotRow?.location ?? '').trim()} onDone={() => finished('Time confirmed.')} />
-      )}
+      <Dialog className="enq-dialog" open={form?.kind === 'quote' && !!open} onClose={close}
+        title={open?.status === 'quoted' ? 'Send a new quote' : 'Send a quote'} wide>
+        {open && <QuoteResponseForm key={open.id} enquiry={open} today={today} floors={NO_FLOORS} money={money}
+          lines={book.lines.filter(l => l.enquiry_id === open.id).sort((a, b) => a.sort_order - b.sort_order)}
+          onCancel={close}
+          onSubmit={async (prices, until, note) => answered(await sendQuote(open.id, prices, until, note || null), 'Quote sent.')} />}
+      </Dialog>
+
+      <Dialog className="enq-dialog" open={form?.kind === 'decline' && !!open} onClose={close} title="Decline this enquiry">
+        {open && <DeclineForm onCancel={close} onSubmit={async why => answered(await decline(open.id, why), 'Declined.')} />}
+      </Dialog>
+
+      <Dialog className="enq-dialog" open={form?.kind === 'confirm' && !!confirmSlotRow} onClose={close} title="Confirm a time">
+        {confirmSlotRow && <SlotResponseForm mode="confirm" when={fmtDateTime(confirmSlotRow.starts_at)}
+          location={confirmSlotRow.location} onCancel={close}
+          onSubmit={async v => answered(await confirmSlot(confirmSlotRow.id, v.location), 'Time confirmed.')} />}
+      </Dialog>
+
+      <Dialog className="enq-dialog" open={form?.kind === 'propose' && !!open} onClose={close} title="Suggest another time">
+        {open && <SlotResponseForm mode="propose" onCancel={close}
+          onSubmit={async v => answered(await proposeSlot(open.id, v.startsAt!, v.location), 'Time suggested.')} />}
+      </Dialog>
+
       {open && form?.kind === 'reassign' && (
         <ReassignDialog open onClose={close} enquiryId={open.id} currentPartnerId={open.partner_id}
           partners={partners} onDone={() => finished('Reassigned.')} />

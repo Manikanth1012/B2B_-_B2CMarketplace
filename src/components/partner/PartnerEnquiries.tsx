@@ -1,13 +1,14 @@
 /* The seller's enquiries: the quotes and demos asked of their listings. */
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Dialog } from '../ui/Dialog'
-import { Btn, FormField, TextArea, fmtDateTime } from '../operator/shared'
+import { fmtDateTime } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
 import { EnquiryList } from '../enquiries/EnquiryList'
 import { EnquiryDetail } from '../enquiries/EnquiryDetail'
 import type { ActionPayload, ActionResult } from '../enquiries/EnquiryDetail'
 import { QuoteResponseForm } from '../enquiries/QuoteResponseForm'
 import { SlotResponseForm } from '../enquiries/SlotResponseForm'
+import { DeclineForm } from '../enquiries/DeclineForm'
 import type { Action } from '../../lib/enquiries'
 import type { Chip, TypeFilter } from '../../lib/enquiryList'
 import { loadEnquiries, sendQuote, decline, markDone, confirmSlot, proposeSlot, reply, loadFloors } from '../../lib/enquiryRepo'
@@ -34,10 +35,7 @@ export function PartnerEnquiries({ partnerId }: { partnerId: string }) {
   const [query, setQuery] = useState('')
   const [openId, setOpenId] = useState<string | null>(null)
   const [form, setForm] = useState<Form>(null)
-  const [reason, setReason] = useState('')
-  const [formError, setFormError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)          // mark done
-  const [declining, setDeclining] = useState(false)
   const [floorsFailed, setFloorsFailed] = useState(false)
   const day = today()
 
@@ -57,7 +55,7 @@ export function PartnerEnquiries({ partnerId }: { partnerId: string }) {
     () => book.lines.filter(l => l.enquiry_id === openId).sort((a, b) => a.sort_order - b.sort_order), [book, openId])
   const money = useCallback((n: number, c: string) => fmtIn(n, c), [fmtIn])
 
-  const close = () => { setForm(null); setFormError(null); setReason('') }
+  const close = () => setForm(null)
   const done = async (r: { ok: true } | { ok: false; error: string }): Promise<string | null> => {
     if (!r.ok) return r.error
     await reload()
@@ -112,40 +110,22 @@ export function PartnerEnquiries({ partnerId }: { partnerId: string }) {
         </>
       )}
 
-      <Dialog open={form?.kind === 'quote' && !!open} onClose={close} title="Send a quote" wide>
+      <Dialog className="enq-dialog" open={form?.kind === 'quote' && !!open} onClose={close} title="Send a quote" wide>
         {open && <QuoteResponseForm enquiry={open} lines={openLines} today={day} floors={floors} floorsFailed={floorsFailed} money={money}
           onCancel={close}
           onSubmit={async (prices, until, note) => done(await sendQuote(open.id, prices, until, note || null))} />}
       </Dialog>
 
-      <Dialog open={form?.kind === 'decline' && !!open} onClose={close} title="Decline this enquiry">
-        <form className="enq-resp" onSubmit={async ev => {
-          ev.preventDefault()
-          if (!open) return
-          if (!reason.trim()) { setFormError('Say why, so the buyer knows what to do next.'); return }
-          setDeclining(true); setFormError(null)
-          const err = await done(await decline(open.id, reason.trim()))
-          setDeclining(false)
-          if (err) setFormError(err)
-        }} noValidate>
-          <FormField label="Reason" required>
-            <TextArea rows={3} value={reason} onChange={e => setReason(e.target.value)}
-              aria-invalid={formError ? true : undefined} />
-          </FormField>
-          {formError && <p className="enq-error" role="alert">{formError}</p>}
-          <div className="enq-actions">
-            <Btn type="button" variant="secondary" onClick={close} disabled={declining}>Keep it open</Btn>
-            <Btn type="submit" variant="danger" disabled={declining}>{declining ?'Declining…' : 'Decline'}</Btn>
-          </div>
-        </form>
+      <Dialog className="enq-dialog" open={form?.kind === 'decline' && !!open} onClose={close} title="Decline this enquiry">
+        {open && <DeclineForm onCancel={close} onSubmit={async why => done(await decline(open.id, why))} />}
       </Dialog>
 
-      <Dialog open={form?.kind === 'confirm' && !!slot} onClose={close} title="Confirm a time">
+      <Dialog className="enq-dialog" open={form?.kind === 'confirm' && !!slot} onClose={close} title="Confirm a time">
         {slot && <SlotResponseForm mode="confirm" when={fmtDateTime(slot.starts_at)} location={slot.location}
           onCancel={close} onSubmit={async v => done(await confirmSlot(slot.id, v.location))} />}
       </Dialog>
 
-      <Dialog open={form?.kind === 'propose' && !!open} onClose={close} title="Suggest another time">
+      <Dialog className="enq-dialog" open={form?.kind === 'propose' && !!open} onClose={close} title="Suggest another time">
         {open && <SlotResponseForm mode="propose" onCancel={close}
           onSubmit={async v => done(await proposeSlot(open.id, v.startsAt!, v.location))} />}
       </Dialog>

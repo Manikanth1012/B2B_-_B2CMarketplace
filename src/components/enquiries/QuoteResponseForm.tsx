@@ -1,6 +1,8 @@
-/* The seller's quote: one unit price per line, how long it holds, and a note.
+/* A quote: one unit price per line, how long it holds, and a note. Used by
+ * the seller and by the operator desk on what is routed to it.
  * A price under the seller's own agreed floor is flagged, not refused: the
- * floor is the seller's number and the seller may knowingly go beneath it. */
+ * floor is the seller's number and the seller may knowingly go beneath it.
+ * The desk has no floor of its own and passes none, so it sees no warning. */
 import { useState } from 'react'
 import { TriangleAlert } from 'lucide-react'
 import { Btn, FormField, TextInput, TextArea, fmtInt } from '../operator/shared'
