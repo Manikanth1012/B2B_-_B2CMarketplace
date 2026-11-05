@@ -201,7 +201,7 @@
 .site-header__end { display: flex; align-items: center; gap: 12px; flex-shrink: 0; margin-left: auto; }
 .site-header__menu-btn { display: none; color: #fff; padding: 8px; border-radius: var(--radius); }
 .site-header__menu-btn:hover { background: rgba(255, 255, 255, 0.08); }
-@media (max-width: 899px) {
+@media (max-width: 1023px) {
   .site-nav { display: none; }
   .site-nav.is-open {
     display: flex; position: absolute; top: 64px; left: 0; right: 0; flex-direction: column; align-items: stretch;
@@ -219,8 +219,15 @@
 .site-search:focus-within { border-color: var(--cyan); }
 /* The copy inside the mobile menu only exists for phones. */
 .site-search--menu { display: none; }
-@media (max-width: 1100px) { .site-search { width: 200px; } }
-@media (max-width: 899px) { .site-search { display: none; } .site-nav.is-open .site-search--menu { display: flex; width: 100%; } }
+/* 1024–1199px: the full nav, the search and the market picker overran the bar
+   at 1024 (spec 5 sweep), so the nav collapses into the menu below 1024px and
+   this range gets tighter gaps, nav padding and a shrinkable search. */
+@media (max-width: 1199px) {
+  .site-header__bar { gap: 14px; }
+  .site-nav__item { padding: 8px 8px; }
+  .site-search { width: auto; flex: 0 1 180px; min-width: 120px; }
+}
+@media (max-width: 1023px) { .site-search { display: none; } .site-nav.is-open .site-search--menu { display: flex; width: 100%; } }
 @media (max-width: 520px) { .site-header__divider, .site-header__6d { display: none; } }
 
 .discover { position: relative; }
@@ -231,7 +238,7 @@
   animation: fadeIn var(--transition) ease-out; list-style: none; margin: 0;
 }
 .discover__panel > li { display: contents; }
-@media (max-width: 899px) { .discover__panel { position: static; width: 100%; grid-template-columns: 1fr; margin-top: 4px; box-shadow: none; } }
+@media (max-width: 1023px) { .discover__panel { position: static; width: 100%; grid-template-columns: 1fr; margin-top: 4px; box-shadow: none; } }
 .discover__item {
   display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; border: none; border-radius: var(--radius-md);
   background: none; color: var(--text); text-align: left; cursor: pointer;

@@ -13,7 +13,8 @@
         (e.g. the Chrome extension's javascript_tool). The final line is an
         expression that evaluates to the result object, so the tool returns it.
 
-   Result: { checked, failures: [{ text, ratio, fg, bg, selector }] }
+   Result: { checked, failures: [{ text, ratio, fg, bg, selector }],
+           unverified: [{ text, selector }] }  (text on a gradient or image: check by eye)
 
    Limits: it sees solid colours only. Text over an image or gradient has no
    single background; the nearest solid ancestor colour is used and a gradient
@@ -50,12 +51,16 @@
     return o
   }
   /* Effective background: composite each ancestor's background, nearest on
-     top, onto white (the canvas) once an opaque one is reached or we run out. */
+     top, onto white (the canvas) once an opaque one is reached or we run out.
+     Returns null when a gradient or image is painted before any opaque colour:
+     the text then has no single background, and is listed as `unverified`. */
   const backgroundOf = (el) => {
     const layers = []
     for (let e = el; e; e = e.parentElement) {
-      const c = parse(getComputedStyle(e).backgroundColor)
+      const ecs = getComputedStyle(e)
+      const c = parse(ecs.backgroundColor)
       if (c && c.a > 0) { layers.push(c); if (c.a === 1) break }
+      if (ecs.backgroundImage && ecs.backgroundImage !== 'none') return null
     }
     return layers.reduceRight((under, layer) => over(layer, under), { r: 255, g: 255, b: 255, a: 1 })
   }
@@ -78,6 +83,7 @@
   }
 
   const failures = []
+  const unverified = []
   let checked = 0
   const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT)
   for (let n = walker.nextNode(); n; n = walker.nextNode()) {
@@ -89,6 +95,7 @@
     /* Transparent text is a gradient headline or a hidden label: not scorable. */
     if (!fgRaw || fgRaw.a === 0 || cs.webkitTextFillColor === 'rgba(0, 0, 0, 0)') continue
     const bg = backgroundOf(el)
+    if (!bg) { unverified.push({ text: text.slice(0, 60), selector: selectorOf(el) }); continue }
     const fg = over({ ...fgRaw, a: fgRaw.a * opacityOf(el) }, bg)
     const size = parseFloat(cs.fontSize)
     const bold = parseInt(cs.fontWeight, 10) >= 700
@@ -100,5 +107,5 @@
       failures.push({ text: text.slice(0, 60), ratio: Math.round(r * 100) / 100, fg: hex(fg), bg: hex(bg), selector: selectorOf(el) })
     }
   }
-  return { checked, failures }
+  return { checked, failures, unverified }
 })()
