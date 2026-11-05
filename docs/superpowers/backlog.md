@@ -17,6 +17,11 @@ closed by spec 5, except the two noted below.
 
 ## New enterprise features (deferred from spec 2 — 2026-11-04)
 
+In progress: quote, demo, Contact Sales and enquiry tracking are spec 6
+(`2026-11-05-enterprise-enquiries-design.md`); bundles follow as spec 7.
+Today's bundles are fixed and composed by the operator (Catalogue Review →
+Compose a bundle); spec 7 is the buyer-built kind.
+
 The revamp brief asks for these on the enterprise storefront. None exist in
 the app today, and each needs database tables with RLS, an operator-side
 screen to answer it, and notifications — so they are features, not a
@@ -43,6 +48,7 @@ Found by the spec 5 reviews and sweep, judged not worth holding the merge.
 - [ ] `AccountTabs` sets no `aria-orientation` (the list is vertical only by CSS; arrow keys work both ways).
 - [ ] `Dialog` does not stop Escape propagating, so another document-level Escape listener open beneath a dialog (account menu, cart drawer) would also close — no such stacking exists today.
 - [ ] Contrast guard blind spots: a `catColors = {…}` assignment form and template strings inside style objects; the browser scanner skips `color()`/`oklch()` values.
+- [ ] Requisition lines take `unit_price` from the client; the database does not re-check it against the price book (spec 6 checks quoted lines only).
 - [ ] Build warns that the main chunk is over 500 kB (pre-existing): split by persona with dynamic `import()`.
 
 ## Changes to be aware of (deliberate, from spec 5)
