@@ -31,7 +31,19 @@ const account: Record<string, string> = {
   waiting: 'warning',
 }
 
+/* Enquiries. `requested`, `open`, `declined`, `closed` and `expired` were
+   already mapped above and keep what they had (a demo `requested` is amber, as
+   a refund `requested` is — waiting on somebody). `quoted` and `answered` are
+   amber because the ball is with the buyer. */
+const enquiries: Record<string, string> = {
+  submitted: 'info', quoted: 'warning', accepted: 'success',
+  scheduled: 'success', done: 'success', answered: 'warning', withdrawn: 'neutral',
+}
+
 describe('statusTone', () => {
+  for (const [status, tone] of Object.entries(enquiries)) {
+    it(`enquiry: ${status} -> ${tone}`, () => expect(statusTone(status)).toBe(tone))
+  }
   for (const [status, tone] of Object.entries(expected)) {
     it(`${status} -> ${tone}`, () => expect(statusTone(status)).toBe(tone))
   }

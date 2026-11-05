@@ -33,6 +33,9 @@ const TONES: Record<string, Tone> = {
   new: 'warning', inprogress: 'info', closed: 'success',
   /* A ticket parked on somebody outside the desk. */
   waiting: 'warning',
+  /* Enquiries: a quote or answer sitting with the buyer is amber. */
+  submitted: 'info', quoted: 'warning', accepted: 'success',
+  scheduled: 'success', done: 'success', answered: 'warning', withdrawn: 'neutral',
 }
 
 export function statusTone(status: string): Tone {
