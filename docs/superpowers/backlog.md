@@ -17,7 +17,7 @@ closed by spec 5, except the two noted below.
 
 ## New enterprise features (deferred from spec 2 — 2026-11-04)
 
-Done: quote, demo, Contact Sales and enquiry tracking are spec 6
+Done — merged 2026-11-05 (`8fd5759`): quote, demo, Contact Sales and enquiry tracking are spec 6
 (`2026-11-05-enterprise-enquiries-design.md`), migration applied 2026-11-05.
 Bundles follow as spec 7.
 Today's bundles are fixed and composed by the operator (Catalogue Review →
