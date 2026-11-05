@@ -11,6 +11,7 @@ import './styles/product-detail.css'
 import './styles/enterprise-storefront.css'
 import './styles/checkout.css'
 import './styles/account.css'
+import './styles/account-screens.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

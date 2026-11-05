@@ -1,6 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Package, Clock, Check, Truck, X, MapPin, CircleAlert as AlertCircle, ChevronRight, Download, LifeBuoy } from 'lucide-react'
+import { Package, Clock, Check, Truck, X, MapPin, CircleAlert as AlertCircle, LifeBuoy } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+import { Dialog, StatusBadge } from './ui'
+import { AccountPage } from './account/AccountPage'
+import { statusTone } from '../lib/consoleTone'
 import type { Order, OrderItem } from '../types'
 import { canRaiseTicket } from '../lib/orderTickets'
 import { RaiseTicketModal } from './RaiseTicketModal'
@@ -88,232 +91,190 @@ export function OrdersView() {
 
   if (loading) {
     return (
-      <section style={{ padding: '64px 0' }}>
-        <div className="container" style={{ textAlign: 'center' }}>
+      <AccountPage title="My Orders">
+        <div style={{ textAlign: 'center', padding: '32px 0' }}>
           <div className="spinner" style={{ margin: '0 auto' }} />
         </div>
-      </section>
+      </AccountPage>
     )
   }
 
   if (orders.length === 0) {
     return (
-      <section style={{ padding: '64px 0' }}>
-        <div className="container" style={{ textAlign: 'center', maxWidth: '400px', margin: '0 auto' }}>
-          <Package size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
+      <AccountPage title="My Orders">
+        <div className="acct-empty">
+          <Package size={48} aria-hidden="true" style={{ margin: '0 auto 16px', opacity: 0.3 }} />
           <h2 style={{ marginBottom: '8px' }}>No orders yet</h2>
           <p style={{ color: 'var(--text-secondary)' }}>When you place an order, it will appear here.</p>
         </div>
-      </section>
+      </AccountPage>
     )
   }
 
   const failedOrders = orders.filter((o) => o.failed)
 
   return (
-    <section style={{ padding: '32px 0 64px' }}>
-      <div className="container" style={{ maxWidth: '800px' }}>
-        <h1 style={{ fontSize: 'var(--text-3xl)', fontWeight: 700, marginBottom: '8px' }}>My Orders</h1>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>
-          {orders.length} orders · track delivery, activation and provisioning in one place
-        </p>
-
-        {failedOrders.length > 0 && (
-          <div style={{
-            display: 'flex', gap: '12px', alignItems: 'flex-start', padding: '16px 20px',
-            background: '#FEF3C7', borderRadius: 'var(--radius-lg)', marginBottom: '24px',
-            border: '1px solid #FCD34D',
-          }}>
-            <AlertCircle size={20} style={{ color: 'var(--warning)', flexShrink: 0, marginTop: 2 }} />
-            <div style={{ fontSize: 'var(--text-sm)', color: '#92400E' }}>
-              <strong>One order needs your attention.</strong> A delivery attempt failed and the parcel is waiting at the depot.
-            </div>
+    <AccountPage
+      title="My Orders"
+      subtitle={`${orders.length} orders · track delivery, activation and provisioning in one place`}
+    >
+      {failedOrders.length > 0 && (
+        <div className="acct-notice acct-notice--warning">
+          <AlertCircle size={20} aria-hidden="true" className="acct-notice__icon" />
+          <div>
+            <strong>One order needs your attention.</strong> A delivery attempt failed and the parcel is waiting at the depot.
           </div>
-        )}
+        </div>
+      )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-          {ordersPage.rows.map((order) => {
-            const items = orderItems[order.id] || []
-            const ownParts = partsOf(parts, order.id)
-            const stages = order.stages || ['Ordered', 'Confirmed', 'Dispatched', 'In transit', 'Delivered']
-            const currentStage = order.stage || 0
-            const isDigital = order.carrier === 'Digital'
-            return (
-              <div key={order.id} className="card" style={{ padding: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '16px' }}>
-                  <div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                      <span style={{
-                        padding: '3px 10px', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)',
-                        fontWeight: 600,
-                        background: order.failed ? '#FEE2E2' : order.status === 'delivered' ? '#DCFCE7' : order.status === 'refunded' ? '#FEF3C7' : '#E0E7FF',
-                        color: order.failed ? 'var(--danger)' : order.status === 'delivered' ? 'var(--success)' : order.status === 'refunded' ? 'var(--warning)' : '#4338CA',
-                      }}>
-                        {order.status}
-                      </span>
-                      {order.vertical && (
-                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', textTransform: 'capitalize' }}>
-                          {order.vertical}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>{order.order_ref}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                      {order.placed_date || new Date(order.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
-                      {order.seller ? ` · ${order.seller}` : ''}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    {/* At the order's own date. An order placed a year ago
-                        converted at today's rate shows a price nobody paid. */}
-                    <div style={{ fontWeight: 700, fontSize: 'var(--text-base)' }}>
-                      {fmtIn(order.total, order.currency, { asOf: order.created_at?.slice(0, 10) })}
-                    </div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                      {paymentLabel(order.payment_method, methods)}
-                    </div>
-                    {/* The plan, where there is one. An order financed over a
-                        year that reads only "paid by EMI" is a total the
-                        customer cannot match to anything on their statement. */}
-                    {order.payment_ref && plans[order.payment_ref] && (() => {
-                      const line = planLine(plans[order.payment_ref],
-                        n => fmtIn(n, order.currency, { asOf: order.created_at?.slice(0, 10) }))
-                      return line ? (
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--brand-accent-dark)', fontWeight: 600 }}>
-                          {line}
-                        </div>
-                      ) : null
-                    })()}
+      <div className="ord-list">
+        {ordersPage.rows.map((order) => {
+          const items = orderItems[order.id] || []
+          const ownParts = partsOf(parts, order.id)
+          const stages = order.stages || ['Ordered', 'Confirmed', 'Dispatched', 'In transit', 'Delivered']
+          const currentStage = order.stage || 0
+          const isDigital = order.carrier === 'Digital'
+          return (
+            <article key={order.id} className="ord-card">
+              <div className="ord-card__head">
+                <div className="ord-card__id">
+                  <h2 className="ord-card__ref">{order.order_ref}</h2>
+                  <div className="ord-card__meta">
+                    {order.placed_date || new Date(order.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    {order.seller ? ` · ${order.seller}` : ''}
+                    {order.vertical && <span className="ord-card__vertical"> · {order.vertical}</span>}
                   </div>
                 </div>
-
-                {/* Items */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '16px' }}>
-                  {items.map((item) => (
-                    <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-sm)' }}>
-                      <span style={{ color: 'var(--text-secondary)' }}>
-                        {item.product_name} × {item.quantity}
-                      </span>
-                      <span style={{ fontWeight: 500 }}>{fmtIn(item.price * item.quantity, order.currency)}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {/* One rail per part, not one for the order.
-                    `orders.stages` held a single journey, so a basket of a
-                    handset and an eSIM drew whichever of the two it happened to
-                    carry over both halves — the eSIM appeared to be waiting for
-                    a van. A single-part order still draws exactly one rail. */}
-                <div style={{ padding: '12px 0', borderTop: '1px solid var(--border-light)', borderBottom: '1px solid var(--border-light)', marginBottom: '12px' }}>
-                  {ownParts.length > 0 ? (
-                    <>
-                      {ownParts.length > 1 && (
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', fontWeight: 600, marginBottom: '8px' }}>
-                          {summaryOf(ownParts)}
-                        </div>
-                      )}
-                      <OrderParts parts={ownParts} />
-                    </>
-                  ) : (
-                    /* No parts on file is a record older than this change, not
-                       an order with nothing happening — so it keeps the rail it
-                       was drawn with rather than rendering as empty. */
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0' }}>
-                      {stages.map((stage, i) => {
-                        const Icon = isDigital && i <= 1 ? (i === 0 ? Clock : Check) : (STAGE_ICONS[i] || Check)
-                        const done = i <= currentStage
-                        const isLast = i === stages.length - 1
-                        return (
-                          <div key={stage} style={{ display: 'flex', alignItems: 'center', flex: isLast ? '0 0 auto' : '1 1 0' }}>
-                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
-                              <div style={{
-                                width: '28px', height: '28px', borderRadius: '50%',
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                background: done ? 'var(--brand-accent-dark)' : 'var(--bg-alt)',
-                                color: done ? 'white' : 'var(--text-tertiary)',
-                              }}>
-                                <Icon size={14} />
-                              </div>
-                              <span style={{
-                                fontSize: 'var(--text-xs)', fontWeight: done ? 600 : 400,
-                                color: done ? 'var(--text)' : 'var(--text-tertiary)',
-                                whiteSpace: 'nowrap',
-                              }}>
-                                {stage}
-                              </span>
-                            </div>
-                            {!isLast && (
-                              <div style={{
-                                flex: 1, height: '2px', margin: '0 4px', marginBottom: '18px',
-                                background: i < currentStage ? 'var(--brand-accent)' : 'var(--border-light)',
-                              }} />
-                            )}
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Footer */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                    {/* Carriage is on the part that ships and is printed
-                        there. Repeating it under the whole order was the
-                        header claiming one parcel for a basket that might have
-                        two, or none. */}
-                    {ownParts.length > 0 ? (
-                      <>
-                        <Clock size={14} /> {summaryOf(ownParts)}
-                      </>
-                    ) : order.tracking_ref ? (
-                      <>
-                        <Truck size={14} /> {order.carrier} · {order.tracking_ref}
-                      </>
-                    ) : isDigital ? (
-                      <>
-                        <Clock size={14} /> Instant delivery
-                      </>
-                    ) : (
-                      <>
-                        <Clock size={14} /> {order.status}
-                      </>
-                    )}
+                <OrderStatus order={order} />
+                <div className="ord-card__money">
+                  {/* At the order's own date. An order placed a year ago
+                      converted at today's rate shows a price nobody paid. */}
+                  <div className="ord-card__total">
+                    {fmtIn(order.total, order.currency, { asOf: order.created_at?.slice(0, 10) })}
                   </div>
-                  <div style={{ display: 'flex', gap: '8px' }}>
-                    {/* Only while there is still something to chase. A refunded order
-                        is concluded, and a refund dispute is its own flow. */}
-                    {canRaiseTicket(order) && (
-                      <button
-                        onClick={() => setTicketOrder(order)}
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: '6px',
-                          padding: '6px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)',
-                          background: 'white', color: 'var(--text-secondary)', fontWeight: 600,
-                          fontSize: 'var(--text-xs)', cursor: 'pointer',
-                        }}
-                      >
-                        <LifeBuoy size={13} /> Get help
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setDetailOrder(order)}
-                      style={{
-                        padding: '6px 16px', borderRadius: 'var(--radius)', border: '1px solid var(--border)',
-                        background: 'white', color: 'var(--text-secondary)', fontWeight: 600,
-                        fontSize: 'var(--text-xs)', cursor: 'pointer',
-                      }}
-                    >
-                      Details
-                    </button>
-                  </div>
+                  <div className="ord-card__meta">{paymentLabel(order.payment_method, methods)}</div>
+                  {/* The plan, where there is one. An order financed over a
+                      year that reads only "paid by EMI" is a total the
+                      customer cannot match to anything on their statement. */}
+                  {order.payment_ref && plans[order.payment_ref] && (() => {
+                    const line = planLine(plans[order.payment_ref],
+                      n => fmtIn(n, order.currency, { asOf: order.created_at?.slice(0, 10) }))
+                    return line ? <div className="ord-card__plan">{line}</div> : null
+                  })()}
                 </div>
               </div>
-            )
-          })}
-        </div>
-        <Pager page={ordersPage} noun="orders" />
+
+              {/* Items. The order item rows carry no image, so the thumbnail is
+                  a neutral tile rather than a picture invented for it. */}
+              <ul className="ord-items">
+                {items.map((item) => (
+                  <li key={item.id} className="ord-item">
+                    <span className="ord-item__thumb" aria-hidden="true"><Package size={18} /></span>
+                    <span className="ord-item__name">{item.product_name} × {item.quantity}</span>
+                    <span className="ord-item__price">{fmtIn(item.price * item.quantity, order.currency)}</span>
+                  </li>
+                ))}
+              </ul>
+
+              {/* One rail per part, not one for the order.
+                  `orders.stages` held a single journey, so a basket of a
+                  handset and an eSIM drew whichever of the two it happened to
+                  carry over both halves — the eSIM appeared to be waiting for
+                  a van. A single-part order still draws exactly one rail. */}
+              <div className="ord-rail">
+                {ownParts.length > 0 ? (
+                  <>
+                    {ownParts.length > 1 && (
+                      <div className="ord-rail__summary">{summaryOf(ownParts)}</div>
+                    )}
+                    <OrderParts parts={ownParts} />
+                  </>
+                ) : (
+                  /* No parts on file is a record older than this change, not
+                     an order with nothing happening — so it keeps the rail it
+                     was drawn with rather than rendering as empty. */
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0', overflowX: 'auto' }}>
+                    {stages.map((stage, i) => {
+                      const Icon = isDigital && i <= 1 ? (i === 0 ? Clock : Check) : (STAGE_ICONS[i] || Check)
+                      const done = i <= currentStage
+                      const isLast = i === stages.length - 1
+                      return (
+                        <div key={stage} style={{ display: 'flex', alignItems: 'center', flex: isLast ? '0 0 auto' : '1 1 0' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
+                            <div style={{
+                              width: '28px', height: '28px', borderRadius: '50%',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              background: done ? 'var(--brand-accent-dark)' : 'var(--bg-alt)',
+                              color: done ? 'white' : 'var(--text-secondary)',
+                            }}>
+                              <Icon size={14} aria-hidden="true" />
+                            </div>
+                            <span style={{
+                              fontSize: 'var(--text-xs)', fontWeight: done ? 600 : 400,
+                              color: done ? 'var(--text)' : 'var(--text-secondary)',
+                              whiteSpace: 'nowrap',
+                            }}>
+                              {stage}
+                            </span>
+                          </div>
+                          {!isLast && (
+                            <div style={{
+                              flex: 1, height: '2px', margin: '0 4px', marginBottom: '18px',
+                              background: i < currentStage ? 'var(--brand-accent)' : 'var(--border-light)',
+                            }} />
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="ord-card__foot">
+                <div className="ord-card__carriage">
+                  {/* Carriage is on the part that ships and is printed
+                      there. Repeating it under the whole order was the
+                      header claiming one parcel for a basket that might have
+                      two, or none. */}
+                  {ownParts.length > 0 ? (
+                    <>
+                      <Clock size={14} aria-hidden="true" /> {summaryOf(ownParts)}
+                    </>
+                  ) : order.tracking_ref ? (
+                    <>
+                      <Truck size={14} aria-hidden="true" /> {order.carrier} · {order.tracking_ref}
+                    </>
+                  ) : isDigital ? (
+                    <>
+                      <Clock size={14} aria-hidden="true" /> Instant delivery
+                    </>
+                  ) : (
+                    <>
+                      <Clock size={14} aria-hidden="true" /> {order.status}
+                    </>
+                  )}
+                </div>
+                <div className="ord-card__actions">
+                  {/* Only while there is still something to chase. A refunded order
+                      is concluded, and a refund dispute is its own flow. */}
+                  {canRaiseTicket(order) && (
+                    <button type="button" className="acct-btn" onClick={() => setTicketOrder(order)}>
+                      <LifeBuoy size={16} aria-hidden="true" /> Get help
+                    </button>
+                  )}
+                  <button type="button" className="acct-btn acct-btn--primary"
+                    aria-label={`View details for order ${order.order_ref}`}
+                    onClick={() => setDetailOrder(order)}>
+                    View details
+                  </button>
+                </div>
+              </div>
+            </article>
+          )
+        })}
       </div>
+      <Pager page={ordersPage} noun="orders" />
 
       {ticketOrder && (
         <RaiseTicketModal
@@ -332,13 +293,13 @@ export function OrdersView() {
           style={{
             position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
             background: 'var(--brand-navy)', color: 'white', padding: '12px 20px',
-            borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)', zIndex: 400,
+            borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)', zIndex: 1100,
             display: 'flex', alignItems: 'center', gap: '12px', fontSize: 'var(--text-sm)',
           }}
         >
           Ticket {raised} raised — we will be in touch.
-          <button onClick={() => setRaised(null)} aria-label="Dismiss" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.7)', cursor: 'pointer', padding: 0 }}>
-            <X size={16} />
+          <button onClick={() => setRaised(null)} aria-label="Dismiss" className="acct-icon-btn">
+            <X size={16} aria-hidden="true" />
           </button>
         </div>
       )}
@@ -352,8 +313,17 @@ export function OrdersView() {
           onClose={() => setDetailOrder(null)}
         />
       )}
-    </section>
+    </AccountPage>
   )
+}
+
+/* The order's status as a badge. A failed order reads as failed whatever its
+   status word says. `statusTone` now maps 'refunded' to success (the money came
+   back, which suits a refund screen), but an order that ended in a refund did
+   not go as planned, so it stays amber here, as it was before. */
+function OrderStatus({ order }: { order: Order }) {
+  const tone = order.failed ? 'danger' : order.status === 'refunded' ? 'warning' : statusTone(order.status)
+  return <StatusBadge tone={tone}>{order.status}</StatusBadge>
 }
 
 /* What the network has actually been asked, and what it said back.
@@ -401,126 +371,95 @@ function OrderDetailModal({ order, items, methods, onClose }: {
   const stages = order.stages || ['Ordered', 'Confirmed', 'Dispatched', 'In transit', 'Delivered']
   const currentStage = order.stage || 0
   const addr = order.shipping_address || {}
+  const hasAddress = order.carrier !== 'Digital' && !!addr.line1
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 400,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: 'white', borderRadius: 'var(--radius-lg)', padding: '28px',
-          maxWidth: '560px', width: '100%', maxHeight: '90vh', overflowY: 'auto',
-          boxShadow: 'var(--shadow-lg)',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 800 }}>Order {order.order_ref}</h2>
-          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}>
-            <X size={20} />
-          </button>
-        </div>
+    <Dialog open onClose={onClose} wide title={`Order ${order.order_ref}`}>
+      {/* Status + meta */}
+      <div className="ord-detail__status">
+        <OrderStatus order={order} />
+        <span className="ord-card__meta">
+          Placed {order.placed_date || new Date(order.created_at).toLocaleDateString()}
+        </span>
+      </div>
 
-        {/* Status + meta */}
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '20px' }}>
-          <span style={{
-            padding: '4px 12px', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 600,
-            background: order.failed ? '#FEE2E2' : order.status === 'delivered' ? '#DCFCE7' : order.status === 'refunded' ? '#FEF3C7' : '#E0E7FF',
-            color: order.failed ? 'var(--danger)' : order.status === 'delivered' ? 'var(--success)' : order.status === 'refunded' ? 'var(--warning)' : '#4338CA',
-          }}>
-            {order.status}
-          </span>
-          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
-            Placed {order.placed_date || new Date(order.created_at).toLocaleDateString()}
-          </span>
-        </div>
-
-        {/* Pipeline */}
-        <div style={{ marginBottom: '24px' }}>
-          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: '12px' }}>Tracking</div>
-          {stages.map((stage, i) => {
-            const done = i <= currentStage
-            return (
-              <div key={stage} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
-                <div style={{
-                  width: '24px', height: '24px', borderRadius: '50%',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: done ? 'var(--brand-accent-dark)' : 'var(--bg-alt)',
-                  color: done ? 'white' : 'var(--text-tertiary)',
-                  flexShrink: 0,
-                }}>
-                  {done ? <Check size={12} /> : <Clock size={12} />}
+      <div className="ord-detail">
+        <div className="ord-detail__main">
+          {/* Pipeline */}
+          <section className="ord-detail__section">
+            <h3 className="ord-detail__h">Tracking</h3>
+            {stages.map((stage, i) => {
+              const done = i <= currentStage
+              return (
+                <div key={stage} style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                  <div style={{
+                    width: '24px', height: '24px', borderRadius: '50%',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: done ? 'var(--brand-accent-dark)' : 'var(--bg-alt)',
+                    color: done ? 'white' : 'var(--text-secondary)',
+                    flexShrink: 0,
+                  }}>
+                    {done ? <Check size={12} aria-hidden="true" /> : <Clock size={12} aria-hidden="true" />}
+                  </div>
+                  <span style={{
+                    fontSize: 'var(--text-sm)', fontWeight: done ? 600 : 400,
+                    color: done ? 'var(--text)' : 'var(--text-secondary)',
+                  }}>
+                    {stage}
+                  </span>
                 </div>
-                <span style={{
-                  fontSize: 'var(--text-sm)', fontWeight: done ? 600 : 400,
-                  color: done ? 'var(--text)' : 'var(--text-tertiary)',
-                }}>
-                  {stage}
-                </span>
+              )
+            })}
+            {order.tracking_ref && (
+              <div className="ord-card__meta" style={{ marginTop: '8px', marginLeft: '34px' }}>
+                Carrier: {order.carrier} · Tracking: {order.tracking_ref}
               </div>
-            )
-          })}
-          {order.tracking_ref && (
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '8px', marginLeft: '34px' }}>
-              Carrier: {order.carrier} · Tracking: {order.tracking_ref}
-            </div>
+            )}
+            <NetworkFulfilment orderRef={order.order_ref} />
+          </section>
+
+          {/* Items */}
+          <section className="ord-detail__section">
+            <h3 className="ord-detail__h">Items</h3>
+            {items.map((item) => (
+              <div key={item.id} className="ord-detail__line">
+                <div>
+                  <div style={{ fontWeight: 500 }}>{item.product_name}</div>
+                  <div className="ord-card__meta">Qty {item.quantity} · {mny(item.price)} each</div>
+                </div>
+                <div style={{ fontWeight: 600 }}>{mny(item.price * item.quantity)}</div>
+              </div>
+            ))}
+          </section>
+        </div>
+
+        <div className="ord-detail__side">
+          {/* Shipping */}
+          {hasAddress && (
+            <section className="ord-detail__section">
+              <h3 className="ord-detail__h">Delivery address</h3>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+                <MapPin size={16} aria-hidden="true" style={{ flexShrink: 0, marginTop: 2 }} />
+                <div>
+                  <div>{addr.line1}</div>
+                  <div>{addr.city} {addr.pin}</div>
+                </div>
+              </div>
+            </section>
           )}
-          <NetworkFulfilment orderRef={order.order_ref} />
-        </div>
 
-        {/* Items */}
-        <div style={{ marginBottom: '24px' }}>
-          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: '12px' }}>Items</div>
-          {items.map((item) => (
-            <div key={item.id} style={{
-              display: 'flex', justifyContent: 'space-between', padding: '8px 0',
-              borderBottom: '1px solid var(--border-light)', fontSize: 'var(--text-sm)',
-            }}>
-              <div>
-                <div style={{ fontWeight: 500 }}>{item.product_name}</div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                  Qty {item.quantity} · {mny(item.price)} each
-                </div>
-              </div>
-              <div style={{ fontWeight: 600 }}>{mny(item.price * item.quantity)}</div>
+          {/* Totals */}
+          <section className="ord-detail__section">
+            <h3 className="ord-detail__h">Payment</h3>
+            <div className="ord-detail__row"><span>Before tax</span><span>{mny(order.subtotal)}</span></div>
+            <div className="ord-detail__row"><span>Tax at {order.tax_rate}%</span><span>{mny(order.tax)}</span></div>
+            <div className="ord-detail__row ord-detail__row--total"><span>Total</span><span>{mny(order.total)}</span></div>
+            <div className="ord-card__meta" style={{ marginTop: '4px' }}>
+              Paid by {paymentLabel(order.payment_method, methods)}
             </div>
-          ))}
-        </div>
-
-        {/* Shipping */}
-        {order.carrier !== 'Digital' && addr.line1 && (
-          <div style={{ marginBottom: '24px' }}>
-            <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: '8px' }}>Delivery address</div>
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-              <MapPin size={16} style={{ flexShrink: 0, marginTop: 2, color: 'var(--text-tertiary)' }} />
-              <div>
-                <div>{addr.line1}</div>
-                <div>{addr.city} {addr.pin}</div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Totals */}
-        <div style={{ paddingTop: '16px', borderTop: '2px solid var(--border)' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: '4px' }}>
-            <span>Before tax</span><span>{mny(order.subtotal)}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginBottom: '4px' }}>
-            <span>Tax at {order.tax_rate}%</span><span>{mny(order.tax)}</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 'var(--text-base)', fontWeight: 700, marginTop: '8px' }}>
-            <span>Total</span><span>{mny(order.total)}</span>
-          </div>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            Paid by {paymentLabel(order.payment_method, methods)}
-          </div>
+          </section>
         </div>
       </div>
-    </div>
+    </Dialog>
   )
 }
