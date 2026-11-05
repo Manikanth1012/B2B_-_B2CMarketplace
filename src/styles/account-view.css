@@ -89,7 +89,17 @@
   font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer;
 }
 .av-btn--secondary { border: 1px solid var(--border-strong); background: var(--bg-card); color: var(--text-secondary); }
-.av-btn--secondary:hover { background: var(--bg-alt); color: var(--text); }
+.av-btn--secondary:hover,
+.av-btn--secondary:focus-visible { background: var(--bg-alt); color: var(--text); }
+
+/* The shared Pager draws 26px buttons inline. On this screen they are raised
+   to the 44px touch target; !important because the sizes are inline styles
+   and the Pager itself is shared with screens this file does not own. */
+.acct-page .av-pager button,
+.acct-page .av-pager select {
+  min-width: 44px !important; min-height: 44px !important; height: auto !important;
+}
+.acct-page .av-pager button { width: auto !important; }
 
 /* ---------- Household ---------- */
 .av-member { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 16px 0; }
@@ -124,8 +134,11 @@
 
 @media (max-width: 767px) {
   .av-table, .av-table tbody, .av-table tr, .av-table td { display: block; width: 100%; }
-  /* The header row is still there for a screen reader; it is the stacked
-     labels that a sighted reader uses. */
+  /* Setting display on table parts strips their table semantics in some
+     screen readers (iOS VoiceOver among them), so every part carries an
+     explicit role (table, rowgroup, row, columnheader, cell) in the markup.
+     The header row is hidden visually only: the roles keep it announced, and
+     sighted readers use the stacked data-label labels instead. */
   .av-table thead {
     position: absolute; width: 1px; height: 1px; overflow: hidden;
     clip: rect(0, 0, 0, 0); white-space: nowrap;

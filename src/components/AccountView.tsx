@@ -856,24 +856,24 @@ function ActivityTab({ log }: { log: ConsumerAuditEntry[] }) {
             label/value pairs, the labels coming from data-label
             (account-view.css). */}
         <div className="av-table-wrap">
-          <table className="av-table">
-            <thead>
-              <tr>
-                <th scope="col">When</th>
-                <th scope="col">What</th>
-                <th scope="col">Category</th>
-                <th scope="col">Detail</th>
+          <table role="table" className="av-table">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th role="columnheader" scope="col">When</th>
+                <th role="columnheader" scope="col">What</th>
+                <th role="columnheader" scope="col">Category</th>
+                <th role="columnheader" scope="col">Detail</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody role="rowgroup">
               {log.map((e) => (
-                <tr key={e.id}>
-                  <td data-label="When" className="av-nowrap">{e.when_date}</td>
-                  <td data-label="What">
+                <tr role="row" key={e.id}>
+                  <td role="cell" data-label="When" className="av-nowrap">{e.when_date}</td>
+                  <td role="cell" data-label="What">
                     <div style={{ fontWeight: 600 }}>{e.label}</div>
                     <div className="av-muted">{e.action}</div>
                   </td>
-                  <td data-label="Category">
+                  <td role="cell" data-label="Category">
                     <span style={{
                       padding: '2px 8px', borderRadius: 'var(--radius-full)',
                       fontSize: 'var(--text-xs)', fontWeight: 600,
@@ -882,7 +882,7 @@ function ActivityTab({ log }: { log: ConsumerAuditEntry[] }) {
                       {e.category}
                     </span>
                   </td>
-                  <td data-label="Detail" style={{ color: 'var(--text-secondary)' }}>{e.detail || '—'}</td>
+                  <td role="cell" data-label="Detail" style={{ color: 'var(--text-secondary)' }}>{e.detail || '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -1225,15 +1225,15 @@ function RefundsTab({ book, onChanged, showToast }: {
         ) : (
           /* A table on desktop, stacked label/value cards below 768px. */
           <div className="av-table-wrap">
-            <table className="av-table">
-              <thead>
-                <tr>
-                  <th scope="col">Refund</th>
-                  <th scope="col" className="av-num">Amount</th>
-                  <th scope="col">Status</th>
+            <table role="table" className="av-table">
+              <thead role="rowgroup">
+                <tr role="row">
+                  <th role="columnheader" scope="col">Refund</th>
+                  <th role="columnheader" scope="col" className="av-num">Amount</th>
+                  <th role="columnheader" scope="col">Status</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody role="rowgroup">
             {book.refunds.map((r) => {
               const spec = STATES[r.state]
               const clock = book.policy ? sla(r, book.policy, now) : null
@@ -1244,8 +1244,8 @@ function RefundsTab({ book, onChanged, showToast }: {
                  always was. */
               const tone = r.state === 'escalated' ? 'warning' : statusTone(r.state)
               return (
-                <tr key={r.id}>
-                  <td data-label="Refund" className="av-table__main">
+                <tr role="row" key={r.id}>
+                  <td role="cell" data-label="Refund" className="av-table__main">
                     <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', marginBottom: '2px' }}>{r.item}</div>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
                       {r.id} · Order {r.order_ref} · {r.seller}
@@ -1276,7 +1276,7 @@ function RefundsTab({ book, onChanged, showToast }: {
                       </div>
                     )}
                   </td>
-                  <td data-label="Amount" className="av-num">
+                  <td role="cell" data-label="Amount" className="av-num">
                     <div style={{ fontWeight: 800, fontSize: 'var(--text-lg)' }}>
                       {fmtIn(Number(r.refunded ?? r.amount), r.currency)}
                     </div>
@@ -1286,7 +1286,7 @@ function RefundsTab({ book, onChanged, showToast }: {
                       </div>
                     )}
                   </td>
-                  <td data-label="Status">
+                  <td role="cell" data-label="Status">
                     <StatusBadge tone={tone}>{spec.label}</StatusBadge>
                   </td>
                 </tr>
@@ -1580,30 +1580,30 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
       <BentoCard className="av-card" headingLevel={2} title={<CardTitle icon={<FileText size={18} />}>Bill history</CardTitle>} text={`${bills.length} bills on record`}>
         {/* A table on desktop, stacked label/value cards below 768px. */}
         <div className="av-table-wrap">
-          <table className="av-table">
-            <thead>
-              <tr>
-                <th scope="col">Bill ID</th>
-                <th scope="col">Period</th>
-                <th scope="col">Issued</th>
-                <th scope="col">Due</th>
-                <th scope="col" className="av-num">Total</th>
-                <th scope="col">Status</th>
-                <th scope="col" className="av-num">Bill</th>
+          <table role="table" className="av-table">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th role="columnheader" scope="col">Bill ID</th>
+                <th role="columnheader" scope="col">Period</th>
+                <th role="columnheader" scope="col">Issued</th>
+                <th role="columnheader" scope="col">Due</th>
+                <th role="columnheader" scope="col" className="av-num">Total</th>
+                <th role="columnheader" scope="col">Status</th>
+                <th role="columnheader" scope="col" className="av-num">Bill</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody role="rowgroup">
               {billsPage.rows.map((b) => (
-                <tr key={b.id}>
-                  <td data-label="Bill ID">{b.id}</td>
-                  <td data-label="Period">{b.period}</td>
-                  <td data-label="Issued">{b.issued}</td>
-                  <td data-label="Due">{b.due}</td>
-                  <td data-label="Total" className="av-num" style={{ fontWeight: 700 }}>{billMoney(b)}</td>
-                  <td data-label="Status">
+                <tr role="row" key={b.id}>
+                  <td role="cell" data-label="Bill ID">{b.id}</td>
+                  <td role="cell" data-label="Period">{b.period}</td>
+                  <td role="cell" data-label="Issued">{b.issued}</td>
+                  <td role="cell" data-label="Due">{b.due}</td>
+                  <td role="cell" data-label="Total" className="av-num" style={{ fontWeight: 700 }}>{billMoney(b)}</td>
+                  <td role="cell" data-label="Status">
                     <StatusBadge tone={statusTone(b.status)}>{b.status}</StatusBadge>
                   </td>
-                  <td data-label="Bill" className="av-num">
+                  <td role="cell" data-label="Bill" className="av-num">
                     <div style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '6px' }}>
                       <button onClick={() => setViewing(b)} disabled={!book} aria-label={`View bill ${b.id}`} style={{
                         ...billBtn, opacity: book ? 1 : 0.5,
@@ -1622,7 +1622,7 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
             </tbody>
           </table>
         </div>
-        <Pager page={billsPage} noun="bills" />
+        <div className="av-pager"><Pager page={billsPage} noun="bills" /></div>
         <div style={{ marginTop: '16px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
           Your bill includes your Aventa mobile plan, all subscriptions, and any one-off purchases made during the billing period. The total shown is what was charged to your mobile account.
         </div>
@@ -1808,18 +1808,18 @@ function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerT
             the row used to be a clickable div that Tab never reached. A click
             anywhere on the row still opens it. */}
         <div className="av-table-wrap">
-          <table className="av-table av-table--clickable">
-            <thead>
-              <tr>
-                <th scope="col">Ticket</th>
-                <th scope="col">Priority</th>
-                <th scope="col">Status</th>
+          <table role="table" className="av-table av-table--clickable">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th role="columnheader" scope="col">Ticket</th>
+                <th role="columnheader" scope="col">Priority</th>
+                <th role="columnheader" scope="col">Status</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody role="rowgroup">
               {ticketsPage.rows.map((t) => (
-                <tr key={t.id} onClick={() => setSelectedTicket(t)}>
-                  <td data-label="Ticket" className="av-table__main">
+                <tr role="row" key={t.id} onClick={() => setSelectedTicket(t)}>
+                  <td role="cell" data-label="Ticket" className="av-table__main">
                     <button type="button" className="av-linkbtn"
                       onClick={(e) => { e.stopPropagation(); setSelectedTicket(t) }}>
                       <span>{t.subject}</span>
@@ -1834,10 +1834,10 @@ function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerT
                       </div>
                     )}
                   </td>
-                  <td data-label="Priority">
+                  <td role="cell" data-label="Priority">
                     <StatusBadge tone={statusTone(t.severity)} icon={null}>{t.severity}</StatusBadge>
                   </td>
-                  <td data-label="Status">
+                  <td role="cell" data-label="Status">
                     <TicketStatus status={t.status} resolvedLabel="confirm?" />
                   </td>
                 </tr>
@@ -1845,7 +1845,7 @@ function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerT
             </tbody>
           </table>
         </div>
-        <Pager page={ticketsPage} noun="tickets" />
+        <div className="av-pager"><Pager page={ticketsPage} noun="tickets" /></div>
       </BentoCard>
 
       {selectedTicket && (
@@ -2025,6 +2025,8 @@ function TicketDetailModal({ ticket, onClose, showToast }: { ticket: ConsumerTic
    the screen's own words for it rather than statusTone's success. */
 function TicketStatus({ status, resolvedLabel }: { status: string; resolvedLabel: string }) {
   if (status === 'resolved') return <StatusBadge tone="info">{resolvedLabel}</StatusBadge>
+  // Escalated is still open with the desk, so it stays amber as it was, not statusTone's red.
+  if (status === 'escalated') return <StatusBadge tone="warning">{status}</StatusBadge>
   return <StatusBadge tone={statusTone(status)}>{status}</StatusBadge>
 }
 

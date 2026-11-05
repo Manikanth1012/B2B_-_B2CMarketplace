@@ -28,6 +28,7 @@ const account: Record<string, string> = {
   paid: 'success', overdue: 'danger',
   invited: 'warning',
   new: 'warning', inprogress: 'info', closed: 'success',
+  waiting: 'warning',
 }
 
 describe('statusTone', () => {

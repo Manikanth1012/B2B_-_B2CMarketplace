@@ -31,6 +31,8 @@ const TONES: Record<string, Tone> = {
   paid: 'success', overdue: 'danger',
   invited: 'warning',
   new: 'warning', inprogress: 'info', closed: 'success',
+  /* A ticket parked on somebody outside the desk. */
+  waiting: 'warning',
 }
 
 export function statusTone(status: string): Tone {
