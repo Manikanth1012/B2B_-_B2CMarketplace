@@ -92,14 +92,15 @@
 .av-btn--secondary:hover,
 .av-btn--secondary:focus-visible { background: var(--bg-alt); color: var(--text); }
 
-/* The shared Pager draws 26px buttons inline. On this screen they are raised
-   to the 44px touch target; !important because the sizes are inline styles
-   and the Pager itself is shared with screens this file does not own. */
-.acct-page .av-pager button,
-.acct-page .av-pager select {
+/* The shared Pager draws 26px buttons inline. On every account page (Orders,
+   Rewards, My account) they are raised to the 44px touch target; !important
+   because the sizes are inline styles and the Pager is shared with screens
+   these files do not own. */
+.acct-page .pager button,
+.acct-page .pager select {
   min-width: 44px !important; min-height: 44px !important; height: auto !important;
 }
-.acct-page .av-pager button { width: auto !important; }
+.acct-page .pager button { width: auto !important; }
 
 /* ---------- Household ---------- */
 .av-member { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 16px 0; }
@@ -185,3 +186,9 @@
 @media (forced-colors: active) {
   .av-stat, .av-note, .av-card, .av-panel { border: 1px solid CanvasText; }
 }
+
+/* Touch targets (spec 5 sweep): shared pieces drawn inside the account pages —
+   EvidenceLink's View/Download, the notification wording toggles — were 19–23px
+   tall. Every button on an account page gets the 44px floor; buttons centre
+   their own content, so the label stays where it was. */
+.acct-page button { min-height: 44px; }

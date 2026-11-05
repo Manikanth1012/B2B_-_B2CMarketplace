@@ -38,7 +38,7 @@ export function Footer({ onNavigate }: FooterProps) {
             written to match. `auto-fit` rather than a fixed count: at 900px the
             five-column version squeezed each heading onto two lines, and a
             column list that only fits one layout is the reason it did. */}
-        <div style={{
+        <div className="site-footer__grid" style={{
           display: 'grid',
           gridTemplateColumns: 'minmax(240px, 2fr) repeat(auto-fit, minmax(150px, 1fr))',
           gap: '32px',

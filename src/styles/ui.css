@@ -229,6 +229,16 @@
 }
 @media (max-width: 1023px) { .site-search { display: none; } .site-nav.is-open .site-search--menu { display: flex; width: 100%; } }
 @media (max-width: 520px) { .site-header__divider, .site-header__6d { display: none; } }
+/* Signed-in consumer header: the logo shrinks on phones so the help, account,
+   basket and menu buttons fit beside it at 390px (spec 5 sweep: 39px over). */
+.consumer-header__logo { height: 32px; display: block; }
+@media (max-width: 520px) { .consumer-header__logo { height: 22px; } }
+/* Signed-in footer on phones: 240px brand + a 150px column overran 390px
+   (spec 5 sweep). Brand full width, link columns two to a row beneath it. */
+@media (max-width: 640px) {
+  .site-footer__grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 24px !important; }
+  .site-footer__grid > :first-child { grid-column: 1 / -1; }
+}
 
 .discover { position: relative; }
 .discover__panel {
