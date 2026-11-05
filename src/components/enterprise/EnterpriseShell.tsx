@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react'
-import { LayoutDashboard, Search, Shield, Cpu, Monitor, ShoppingCart, SquareCheck as CheckSquare, Users, History, User, Bell as BellIcon, LogOut, Menu, X, Building2, BookOpen, RotateCcw, Repeat, Receipt, Zap, LifeBuoy, Wallet as WalletIcon, KeyRound, Smartphone, FileSignature } from 'lucide-react'
+import { LayoutDashboard, Search, Shield, Cpu, Monitor, ShoppingCart, SquareCheck as CheckSquare, Users, History, User, Bell as BellIcon, LogOut, Menu, X, Building2, BookOpen, RotateCcw, Repeat, Receipt, Zap, LifeBuoy, Wallet as WalletIcon, KeyRound, Smartphone, FileSignature, MessageSquareText } from 'lucide-react'
+import { ContactSalesDialog } from '../enquiries/ContactSalesDialog'
+import { enquiriesChanged } from '../enquiries/events'
+import { toast } from '../operator/shared'
 import type { EnterpriseView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
 import { AccountMenu } from '../AccountMenu'
@@ -63,6 +66,8 @@ const NAV_SECTIONS: { label: string; items: { id: EnterpriseView; label: string;
     label: 'Procurement',
     items: [
       { id: 'en-orders', label: 'Orders', icon: <ShoppingCart size={18} /> },
+      /* Quotes, demos and sales questions, and what each is waiting on. */
+      { id: 'en-enquiries', label: 'Enquiries', icon: <MessageSquareText size={18} /> },
       { id: 'en-refunds', label: 'Refunds', icon: <RotateCcw size={18} /> },
       { id: 'en-subs', label: 'Subscriptions', icon: <Repeat size={18} /> },
       { id: 'en-numbers', label: 'Numbers & SIMs', icon: <Smartphone size={18} /> },
@@ -89,6 +94,7 @@ const NAV_SECTIONS: { label: string; items: { id: EnterpriseView; label: string;
 
 export function EnterpriseShell({ view, onNavigate, onSignOut, children }: EnterpriseShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [askingSales, setAskingSales] = useState(false)
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg-alt)', display: 'flex' }}>
@@ -172,6 +178,11 @@ export function EnterpriseShell({ view, onNavigate, onSignOut, children }: Enter
                 screen, not only from the catalogue that filled it — a buyer who
                 wanders off to check a budget and comes back otherwise has no
                 way to find what they had collected. */}
+            {/* A word with the marketplace's sales desk, from any screen. */}
+            <button type="button" className="enq-cta" onClick={() => setAskingSales(true)}>
+              <MessageSquareText size={16} aria-hidden="true" />
+              <span className="enq-cta__text">Contact Sales</span>
+            </button>
             <RequisitionButton />
             {/* It goes to Notifications. It had no onClick at all, so the one
                 control in the header that looks like it leads somewhere led
@@ -214,6 +225,14 @@ export function EnterpriseShell({ view, onNavigate, onSignOut, children }: Enter
           {children}
         </div>
       </div>
+
+      <ContactSalesDialog open={askingSales} onClose={() => setAskingSales(false)}
+        onRaised={() => {
+          setAskingSales(false)
+          toast('Sent to the sales desk. Follow it on Enquiries.', 'success')
+          enquiriesChanged()
+          onNavigate('en-enquiries')
+        }} />
 
       {mobileNavOpen && <div onClick={() => setMobileNavOpen(false)} className="show-mobile" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', zIndex: 150 }} />}
     </div>

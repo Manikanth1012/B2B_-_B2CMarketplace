@@ -8,6 +8,8 @@ import type { AccountBook } from '../../lib/enterpriseRepo'
 import { waiting, committed, budgetPosition, NEED_LABEL } from '../../lib/enterprise'
 import { useAccountMoney } from './money'
 import type { EnterpriseView } from '../../types/view'
+import { loadEnquiries } from '../../lib/enquiryRepo'
+import { waitingOn, localToday } from '../../lib/enquiries'
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
@@ -17,6 +19,14 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
      and Billing screens quoted three different budgets. */
   const [book, setBook] = useState<AccountBook | null>(null)
   const [orders, setOrders] = useState<{ order_ref: string; seller: string; total: number; placed_date: string; failed: boolean; stage: number; stages: string[] }[]>([])
+  /* Null until read; a string when it could not be. */
+  const [enquiries, setEnquiries] = useState<{ waiting: number } | string | null>(null)
+  useEffect(() => {
+    void loadEnquiries().then(b => {
+      setEnquiries(b.loadError && !b.enquiries.length ? b.loadError
+        : { waiting: b.enquiries.filter(e => waitingOn(e, localToday()) === 'buyer').length })
+    })
+  }, [])
   useEffect(() => {
     void (async () => {
       setBook(await loadAccount())
@@ -77,6 +87,11 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
                   color={budget?.ahead ? 'var(--warning)' : 'var(--brand-accent-dark)'} />
         <StatCard label="Awaiting approval" value={fmtInt(queue.length)}
                   sublabel={`${money(queue.reduce((a, r) => a + Number(r.amount), 0))} of requests`} color="var(--warning)" />
+        <StatCard label="Enquiries waiting on you"
+                  value={enquiries === null ? '…' : typeof enquiries === 'string' ? '—' : fmtInt(enquiries.waiting)}
+                  sublabel={typeof enquiries === 'string' ? 'Enquiries are not available yet'
+                    : enquiries && enquiries.waiting ? 'Quotes to decide or questions answered' : 'Nothing to answer'}
+                  color={enquiries && typeof enquiries !== 'string' && enquiries.waiting ? 'var(--warning)' : undefined} />
         <StatCard label="Orders in flight" value={fmtInt(ordersInFlight.length)} sublabel={failedOrders.length ? `${failedOrders.length} failed` : 'Provisioning and delivery'} color={failedOrders.length ? 'var(--danger)' : undefined} />
       </div>
 

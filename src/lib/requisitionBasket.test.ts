@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest'
 import {
   EMPTY_BASKET, MAX_QUANTITY, addToBasket, setQuantity, removeLine,
   basketTotal, basketCount, verticalOf, modelOf, repriceTo, verdict,
-  whatIsMissing, missingFields, missingNote,
+  whatIsMissing, missingFields, missingNote, holdsQuote, isQuoted,
 } from './requisitionBasket'
 import type { Basket, BasketLine } from './requisitionBasket'
 import type { Policy, Account } from './enterprise'
@@ -313,5 +313,52 @@ describe('what is still missing', () => {
     const draft = { title: '', reason: 'why', cost_centre: null, po_ref: '' }
     const b = build({ line: item() })
     expect(whatIsMissing(b, draft, ACCOUNT)).toEqual(missingFields(b, draft, ACCOUNT).map(m => m.says))
+  })
+})
+
+describe('a line from an accepted quote', () => {
+  const quoted = item({ unit_price: 7900, quote_line_id: 'EQL-1' })
+
+  it('goes in at the quoted price and quantity, as its own line', () => {
+    const b = build({ line: quoted, q: 40 })
+    expect(b.lines[0].unit_price).toBe(7900)
+    expect(b.lines[0].quantity).toBe(40)
+    expect(isQuoted(b.lines[0])).toBe(true)
+    expect(holdsQuote(b)).toBe(true)
+  })
+
+  it('is not added twice', () => {
+    expect(addToBasket(build({ line: quoted, q: 40 }), quoted, 'INR', 40).ok).toBe(false)
+  })
+
+  it('does not merge with an ordinary line of the same product, either way round', () => {
+    expect(addToBasket(build({ line: item() }), quoted, 'INR', 40).ok).toBe(false)
+    expect(addToBasket(build({ line: quoted, q: 40 }), item(), 'INR', 1).ok).toBe(false)
+  })
+
+  it('keeps its quantity, but can be removed', () => {
+    const b = build({ line: quoted, q: 40 })
+    expect(setQuantity(b, 'SKU-5003', 41).ok).toBe(false)
+    expect(setQuantity(b, 'SKU-5003', 40).ok).toBe(true)
+    const gone = setQuantity(b, 'SKU-5003', 0)
+    expect(gone.ok && gone.basket).toEqual(EMPTY_BASKET)
+  })
+
+  it('is never re-read from a shelf, so the basket stays in the quoted currency', () => {
+    const b = build({ line: quoted, q: 40 }, { line: firewall })
+    const { basket, dropped } = repriceTo(b, 'AED', [
+      { id: 'SKU-5003', price: 372, model: 'oneoff', unit: null },
+      { id: 'SKU-6001', price: 1100, model: 'oneoff', unit: null },
+    ])
+    expect(basket).toBe(b)
+    expect(dropped).toEqual([])
+    expect(basket.lines[0].unit_price).toBe(7900)
+  })
+
+  it('leaves ordinary lines behaving as before', () => {
+    const b = build({ line: item() }, { line: item() })
+    expect(b.lines).toHaveLength(1)
+    expect(b.lines[0].quantity).toBe(2)
+    expect(holdsQuote(b)).toBe(false)
   })
 })

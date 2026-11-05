@@ -22,6 +22,8 @@ import { useFocusTrap, isTopmostTrap } from '../ui/useFocusTrap'
 import { VERTICAL_NAMES } from './data'
 import { getProductImage } from '../../lib/images'
 import { round2 } from '../../lib/money'
+import { RaiseQuoteDialog } from '../enquiries/RaiseQuoteDialog'
+import { enquiriesChanged } from '../enquiries/events'
 
 const BLANK = { title: '', reason: '', cost_centre: null as string | null, po_ref: '' }
 
@@ -34,11 +36,14 @@ const FIELD_ID: Record<MissingField, string> = {
   cost_centre: 'req-cc', po_ref: 'req-po',
 }
 
-export function RequisitionPanel({ onRaised }: {
+export function RequisitionPanel({ onRaised, onQuoteRequested }: {
   /* The console is told afterwards, because the queue the buyer is about to be
      sent to is one of the things that just changed. */
   onRaised: () => void
+  /* After "Request a quote for this basket" is sent: the console goes to Enquiries. */
+  onQuoteRequested?: () => void
 }) {
+  const [quoting, setQuoting] = useState(false)
   const { basket, open, setOpen, setQuantity, remove, empty, total, count } = useRequisition()
   /* The marketplace's formatter, with the currency table in it. This panel used
      to import `money` from `enterprise.ts`, which has no table and writes
@@ -143,6 +148,7 @@ export function RequisitionPanel({ onRaised }: {
         lines: basket.lines.map(l => ({
           product_id: l.product_id, name: l.name, seller: l.seller,
           partner_id: l.partner_id, quantity: l.quantity, unit_price: l.unit_price,
+          quote_line_id: l.quote_line_id ?? null,
         })),
       },
       me, account, policy, currencies, rates,
@@ -169,7 +175,12 @@ export function RequisitionPanel({ onRaised }: {
     color: 'var(--text-secondary)', marginBottom: '4px',
   } as const
 
+  /* Lines already at a quoted price are not asked about again. */
+  const toQuote = basket.lines.filter(l => !l.quote_line_id)
+    .map(l => ({ product_id: l.product_id, name: l.name, quantity: l.quantity }))
+
   return (
+    <>
     <div
       onClick={() => setOpen(false)}
       className="req-drawer-backdrop"
@@ -214,6 +225,13 @@ export function RequisitionPanel({ onRaised }: {
                         {l.seller} · {money(l.unit_price, basket.currency)}{l.model === 'monthly' ? `${l.unit ? ` ${l.unit}` : ''}/mo` : ' each'}
                       </div>
                     </div>
+                    {/* A quoted line holds the quoted quantity; it can be removed, not changed. */}
+                    {l.quote_line_id ? (
+                      <div style={{ width: '72px', textAlign: 'right', fontSize: 'var(--text-sm)' }}>
+                        <div>{l.quantity}</div>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', fontWeight: 600 }}>Quoted</div>
+                      </div>
+                    ) : (
                     <input
                       type="number" min={0} value={l.quantity} aria-label={`Quantity of ${l.name}`}
                       onChange={e => {
@@ -224,6 +242,7 @@ export function RequisitionPanel({ onRaised }: {
                       }}
                       style={{ ...field, width: '72px', textAlign: 'right' }}
                     />
+                    )}
                     <div style={{ width: 96, textAlign: 'right', fontWeight: 700, fontSize: 'var(--text-sm)' }}>
                       {money(round2(l.quantity * l.unit_price), basket.currency)}
                     </div>
@@ -312,6 +331,12 @@ export function RequisitionPanel({ onRaised }: {
                 {stopper}
               </div>
             )}
+            {/* Asking the seller to price the basket first. The basket stays as it is. */}
+            {toQuote.length > 0 && (
+              <Btn variant="secondary" onClick={() => setQuoting(true)} style={{ minHeight: '44px' }}>
+                Request a quote for this basket
+              </Btn>
+            )}
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'space-between' }}>
               <Btn variant="secondary" size="sm" onClick={() => { empty(); toast('Emptied', 'info') }}>Empty it</Btn>
               <button className="btn btn-cyan" onClick={raise} disabled={blocked || busy}>
@@ -327,6 +352,17 @@ export function RequisitionPanel({ onRaised }: {
         )}
       </div>
     </div>
+    {/* A sibling of the drawer, not inside it: a click on its backdrop must
+        not reach the drawer's, which would close the drawer as well. */}
+    <RaiseQuoteDialog open={quoting} seed={toQuote} onClose={() => setQuoting(false)}
+      onRaised={() => {
+        setQuoting(false)
+        toast('Quote request sent. Your requisition is unchanged.', 'success')
+        enquiriesChanged()
+        setOpen(false)
+        onQuoteRequested?.()
+      }} />
+    </>
   )
 }
 

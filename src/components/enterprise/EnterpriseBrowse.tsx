@@ -10,6 +10,7 @@ import { ProductCard, ListingLayout, ListingGrid, EmptyListing, CategoryTile, ca
 import { pricedFor, cardAction } from '../../lib/storefront'
 import { categoryVisual } from '../../lib/home'
 import { useRequisition } from '../../lib/RequisitionContext'
+import { holdsQuote, quoteHoldsCurrency } from '../../lib/requisitionBasket'
 import type { EnterpriseListing as Listing } from '../../lib/enterpriseRepo'
 
 /* One shape of line from one shape of row, used by both catalogue screens, so
@@ -122,6 +123,12 @@ export function EnterpriseBrowse() {
   useEffect(() => {
     if (!currency || !listings || !req.basket.lines.length) return
     if (req.basket.currency === currency) return
+    /* A quoted price is in the quote's currency and is not on any shelf, so a
+       basket holding one stays where it is (repriceTo leaves it alone too). */
+    if (holdsQuote(req.basket)) {
+      toast(quoteHoldsCurrency(req.basket.currency, currency), 'info')
+      return
+    }
     const dropped = req.reprice(currency, listings)
     if (dropped.length) {
       toast(`${dropped.join(' and ')} ${dropped.length === 1 ? 'is' : 'are'} not sold in ${currency}, so ${dropped.length === 1 ? 'it was' : 'they were'} taken out of your requisition.`, 'error')

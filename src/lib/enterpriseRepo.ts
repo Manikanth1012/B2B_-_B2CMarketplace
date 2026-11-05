@@ -273,6 +273,9 @@ export interface Draft {
   lines: {
     product_id: string | null; name: string; seller: string
     partner_id: string | null; quantity: number; unit_price: number
+    /* The accepted quote line this came from, if any. guard_quoted_line holds
+       its price and quantity to the quote. */
+    quote_line_id?: string | null
   }[]
 }
 
@@ -352,6 +355,9 @@ export async function raiseRequisition(
          Postgres rounding, so it has to be written with the rounding that
          agrees with Postgres. */
       line_total: round2(l.quantity * l.unit_price), sort_order: n + 1,
+      /* Only sent when there is one, so an ordinary requisition writes exactly
+         the columns it always has. */
+      ...(l.quote_line_id ? { quote_line_id: l.quote_line_id } : {}),
     })),
   )
   if (lineError) {
