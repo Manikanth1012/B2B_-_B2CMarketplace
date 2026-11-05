@@ -206,6 +206,25 @@ async function rpcId(fn: string, args: Record<string, unknown>): Promise<IdResul
   }
 }
 
+/** The seller's agreed minimum per product (products.floor_price), for the
+    products on the enquiries they are looking at. Products with no floor are
+    left out. No ids is a successful, empty answer. */
+export async function loadFloors(productIds: string[]): Promise<{ ok: true; floors: Record<string, number> } | { ok: false; error: string }> {
+  const ids = [...new Set(productIds)]
+  if (ids.length === 0) return { ok: true, floors: {} }
+  try {
+    const { data, error } = await supabase.from('products').select('id,floor_price').in('id', ids)
+    if (error) return { ok: false, error: error.message }
+    const floors: Record<string, number> = {}
+    for (const r of (data ?? []) as { id: string; floor_price: number | null }[]) {
+      if (typeof r.floor_price === 'number' && r.floor_price > 0) floors[r.id] = r.floor_price
+    }
+    return { ok: true, floors }
+  } catch (err) {
+    return { ok: false, error: errorText(err) }
+  }
+}
+
 function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
 }
