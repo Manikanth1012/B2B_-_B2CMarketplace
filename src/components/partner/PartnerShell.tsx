@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   Star,
-  LayoutDashboard, Route, Package, ShoppingCart, ShoppingBag, Wallet, FileText,
+  LayoutDashboard, Route, Package, MessageSquareQuote, ShoppingCart, ShoppingBag, Wallet, FileText,
   BarChart3, Plug, LifeBuoy, Users, History, User,
   Search, Bell as BellIcon, LogOut, Menu, X, Store, BookOpen, RotateCcw, Gift,
   KeyRound, Monitor, Code2, CalendarClock,
@@ -39,6 +39,7 @@ const NAV_SECTIONS: { label: string; items: { id: PartnerView; label: string; ic
     label: 'Trade',
     items: [
       { id: 'pt-orders', label: 'Orders', icon: <ShoppingCart size={18} /> },
+      { id: 'pt-enquiries', label: 'Enquiries', icon: <MessageSquareQuote size={18} /> },
       { id: 'pt-wholesale', label: 'Wholesale', icon: <ShoppingBag size={18} /> },
       /* Yours to maintain: the marketplace bills its own lines and reports
          nothing on your behalf. */

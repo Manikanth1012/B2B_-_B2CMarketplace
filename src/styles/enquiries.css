@@ -132,3 +132,15 @@
 @media (prefers-reduced-motion: reduce) {
   .enq *, .enq-dialog * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
+
+/* ---- seller responses ---- */
+.enq-resp { display: flex; flex-direction: column; gap: 14px; }
+.enq-resp input, .enq-resp textarea { min-height: 44px; }
+.enq-resp .enq-actions .c-btn, .enq-resp .enq-actions button { min-height: 44px; }
+.enq-resp__line { display: flex; flex-direction: column; gap: 6px; }
+.enq-warn {
+  display: flex; align-items: flex-start; gap: 6px; margin: 0; padding: 8px 10px;
+  font-size: var(--text-sm); font-weight: 600; color: var(--warning);
+  background: var(--warning-bg); border-radius: var(--radius-sm, 6px);
+}
+.enq-warn svg { flex: none; margin-top: 2px; }
