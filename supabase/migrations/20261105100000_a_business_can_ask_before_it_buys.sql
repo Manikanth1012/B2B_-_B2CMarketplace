@@ -158,6 +158,26 @@ create table if not exists enquiry_events (
   at          timestamptz not null default now()
 );
 
+/* Which transactions are inside `send_quote` right now. One row per
+   transaction, for as long as the function runs; empty otherwise.
+
+   The guards need to know that a price or a move to `quoted` came from
+   `send_quote` and not from a client writing the row itself. A session setting
+   cannot say so: any client can call `set_config` with the same name. A row in
+   a table nobody but the definer functions can write can. So RLS is on with no
+   policy at all, and every privilege is taken away from the API roles — the
+   security-definer functions, owned by whoever runs this migration, are the
+   only things that ever touch it.
+
+   `txid_current()` is the 64-bit, epoch-extended id of the top-level
+   transaction, so it never repeats and a savepoint inside the same
+   transaction still sees its own row. */
+create table if not exists enquiry_rpc_tokens (
+  txid bigint primary key
+);
+alter table enquiry_rpc_tokens enable row level security;
+revoke all on enquiry_rpc_tokens from public, anon, authenticated;
+
 create index if not exists enquiry_events_enquiry_idx on enquiry_events(enquiry_id, at);
 
 /* Expiry applied on read. `security_invoker`, so it shows exactly the rows the
@@ -504,9 +524,13 @@ end $$;
  * buyer. A note, if given, goes into the conversation.
  *
  * The guards refuse a price or a move to `quoted` made any other way: they
- * look for `app.enquiry_rpc`, a transaction-local flag only this function
- * sets. So what the buyer accepts is always a set of prices that were sent to
- * them together, with a date, and recorded.
+ * look for this transaction's row in `enquiry_rpc_tokens`, which only this
+ * function writes and no client can. So what the buyer accepts is always a set
+ * of prices that were sent to them together, with a date, and recorded.
+ *
+ * A price is held as numeric(10,2), so the most a unit can be quoted at is
+ * 99,999,999.99. Anything above it is refused here with a sentence rather
+ * than reaching the column as "numeric field overflow".
  */
 create or replace function send_quote(p_id text, p_prices jsonb, p_valid_until date, p_note text default null)
 returns void language plpgsql security definer set search_path = public as $$
@@ -549,21 +573,44 @@ begin
   if v_bad is not null then
     raise exception 'Price every line before sending the quote. Missing: %', v_bad;
   end if;
-  /* ... and every value is a number, nought or more. */
-  select string_agg(k, ', ') into v_bad
-    from jsonb_each(p_prices) as x(k, v)
-   where jsonb_typeof(v) <> 'number' or (v #>> '{}')::numeric < 0;
+  /* ... every value is a number, nought or more ... (The cast is inside the
+     case so a string is reported as unusable, not as a failed cast.) */
+  select string_agg(l.name, ', ' order by l.sort_order) into v_bad
+    from jsonb_each(p_prices) as x(k, v) join enquiry_lines l on l.id = x.k
+   where case when jsonb_typeof(v) = 'number' then (v #>> '{}')::numeric < 0 else true end;
   if v_bad is not null then
     raise exception 'These lines have no usable price: %', v_bad;
   end if;
+  /* ... and fits the column. Rounded first, because 99999999.995 rounds up
+     past the limit on the way in. */
+  select string_agg(l.name, ', ' order by l.sort_order) into v_bad
+    from jsonb_each(p_prices) as x(k, v) join enquiry_lines l on l.id = x.k
+   where round((v #>> '{}')::numeric, 2) > 99999999.99;
+  if v_bad is not null then
+    raise exception 'A unit price can be at most 99,999,999.99. These lines are over it: %', v_bad;
+  end if;
 
-  perform set_config('app.enquiry_rpc', 'on', true);
+  /* The token says "this transaction is inside send_quote" to the guards on
+     enquiry_lines and enquiries, and to notify_enquiry, for exactly the two
+     writes below. It is deleted straight after them.
+
+     On the error path nothing deletes it explicitly, and nothing needs to:
+     this function has no exception handler, so any error raised by the writes
+     (a guard refusing, a constraint) propagates and rolls back the statement —
+     or the caller's savepoint — and the insert of the token with it. A row
+     that was never committed cannot be seen by anybody, and it is gone from
+     this transaction too. So the token exists only while these writes run.
+
+     `on conflict do nothing` because a second call in the same transaction
+     would find its own row; send_quote does not call itself, so the delete
+     below never removes a row another call is still relying on. */
+  insert into enquiry_rpc_tokens (txid) values (txid_current()) on conflict do nothing;
 
   update enquiry_lines l set quoted_unit_price = (p_prices ->> l.id)::numeric
    where l.enquiry_id = p_id;
   update enquiries set status = 'quoted', valid_until = p_valid_until where id = p_id;
 
-  perform set_config('app.enquiry_rpc', '', true);
+  delete from enquiry_rpc_tokens where txid = txid_current();
 
   if nullif(btrim(coalesce(p_note, '')), '') is not null then
     insert into enquiry_messages (enquiry_id, author_role, author_name, body)
@@ -630,7 +677,7 @@ begin
      not the date moved: the prices may have. */
   v_requote := not v_moved and new.status = 'quoted'
                and (new.valid_until is distinct from old.valid_until
-                    or coalesce(current_setting('app.enquiry_rpc', true), '') = 'on');
+                    or exists (select 1 from enquiry_rpc_tokens where txid = txid_current()));
 
   if v_persona is not null then
     /* --------------------------------------------------- who is asking -- */
@@ -703,7 +750,7 @@ begin
            lines and moves the quote in one transaction. A quote moved here on
            its own would be a quote the buyer saw priced by whatever happened
            to be on the lines. */
-        if coalesce(current_setting('app.enquiry_rpc', true), '') <> 'on' then
+        if not exists (select 1 from enquiry_rpc_tokens where txid = txid_current()) then
           raise exception 'A quote is sent with send_quote, which prices every line and dates it in one step.';
         end if;
         if new.valid_until is null or new.valid_until < current_date + 1 or new.valid_until > current_date + 90 then
@@ -877,7 +924,7 @@ begin
       /* Prices move only inside `send_quote`, which re-dates the quote, writes
          it to the trail and tells the buyer. A price changed on its own is a
          price the buyer may accept without ever having been shown it. */
-      if coalesce(current_setting('app.enquiry_rpc', true), '') <> 'on' then
+      if not exists (select 1 from enquiry_rpc_tokens where txid = txid_current()) then
         raise exception 'Prices are sent with send_quote, as a quote or a re-quote, never changed on their own.';
       end if;
       if not (v_e.type = 'quote' and v_e.status in ('submitted', 'quoted')) then
@@ -950,7 +997,12 @@ begin
     if new.starts_at is null or new.starts_at <= now() then
       raise exception 'A time proposed has to be in the future.';
     end if;
-    /* Three open offers a side, the most anybody can weigh at once. */
+    /* Three open offers a side, the most anybody can weigh at once.
+       The enquiry row is locked first, so two proposals sent at the same
+       moment are counted one after the other: the second waits for the first
+       to commit and then sees it, instead of both counting two and both
+       going in. */
+    perform 1 from enquiries where id = v_e.id for update;
     if (select count(*) from enquiry_slots
          where enquiry_id = v_e.id and proposed_by = v_role and not confirmed and starts_at > now()) >= 3 then
       raise exception 'You already have three times on offer for %. Wait for an answer, or say in the conversation which to drop.', v_e.id;
@@ -1325,7 +1377,7 @@ begin
     v_body := coalesce(v_company, 'A business') || ' asked for ' || v_what || ' on ' || new.id
               || ': "' || new.subject || '". Answer it from Enquiries.';
   elsif new.status is distinct from old.status or new.valid_until is distinct from old.valid_until
-        or (new.status = 'quoted' and coalesce(current_setting('app.enquiry_rpc', true), '') = 'on') then
+        or (new.status = 'quoted' and exists (select 1 from enquiry_rpc_tokens where txid = txid_current())) then
     if v_persona = 'enterprise' then
       if new.status not in ('accepted', 'declined', 'withdrawn', 'closed', 'scheduled') then
         return null;
@@ -1630,6 +1682,135 @@ begin
    where enquiry_id like 'ENQ-SEED-%' and action = 'raised';
 end $$;
 
+/* ================================================================ help === */
+
+/* Three new screens, three articles. `helpCoverage.integration.test.ts` reads
+ * the screens out of `src/types/view.ts`, so en-enquiries, pt-enquiries and
+ * op-enquiries are in the coverage check from the commit that added them, and
+ * a help button with nothing behind it would turn it red.
+ *
+ * One article per persona, because the three read the same enquiry from three
+ * sides: the business asked it, the seller answers it, the desk answers what no
+ * single seller can and watches the rest.
+ *
+ * Ids computed rather than typed: the next free number in each set, read off
+ * the table, the way the agreements articles did it after a hardcoded id once
+ * replaced somebody else's article. Each insert is skipped when its screen
+ * already has an article, so running this file again adds nothing.
+ *
+ * No picture of the screen yet. Every other article carries a capture served
+ * from `kb-assets`, but there is no capture of these screens to point at, and
+ * an image block naming a file that does not exist is the stock-photo mistake
+ * the media pass removed. The picture goes in when the screens are captured.
+ */
+
+do $$
+declare
+  v_op text; v_pt text; v_en text;
+  n_op int;  n_pt int;  n_en int;
+begin
+  select coalesce(max(substring(id from '^KB-O(\d+)$')::int), 0) + 1 into n_op
+    from public.kb_articles where id ~ '^KB-O\d+$';
+  select coalesce(max(substring(id from '^KB-P(\d+)$')::int), 0) + 1 into n_pt
+    from public.kb_articles where id ~ '^KB-P\d+$';
+  select coalesce(max(substring(id from '^KB-B(\d+)$')::int), 0) + 1 into n_en
+    from public.kb_articles where id ~ '^KB-B\d+$';
+  /* Padded to two digits, as the existing ones are. */
+  v_op := 'KB-O' || lpad(n_op::text, 2, '0');
+  v_pt := 'KB-P' || lpad(n_pt::text, 2, '0');
+  v_en := 'KB-B' || lpad(n_en::text, 2, '0');
+
+  /* ------------------------------------------------------- the business -- */
+  if not exists (select 1 from public.kb_articles where view = 'en-enquiries') then
+    insert into public.kb_articles
+      (id, persona, kind, title, mins, updated, view, roles, tags, summary,
+       body, status, sort_order, personas, audience_note, audience_ids)
+    values (
+      v_en, 'enterprise', 'howto', 'Asking for a quote, a demo or a word with sales', 5,
+      '05 Nov 2026', 'en-enquiries',
+      array['BY-BUY', 'BY-ADMIN'], array['enquiries', 'quotes', 'demos', 'ordering'],
+      'Where to ask before you buy, who answers, and what accepting a quote does — and does not — do.',
+      jsonb_build_array(
+        jsonb_build_object('kind', 'prose', 'heading', 'Where you ask',
+          'text', 'On any listing, Request a quote asks for a price on the quantity you want, with the price you hope for if you have one. Book a demo appears on the listings where seeing it working means something — anything sold on a subscription, and IoT and security hardware — and asks for one to three times that suit you. In the requisition drawer, Request a quote for this basket asks for the whole basket at once and leaves the basket as it is. Contact Sales, in the header, is for anything that is not about one listing.'),
+        jsonb_build_object('kind', 'prose', 'heading', 'Who answers',
+          'text', 'If everything you asked about is sold by one seller, that seller answers. A quote across two sellers, anything Aventa sells itself, and every Contact Sales question go to the marketplace desk instead. The Answered by column says which. The marketplace can pass an enquiry from one to the other, and when it does the reason is written in the history.'),
+        jsonb_build_object('kind', 'prose', 'heading', 'Finding what needs you',
+          'text', 'Waiting on you is everything where the next move is yours: a quote that has been priced and is still in date, and a sales question that has been answered. Waiting on them is the rest that is still open. Those come first in the list, then the most recently changed. Open a row to read it in full and act on it.'),
+        jsonb_build_object('kind', 'prose', 'heading', 'A priced quote',
+          'text', 'Every line carries the seller''s price and the quote carries a date it is valid until, never more than ninety days out. Accept it, decline it with a reason the seller can act on, or withdraw. Only somebody who can raise requisitions on this account can accept or decline a quote; anybody on the account can follow it and reply. After the valid-until date the quote shows as expired and cannot be accepted — ask in the conversation for it to be re-quoted.'),
+        jsonb_build_object('kind', 'prose', 'heading', 'Accepting is not ordering',
+          'text', 'Accepting puts the quoted lines into your requisition at the quoted prices and quantities. Nothing is ordered until that requisition is raised and approved, exactly as for anything else. If the seller re-quoted after you opened the page, the acceptance stands but nothing is added: look at the new prices first, then use Add to requisition. That button stays until the quote runs out, and once the lines are on a live requisition the screen names it instead.'),
+        jsonb_build_object('kind', 'prose', 'heading', 'A demo',
+          'text', 'Whoever did not propose a time confirms it. When the seller proposes one, they say where — a joining link or an address — and Confirm a time books it as they gave it. You can suggest another time instead, up to three open at once. Once a time is confirmed the demo is scheduled and the time is fixed; if it no longer works, say so in the conversation or withdraw.'),
+        jsonb_build_object('kind', 'prose', 'heading', 'A sales question',
+          'text', 'The conversation is the whole of it. The desk''s reply marks it answered; yours opens it again. Close it when you have what you needed. A closed one takes no more messages — use Contact Sales again to start another.'),
+        jsonb_build_object('kind', 'prose', 'heading', 'What you asked stays as asked',
+          'text', 'An enquiry is not edited once it is sent — the subject, what it is for and how you asked to be answered stay as they were — so what the seller answered is always what you asked. To ask for something different, withdraw it and ask again. Every move it makes, and who made it, is under History.')
+      ),
+      'published', n_en, array['enterprise'], '', array[]::text[]);
+    raise notice 'enterprise enquiries article %', v_en;
+  end if;
+
+  /* ---------------------------------------------------------- the seller -- */
+  if not exists (select 1 from public.kb_articles where view = 'pt-enquiries') then
+    insert into public.kb_articles
+      (id, persona, kind, title, mins, updated, view, roles, tags, summary,
+       body, status, sort_order, personas, audience_note, audience_ids)
+    values (
+      v_pt, 'partner', 'howto', 'Answering quotes and demos', 4,
+      '05 Nov 2026', 'pt-enquiries',
+      array['PR-OWNER', 'PR-OPS'], array['enquiries', 'quotes', 'demos'],
+      'What reaches you, how a quote is priced and sent, and how a demo gets booked.',
+      jsonb_build_array(
+        jsonb_build_object('kind', 'prose', 'heading', 'What reaches you',
+          'text', 'A business''s quote or demo request comes here when every line of it is one of your listings. A quote that also names another seller''s listing goes to the marketplace desk, because no single seller can price all of it. The marketplace can pass an enquiry to you or away from you; the reason is in its history and you are told when one arrives.'),
+        jsonb_build_object('kind', 'prose', 'heading', 'Sending a quote',
+          'text', 'Give a unit price above zero for every line, and the date the quote is valid until: from tomorrow to ninety days out. A note, if you write one, goes into the conversation. Beside each line you see the quantity the buyer asked for and the price they hope for, if they gave one. The prices and the date go together, in one step, and the buyer is told the quote is ready.'),
+        jsonb_build_object('kind', 'prose', 'heading', 'Under your agreed minimum',
+          'text', 'If a price is below the floor you agreed for that listing, the form says so beside the line. It is a warning, not a refusal: the floor is your number and you can choose to go under it. If the floors could not be read, the form says that instead and you quote as usual.'),
+        jsonb_build_object('kind', 'prose', 'heading', 'Changing a quote you sent',
+          'text', 'Send a new quote. Prices only change that way — never one line on its own — so whatever the buyer accepts is a set of prices that were sent to them together, with a date. The buyer is told the quote was revised. A quote whose date has passed shows as expired and waits on you: re-quote it with a new date, or decline it.'),
+        jsonb_build_object('kind', 'prose', 'heading', 'Declining',
+          'text', 'Say why. The reason goes to the buyer and stays on the enquiry, and a decline with no reason is one nobody can act on.'),
+        jsonb_build_object('kind', 'prose', 'heading', 'Booking a demo',
+          'text', 'The buyer offers up to three times. Confirm one and give the joining link or the address, and the demo is scheduled. Or suggest another time with where it would be, and the buyer confirms it as you gave it. Each side can have three times open at once. Once the demo has happened, mark it done.'),
+        jsonb_build_object('kind', 'prose', 'heading', 'Waiting on you',
+          'text', 'The chip counts everything whose next move is yours: a new request, an expired quote, a demo booked but not yet marked done. It is where to start each day.')
+      ),
+      'published', n_pt, array['partner'], '', array[]::text[]);
+    raise notice 'partner enquiries article %', v_pt;
+  end if;
+
+  /* -------------------------------------------------------- the operator -- */
+  if not exists (select 1 from public.kb_articles where view = 'op-enquiries') then
+    insert into public.kb_articles
+      (id, persona, kind, title, mins, updated, view, roles, tags, summary,
+       body, status, sort_order, personas, audience_note, audience_ids)
+    values (
+      v_op, 'operator', 'howto', 'The enquiries desk', 5,
+      '05 Nov 2026', 'op-enquiries',
+      array['OR-ADMIN', 'OR-SUPPORT'], array['enquiries', 'quotes', 'demos', 'sellers'],
+      'Every quote, demo and sales question buyers have asked: the ones the desk answers, and the ones it only watches and moves.',
+      jsonb_build_array(
+        jsonb_build_object('kind', 'prose', 'heading', 'What lands on the desk',
+          'text', 'A quote or demo whose lines all belong to one seller goes to that seller. Everything else comes here: a quote across two sellers, anything Aventa sells itself, and every Contact Sales question. The routing is worked out from the catalogue when the enquiry is raised, not chosen by the buyer. Answered by says Operator desk for these.'),
+        jsonb_build_object('kind', 'prose', 'heading', 'Finding the ones that matter',
+          'text', 'The chips and the type filter work as they do for buyers and sellers. Who answers narrows the list to the desk or to one seller. Age shows the enquiries still open that nobody has touched in over two or over seven days — the ones a seller may have gone quiet on. Finished enquiries are left out of it, because nothing is waiting on them.'),
+        jsonb_build_object('kind', 'prose', 'heading', 'Answering a desk enquiry',
+          'text', 'On the desk''s own enquiries you answer as a seller would: send a quote with a unit price above zero for every line and a valid-until date up to ninety days out, re-quote, decline with a reason, confirm or suggest a demo time with where it will be, mark a demo done. A sales question is answered by replying, and closed when it is settled. There is no price floor here; the floor warning belongs to the seller who agreed it.'),
+        jsonb_build_object('kind', 'prose', 'heading', 'A seller''s enquiry is theirs',
+          'text', 'On an enquiry routed to a seller you can reply in the conversation and reassign it, and nothing else. The desk does not price on a seller''s behalf — the database refuses it. If it should be answered here, reassign it to the desk first.'),
+        jsonb_build_object('kind', 'prose', 'heading', 'Reassigning',
+          'text', 'Move an enquiry between the desk and any seller, with a reason. The reason is required and goes into the history, and whoever now holds it is told. A finished enquiry cannot be moved — there is nobody left to answer it.'),
+        jsonb_build_object('kind', 'prose', 'heading', 'The record',
+          'text', 'Every move, every re-quote and every reassignment is written to History with who did it, and nobody edits that trail, the desk included. Messages are not edited once sent. When a buyer accepts a quote, its lines go into their requisition at the quoted price, and the requisition is held to that price, product and quantity.')
+      ),
+      'published', n_op, array['operator'], '', array[]::text[]);
+    raise notice 'operator enquiries article %', v_op;
+  end if;
+end $$;
+
 /* --------------------------------------------------------- what is true -- */
 
 do $$
@@ -1642,6 +1823,25 @@ begin
     select count(*) into n from pg_class where oid = t::regclass and relrowsecurity;
     if n <> 1 then raise exception 'row level security is off on %', t; end if;
   end loop;
+
+  /* The send_quote token is the definer functions' alone: RLS on, no policy,
+     and no API role can read or write it. If a client could insert a row for
+     its own transaction, it could price a quote without sending it. */
+  select count(*) into n from pg_class where oid = 'enquiry_rpc_tokens'::regclass and relrowsecurity;
+  if n <> 1 then raise exception 'row level security is off on enquiry_rpc_tokens'; end if;
+  select count(*) into n from pg_policies where schemaname = 'public' and tablename = 'enquiry_rpc_tokens';
+  if n <> 0 then raise exception 'enquiry_rpc_tokens has % policies; it should have none', n; end if;
+  foreach t in array array['anon', 'authenticated'] loop
+    if has_table_privilege(t, 'enquiry_rpc_tokens', 'select')
+       or has_table_privilege(t, 'enquiry_rpc_tokens', 'insert')
+       or has_table_privilege(t, 'enquiry_rpc_tokens', 'update')
+       or has_table_privilege(t, 'enquiry_rpc_tokens', 'delete') then
+      raise exception '% can still touch enquiry_rpc_tokens', t;
+    end if;
+  end loop;
+  /* And nothing is left in it: every token is removed by the call that made it. */
+  select count(*) into n from enquiry_rpc_tokens;
+  if n <> 0 then raise exception '% send_quote tokens were left behind', n; end if;
 
   /* Every guard is attached. */
   select count(*) into n from pg_trigger
@@ -1709,4 +1909,17 @@ begin
 
   select count(*) into n from notification_rules where event_id like 'enquiry.%';
   if n < 5 then raise exception 'expected 5 enquiry notification rules, found %', n; end if;
+
+  /* Each new screen opens a help article written for whoever reads it, and
+     only one: the help button shows the first, so a second would be hidden. */
+  select count(*) into n from public.kb_articles
+   where status = 'published'
+     and ((view = 'en-enquiries' and 'enterprise' = any(personas))
+       or (view = 'pt-enquiries' and 'partner' = any(personas))
+       or (view = 'op-enquiries' and 'operator' = any(personas)));
+  if n <> 3 then raise exception 'expected one help article for each enquiries screen, found %', n; end if;
+  select count(*) into n from (
+    select view from public.kb_articles
+     where view in ('en-enquiries', 'pt-enquiries', 'op-enquiries') group by view having count(*) > 1) t;
+  if n <> 0 then raise exception '% enquiries screens have more than one help article', n; end if;
 end $$;

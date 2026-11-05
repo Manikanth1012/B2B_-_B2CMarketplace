@@ -92,13 +92,65 @@ describe('the enquiries migration', () => {
     expect(code).toMatch(/revoke all on function enquiry_buyer\(\) from public, anon, authenticated/)
   })
 
-  it('sets prices only through send_quote, behind a transaction-local flag the guards check', () => {
+  it('sets prices only through send_quote, behind a token row no client can write', () => {
     const fn = code.match(/create or replace function send_quote\([\s\S]*?end \$\$;/)![0]
-    expect(fn).toContain(`set_config('app.enquiry_rpc', 'on', true)`)
-    for (const g of ['guard_enquiry_line', 'guard_enquiry']) {
+    const token = 'exists (select 1 from enquiry_rpc_tokens where txid = txid_current())'
+    expect(fn).toContain('insert into enquiry_rpc_tokens (txid) values (txid_current()) on conflict do nothing')
+    expect(fn).toContain('delete from enquiry_rpc_tokens where txid = txid_current()')
+    // The token is put down before the writes and taken up after them.
+    const put = fn.indexOf('insert into enquiry_rpc_tokens')
+    const take = fn.indexOf('delete from enquiry_rpc_tokens')
+    expect(put).toBeLessThan(fn.indexOf('update enquiry_lines'))
+    expect(take).toBeGreaterThan(fn.indexOf("update enquiries set status = 'quoted'"))
+    for (const g of ['guard_enquiry_line', 'guard_enquiry', 'notify_enquiry']) {
       const body = code.match(new RegExp(`create or replace function ${g}\\(\\)[\\s\\S]*?end \\$\\$;`))![0]
-      expect(body, g).toContain(`current_setting('app.enquiry_rpc', true)`)
+      expect(body, g).toContain(token)
     }
+  })
+
+  it('keeps the token table out of reach of every API role', () => {
+    expect(code).toMatch(/create table if not exists enquiry_rpc_tokens \(\s*txid bigint primary key\s*\)/)
+    expect(code).toMatch(/alter table enquiry_rpc_tokens enable row level security/)
+    expect(code).toContain('revoke all on enquiry_rpc_tokens from public, anon, authenticated')
+    expect(code).not.toMatch(/create policy "[^"]+" on enquiry_rpc_tokens/)
+    expect(code).not.toMatch(/grant [^;]* on [^;]*enquiry_rpc_tokens/)
+  })
+
+  it('no longer uses a session flag a client could set', () => {
+    expect(sql).not.toContain('app.enquiry_rpc')
+  })
+
+  it('locks the demo before counting the times on offer', () => {
+    const fn = code.match(/create or replace function guard_enquiry_slot\(\)[\s\S]*?end \$\$;/)![0]
+    const lock = fn.indexOf('from enquiries where id = v_e.id for update')
+    expect(lock).toBeGreaterThan(-1)
+    expect(lock).toBeLessThan(fn.indexOf('select count(*) from enquiry_slots'))
+  })
+
+  it('refuses a price too large for the column with a sentence', () => {
+    expect(code).toMatch(/quoted_unit_price numeric\(10,2\)/)
+    const fn = code.match(/create or replace function send_quote\([\s\S]*?end \$\$;/)![0]
+    expect(fn).toContain('> 99999999.99')
+    expect(fn).toContain('a unit price can be at most 99,999,999.99')
+  })
+
+  it.each([
+    ['en-enquiries', 'enterprise'],
+    ['pt-enquiries', 'partner'],
+    ['op-enquiries', 'operator'],
+  ])('gives %s a help article for the %s persona, once', (view, persona) => {
+    const at = code.indexOf(`where view = '${view}')`)
+    expect(at, view).toBeGreaterThan(-1)
+    expect(code.slice(at - 80, at)).toContain('if not exists')
+    const insert = code.slice(at, code.indexOf('end if;', at))
+    expect(insert).toContain(`'${view}'`)
+    expect(insert).toContain(`array['${persona}']`)
+    expect(insert).toContain("'published'")
+  })
+
+  it('names screens that exist', () => {
+    const views = readFileSync(new URL('../types/view.ts', import.meta.url), 'utf8')
+    for (const v of ['en-enquiries', 'pt-enquiries', 'op-enquiries']) expect(views).toContain(`'${v}'`)
   })
 
   it('lets a quote line back one live requisition at a time, not one ever', () => {
