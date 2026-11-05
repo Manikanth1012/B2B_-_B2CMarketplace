@@ -9,6 +9,7 @@
 import { supabase } from './supabase'
 import type { Enquiry, EnquiryLine, EnquirySlot, EnquiryMessage } from './enquiries'
 import { quoteLinesPayload, sendQuotePayload, asLine } from './enquiryPayload'
+import type { QuotedProduct } from './enquiryList'
 
 export interface EnquiryEvent {
   id: string; enquiry_id: string; actor_role: string; actor_name: string
@@ -220,6 +221,22 @@ export async function loadFloors(productIds: string[]): Promise<{ ok: true; floo
       if (typeof r.floor_price === 'number' && r.floor_price > 0) floors[r.id] = r.floor_price
     }
     return { ok: true, floors }
+  } catch (err) {
+    return { ok: false, error: errorText(err) }
+  }
+}
+
+/** The catalogue facts an accepted quote's lines need to go into a
+    requisition (seller name, model, vertical, unit), read by product id
+    whatever the listing's status. A quote on a listing paused since it was
+    priced is still good; guard_quoted_line decides whether it may be raised. */
+export async function loadQuotedProducts(productIds: string[]): Promise<{ ok: true; products: Map<string, QuotedProduct> } | { ok: false; error: string }> {
+  const ids = [...new Set(productIds)]
+  if (ids.length === 0) return { ok: true, products: new Map() }
+  try {
+    const { data, error } = await supabase.from('products').select('id,seller,model,category_id,unit').in('id', ids)
+    if (error) return { ok: false, error: error.message }
+    return { ok: true, products: new Map(((data ?? []) as QuotedProduct[]).map(p => [p.id, p])) }
   } catch (err) {
     return { ok: false, error: errorText(err) }
   }

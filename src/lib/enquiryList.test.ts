@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   bandOf, chipCounts, filterEnquiries, answererName, isClosed, localToIso,
   liveQuoteLineIds, acceptedQuoteStanding, quoteChanged, waitingOver,
+  quotedBasketLines, quoteBasketClash,
 } from './enquiryList'
 import type { Enquiry, EnquiryLine } from './enquiries'
 
@@ -185,5 +186,46 @@ describe('waitingOver', () => {
   })
   it('lets everything through when no age is chosen', () => {
     expect(waitingOver({ type: 'sales', status: 'closed', updated_at: old }, 0, now)).toBe(true)
+  })
+})
+
+describe('quotedBasketLines', () => {
+  const q = (over = {}) => ({
+    product_id: 'SKU-5004', name: 'Fleet tracker', partner_id: 'PTR-1', quantity: 40, unit_price: 11697, quote_line_id: 'QL-1', ...over,
+  })
+  const products = new Map([
+    ['SKU-5004', { id: 'SKU-5004', seller: 'TrackCo', model: 'oneoff', category_id: 'iot', unit: null }],
+    ['SKU-7', { id: 'SKU-7', seller: 'SimCo', model: 'monthly', category_id: 'connectivity', unit: 'per SIM' }],
+  ])
+  it('takes price, quantity, partner and quote line from the quote, and the rest from the product', () => {
+    expect(quotedBasketLines([q()], products)).toEqual({
+      lines: [{
+        product_id: 'SKU-5004', name: 'Fleet tracker', seller: 'TrackCo', partner_id: 'PTR-1',
+        unit_price: 11697, model: 'oneoff', vertical: 'iot', unit: null, quote_line_id: 'QL-1', quantity: 40,
+      }],
+      unread: [],
+    })
+  })
+  it('reads the model as monthly or one-off', () => {
+    expect(quotedBasketLines([q({ product_id: 'SKU-7' })], products).lines[0]).toMatchObject({ model: 'monthly', unit: 'per SIM', seller: 'SimCo' })
+  })
+  it('names a product it could not read rather than dropping it', () => {
+    const r = quotedBasketLines([q(), q({ product_id: 'SKU-GONE', name: 'Old router', quote_line_id: 'QL-2' })], products)
+    expect(r.lines.map(l => l.quote_line_id)).toEqual(['QL-1'])
+    expect(r.unread).toEqual(['Old router (SKU-GONE) could not be read from the catalogue, so it was not added.'])
+  })
+})
+
+describe('quoteBasketClash', () => {
+  it('has nothing to say for an empty basket or one in the quote currency', () => {
+    expect(quoteBasketClash({ currency: '', lines: [] }, 'INR', null)).toBeNull()
+    expect(quoteBasketClash({ currency: 'USD', lines: [] }, 'INR', null)).toBeNull()
+    expect(quoteBasketClash({ currency: 'INR', lines: [{}] }, 'INR', null)).toBeNull()
+  })
+  it('says why a basket in another currency cannot take the quote, and how long it holds', () => {
+    const m = quoteBasketClash({ currency: 'USD', lines: [{}] }, 'INR', '20 Nov 2026')
+    expect(m).toContain('priced in USD and this quote is in INR')
+    expect(m).toContain('use Add to requisition')
+    expect(m).toContain('until 20 Nov 2026')
   })
 })

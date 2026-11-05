@@ -62,10 +62,10 @@ Found by the spec 5 reviews and sweep, judged not worth holding the merge.
 ## Still open after spec 6 (small, non-blocking)
 
 - [ ] No calendar invites or email for demos and quotes — in-app notifications only (no gateway).
-- [ ] The seller of a multi-seller desk quote can read its own lines but has no screen to tell the desk its price; the desk asks in the conversation.
+- [ ] The seller of a multi-seller desk quote can read its own lines but has no screen to tell the desk its price, and cannot read a desk-routed conversation; the desk has to reach the seller outside the enquiry, or reassign it to them.
 - [ ] The requisition basket is not saved across a reload; an accepted quote offers "Add to requisition" again until it is on a live requisition.
 - [ ] Expiry is checked against the browser's date on screen and the database's date on accept; around midnight they can differ by a day.
-- [ ] Seed enquiries name SKU-5004, which is paused on the live shelf; new enquiries need a live listing.
+- [ ] Seed enquiries name SKU-5004, which is paused on the live shelf. An accepted quote on it still reaches the requisition (its product facts are read by id, whatever the status); only raising a new enquiry from the shelf needs a live listing.
 
 ## Data to check (not code)
 

@@ -142,3 +142,52 @@ export function localToIso(value: string): string | null {
   const t = Date.parse(value)
   return Number.isNaN(t) ? null : new Date(t).toISOString()
 }
+
+/** What a basket line needs from the catalogue that a quote line does not carry. */
+export interface QuotedProduct { id: string; seller: string; model: string; category_id: string; unit: string | null }
+
+/** A basket line built from an accepted quote line, with the quantity it was quoted at. */
+export interface QuotedBasketLine {
+  product_id: string; name: string; seller: string; partner_id: string | null
+  unit_price: number; model: 'oneoff' | 'monthly'; vertical: string; unit: string | null
+  quote_line_id: string; quantity: number
+}
+
+/** The accepted quote's own lines (product, name, seller, quantity, quoted
+    price, quote line) as basket lines. The product's seller name, model,
+    vertical and unit are read by id, whatever the listing's status: a paused
+    listing's quote is still good, and guard_quoted_line is what decides
+    whether a quoted line may be raised. A product that could not be read is
+    named in `unread` rather than dropped. */
+export function quotedBasketLines(
+  quoted: readonly { product_id: string; name: string; partner_id: string | null; quantity: number; unit_price: number; quote_line_id: string }[],
+  products: ReadonlyMap<string, QuotedProduct>,
+): { lines: QuotedBasketLine[]; unread: string[] } {
+  const lines: QuotedBasketLine[] = []
+  const unread: string[] = []
+  for (const q of quoted) {
+    const p = products.get(q.product_id)
+    if (!p) {
+      unread.push(`${q.name} (${q.product_id}) could not be read from the catalogue, so it was not added.`)
+      continue
+    }
+    lines.push({
+      product_id: q.product_id, name: q.name, seller: p.seller, partner_id: q.partner_id,
+      unit_price: q.unit_price, model: p.model === 'monthly' ? 'monthly' : 'oneoff',
+      vertical: p.category_id, unit: p.unit, quote_line_id: q.quote_line_id, quantity: q.quantity,
+    })
+  }
+  return { lines, unread }
+}
+
+/** Why a quote's lines cannot join the requisition being built, or null when
+    they can (it is empty, or in the quote's currency). A requisition is in one
+    currency, so a basket in another has to be raised or emptied first; the
+    accepted quote keeps its price meanwhile. */
+export function quoteBasketClash(
+  basket: { currency: string; lines: readonly unknown[] }, quoteCurrency: string, until: string | null,
+): string | null {
+  if (!basket.lines.length || basket.currency === quoteCurrency) return null
+  const holds = until ? ` The quote keeps its price until ${until}.` : ''
+  return `Your requisition is priced in ${basket.currency} and this quote is in ${quoteCurrency}. A requisition is settled in one currency, so raise or empty the one you have, then come back and use Add to requisition.${holds}`
+}
