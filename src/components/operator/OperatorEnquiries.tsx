@@ -12,9 +12,11 @@ import { Callout } from '../OnboardingJourney'
 import { Select, toast, fmtDateTime } from './shared'
 import { loadEnquiries, listPartners, reply, markDone, closeEnquiry, sendQuote, decline, confirmSlot, proposeSlot } from '../../lib/enquiryRepo'
 import type { EnquiryBook } from '../../lib/enquiryRepo'
+import { localToday } from '../../lib/enquiries'
 import type { Action, Enquiry } from '../../lib/enquiries'
 import { waitingOver } from '../../lib/enquiryList'
 import type { Chip, TypeFilter } from '../../lib/enquiryList'
+import { useMarket } from '../../lib/MarketContext'
 
 /* Everything that has been asked, and the desk's own to answer.
    The enquiries table may not exist yet (the migration is applied by hand), so
@@ -31,14 +33,6 @@ const AGE = [
   { id: '2', label: 'Waiting over 2 days', days: 2 },
   { id: '7', label: 'Waiting over 7 days', days: 7 },
 ] as const
-
-function localToday(): string {
-  const n = new Date(); const p = (x: number) => String(x).padStart(2, '0')
-  return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}`
-}
-
-const money = (n: number, cur: string) =>
-  `${cur ? cur + ' ' : ''}${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
 type Form =
   | { kind: 'quote' | 'decline' | 'propose' | 'reassign' }
@@ -58,6 +52,10 @@ export function OperatorEnquiries() {
   const [form, setForm] = useState<Form>(null)
   const [busy, setBusy] = useState(false)
   const today = localToday()
+  /* Every amount in the enquiry's own currency, spelt as the buyer and the
+     seller see it. */
+  const { fmtIn } = useMarket()
+  const money = useCallback((n: number, cur: string) => fmtIn(n, cur), [fmtIn])
 
   const refresh = useCallback(async () => {
     const b = await loadEnquiries()
