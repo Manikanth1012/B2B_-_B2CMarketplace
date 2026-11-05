@@ -57,6 +57,7 @@ import { OperatorOrders } from './components/operator/OperatorOrders'
 import { OperatorDisputes } from './components/operator/OperatorDisputes'
 import { OperatorCredit } from './components/operator/OperatorCredit'
 import { OperatorContracts } from './components/operator/OperatorContracts'
+import { OperatorEnquiries } from './components/operator/OperatorEnquiries'
 import { OperatorReviews } from './components/operator/OperatorReviews'
 import { OperatorWallets } from './components/operator/OperatorWallets'
 import { OperatorContentFeedback } from './components/operator/OperatorContentFeedback'
@@ -492,6 +493,7 @@ function AppInner() {
         {opView === 'op-disputes' && <OperatorDisputes />}
         {opView === 'op-credit' && <OperatorCredit />}
         {opView === 'op-contracts' && <OperatorContracts />}
+        {opView === 'op-enquiries' && <OperatorEnquiries />}
         {opView === 'op-ledger' && <OperatorLedger />}
         {opView === 'op-feedback' && <OperatorContentFeedback />}
         {opView === 'op-audit' && <OperatorAudit />}
