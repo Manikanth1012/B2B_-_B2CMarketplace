@@ -74,7 +74,7 @@ export function MyReviewsCard({ showToast }: { showToast: (m: string) => void })
   const unreviewed = purchased.filter(p => canReview(p.id, purchased.map(x => x.id), mine).ok)
 
   return (
-    <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '24px' }}>
+    <div className="av-panel">
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
         <span style={{ color: 'var(--brand-accent-dark)' }}><Star size={18} /></span>
         <h2 style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>Your reviews</h2>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { User, Bell, History, Users, RotateCcw, Check, X, Plus, CircleAlert as AlertCircle, Info, Shield, Wallet, Star, Phone, Mail, MapPin, CreditCard, Clock, ChevronRight, Lock, Trash2, FileText, LifeBuoy, MessageSquare, Send, Download, Globe, Eye, FolderOpen, KeyRound, ShieldCheck, Cake } from 'lucide-react'
+import { User, Bell, History, Users, RotateCcw, Check, Plus, CircleAlert as AlertCircle, Info, Shield, Wallet, Star, Phone, Mail, MapPin, CreditCard, Clock, ChevronRight, Lock, Trash2, FileText, LifeBuoy, MessageSquare, Send, Download, Globe, Eye, FolderOpen, KeyRound, ShieldCheck, Cake } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { changePassword, currentEmail, SignInError } from '../lib/authRepo'
 import { myLink } from '../lib/ssoRepo'
@@ -39,6 +39,10 @@ import { AttachmentPicker } from './AttachmentPicker'
 import type { RefundBook } from '../lib/refundRepo'
 import { STATES, REASONS, REASON_LIST, sla, ownership, autoApproves, thresholdFor } from '../lib/refunds'
 import type { RefundPolicy, RefundReason, RefundThreshold } from '../lib/refunds'
+import { AccountPage } from './account/AccountPage'
+import { AccountTabs } from './account/AccountTabs'
+import { BentoCard, Dialog, StatusBadge } from './ui'
+import { statusTone } from '../lib/consoleTone'
 
 type Tab = 'profile' | 'security' | 'notifications' | 'activity' | 'household' | 'wallet' | 'refunds' | 'bills' | 'support'
 
@@ -58,12 +62,14 @@ function fmtPts(n: number): string {
   return Math.round(n).toLocaleString('en-US') + ' pts'
 }
 
+/* The grey was #6B7280, 4.48:1 on the --bg-alt chip it sits on — just under
+   AA for small text. --text-secondary is the same grey family at 7:1. */
 const SEV_COLORS: Record<string, string> = {
-  info: '#6B7280',
+  info: 'var(--text-secondary)',
   warning: 'var(--warning)',
   high: 'var(--danger)',
-  low: '#6B7280',
-  normal: '#6B7280',
+  low: 'var(--text-secondary)',
+  normal: 'var(--text-secondary)',
 }
 
 const REFUND_STATES: Record<string, { label: string; color: string; bg: string }> = {
@@ -124,9 +130,9 @@ export function AccountView({ initialTab, onWatchesChanged }: {
 
   if (loading || !profile) {
     return (
-      <div className="container" style={{ paddingTop: '80px', paddingBottom: '80px', textAlign: 'center' }}>
-        <div style={{ fontSize: 'var(--text-lg)', color: 'var(--text-secondary)' }}>Loading account…</div>
-      </div>
+      <AccountPage title="My account">
+        <div className="av-loading" role="status">Loading account…</div>
+      </AccountPage>
     )
   }
 
@@ -143,89 +149,47 @@ export function AccountView({ initialTab, onWatchesChanged }: {
   ]
 
   return (
-    <div className="container" style={{ paddingTop: '32px', paddingBottom: '32px' }}>
-      {/* Header */}
-      <div style={{ marginBottom: '32px' }}>
-        <h1 style={{ fontSize: 'var(--text-3xl)', fontWeight: 800, marginBottom: '8px' }}>My account</h1>
-        <p style={{ fontSize: 'var(--text-base)', color: 'var(--text-secondary)' }}>
-          {profile.name} · {profile.customer_id} · {profile.since}
-        </p>
-      </div>
-
+    <AccountPage title="My account" subtitle={`${profile.name} · ${profile.customer_id} · ${profile.since}`}>
       {/* Tab bar.
-          Wraps rather than scrolls. Ten tabs no longer fit a 1280px column, and
-          a strip that scrolls sideways puts the last tab — Help & Support, and
-          before it Documents — somewhere nobody will look for it. Two rows of
-          tabs cost thirty pixels of height and hide nothing. */}
-      <div style={{
-        display: 'flex',
-        flexWrap: 'wrap',
-        rowGap: '2px',
-        gap: '4px',
-        borderBottom: '2px solid var(--border)',
-        marginBottom: '32px',
-      }}>
-        {tabs.map((t) => {
+          It used to wrap rather than scroll: ten tabs no longer fit a 1280px
+          column, and a strip that scrolls sideways puts the last tab — Help &
+          Support, and before it Documents — somewhere nobody will look for it.
+          The tabs now run down the left at 1024px and wider, where all nine are
+          in view at once. Below that they are chips that scroll sideways, which
+          on a phone is the only shape nine of them fit. */}
+      <AccountTabs
+        idPrefix="account"
+        tabs={tabs.map((t) => {
           const Icon = t.icon
-          const active = tab === t.id
-          return (
-            <button
-              key={t.id}
-              onClick={() => setTab(t.id)}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '12px 18px',
-                border: 'none',
-                background: 'none',
-                borderBottom: active ? '3px solid var(--brand-accent)' : '3px solid transparent',
-                color: active ? 'var(--brand-accent-dark)' : 'var(--text-secondary)',
-                fontWeight: active ? 700 : 500,
-                fontSize: 'var(--text-sm)',
-                cursor: 'pointer',
-                whiteSpace: 'nowrap',
-                marginBottom: '-2px',
-                transition: 'all 200ms ease',
-              }}
-            >
-              <Icon size={16} />
-              {t.label}
-            </button>
-          )
+          return { id: t.id, label: t.label, icon: <Icon size={18} /> }
         })}
+        active={tab}
+        onChange={(id) => { if (isTab(id)) setTab(id) }}
+      >
+        {/* Tab content */}
+        {tab === 'profile' && <ProfileTab profile={profile} showToast={showToast} onWatchesChanged={onWatchesChanged} />}
+        {tab === 'security' && (
+          <div className="av-stack">
+            <SecurityTab profile={profile} showToast={showToast} />
+            <PrivacyCard profile={profile} showToast={showToast} />
+          </div>
+        )}
+        {tab === 'notifications' && (
+          <NotificationPreferencesView persona="consumer" onToast={(m) => showToast(m)} />
+        )}
+        {tab === 'activity' && <ActivityTab log={auditLog} />}
+        {tab === 'household' && <HouseholdTab members={household} currency={profile.currency} showToast={showToast} />}
+        {tab === 'wallet' && <WalletTab />}
+        {tab === 'refunds' && <RefundsTab book={refundBook} onChanged={loadData} showToast={showToast} />}
+        {tab === 'bills' && <BillsTab bills={bills} showToast={showToast} />}
+        {tab === 'support' && <SupportTab tickets={tickets} showToast={showToast} />}
+      </AccountTabs>
+
+      {/* Toast. Inside a live region, so a screen reader hears it too. */}
+      <div className="av-toast-region" role="status" aria-live="polite">
+        {toast && <div className="av-toast">{toast}</div>}
       </div>
-
-      {/* Tab content */}
-      {tab === 'profile' && <ProfileTab profile={profile} showToast={showToast} onWatchesChanged={onWatchesChanged} />}
-      {tab === 'security' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
-          <SecurityTab profile={profile} showToast={showToast} />
-          <PrivacyCard profile={profile} showToast={showToast} />
-        </div>
-      )}
-      {tab === 'notifications' && (
-        <NotificationPreferencesView persona="consumer" onToast={(m) => showToast(m)} />
-      )}
-      {tab === 'activity' && <ActivityTab log={auditLog} />}
-      {tab === 'household' && <HouseholdTab members={household} currency={profile.currency} showToast={showToast} />}
-      {tab === 'wallet' && <WalletTab />}
-      {tab === 'refunds' && <RefundsTab book={refundBook} onChanged={loadData} showToast={showToast} />}
-      {tab === 'bills' && <BillsTab bills={bills} showToast={showToast} />}
-      {tab === 'support' && <SupportTab tickets={tickets} showToast={showToast} />}
-
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
-          background: 'var(--brand-navy)', color: 'white', padding: '12px 24px',
-          borderRadius: 'var(--radius-lg)', fontSize: 'var(--text-sm)', fontWeight: 600,
-          zIndex: 300, boxShadow: 'var(--shadow-lg)',
-        }}>
-          {toast}
-        </div>
-      )}
-    </div>
+    </AccountPage>
   )
 }
 
@@ -319,9 +283,10 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '24px' }}>
+      {/* Two columns from 1200px, one below (account-view.css). */}
+      <div className="av-grid">
         {/* Profile card */}
-        <Card icon={<User size={18} />} title="Personal details">
+        <BentoCard className="av-card" headingLevel={2} title={<CardTitle icon={<User size={18} />}>Personal details</CardTitle>}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <Field label="Full name" icon={<User size={14} />}>
               <input style={inputStyle} value={name} onChange={(e) => setName(e.target.value)} />
@@ -349,21 +314,20 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
               onClick={save}
               disabled={saving}
               style={{
-                padding: '10px 24px', borderRadius: 'var(--radius)', border: 'none',
-                background: 'var(--brand-accent-dark)', color: 'white', fontWeight: 600,
-                fontSize: 'var(--text-sm)', cursor: saving ? 'not-allowed' : 'pointer',
+                ...btnPrimary,
+                cursor: saving ? 'not-allowed' : 'pointer',
                 alignSelf: 'flex-start',
               }}
             >
               {saving ? 'Saving…' : 'Save changes'}
             </button>
           </div>
-        </Card>
+        </BentoCard>
 
         {/* Preferences — the prototype's three-up grid. Language decides what the
             marketplace writes to this customer in; the marketplace serves India, UAE
             and Kenya, so the options are those regions'. */}
-        <Card icon={<Globe size={18} />} title="Preferences" subtitle="How we talk to you">
+        <BentoCard className="av-card" headingLevel={2} title={<CardTitle icon={<Globe size={18} />}>Preferences</CardTitle>} text="How we talk to you">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <Field label="Preferred language" icon={<Globe size={14} />}>
               <select
@@ -387,7 +351,7 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
               Bills, order updates and support replies follow your language. Changes save straight away.
             </p>
           </div>
-        </Card>
+        </BentoCard>
 
         {/* The MSISDN above this card has been a display string since the
             screen was written. This is the allocation behind it — the SIM it
@@ -401,7 +365,7 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
         <MyReviewsCard showToast={showToast} />
 
         {/* Account summary */}
-        <Card icon={<Star size={18} />} title="Account summary">
+        <BentoCard className="av-card" headingLevel={2} title={<CardTitle icon={<Star size={18} />}>Account summary</CardTitle>}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             <SummaryRow label="Customer ID" value={profile.customer_id} />
             <SummaryRow label="Member since" value={profile.since} />
@@ -411,24 +375,21 @@ function ProfileTab({ profile, showToast, onWatchesChanged }: {
             <SummaryRow label="Reward points" value={rewards ? fmtPts(rewards.balance) : '—'} />
             <SummaryRow label="Payment method" value={profile.payment_method} />
           </div>
-        </Card>
+        </BentoCard>
 
-        {/* Security */}
-      </div>
-
-      {/* Documents.
-          Outside the grid rather than in it: the cards above are two columns of
-          fields, and this is a table with a date, a description and a link. In a
-          320px column it wraps into something nobody would read.
-          It was its own tab, which put a customer's own agreement and mandate a
-          navigation step away from the page about who they are — and the tab
-          strip had grown to ten. It belongs with the details it documents. */}
-      <div style={{ marginTop: '24px' }}>
-        <Card icon={<FolderOpen size={18} />} title="Documents">
+        {/* Documents.
+            Across both columns rather than in one: the cards above are two
+            columns of fields, and this is a table with a date, a description
+            and a link. In a 320px column it wraps into something nobody would
+            read.
+            It was its own tab, which put a customer's own agreement and mandate a
+            navigation step away from the page about who they are — and the tab
+            strip had grown to ten. It belongs with the details it documents. */}
+        <BentoCard className="av-card av-grid__full" headingLevel={2} title={<CardTitle icon={<FolderOpen size={18} />}>Documents</CardTitle>}>
           {/* The customer's own id is the folder their documents are filed
               under, so the viewer has to carry it. */}
           <CustomerDocuments viewer={{ persona: 'consumer', customerId: profile.customer_id } as Viewer} />
-        </Card>
+        </BentoCard>
       </div>
     </>
   )
@@ -470,8 +431,9 @@ function SecurityTab({ profile, showToast }: { profile: ConsumerProfile; showToa
 
   return (
     <>
-        <Card icon={<Shield size={18} />} title="Sign-in & security">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+        {/* A settings list: one row per setting, its action on the right. */}
+        <BentoCard className="av-card" headingLevel={2} title={<CardTitle icon={<Shield size={18} />}>Sign-in & security</CardTitle>}>
+          <ul className="av-settings">
             <SecurityRow
               icon={<KeyRound size={16} />}
               label="Aventa ID"
@@ -525,8 +487,8 @@ function SecurityTab({ profile, showToast }: { profile: ConsumerProfile; showToa
               action="Sign out all"
               onClick={() => setModal('sessions')}
             />
-          </div>
-        </Card>
+          </ul>
+        </BentoCard>
       {modal === 'password' && <PasswordModal profile={profile} onClose={() => setModal(null)} showToast={showToast} />}
       {modal === 'mfa' && <MfaModal profile={profile} onClose={() => setModal(null)} showToast={showToast} />}
       {modal === 'payments' && <PaymentsModal onClose={() => { setModal(null); loadCards() }} showToast={showToast} />}
@@ -535,37 +497,11 @@ function SecurityTab({ profile, showToast }: { profile: ConsumerProfile; showToa
   )
 }
 
-/* ============================ SECURITY MODALS ============================ */
-function Modal({ title, onClose, children, wide }: {
-  title: string; onClose: () => void; children: React.ReactNode; wide?: boolean
-}) {
-  return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 400,
-        display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: 'white', borderRadius: 'var(--radius-lg)', padding: '28px',
-          maxWidth: wide ? '680px' : '480px', width: '100%', maxHeight: '90vh', overflowY: 'auto',
-          boxShadow: 'var(--shadow-lg)',
-        }}
-      >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 800 }}>{title}</h2>
-          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}>
-            <X size={20} />
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  )
-}
+/* ============================ SECURITY MODALS ============================
+   Every window on this screen is the shared Dialog: named as a dialog, labelled
+   by its title, focus kept inside while it is open and handed back to the
+   button that opened it, Escape closes it. The local Modal it replaces did
+   none of those — Tab walked out of it into the page behind. */
 
 function PasswordModal({ profile, onClose, showToast }: { profile: ConsumerProfile; onClose: () => void; showToast: (m: string) => void }) {
   const [cur, setCur] = useState('')
@@ -614,7 +550,7 @@ function PasswordModal({ profile, onClose, showToast }: { profile: ConsumerProfi
   }
 
   return (
-    <Modal title="Change password" onClose={onClose}>
+    <Dialog open title="Change password" onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <Field label="Current password" icon={<Lock size={14} />}>
           <input type="password" style={inputStyle} value={cur} onChange={(e) => setCur(e.target.value)} placeholder="Enter current password" />
@@ -658,7 +594,7 @@ function PasswordModal({ profile, onClose, showToast }: { profile: ConsumerProfi
           </button>
         </div>
       </div>
-    </Modal>
+    </Dialog>
   )
 }
 
@@ -692,7 +628,7 @@ function MfaModal({ profile, onClose, showToast }: { profile: ConsumerProfile; o
   }
 
   return (
-    <Modal title="Two-factor authentication" onClose={onClose}>
+    <Dialog open title="Two-factor authentication" onClose={onClose}>
       {step === 'manage' ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '16px', background: '#DCFCE7', borderRadius: 'var(--radius)' }}>
@@ -735,7 +671,7 @@ function MfaModal({ profile, onClose, showToast }: { profile: ConsumerProfile; o
           </div>
         </div>
       )}
-    </Modal>
+    </Dialog>
   )
 }
 
@@ -784,7 +720,7 @@ function PaymentsModal({ onClose, showToast }: { onClose: () => void; showToast:
   }
 
   return (
-    <Modal title="Payment methods" onClose={onClose}>
+    <Dialog open title="Payment methods" onClose={onClose}>
       {loading ? (
         <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-secondary)' }}>Loading…</div>
       ) : (
@@ -831,7 +767,7 @@ function PaymentsModal({ onClose, showToast }: { onClose: () => void; showToast:
           ) : (
             <button onClick={() => setAdding(true)} style={{
               display: 'inline-flex', alignItems: 'center', gap: '8px', alignSelf: 'flex-start',
-              padding: '10px 20px', borderRadius: 'var(--radius)', border: '1px solid var(--brand-accent)',
+              minHeight: '44px', padding: '10px 20px', borderRadius: 'var(--radius)', border: '1px solid var(--brand-accent-dark)',
               background: 'white', color: 'var(--brand-accent-dark)', fontWeight: 600,
               fontSize: 'var(--text-sm)', cursor: 'pointer',
             }}>
@@ -843,7 +779,7 @@ function PaymentsModal({ onClose, showToast }: { onClose: () => void; showToast:
           </div>
         </div>
       )}
-    </Modal>
+    </Dialog>
   )
 }
 
@@ -867,7 +803,7 @@ function SessionsModal({ profile, onClose, showToast }: { profile: ConsumerProfi
   }
 
   return (
-    <Modal title="Active sessions" onClose={onClose}>
+    <Dialog open title="Active sessions" onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         <div style={{
           display: 'flex', alignItems: 'center', gap: '12px', padding: '16px',
@@ -893,7 +829,7 @@ function SessionsModal({ profile, onClose, showToast }: { profile: ConsumerProfi
           </button>
         </div>
       </div>
-    </Modal>
+    </Dialog>
   )
 }
 
@@ -907,37 +843,37 @@ function SessionsModal({ profile, onClose, showToast }: { profile: ConsumerProfi
 /* ============================== ACTIVITY TAB ============================== */
 function ActivityTab({ log }: { log: ConsumerAuditEntry[] }) {
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <div style={{
-        background: 'var(--bg-alt)', borderRadius: 'var(--radius-lg)', padding: '16px 20px',
-        display: 'flex', gap: '12px', alignItems: 'flex-start',
-      }}>
-        <Info size={20} style={{ color: 'var(--brand-accent-dark)', flexShrink: 0, marginTop: 2 }} />
-        <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+    <div className="av-stack">
+      <div className="av-note">
+        <Info size={20} className="av-note__icon" aria-hidden="true" />
+        <div className="av-note__text">
           <strong>Everything that has happened on this account.</strong> Who bought what, who changed a spend cap, when a password was changed. As the account owner you see all of it; everyone else on the account sees only their own orders. Nothing here can be deleted, including by you — which is the point of it.
         </div>
       </div>
 
-      <Card icon={<History size={18} />} title="Account activity log" subtitle={`${log.length} entries on record`}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-table)', minWidth: 'min-content' }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                <th style={thStyle}>When</th>
-                <th style={thStyle}>What</th>
-                <th style={thStyle}>Category</th>
-                <th style={thStyle}>Detail</th>
+      <BentoCard className="av-card" headingLevel={2} title={<CardTitle icon={<History size={18} />}>Account activity log</CardTitle>} text={`${log.length} entries on record`}>
+        {/* A table on desktop; below 768px each row becomes a stacked card of
+            label/value pairs, the labels coming from data-label
+            (account-view.css). */}
+        <div className="av-table-wrap">
+          <table role="table" className="av-table">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th role="columnheader" scope="col">When</th>
+                <th role="columnheader" scope="col">What</th>
+                <th role="columnheader" scope="col">Category</th>
+                <th role="columnheader" scope="col">Detail</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody role="rowgroup">
               {log.map((e) => (
-                <tr key={e.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                  <td style={{ ...tdStyle, whiteSpace: 'nowrap' }}>{e.when_date}</td>
-                  <td style={tdStyle}>
+                <tr role="row" key={e.id}>
+                  <td role="cell" data-label="When" className="av-nowrap">{e.when_date}</td>
+                  <td role="cell" data-label="What">
                     <div style={{ fontWeight: 600 }}>{e.label}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{e.action}</div>
+                    <div className="av-muted">{e.action}</div>
                   </td>
-                  <td style={tdStyle}>
+                  <td role="cell" data-label="Category">
                     <span style={{
                       padding: '2px 8px', borderRadius: 'var(--radius-full)',
                       fontSize: 'var(--text-xs)', fontWeight: 600,
@@ -946,13 +882,13 @@ function ActivityTab({ log }: { log: ConsumerAuditEntry[] }) {
                       {e.category}
                     </span>
                   </td>
-                  <td style={{ ...tdStyle, color: 'var(--text-secondary)' }}>{e.detail || '—'}</td>
+                  <td role="cell" data-label="Detail" style={{ color: 'var(--text-secondary)' }}>{e.detail || '—'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-      </Card>
+      </BentoCard>
     </div>
   )
 }
@@ -1052,26 +988,23 @@ function HouseholdTab({ members: initialMembers, currency, showToast }: {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <div style={{
-        background: 'var(--bg-alt)', borderRadius: 'var(--radius-lg)', padding: '16px 20px',
-        display: 'flex', gap: '12px', alignItems: 'flex-start',
-      }}>
-        <Users size={20} style={{ color: 'var(--brand-accent-dark)', flexShrink: 0, marginTop: 2 }} />
-        <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+    <div className="av-stack">
+      <div className="av-note">
+        <Users size={20} className="av-note__icon" aria-hidden="true" />
+        <div className="av-note__text">
           Everyone here shares one bill and one basket history, but each person only sees their own orders.
           {' '}
           <strong>{capped.length} {capped.length === 1 ? 'person has' : 'people have'}</strong> a monthly spend cap; anything above it comes to you to approve.
         </div>
       </div>
 
-      <Card icon={<Users size={18} />} title="People on this account" subtitle={`${active.length} active · ${members.length - active.length} invited`}>
+      <BentoCard className="av-card" headingLevel={2} title={<CardTitle icon={<Users size={18} />}>People on this account</CardTitle>} text={`${active.length} active · ${members.length - active.length} invited`}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
           {members.map((m) => (
             <div key={m.id}>
-              <div style={{
-                display: 'flex', gap: '16px', alignItems: 'center',
-                padding: '16px 0',
+              {/* Wraps on a phone: the cap, status and actions drop under the
+                  name rather than squeezing it to one word a line. */}
+              <div className="av-member" style={{
                 borderBottom: editingId === m.id ? 'none' : '1px solid var(--border-light)',
               }}>
                 {/* Avatar */}
@@ -1085,7 +1018,7 @@ function HouseholdTab({ members: initialMembers, currency, showToast }: {
                   {m.name.split(' ').map((w) => w[0]).join('').slice(0, 2)}
                 </div>
 
-                <div style={{ flex: 1 }}>
+                <div className="av-member__who">
                   <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>
                     {m.name}
                     {m.is_you && <span style={{ marginLeft: '8px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>(you)</span>}
@@ -1118,19 +1051,11 @@ function HouseholdTab({ members: initialMembers, currency, showToast }: {
                 )}
 
                 {/* Status */}
-                <span style={{
-                  padding: '4px 10px', borderRadius: 'var(--radius-full)',
-                  fontSize: 'var(--text-xs)', fontWeight: 600,
-                  background: m.status === 'active' ? '#DCFCE7' : '#FEF3C7',
-                  color: m.status === 'active' ? 'var(--success)' : 'var(--warning)',
-                  flexShrink: 0,
-                }}>
-                  {m.status}
-                </span>
+                <StatusBadge tone={statusTone(m.status)}>{m.status}</StatusBadge>
 
                 {/* Actions — not shown for yourself */}
                 {!m.is_you && (
-                  <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', flexShrink: 0 }}>
                     {m.status === 'invited' && (
                       <button onClick={() => resendInvite(m)} style={btnSecondarySmall}>
                         Resend invite
@@ -1144,7 +1069,7 @@ function HouseholdTab({ members: initialMembers, currency, showToast }: {
                     </button>
                     <button
                       onClick={() => removeMember(m)}
-                      style={{ ...btnSecondarySmall, color: 'var(--danger)', borderColor: '#FECACA' }}
+                      style={{ ...btnSecondarySmall, color: 'var(--danger)', borderColor: 'var(--danger)' }}
                     >
                       Remove
                     </button>
@@ -1161,7 +1086,7 @@ function HouseholdTab({ members: initialMembers, currency, showToast }: {
                   display: 'flex', flexDirection: 'column', gap: '14px',
                 }}>
                   <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>Edit {m.name}</div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="av-two">
                     <Field label="Role" icon={<Users size={14} />}>
                       <select style={inputStyle} value={editRole} onChange={(e) => setEditRole(e.target.value)}>
                         {ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
@@ -1195,7 +1120,7 @@ function HouseholdTab({ members: initialMembers, currency, showToast }: {
             onClick={() => setShowAdd(true)}
             style={{
               marginTop: '16px', display: 'inline-flex', alignItems: 'center', gap: '8px',
-              padding: '10px 20px', borderRadius: 'var(--radius)', border: '1px solid var(--brand-accent)',
+              minHeight: '44px', padding: '10px 20px', borderRadius: 'var(--radius)', border: '1px solid var(--brand-accent-dark)',
               background: 'white', color: 'var(--brand-accent-dark)', fontWeight: 600,
               fontSize: 'var(--text-sm)', cursor: 'pointer',
             }}
@@ -1209,7 +1134,7 @@ function HouseholdTab({ members: initialMembers, currency, showToast }: {
             display: 'flex', flexDirection: 'column', gap: '14px',
           }}>
             <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>Invite someone to your account</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div className="av-two">
               <Field label="Full name" icon={<User size={14} />}>
                 <input style={inputStyle} value={addName} onChange={(e) => setAddName(e.target.value)} placeholder="e.g. Ananya Raman" />
               </Field>
@@ -1217,7 +1142,7 @@ function HouseholdTab({ members: initialMembers, currency, showToast }: {
                 <input style={inputStyle} type="email" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} placeholder="e.g. ananya@gmail.com" />
               </Field>
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div className="av-two">
               <Field label="Role" icon={<Users size={14} />}>
                 <select style={inputStyle} value={addRole} onChange={(e) => setAddRole(e.target.value)}>
                   {ROLE_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
@@ -1244,13 +1169,14 @@ function HouseholdTab({ members: initialMembers, currency, showToast }: {
             </div>
           </div>
         )}
-      </Card>
+      </BentoCard>
     </div>
   )
 }
 
 const btnSecondarySmall: React.CSSProperties = {
-  padding: '5px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)',
+  minHeight: '44px',
+  padding: '5px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border-strong)',
   background: 'white', color: 'var(--text-secondary)', fontWeight: 600,
   fontSize: 'var(--text-xs)', cursor: 'pointer',
 }
@@ -1277,8 +1203,8 @@ function RefundsTab({ book, onChanged, showToast }: {
   const waiting = book.refunds.filter((r) => !STATES[r.state].final)
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}>
+    <div className="av-stack">
+      <div className="av-stats">
         <StatBox icon={<RotateCcw size={20} />} label="Money back"
                  value={back.length === 0
                    ? fmtIn(0, book.refunds[0]?.currency ?? 'USD')
@@ -1287,8 +1213,8 @@ function RefundsTab({ book, onChanged, showToast }: {
         <StatBox icon={<Check size={20} />} label="Requests made" value={String(book.refunds.length)} />
       </div>
 
-      <Card icon={<RotateCcw size={18} />} title="Your refunds" subtitle={`${book.refunds.length} on record`}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '8px' }}>
+      <BentoCard className="av-card" headingLevel={2} title={<CardTitle icon={<RotateCcw size={18} />}>Your refunds</CardTitle>} text={`${book.refunds.length} on record`}>
+        <div className="av-card__actions">
           <button onClick={() => setAsking(true)} style={btnPrimary}>Ask for a refund</button>
         </div>
         {book.refunds.length === 0 ? (
@@ -1297,17 +1223,29 @@ function RefundsTab({ book, onChanged, showToast }: {
             whoever sold it has two days to answer.
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+          /* A table on desktop, stacked label/value cards below 768px. */
+          <div className="av-table-wrap">
+            <table role="table" className="av-table">
+              <thead role="rowgroup">
+                <tr role="row">
+                  <th role="columnheader" scope="col">Refund</th>
+                  <th role="columnheader" scope="col" className="av-num">Amount</th>
+                  <th role="columnheader" scope="col">Status</th>
+                </tr>
+              </thead>
+              <tbody role="rowgroup">
             {book.refunds.map((r) => {
               const spec = STATES[r.state]
               const clock = book.policy ? sla(r, book.policy, now) : null
               const own = ownership(r)
+              /* statusTone reads `escalated` as red, which suits a console
+                 alarm. Here it means the marketplace has taken the decision
+                 over and the customer is still waiting, so it stays amber as it
+                 always was. */
+              const tone = r.state === 'escalated' ? 'warning' : statusTone(r.state)
               return (
-                <div key={r.id} style={{
-                  display: 'flex', gap: '16px', alignItems: 'flex-start',
-                  padding: '16px 0', borderBottom: '1px solid var(--border-light)',
-                }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
+                <tr role="row" key={r.id}>
+                  <td role="cell" data-label="Refund" className="av-table__main">
                     <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', marginBottom: '2px' }}>{r.item}</div>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
                       {r.id} · Order {r.order_ref} · {r.seller}
@@ -1337,32 +1275,31 @@ function RefundsTab({ book, onChanged, showToast }: {
                         Taken over by the marketplace: {r.escalated_why}
                       </div>
                     )}
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontWeight: 800, fontSize: 'var(--text-lg)', marginBottom: '4px' }}>
+                  </td>
+                  <td role="cell" data-label="Amount" className="av-num">
+                    <div style={{ fontWeight: 800, fontSize: 'var(--text-lg)' }}>
                       {fmtIn(Number(r.refunded ?? r.amount), r.currency)}
                     </div>
                     {r.state === 'partial' && (
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
                         of {fmtIn(Number(r.amount), r.currency)} asked for
                       </div>
                     )}
-                    <span style={{
-                      padding: '4px 10px', borderRadius: 'var(--radius-full)',
-                      fontSize: 'var(--text-xs)', fontWeight: 600,
-                      background: spec.final ? (r.state === 'declined' ? '#FEE2E2' : '#DCFCE7') : '#FEF3C7',
-                      color: spec.final ? (r.state === 'declined' ? 'var(--danger)' : 'var(--success)') : 'var(--warning)',
-                    }}>{spec.label}</span>
-                  </div>
-                </div>
+                  </td>
+                  <td role="cell" data-label="Status">
+                    <StatusBadge tone={tone}>{spec.label}</StatusBadge>
+                  </td>
+                </tr>
               )
             })}
+              </tbody>
+            </table>
           </div>
         )}
-      </Card>
+      </BentoCard>
 
       {book.policy && (
-        <Card icon={<Clock size={18} />} title="What you are entitled to" subtitle="The rules everybody here plays by">
+        <BentoCard className="av-card" headingLevel={2} title={<CardTitle icon={<Clock size={18} />}>What you are entitled to</CardTitle>} text="The rules everybody here plays by">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
             <div>{book.policy.escalation_rule}</div>
             <div>{book.policy.store_credit}</div>
@@ -1372,7 +1309,7 @@ function RefundsTab({ book, onChanged, showToast }: {
               </div>
             )}
           </div>
-        </Card>
+        </BentoCard>
       )}
 
       {asking && book.policy && (
@@ -1452,7 +1389,7 @@ function AskForRefund({ policy, thresholds, onClose, onDone, showToast }: {
     : null
 
   return (
-    <Modal title="Ask for a refund" onClose={onClose}>
+    <Dialog open title="Ask for a refund" onClose={onClose}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
         {orders === null ? (
           <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>Loading your orders…</div>
@@ -1547,7 +1484,7 @@ function AskForRefund({ policy, thresholds, onClose, onDone, showToast }: {
           </>
         )}
       </div>
-    </Modal>
+    </Dialog>
   )
 }
 
@@ -1633,56 +1570,50 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}>
+    <div className="av-stack">
+      <div className="av-stats">
         <StatBox icon={<FileText size={20} />} label="Outstanding" value={due} />
         <StatBox icon={<Clock size={20} />} label="Open bills" value={String(openBills.length)} />
         <StatBox icon={<Check size={20} />} label="Paid (last 6 mo)" value={paid} />
       </div>
 
-      <Card icon={<FileText size={18} />} title="Bill history" subtitle={`${bills.length} bills on record`}>
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--text-table)', minWidth: 'min-content' }}>
-            <thead>
-              <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                <th style={thStyle}>Bill ID</th>
-                <th style={thStyle}>Period</th>
-                <th style={thStyle}>Issued</th>
-                <th style={thStyle}>Due</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>Total</th>
-                <th style={thStyle}>Status</th>
-                <th style={{ ...thStyle, textAlign: 'right' }}>Bill</th>
+      <BentoCard className="av-card" headingLevel={2} title={<CardTitle icon={<FileText size={18} />}>Bill history</CardTitle>} text={`${bills.length} bills on record`}>
+        {/* A table on desktop, stacked label/value cards below 768px. */}
+        <div className="av-table-wrap">
+          <table role="table" className="av-table">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th role="columnheader" scope="col">Bill ID</th>
+                <th role="columnheader" scope="col">Period</th>
+                <th role="columnheader" scope="col">Issued</th>
+                <th role="columnheader" scope="col">Due</th>
+                <th role="columnheader" scope="col" className="av-num">Total</th>
+                <th role="columnheader" scope="col">Status</th>
+                <th role="columnheader" scope="col" className="av-num">Bill</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody role="rowgroup">
               {billsPage.rows.map((b) => (
-                <tr key={b.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                  <td style={tdStyle}>{b.id}</td>
-                  <td style={tdStyle}>{b.period}</td>
-                  <td style={tdStyle}>{b.issued}</td>
-                  <td style={tdStyle}>{b.due}</td>
-                  <td style={{ ...tdStyle, textAlign: 'right', fontWeight: 700 }}>{billMoney(b)}</td>
-                  <td style={tdStyle}>
-                    <span style={{
-                      padding: '3px 10px', borderRadius: 'var(--radius-full)',
-                      fontSize: 'var(--text-xs)', fontWeight: 600,
-                      background: b.status === 'paid' ? '#DCFCE7' : '#FEF3C7',
-                      color: b.status === 'paid' ? 'var(--success)' : 'var(--warning)',
-                    }}>
-                      {b.status}
-                    </span>
+                <tr role="row" key={b.id}>
+                  <td role="cell" data-label="Bill ID">{b.id}</td>
+                  <td role="cell" data-label="Period">{b.period}</td>
+                  <td role="cell" data-label="Issued">{b.issued}</td>
+                  <td role="cell" data-label="Due">{b.due}</td>
+                  <td role="cell" data-label="Total" className="av-num" style={{ fontWeight: 700 }}>{billMoney(b)}</td>
+                  <td role="cell" data-label="Status">
+                    <StatusBadge tone={statusTone(b.status)}>{b.status}</StatusBadge>
                   </td>
-                  <td style={{ ...tdStyle, textAlign: 'right' }}>
-                    <div style={{ display: 'inline-flex', gap: '6px' }}>
-                      <button onClick={() => setViewing(b)} disabled={!book} style={{
+                  <td role="cell" data-label="Bill" className="av-num">
+                    <div style={{ display: 'inline-flex', flexWrap: 'wrap', gap: '6px' }}>
+                      <button onClick={() => setViewing(b)} disabled={!book} aria-label={`View bill ${b.id}`} style={{
                         ...billBtn, opacity: book ? 1 : 0.5,
                       }}>
-                        <Eye size={12} /> View
+                        <Eye size={12} aria-hidden="true" /> View
                       </button>
-                      <button onClick={() => downloadBill(b)} disabled={!book} style={{
+                      <button onClick={() => downloadBill(b)} disabled={!book} aria-label={`PDF of bill ${b.id}`} style={{
                         ...billBtn, opacity: book ? 1 : 0.5,
                       }}>
-                        <Download size={12} /> PDF
+                        <Download size={12} aria-hidden="true" /> PDF
                       </button>
                     </div>
                   </td>
@@ -1691,14 +1622,14 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
             </tbody>
           </table>
         </div>
-        <Pager page={billsPage} noun="bills" />
+        <div className="av-pager"><Pager page={billsPage} noun="bills" /></div>
         <div style={{ marginTop: '16px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
           Your bill includes your Aventa mobile plan, all subscriptions, and any one-off purchases made during the billing period. The total shown is what was charged to your mobile account.
         </div>
-      </Card>
+      </BentoCard>
 
       {viewing && book && template && (
-        <Modal title={`${template.doc_title} — ${viewing.period}`} onClose={() => setViewing(null)} wide>
+        <Dialog open title={`${template.doc_title} — ${viewing.period}`} onClose={() => setViewing(null)} wide>
           <BillDocument template={template} ids={ids} facts={factsFor(viewing, book)}
             sections={book.sections} clearance={stamp ?? undefined} />
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '20px' }}>
@@ -1708,16 +1639,17 @@ function BillsTab({ bills, showToast }: { bills: ConsumerBill[]; showToast: (m: 
               <Download size={12} /> Download PDF
             </button>
           </div>
-        </Modal>
+        </Dialog>
       )}
     </div>
   )
 }
 
 const billBtn: React.CSSProperties = {
-  display: 'inline-flex', alignItems: 'center', gap: '4px',
-  padding: '4px 10px', borderRadius: 'var(--radius)',
-  border: '1px solid var(--border)', background: 'white',
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
+  minHeight: '44px',
+  padding: '4px 12px', borderRadius: 'var(--radius)',
+  border: '1px solid var(--border-strong)', background: 'white',
   color: 'var(--text-secondary)', fontWeight: 600,
   fontSize: 'var(--text-xs)', cursor: 'pointer',
 }
@@ -1801,20 +1733,20 @@ function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerT
   const resolvedCount = tickets.filter((t) => t.status === 'closed').length
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}>
+    <div className="av-stack">
+      <div className="av-stats">
         <StatBox icon={<LifeBuoy size={20} />} label="Open tickets" value={String(openCount)} />
         <StatBox icon={<Check size={20} />} label="Waiting on you" value={String(awaitingCount)} />
         <StatBox icon={<Check size={20} />} label="Closed" value={String(resolvedCount)} />
         <StatBox icon={<MessageSquare size={20} />} label="Total" value={String(tickets.length)} />
       </div>
 
-      <Card icon={<LifeBuoy size={18} />} title="Help & Support" subtitle="Track your support requests and raise a new one">
+      <BentoCard className="av-card" headingLevel={2} title={<CardTitle icon={<LifeBuoy size={18} />}>Help & Support</CardTitle>} text="Track your support requests and raise a new one">
         {!showNew ? (
           <button onClick={() => setShowNew(true)} style={{
             display: 'inline-flex', alignItems: 'center', gap: '8px',
-            padding: '10px 20px', borderRadius: 'var(--radius)',
-            border: '1px solid var(--brand-accent)', background: 'white',
+            minHeight: '44px', padding: '10px 20px', borderRadius: 'var(--radius)',
+            border: '1px solid var(--brand-accent-dark)', background: 'white',
             color: 'var(--brand-accent-dark)', fontWeight: 600,
             fontSize: 'var(--text-sm)', cursor: 'pointer', marginBottom: '16px',
           }}>
@@ -1830,7 +1762,7 @@ function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerT
             <Field label="Subject" icon={<MessageSquare size={14} />}>
               <input style={inputStyle} value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Briefly describe the issue" />
             </Field>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div className="av-two">
               <Field label="Category" icon={<Info size={14} />}>
                 <select style={inputStyle} value={category} onChange={(e) => setCategory(e.target.value)}>
                   <option>General</option><option>Delivery</option><option>Product</option>
@@ -1871,48 +1803,50 @@ function SupportTab({ tickets: initialTickets, showToast }: { tickets: ConsumerT
           </div>
         )}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
-          {ticketsPage.rows.map((t) => (
-            <div key={t.id} style={{
-              display: 'flex', gap: '12px', alignItems: 'center',
-              padding: '14px 0', borderBottom: '1px solid var(--border-light)',
-              cursor: 'pointer',
-            }} onClick={() => setSelectedTicket(t)}>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{t.subject}</div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                  {t.id} · {t.category} · opened {openedOn(t)} · {t.channel}
-                </div>
-                {t.owner && (
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                    Owner: {t.owner}
-                  </div>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                <span style={{
-                  padding: '2px 8px', borderRadius: 'var(--radius-full)',
-                  fontSize: 'var(--text-xs)', fontWeight: 600,
-                  background: t.severity === 'P1' ? '#FEE2E2' : t.severity === 'P2' ? '#FEF3C7' : 'var(--bg-alt)',
-                  color: t.severity === 'P1' ? 'var(--danger)' : t.severity === 'P2' ? 'var(--warning)' : 'var(--text-secondary)',
-                }}>
-                  {t.severity}
-                </span>
-                <span style={{
-                  padding: '3px 10px', borderRadius: 'var(--radius-full)',
-                  fontSize: 'var(--text-xs)', fontWeight: 600,
-                  background: t.status === 'closed' ? '#DCFCE7' : t.status === 'resolved' ? '#FEF9C3' : t.status === 'inprogress' ? '#E0E7FF' : '#FEF3C7',
-                  color: t.status === 'closed' ? 'var(--success)' : t.status === 'resolved' ? '#A16207' : t.status === 'inprogress' ? '#4338CA' : 'var(--warning)',
-                }}>
-                  {t.status === 'resolved' ? 'confirm?' : t.status}
-                </span>
-                <ChevronRight size={16} style={{ color: 'var(--text-tertiary)' }} />
-              </div>
-            </div>
-          ))}
+        {/* A table on desktop, stacked label/value cards below 768px. The
+            subject is a real button, so a ticket opens from the keyboard too —
+            the row used to be a clickable div that Tab never reached. A click
+            anywhere on the row still opens it. */}
+        <div className="av-table-wrap">
+          <table role="table" className="av-table av-table--clickable">
+            <thead role="rowgroup">
+              <tr role="row">
+                <th role="columnheader" scope="col">Ticket</th>
+                <th role="columnheader" scope="col">Priority</th>
+                <th role="columnheader" scope="col">Status</th>
+              </tr>
+            </thead>
+            <tbody role="rowgroup">
+              {ticketsPage.rows.map((t) => (
+                <tr role="row" key={t.id} onClick={() => setSelectedTicket(t)}>
+                  <td role="cell" data-label="Ticket" className="av-table__main">
+                    <button type="button" className="av-linkbtn"
+                      onClick={(e) => { e.stopPropagation(); setSelectedTicket(t) }}>
+                      <span>{t.subject}</span>
+                      <ChevronRight size={16} aria-hidden="true" />
+                    </button>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                      {t.id} · {t.category} · opened {openedOn(t)} · {t.channel}
+                    </div>
+                    {t.owner && (
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                        Owner: {t.owner}
+                      </div>
+                    )}
+                  </td>
+                  <td role="cell" data-label="Priority">
+                    <StatusBadge tone={statusTone(t.severity)} icon={null}>{t.severity}</StatusBadge>
+                  </td>
+                  <td role="cell" data-label="Status">
+                    <TicketStatus status={t.status} resolvedLabel="confirm?" />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        <Pager page={ticketsPage} noun="tickets" />
-      </Card>
+        <div className="av-pager"><Pager page={ticketsPage} noun="tickets" /></div>
+      </BentoCard>
 
       {selectedTicket && (
         <TicketDetailModal ticket={selectedTicket} onClose={() => setSelectedTicket(null)} showToast={showToast} />
@@ -1972,39 +1906,14 @@ function TicketDetailModal({ ticket, onClose, showToast }: { ticket: ConsumerTic
       : `If we do not hear from you by ${new Date(due).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })} it closes on its own, counted as unanswered rather than as agreed.`
 
   return (
-    <div onClick={onClose} style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 400,
-      display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '16px',
-    }}>
-      <div onClick={(e) => e.stopPropagation()} style={{
-        background: 'white', borderRadius: 'var(--radius-lg)', padding: '28px',
-        maxWidth: '560px', width: '100%', maxHeight: '90vh', overflowY: 'auto',
-        boxShadow: 'var(--shadow-lg)',
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <div>
-            <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 800 }}>{ticket.id}</h2>
-            <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>{ticket.subject}</div>
-          </div>
-          <button onClick={onClose} style={{ border: 'none', background: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}>
-            <X size={20} />
-          </button>
-        </div>
-
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '20px' }}>
-          <span style={{
-            padding: '3px 10px', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 600,
-            background: ticket.status === 'closed' ? '#DCFCE7' : ticket.status === 'resolved' ? '#FEF9C3' : ticket.status === 'inprogress' ? '#E0E7FF' : '#FEF3C7',
-            color: ticket.status === 'closed' ? 'var(--success)' : ticket.status === 'resolved' ? '#A16207' : ticket.status === 'inprogress' ? '#4338CA' : 'var(--warning)',
-          }}>{ticket.status === 'resolved' ? 'waiting on you' : ticket.status}</span>
-          <span style={{
-            padding: '3px 10px', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 600,
-            background: 'var(--bg-alt)', color: 'var(--text-secondary)',
-          }}>{ticket.severity}</span>
-          <span style={{
-            padding: '3px 10px', borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 600,
-            background: 'var(--bg-alt)', color: 'var(--text-secondary)',
-          }}>{ticket.category}</span>
+    /* The subject is part of the title, so the dialog is announced as the
+       ticket it is rather than as a bare reference number. */
+    <Dialog open onClose={onClose}
+      title={<>{ticket.id}<span className="av-dialog-sub">{ticket.subject}</span></>}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginBottom: '20px' }}>
+          <TicketStatus status={ticket.status} resolvedLabel="waiting on you" />
+          <StatusBadge tone={statusTone(ticket.severity)} icon={null}>{ticket.severity}</StatusBadge>
+          <StatusBadge tone="neutral">{ticket.category}</StatusBadge>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
@@ -2058,6 +1967,7 @@ function TicketDetailModal({ ticket, onClose, showToast }: { ticket: ConsumerTic
                   style={{ ...inputStyle, minHeight: '60px', resize: 'vertical', marginBottom: '12px' }}
                   value={reply} onChange={(e) => setReply(e.target.value)}
                   placeholder="What is still wrong? This goes back to the desk with the ticket."
+                  aria-label="What is still wrong"
                 />
                 <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
                   <button onClick={() => setSaying(false)} style={btnSecondary}>Cancel</button>
@@ -2096,6 +2006,7 @@ function TicketDetailModal({ ticket, onClose, showToast }: { ticket: ConsumerTic
               style={{ ...inputStyle, minHeight: '60px', resize: 'vertical', marginBottom: '12px' }}
               value={reply} onChange={(e) => setReply(e.target.value)}
               placeholder="Type a reply…"
+              aria-label="Your reply"
             />
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <button onClick={sendReply} disabled={sending || !reply.trim()} style={btnPrimary}>
@@ -2105,69 +2016,73 @@ function TicketDetailModal({ ticket, onClose, showToast }: { ticket: ConsumerTic
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </Dialog>
   )
 }
 
+/* A ticket's status as a badge. `resolved` is the desk's answer waiting on
+   this customer, not a finished ticket, so it is shown in the info tone with
+   the screen's own words for it rather than statusTone's success. */
+function TicketStatus({ status, resolvedLabel }: { status: string; resolvedLabel: string }) {
+  if (status === 'resolved') return <StatusBadge tone="info">{resolvedLabel}</StatusBadge>
+  // Escalated is still open with the desk, so it stays amber as it was, not statusTone's red.
+  if (status === 'escalated') return <StatusBadge tone="warning">{status}</StatusBadge>
+  return <StatusBadge tone={statusTone(status)}>{status}</StatusBadge>
+}
+
 /* ============================== SHARED UI ============================== */
+/* Controls are 44px tall and edged in --border-strong (3:1 against white, WCAG
+   1.4.11). The inputs no longer set `outline: none`: inline, it beat the global
+   :focus-visible ring, so a keyboard user could not see which field they were
+   in. */
 const inputStyle: React.CSSProperties = {
   width: '100%',
+  minHeight: '44px',
   padding: '10px 14px',
   borderRadius: 'var(--radius)',
-  border: '1px solid var(--border)',
+  border: '1px solid var(--border-strong)',
+  background: 'white',
   fontSize: 'var(--text-sm)',
-  outline: 'none',
   transition: 'border-color 200ms ease',
 }
 
 const btnPrimary: React.CSSProperties = {
+  minHeight: '44px',
   padding: '10px 24px', borderRadius: 'var(--radius)', border: 'none',
   background: 'var(--brand-accent-dark)', color: 'white', fontWeight: 600,
   fontSize: 'var(--text-sm)', cursor: 'pointer',
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
 }
 
 const btnSecondary: React.CSSProperties = {
-  padding: '10px 24px', borderRadius: 'var(--radius)', border: '1px solid var(--border)',
+  minHeight: '44px',
+  padding: '10px 24px', borderRadius: 'var(--radius)', border: '1px solid var(--border-strong)',
   background: 'white', color: 'var(--text-secondary)', fontWeight: 600,
   fontSize: 'var(--text-sm)', cursor: 'pointer',
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
 }
 
 const btnSmall: React.CSSProperties = {
-  padding: '6px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border)',
+  minHeight: '44px', minWidth: '44px',
+  padding: '6px 12px', borderRadius: 'var(--radius)', border: '1px solid var(--border-strong)',
   background: 'white', color: 'var(--text-secondary)', fontWeight: 600,
   fontSize: 'var(--text-xs)', cursor: 'pointer',
-  display: 'inline-flex', alignItems: 'center', gap: '4px',
+  display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '4px',
 }
 
-const thStyle: React.CSSProperties = {
-  textAlign: 'left',
-  padding: '10px 12px',
-  fontWeight: 600,
-  fontSize: 'var(--text-xs)',
-  color: 'var(--text-tertiary)',
-}
+/* Table header and cell styles live in account-view.css (.av-table) now, so
+   the same cells can turn into stacked label/value rows on a phone. */
 
-const tdStyle: React.CSSProperties = {
-  padding: '10px 12px',
-}
-
-function Card({ icon, title, subtitle, children }: { icon: React.ReactNode; title: string; subtitle?: string; children: React.ReactNode }) {
+/* A card title with its icon beside it. The cards themselves are the shared
+   BentoCard (an h2, since they sit directly under the page's h1); this is only
+   what goes inside the heading. The icon is decorative — the words name the
+   card. */
+function CardTitle({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
   return (
-    <div style={{
-      background: 'white',
-      border: '1px solid var(--border)',
-      borderRadius: 'var(--radius-lg)',
-      padding: '24px',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-        <span style={{ color: 'var(--brand-accent-dark)' }}>{icon}</span>
-        <h2 style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>{title}</h2>
-      </div>
-      {subtitle && <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '20px' }}>{subtitle}</p>}
-      {!subtitle && <div style={{ marginBottom: '20px' }} />}
-      {children}
-    </div>
+    <>
+      <span className="av-card__icon" aria-hidden="true">{icon}</span>
+      <span>{children}</span>
+    </>
   )
 }
 
@@ -2206,42 +2121,34 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
  * the question of what pressing it would have done.
  */
 function SecurityRow({ icon, label, value, action, positive, onClick }: { icon: React.ReactNode; label: string; value: string; action?: string | null; positive?: boolean; onClick?: () => void }) {
+  /* One row of the settings list. The action sits on the right at 44px and
+     drops below the text on a phone (account-view.css); its hover is CSS now
+     rather than two mouse handlers, so it also shows on keyboard focus. */
   return (
-    <div style={{
-      display: 'flex', gap: '12px', alignItems: 'center',
-      padding: '10px 0', borderBottom: '1px solid var(--border-light)',
-    }}>
-      <span style={{ color: positive ? 'var(--success)' : 'var(--text-tertiary)' }}>{icon}</span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{label}</div>
-        <div style={{ fontSize: 'var(--text-xs)', color: positive ? 'var(--success)' : 'var(--text-tertiary)', lineHeight: 1.5 }}>{value}</div>
+    <li className={positive ? 'av-setting av-setting--positive' : 'av-setting'}>
+      <span className="av-setting__icon" aria-hidden="true">{icon}</span>
+      <div className="av-setting__text">
+        <div className="av-setting__label">{label}</div>
+        <div className="av-setting__value">{value}</div>
       </div>
-      {action && <button onClick={onClick} style={{
-        padding: '6px 14px', borderRadius: 'var(--radius)', border: '1px solid var(--border)',
-        background: 'white', color: 'var(--text-secondary)', fontWeight: 600,
-        fontSize: 'var(--text-xs)', cursor: onClick ? 'pointer' : 'default',
-        transition: 'background 150ms ease',
-      }}
-      onMouseEnter={(e) => { if (onClick) e.currentTarget.style.background = 'var(--bg-alt)' }}
-      onMouseLeave={(e) => { if (onClick) e.currentTarget.style.background = 'white' }}
-      >
+      {action && <button type="button" className="av-btn av-btn--secondary av-setting__action" onClick={onClick}
+        aria-label={`${action}: ${label}`}>
         {action}
       </button>}
-    </div>
+    </li>
   )
 }
 
 function StatBox({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div style={{
-      background: 'white', border: '1px solid var(--border)',
-      borderRadius: 'var(--radius-lg)', padding: '20px',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px', color: 'var(--brand-accent-dark)' }}>
-        {icon}
-        <span style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-tertiary)' }}>{label}</span>
+    /* A white card like the others on the page (account-view.css), so the
+       figures sit on the same surface as the table they summarise. */
+    <div className="av-stat">
+      <div className="av-stat__head">
+        <span className="av-stat__icon" aria-hidden="true">{icon}</span>
+        <span className="av-stat__label">{label}</span>
       </div>
-      <div style={{ fontSize: 'var(--text-2xl)', fontWeight: 800 }}>{value}</div>
+      <div className="av-stat__value">{value}</div>
     </div>
   )
 }
