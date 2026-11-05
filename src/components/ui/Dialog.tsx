@@ -66,7 +66,10 @@ export function Dialog({ open, onClose, title, children, footer, wide, labelId, 
       {/* tabIndex -1: a click on plain text inside focuses the panel rather
           than dropping focus to <body>, so the trap and Escape keep working. */}
       <div ref={panel} className={cls} role="dialog" aria-modal="true" aria-labelledby={titleId}
-        tabIndex={-1}>
+        tabIndex={-1}
+        /* Kept from the old modals: a click inside must not reach a clickable
+           ancestor (a row or card) the dialog happens to be rendered in. */
+        onClick={(e) => e.stopPropagation()}>
         <div className="ui-dialog__head">
           <h2 id={titleId} className="ui-dialog__title">{title}</h2>
           <button type="button" className="ui-dialog__close" onClick={onClose} aria-label="Close">

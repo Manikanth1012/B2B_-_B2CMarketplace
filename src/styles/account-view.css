@@ -175,7 +175,7 @@
 .av-loading { padding: 64px 0; text-align: center; font-size: var(--text-lg); color: var(--text-secondary); }
 .av-toast-region {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-  z-index: 300; width: max-content; max-width: calc(100vw - 32px);
+  z-index: 1100; width: max-content; /* above an open Dialog (1000), as on Orders and Rewards */ max-width: calc(100vw - 32px);
 }
 .av-toast {
   background: var(--brand-navy); color: #fff; padding: 12px 24px;
@@ -191,4 +191,6 @@
    EvidenceLink's View/Download, the notification wording toggles — were 19–23px
    tall. Every button on an account page gets the 44px floor; buttons centre
    their own content, so the label stays where it was. */
-.acct-page button { min-height: 44px; }
+/* The notification on/off switch is a 44×24 pill drawn by its own size; the
+   floor would square it off (it meets the 24px AA minimum on its own). */
+.acct-page button:not(.np-switch) { min-height: 44px; }

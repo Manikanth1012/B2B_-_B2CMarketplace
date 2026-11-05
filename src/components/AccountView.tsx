@@ -1241,8 +1241,9 @@ function RefundsTab({ book, onChanged, showToast }: {
               /* statusTone reads `escalated` as red, which suits a console
                  alarm. Here it means the marketplace has taken the decision
                  over and the customer is still waiting, so it stays amber as it
-                 always was. */
-              const tone = r.state === 'escalated' ? 'warning' : statusTone(r.state)
+                 always was. `approved` stays amber too: it is still waiting on
+                 the payment run, and green would say the wait is over. */
+              const tone = r.state === 'escalated' || r.state === 'approved' ? 'warning' : statusTone(r.state)
               return (
                 <tr role="row" key={r.id}>
                   <td role="cell" data-label="Refund" className="av-table__main">

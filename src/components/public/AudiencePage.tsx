@@ -104,7 +104,7 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
     Promise.all([loadCatalogue(), loadPriceBookResult(currencyCode), loadCopyBookResult(), loadCategories()])
       .then(([rows, book, copy, cats]) => {
         if (!live) return
-        setPriceError(!book.ok || !copy.ok)
+        setPriceError(!book.ok) /* copy only adds per-market wording; repriceAll falls back without it */
         setCatalogue(repriceAll(rows, book.ok ? book.value : new Map(), currencyCode, copy.ok ? copy.value : undefined))
         setCategories(cats)
         setLoaded(true)

@@ -66,7 +66,7 @@
    sticky column on the left with the panel beside it. */
 .acct-tabs { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .acct-tabs__list {
-  display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 6px;
+  display: flex; gap: 8px; overflow-x: auto; padding: 4px 4px 6px; /* room for the 2px focus ring at 2px offset */
   scrollbar-width: thin; -webkit-overflow-scrolling: touch;
 }
 .acct-tabs__tab {

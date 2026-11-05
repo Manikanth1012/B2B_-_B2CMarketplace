@@ -84,7 +84,7 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
        card below just prints the price it was handed. */
     setPriceError(false)
     Promise.all([query, loadPriceBookResult(currencyCode), loadCopyBookResult()]).then(([{ data }, book, copy]) => {
-      setPriceError(!book.ok || !copy.ok)
+      setPriceError(!book.ok) /* copy only adds per-market wording; repriceAll falls back without it */
       if (data) setProducts(repriceAll(data as Product[], book.ok ? book.value : new Map(), currencyCode, copy.ok ? copy.value : undefined))
       setLoading(false)
     })

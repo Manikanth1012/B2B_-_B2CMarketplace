@@ -257,6 +257,7 @@ function RuleRow({ entry, busy, sample, onEnabled, onKind, onReset }: {
         </div>
 
         <button
+          className="np-switch"
           onClick={() => onEnabled(!entry.enabled)}
           disabled={busy || rule.mandatory}
           aria-label={`Turn ${rule.name} ${entry.enabled ? 'off' : 'on'}`}

@@ -18,7 +18,7 @@ import type { MissingField } from '../../lib/requisitionBasket'
 import { raiseRequisition, loadAccount } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
 import { useMarket } from '../../lib/MarketContext'
-import { useFocusTrap } from '../ui/useFocusTrap'
+import { useFocusTrap, isTopmostTrap } from '../ui/useFocusTrap'
 import { VERTICAL_NAMES } from './data'
 import { getProductImage } from '../../lib/images'
 import { round2 } from '../../lib/money'
@@ -71,8 +71,6 @@ export function RequisitionPanel({ onRaised }: {
      modal dialog, so leaving focus on a control that has just been unmounted
      would drop a keyboard user at the top of the page. */
   const drawer = useRef<HTMLDivElement>(null)
-  /* Tab stays inside the drawer while it is open. */
-  useFocusTrap(drawer, open)
   useEffect(() => {
     if (!open) return
     /* Taken before the drawer moves focus. A click that did not focus its
@@ -83,10 +81,15 @@ export function RequisitionPanel({ onRaised }: {
       ? active
       : document.querySelector<HTMLElement>('[data-requisition-opener]')
     drawer.current?.focus()
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && isTopmostTrap(drawer.current)) setOpen(false) }
     document.addEventListener('keydown', onKey)
     return () => { document.removeEventListener('keydown', onKey); opener?.focus() }
   }, [open, setOpen])
+  /* Tab stays inside the drawer while it is open. Called after the effect above
+     on purpose: effects run in order, so the opener is recorded before the trap
+     moves focus into the drawer, and on close this effect's cleanup hands focus
+     back before the trap's runs. */
+  useFocusTrap(drawer, open)
 
   if (!open) return null
 
