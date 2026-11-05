@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs'
 import { describe, it, expect } from 'vitest'
 import {
+  type Action,
   routeTo, canTransition, isExpired, enquiryState, waitingOn, nextActions, quoteTotals,
   validUntilProblem, slotProblems, demoOffered, toRequisitionLines,
   type Enquiry, type EnquiryLine, type EnquiryStatus, type EnquiryType, type Role,
@@ -67,7 +69,7 @@ describe('canTransition', () => {
     expect(t('demo', 'requested', 'withdrawn', 'buyer')).toBe(true)
     expect(t('demo', 'scheduled', 'withdrawn', 'buyer')).toBe(true)
     expect(t('demo', 'scheduled', 'done', 'responder')).toBe(true)
-    expect(t('demo', 'requested', 'scheduled', 'buyer')).toBe(false)
+    expect(t('demo', 'requested', 'scheduled', 'buyer')).toBe(true) // buyer confirms the seller's slot
     expect(t('demo', 'scheduled', 'done', 'buyer')).toBe(false)
     expect(t('demo', 'requested', 'done', 'responder')).toBe(false)
     expect(t('demo', 'requested', 'withdrawn', 'responder')).toBe(false)
@@ -157,13 +159,50 @@ describe('nextActions', () => {
   it('demo and sales actions', () => {
     const req = enq({ type: 'demo', status: 'requested' })
     expect(nextActions(req, 'responder', TODAY)).toEqual(['confirm-slot', 'propose-slot', 'decline', 'reply'])
-    expect(nextActions(req, 'buyer', TODAY)).toEqual(['withdraw', 'reply'])
+    expect(nextActions(req, 'buyer', TODAY)).toEqual(['propose-slot', 'withdraw', 'reply'])
     const sch = enq({ type: 'demo', status: 'scheduled' })
     expect(nextActions(sch, 'responder', TODAY)).toEqual(['mark-done', 'decline', 'reply'])
-    expect(nextActions(sch, 'buyer', TODAY)).toEqual(['withdraw', 'reply'])
+    expect(nextActions(sch, 'buyer', TODAY)).toEqual(['propose-slot', 'withdraw', 'reply'])
     const open = enq({ type: 'sales', status: 'open', partner_id: null })
     expect(nextActions(open, 'buyer', TODAY)).toEqual(['reply', 'close'])
     expect(nextActions(open, 'responder', TODAY)).toEqual(['reply', 'close'])
+  })
+  it('buyer confirms a slot the responder proposed, only while requested', () => {
+    const req = enq({ type: 'demo', status: 'requested' })
+    const slot = (proposed_by: 'buyer' | 'responder', confirmed = false) => ({ proposed_by, confirmed, starts_at: '2026-11-20T09:00:00Z' })
+    expect(nextActions(req, 'buyer', TODAY, { slots: [slot('buyer'), slot('responder')] })).toEqual(['confirm-slot', 'propose-slot', 'withdraw', 'reply'])
+    expect(nextActions(req, 'buyer', TODAY, { slots: [slot('responder'), slot('buyer')] })).not.toContain('confirm-slot')
+    expect(nextActions(req, 'buyer', TODAY, { slots: [slot('responder', true)] })).not.toContain('confirm-slot')
+    expect(nextActions(enq({ type: 'demo', status: 'scheduled' }), 'buyer', TODAY, { slots: [slot('responder')] })).not.toContain('confirm-slot')
+    expect(canTransition('demo', 'requested', 'scheduled', 'buyer')).toBe(true)
+    expect(canTransition('demo', 'scheduled', 'done', 'buyer')).toBe(false)
+  })
+  it('operator on a desk demo or sales enquiry acts as responder plus reassign', () => {
+    expect(nextActions(enq({ type: 'demo', status: 'requested', partner_id: null }), 'operator', TODAY, { isDesk: true }))
+      .toEqual(['confirm-slot', 'propose-slot', 'decline', 'reply', 'reassign'])
+    expect(nextActions(enq({ type: 'sales', status: 'open', partner_id: null }), 'operator', TODAY, { isDesk: true }))
+      .toEqual(['reply', 'close', 'reassign'])
+  })
+  it('every status-changing action is permitted by canTransition', () => {
+    const target: Partial<Record<Action, EnquiryStatus>> = {
+      quote: 'quoted', requote: 'quoted', accept: 'accepted', decline: 'declined', withdraw: 'withdrawn',
+      'confirm-slot': 'scheduled', 'mark-done': 'done', close: 'closed',
+    }
+    const statuses: Record<EnquiryType, EnquiryStatus[]> = {
+      quote: ['submitted', 'quoted', 'accepted', 'declined', 'withdrawn'],
+      demo: ['requested', 'scheduled', 'done', 'declined', 'withdrawn'],
+      sales: ['open', 'answered', 'closed'],
+    }
+    const slots = [{ proposed_by: 'responder' as const, confirmed: false, starts_at: '2026-11-20T09:00:00Z' }]
+    for (const type of Object.keys(statuses) as EnquiryType[]) for (const status of statuses[type]) {
+      for (const valid_until of ['2026-12-01', '2026-11-01']) for (const role of ['buyer', 'responder', 'operator'] as Role[]) {
+        const e = enq({ type, status, valid_until })
+        for (const a of nextActions(e, role, TODAY, { canRaise: true, isDesk: true, slots })) {
+          const to = target[a]
+          if (to) expect(canTransition(type, status, to, role), `${type} ${status} ${role} ${a}`).toBe(true)
+        }
+      }
+    }
   })
   it('terminal enquiries offer nothing, to anyone', () => {
     for (const e of [enq({ status: 'accepted' }), enq({ type: 'demo', status: 'done' }), enq({ type: 'sales', status: 'closed' })]) {
@@ -249,12 +288,23 @@ describe('toRequisitionLines', () => {
     expect(() => toRequisitionLines(enq({ status: 'quoted', valid_until: future }), [line()])).toThrow()
   })
   it('refuses an expired quote', () => {
-    expect(() => toRequisitionLines(enq({ status: 'quoted', valid_until: '2020-01-01' }), [line()])).toThrow()
     expect(() => toRequisitionLines(enq({ status: 'accepted', valid_until: '2020-01-01' }), [line()])).toThrow()
+  })
+  it('checks expiry against the day given', () => {
+    expect(toRequisitionLines(enq({ status: 'accepted', valid_until: TODAY }), [line()], TODAY)).toHaveLength(1)
+    expect(() => toRequisitionLines(enq({ status: 'accepted', valid_until: '2026-11-04' }), [line()], TODAY)).toThrow()
   })
   it('refuses an unpriced line, a non-quote, or no lines', () => {
     expect(() => toRequisitionLines(accepted, [line(), line({ id: 'b', quoted_unit_price: null })])).toThrow()
     expect(() => toRequisitionLines(enq({ type: 'demo', status: 'done' }), [line()])).toThrow()
     expect(() => toRequisitionLines(accepted, [])).toThrow()
+  })
+})
+
+describe('purity', () => {
+  it('does not import supabase', () => {
+    const src = readFileSync('src/lib/enquiries.ts', 'utf-8')
+    expect(src).not.toMatch(/from\s+['"][^'"]*supabase/i)
+    expect(src).not.toMatch(/import\s*\([^)]*supabase/i)
   })
 })

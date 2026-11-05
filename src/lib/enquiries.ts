@@ -60,7 +60,7 @@ const TRANSITIONS: Record<EnquiryType, readonly [EnquiryStatus, EnquiryStatus, M
     ['quoted', 'withdrawn', 'buyer'],
   ],
   demo: [
-    ['requested', 'scheduled', 'responder'],
+    ['requested', 'scheduled', 'either'],        // whoever did not propose the slot confirms it
     ['requested', 'declined', 'responder'],
     ['scheduled', 'declined', 'responder'],
     ['requested', 'withdrawn', 'buyer'],
@@ -114,23 +114,30 @@ function responderActions(e: Enquiry): Action[] {
   }
 }
 
-function buyerActions(e: Enquiry, today: string, canRaise: boolean): Action[] {
+function buyerActions(e: Enquiry, today: string, canRaise: boolean, slots: readonly Pick<EnquirySlot, 'proposed_by' | 'confirmed' | 'starts_at'>[]): Action[] {
   switch (e.type) {
     case 'quote':
       if (e.status === 'quoted' && canRaise) {
         return isExpired(e, today) ? ['decline', 'withdraw', 'reply'] : ['accept', 'decline', 'withdraw', 'reply']
       }
       return ['withdraw', 'reply']
-    case 'demo':
-      return ['withdraw', 'reply']
+    case 'demo': {
+      // The buyer confirms a time the seller proposed (requested -> scheduled) or suggests another.
+      const open = slots.filter(s => !s.confirmed)
+      const latest = open[open.length - 1]
+      const confirm: Action[] = e.status === 'requested' && latest?.proposed_by === 'responder' ? ['confirm-slot'] : []
+      return [...confirm, 'propose-slot', 'withdraw', 'reply']
+    }
     case 'sales':
       return ['reply', 'close']
   }
 }
 
-export function nextActions(e: Enquiry, role: Role, today: string, opts: { canRaise?: boolean; isDesk?: boolean } = {}): Action[] {
+type SlotLike = Pick<EnquirySlot, 'proposed_by' | 'confirmed' | 'starts_at'>
+
+export function nextActions(e: Enquiry, role: Role, today: string, opts: { canRaise?: boolean; isDesk?: boolean; slots?: readonly SlotLike[] } = {}): Action[] {
   if (isTerminal(e.type, e.status)) return []
-  if (role === 'buyer') return buyerActions(e, today, !!opts.canRaise)
+  if (role === 'buyer') return buyerActions(e, today, !!opts.canRaise, opts.slots ?? [])
   if (role === 'responder') return responderActions(e)
   // operator: answers desk-routed rows like a responder; on a seller's row only oversees
   return opts.isDesk ? [...responderActions(e), 'reassign'] : ['reassign', 'reply']
@@ -182,11 +189,11 @@ function localToday(): string {
 }
 
 /** The accepted quote as requisition lines at the quoted prices. Throws unless it is an accepted, unexpired quote with every line priced. */
-export function toRequisitionLines(e: Enquiry, lines: readonly EnquiryLine[]): {
+export function toRequisitionLines(e: Enquiry, lines: readonly EnquiryLine[], today: string = localToday()): {
   product_id: string; name: string; partner_id: string | null; quantity: number; unit_price: number; quote_line_id: string
 }[] {
   if (e.type !== 'quote' || e.status !== 'accepted') throw new Error('Only an accepted quote can be added to a requisition.')
-  if (e.valid_until !== null && e.valid_until < localToday()) throw new Error('This quote has expired.')
+  if (e.valid_until !== null && e.valid_until < today) throw new Error('This quote has expired.')
   if (lines.length === 0) throw new Error('This quote has no lines.')
   return lines.map(l => {
     if (l.quoted_unit_price === null) throw new Error('This quote has an unpriced line.')
