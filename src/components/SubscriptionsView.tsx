@@ -4,6 +4,9 @@ import { supabase } from '../lib/supabase'
 import type { Subscription } from '../types'
 import { statusLine, monthlyTotal, billingCurrency, actionsFor, isActive } from '../lib/subscriptions'
 import { useMarket } from '../lib/MarketContext'
+import { StatusBadge } from './ui'
+import { AccountPage } from './account/AccountPage'
+import { statusTone } from '../lib/consoleTone'
 
 export function SubscriptionsView() {
   const [subs, setSubs] = useState<Subscription[]>([])
@@ -39,23 +42,23 @@ export function SubscriptionsView() {
 
   if (loading) {
     return (
-      <section style={{ padding: '64px 0' }}>
-        <div className="container" style={{ textAlign: 'center' }}>
+      <AccountPage title="My Subscriptions">
+        <div style={{ textAlign: 'center', padding: '32px 0' }}>
           <div className="spinner" style={{ margin: '0 auto' }} />
         </div>
-      </section>
+      </AccountPage>
     )
   }
 
   if (subs.length === 0) {
     return (
-      <section style={{ padding: '64px 0' }}>
-        <div className="container" style={{ textAlign: 'center', maxWidth: '400px', margin: '0 auto' }}>
-          <RefreshCw size={48} style={{ margin: '0 auto 16px', opacity: 0.3 }} />
+      <AccountPage title="My Subscriptions">
+        <div className="acct-empty">
+          <RefreshCw size={48} aria-hidden="true" style={{ margin: '0 auto 16px', opacity: 0.3 }} />
           <h2 style={{ marginBottom: '8px' }}>No subscriptions</h2>
           <p style={{ color: 'var(--text-secondary)' }}>Your active recurring services will appear here.</p>
         </div>
-      </section>
+      </AccountPage>
     )
   }
 
@@ -67,95 +70,65 @@ export function SubscriptionsView() {
   const currency = billingCurrency(subs)
 
   return (
-    <section style={{ padding: '32px 0 64px' }}>
-      <div className="container" style={{ maxWidth: '800px' }}>
-        <h1 style={{ fontSize: 'var(--text-3xl)', fontWeight: 700, marginBottom: '8px' }}>My Subscriptions</h1>
-        <p style={{ color: 'var(--text-secondary)', marginBottom: '24px' }}>
-          Manage your recurring services — pause, resume, or cancel anytime.
-        </p>
-
-        {/* What the consumer is actually committed to. Counts only what is billing:
-            a paused or cancelled row is not part of the monthly figure. */}
-        <div className="card" style={{ padding: '16px 20px', marginBottom: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
-          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-            {activeCount} active of {subs.length}
-          </span>
-          <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-            Billing <strong style={{ color: 'var(--text)', fontSize: 'var(--text-lg)', fontWeight: 800 }}>
-              {currency ? fmtIn(total, currency) : total.toFixed(2)}
-            </strong>/mo
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          {subs.map((sub) => {
-            const can = actionsFor(sub)
-            const showActions = can.canToggleRenew || can.canCancel || can.canResume
-            return (
-              <div key={sub.id} className="card" style={{ padding: '20px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', gap: '16px' }}>
-                  <div style={{ minWidth: 0 }}>
-                    <h3 style={{ fontWeight: 600, fontSize: 'var(--text-base)', marginBottom: '2px' }}>
-                      {sub.product_name}
-                    </h3>
-                    {sub.seller && (
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '4px' }}>
-                        {sub.seller}
-                      </div>
-                    )}
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                      {statusLine(sub)}
-                    </div>
-                  </div>
-                  <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>
-                      {fmtIn(sub.price, sub.currency)}
-                      <span style={{ fontSize: 'var(--text-xs)', fontWeight: 500, color: 'var(--text-tertiary)' }}>
-                        /{(sub.cycle ?? 'Monthly').toLowerCase() === 'monthly' ? 'mo' : sub.cycle}
-                      </span>
-                    </div>
-                    <span className={`badge ${isActive(sub) ? 'badge-stock-in' : 'badge-stock-out'}`}>
-                      {sub.status}
-                    </span>
-                  </div>
-                </div>
-
-                {showActions && (
-                  <div style={{ display: 'flex', gap: '8px', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--border-light)' }}>
-                    {can.canToggleRenew && (
-                      <button
-                        onClick={() => toggleAutoRenew(sub)}
-                        className="btn btn-secondary btn-sm"
-                        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                      >
-                        {sub.auto_renew ? <><Pause size={14} /> Pause auto-renew</> : <><Play size={14} /> Resume auto-renew</>}
-                      </button>
-                    )}
-                    {can.canResume && (
-                      <button
-                        onClick={() => resume(sub)}
-                        className="btn btn-secondary btn-sm"
-                        style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
-                      >
-                        <Play size={14} /> Resume now
-                      </button>
-                    )}
-                    {can.canCancel && (
-                      <button
-                        onClick={() => cancel(sub)}
-                        className="btn btn-ghost btn-sm"
-                        style={{ color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: '6px' }}
-                      >
-                        <X size={14} /> Cancel
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
+    <AccountPage
+      title="My Subscriptions"
+      subtitle="Manage your recurring services — pause, resume, or cancel anytime."
+    >
+      {/* What the consumer is actually committed to. Counts only what is billing:
+          a paused or cancelled row is not part of the monthly figure. */}
+      <div className="sub-summary">
+        <span>{activeCount} active of {subs.length}</span>
+        <span>
+          Billing <strong className="sub-summary__total">
+            {currency ? fmtIn(total, currency) : total.toFixed(2)}
+          </strong>/mo
+        </span>
       </div>
-    </section>
+
+      <div className="sub-list">
+        {subs.map((sub) => {
+          const can = actionsFor(sub)
+          const showActions = can.canToggleRenew || can.canCancel || can.canResume
+          return (
+            <article key={sub.id} className="sub-card">
+              <div className="sub-card__info">
+                <h2 className="sub-card__name">{sub.product_name}</h2>
+                {sub.seller && <div className="sub-card__meta">{sub.seller}</div>}
+                <div className="sub-card__meta">{statusLine(sub)}</div>
+              </div>
+              <div className="sub-card__price">
+                <div className="sub-card__amount">
+                  {fmtIn(sub.price, sub.currency)}
+                  <span className="sub-card__cycle">
+                    /{(sub.cycle ?? 'Monthly').toLowerCase() === 'monthly' ? 'mo' : sub.cycle}
+                  </span>
+                </div>
+                <StatusBadge tone={statusTone(sub.status.toLowerCase())}>{sub.status}</StatusBadge>
+              </div>
+
+              {showActions && (
+                <div className="sub-card__actions">
+                  {can.canToggleRenew && (
+                    <button type="button" onClick={() => toggleAutoRenew(sub)} className="acct-btn">
+                      {sub.auto_renew ? <><Pause size={16} aria-hidden="true" /> Pause auto-renew</> : <><Play size={16} aria-hidden="true" /> Resume auto-renew</>}
+                    </button>
+                  )}
+                  {can.canResume && (
+                    <button type="button" onClick={() => resume(sub)} className="acct-btn">
+                      <Play size={16} aria-hidden="true" /> Resume now
+                    </button>
+                  )}
+                  {can.canCancel && (
+                    <button type="button" onClick={() => cancel(sub)} className="acct-btn acct-btn--danger">
+                      <X size={16} aria-hidden="true" /> Cancel
+                    </button>
+                  )}
+                </div>
+              )}
+            </article>
+          )
+        })}
+      </div>
+    </AccountPage>
   )
 }
