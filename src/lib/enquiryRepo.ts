@@ -8,7 +8,7 @@
 
 import { supabase } from './supabase'
 import type { Enquiry, EnquiryLine, EnquirySlot, EnquiryMessage } from './enquiries'
-import { quoteLinesPayload, asLine } from './enquiryPayload'
+import { quoteLinesPayload, sendQuotePayload, asLine } from './enquiryPayload'
 
 export interface EnquiryEvent {
   id: string; enquiry_id: string; actor_role: string; actor_name: string
@@ -96,27 +96,17 @@ export async function raiseSales(input: {
 
 /* ----------------------------------------------------------- answering -- */
 
-/** Price every line, then move the quote to `quoted` with its date. Sending the
-    same call again on a quoted quote is a re-quote. The prices are written
-    first because the guard refuses `quoted` while any line is unpriced. A note,
-    if given, goes into the conversation once the quote is out. */
+/** Send a quote, or send it again: one call to `send_quote`, which prices
+    every line, dates the quote and moves it in one transaction. It is the only
+    way a price is set, so the buyer always accepts prices that were sent to
+    them together. The note, if given, goes into the conversation in the same
+    transaction. */
 export async function sendQuote(
   id: string, prices: Record<string, number>, valid_until: string, note?: string | null,
 ): Promise<Result> {
   try {
-    for (const [lineId, price] of Object.entries(prices)) {
-      const r = await supabase.from('enquiry_lines')
-        .update({ quoted_unit_price: price }).eq('id', lineId).eq('enquiry_id', id).select('id')
-      if (r.error) return { ok: false, error: r.error.message }
-      if (!r.data?.length) return { ok: false, error: NOTHING }
-    }
-    const moved = await change(id, { status: 'quoted', valid_until })
-    if (!moved.ok) return moved
-    if (note && note.trim()) {
-      const said = await reply(id, note)
-      if (!said.ok) return { ok: false, error: `The quote was sent, but the note was not: ${said.error}` }
-    }
-    return { ok: true }
+    const { error } = await supabase.rpc('send_quote', sendQuotePayload(id, prices, valid_until, note))
+    return error ? { ok: false, error: error.message } : { ok: true }
   } catch (err) {
     return { ok: false, error: errorText(err) }
   }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { quoteLinesPayload, asLine } from './enquiryPayload'
+import { quoteLinesPayload, sendQuotePayload, asLine } from './enquiryPayload'
 
 describe('quoteLinesPayload', () => {
   it('sends product, quantity and target; a missing target is null', () => {
@@ -28,5 +28,17 @@ describe('asLine', () => {
     expect(l.target_unit_price).toBe(10.5)
     expect(l.quoted_unit_price).toBeNull()
     expect(l.quantity).toBe(2)
+  })
+})
+
+describe('sendQuotePayload', () => {
+  it('names the arguments send_quote takes and keys prices by line', () => {
+    expect(sendQuotePayload('ENQ-1001', { L1: 3899, L2: 0 }, '2026-12-05', '  Holds for the full 120.  ')).toEqual({
+      p_id: 'ENQ-1001', p_prices: { L1: 3899, L2: 0 }, p_valid_until: '2026-12-05', p_note: 'Holds for the full 120.',
+    })
+  })
+  it('sends a blank or missing note as null', () => {
+    expect(sendQuotePayload('E', { L: 1 }, '2026-12-05', '   ').p_note).toBeNull()
+    expect(sendQuotePayload('E', { L: 1 }, '2026-12-05').p_note).toBeNull()
   })
 })

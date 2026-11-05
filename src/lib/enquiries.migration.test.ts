@@ -23,7 +23,7 @@ describe('the enquiries migration', () => {
     expect(code).toMatch(new RegExp(`alter table ${t}\\s+enable row level security`))
   })
 
-  it.each(['raise_quote', 'raise_demo', 'raise_sales', 'reassign_enquiry'])('defines the %s RPC as security definer, granted to authenticated', (fn) => {
+  it.each(['raise_quote', 'raise_demo', 'raise_sales', 'reassign_enquiry', 'send_quote'])('defines the %s RPC as security definer, granted to authenticated', (fn) => {
     const def = code.match(new RegExp(`create or replace function ${fn}\\([\\s\\S]*?\\$\\$`))
     expect(def, fn).not.toBeNull()
     expect(def![0]).toContain('security definer')
@@ -49,25 +49,63 @@ describe('the enquiries migration', () => {
 
   it('links a requisition line to the quote line it was priced from', () => {
     expect(code).toMatch(/alter table enterprise_requisition_lines\s+add column if not exists quote_line_id text references enquiry_lines\(id\)/)
-    expect(code).toMatch(/create unique index if not exists \w+\s+on enterprise_requisition_lines\(quote_line_id\) where quote_line_id is not null/)
     expect(code).toContain('create trigger enterprise_requisition_lines_quoted_guard')
   })
 
   it('leaves catalogue-priced requisition lines alone', () => {
     const fn = code.match(/create or replace function guard_quoted_line\(\)[\s\S]*?end \$\$;/)![0]
     expect(fn).toContain('if new.quote_line_id is null then return new; end if;')
+    // ...and that early return comes before any quote check
+    expect(fn.indexOf('if new.quote_line_id is null then return new; end if;'))
+      .toBeLessThan(fn.indexOf('from enquiry_lines l join enquiries e'))
   })
 
-  it('numbers enquiries ENQ- from 1001 and seeds ENQ-9 ids by delete-then-insert', () => {
+  it('numbers enquiries ENQ- from 1001 and seeds a prefix the sequence can never produce', () => {
     expect(code).toContain('create sequence if not exists enquiry_seq start with 1001')
     expect(code).toContain(`default ('enq-' || nextval('enquiry_seq'))`)
-    expect(code).toContain(`delete from enquiries where id like 'enq-9%'`)
+    expect(code).toContain(`delete from enquiries where id like 'enq-seed-%'`)
+    expect(code).not.toMatch(/'enq-9/)
   })
 
   it('adds the three notification events, in-app only', () => {
     for (const e of ['enquiry.raised', 'enquiry.answered', 'enquiry.decided']) expect(code).toContain(`'${e}'`)
     const rules = code.match(/insert into notification_rules[\s\S]*?on conflict \(id\) do nothing;/)![0]
     expect(rules.match(/array\['inapp'\]/g)).toHaveLength(5)
+  })
+
+  it('gives the enterprise persona no insert policy on enquiries — raising goes through the RPCs', () => {
+    const policies = [...code.matchAll(/create policy "[^"]+" on enquiries\b[^;]*;/g)].map((m) => m[0])
+    expect(policies.length).toBeGreaterThan(0)
+    for (const p of policies) {
+      if (/for (insert|all)\b/.test(p)) expect(p, p).toContain(`current_persona() = 'operator'`)
+    }
+  })
+
+  it('never grants a write on the audit trail, and revokes it', () => {
+    expect(code).not.toMatch(/grant [^;]*\b(update|insert|delete)\b[^;]* on [^;]*enquiry_events/)
+    expect(code).toContain('revoke insert, update, delete, truncate on enquiry_events from authenticated')
+    expect(code).not.toMatch(/create policy "[^"]+" on enquiry_events for (insert|update|delete|all)/)
+  })
+
+  it('keeps the internal functions out of reach of the client', () => {
+    expect(code).toMatch(/revoke all on function enquiry_send\([^)]*\) from public, anon, authenticated/)
+    expect(code).toMatch(/revoke all on function enquiry_buyer\(\) from public, anon, authenticated/)
+  })
+
+  it('sets prices only through send_quote, behind a transaction-local flag the guards check', () => {
+    const fn = code.match(/create or replace function send_quote\([\s\S]*?end \$\$;/)![0]
+    expect(fn).toContain(`set_config('app.enquiry_rpc', 'on', true)`)
+    for (const g of ['guard_enquiry_line', 'guard_enquiry']) {
+      const body = code.match(new RegExp(`create or replace function ${g}\\(\\)[\\s\\S]*?end \\$\\$;`))![0]
+      expect(body, g).toContain(`current_setting('app.enquiry_rpc', true)`)
+    }
+  })
+
+  it('lets a quote line back one live requisition at a time, not one ever', () => {
+    expect(code).toContain('drop index if exists enterprise_requisition_lines_quote_line_idx')
+    expect(code).not.toMatch(/create unique index[^;]*quote_line_id/)
+    const fn = code.match(/create or replace function guard_quoted_line\(\)[\s\S]*?end \$\$;/)![0]
+    expect(fn).toContain(`r.state not in ('declined', 'withdrawn')`)
   })
 
   it('never drops a table without if exists', () => {

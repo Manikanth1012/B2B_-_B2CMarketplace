@@ -162,7 +162,7 @@ describe('nextActions', () => {
     expect(nextActions(req, 'buyer', TODAY)).toEqual(['propose-slot', 'withdraw', 'reply'])
     const sch = enq({ type: 'demo', status: 'scheduled' })
     expect(nextActions(sch, 'responder', TODAY)).toEqual(['mark-done', 'decline', 'reply'])
-    expect(nextActions(sch, 'buyer', TODAY)).toEqual(['propose-slot', 'withdraw', 'reply'])
+    expect(nextActions(sch, 'buyer', TODAY)).toEqual(['withdraw', 'reply'])   // no proposing once scheduled
     const open = enq({ type: 'sales', status: 'open', partner_id: null })
     expect(nextActions(open, 'buyer', TODAY)).toEqual(['reply', 'close'])
     expect(nextActions(open, 'responder', TODAY)).toEqual(['reply', 'close'])
