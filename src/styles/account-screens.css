@@ -121,8 +121,8 @@
 @media (max-width: 1023px) { .rw-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .rw-kpis { grid-template-columns: 1fr; } }
 
-/* Two columns from 1200px. Sections whose content is wide (the ladder, the
-   catalogue, the tables) take both. */
+/* Two columns from 1200px: the ladder and the catalogue take both; the ledger
+   and the earn rules sit side by side, their tables scrolling inside the card. */
 .rw-sections { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px; }
 @media (min-width: 1200px) {
   .rw-sections { grid-template-columns: repeat(2, minmax(0, 1fr)); }

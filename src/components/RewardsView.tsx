@@ -389,7 +389,7 @@ export function RewardsView() {
         </BentoCard>
 
         {/* Ledger */}
-        <BentoCard headingLevel={2} className="rw-span2"
+        <BentoCard headingLevel={2}
           title={<span className="rw-title"><FileText size={18} aria-hidden="true" />Every movement on the account</span>}
           text={`${fmtPts(earned12)} earned on this account · ${ledger.length} movements on record`}>
           <div className="rw-table-wrap">
@@ -432,7 +432,7 @@ export function RewardsView() {
         </BentoCard>
 
         {/* Earn rules */}
-        <BentoCard headingLevel={2} className="rw-span2"
+        <BentoCard headingLevel={2}
           title={<span className="rw-title"><Info size={18} aria-hidden="true" />How points are earned here</span>}
           text={programme.rounding_note}>
           <div className="rw-table-wrap">
