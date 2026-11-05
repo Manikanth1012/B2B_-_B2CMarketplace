@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import type React from 'react'
 import { nextFocusIndex } from '../../lib/focusTrap'
 
@@ -18,13 +18,24 @@ const stack: HTMLElement[] = []
 
 function focusables(root: HTMLElement): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(el =>
-    el.tabIndex >= 0 && !el.hasAttribute('inert') && el.getClientRects().length > 0)
+    el.tabIndex >= 0 && !el.hasAttribute('inert') && el.getClientRects().length > 0
+    /* An unchecked radio whose group has a checked one is not a Tab stop. */
+    && !(el instanceof HTMLInputElement && el.type === 'radio' && !el.checked && el.name
+      && root.querySelector(`input[type="radio"][name="${CSS.escape(el.name)}"]:checked`)))
+}
+
+/** True when `el` is the innermost active trap: the one that should answer
+ *  Tab and Escape while dialogs are stacked. */
+export function isTopmostTrap(el: HTMLElement | null): boolean {
+  return el !== null && stack[stack.length - 1] === el
 }
 
 /**
  * Keeps keyboard focus inside `ref` while `active`.
  *
- * On activate it remembers what had focus, then focuses the first focusable
+ * On activate it remembers what had focus (read during the render that
+ * turns it on, before any child mounts, so a field with `autoFocus` inside
+ * is not mistaken for the opener), then focuses the first focusable
  * element inside (or the container itself, made focusable with tabIndex -1,
  * when there is nothing to press). Tab and Shift+Tab cycle within it. On
  * deactivate or unmount focus goes back to what had it, so closing a dialog
@@ -32,11 +43,22 @@ function focusables(root: HTMLElement): HTMLElement[] {
  * of the page.
  */
 export function useFocusTrap(ref: React.RefObject<HTMLElement>, active: boolean): void {
+  const opener = useRef<HTMLElement | null>(null)
+  const wasActive = useRef(false)
+  /* Read in render on the closed-to-open flip. By the time an effect runs,
+     React has already focused any `autoFocus` child, and that child is gone
+     again by the time the dialog closes. */
+  if (active && !wasActive.current) {
+    const el = typeof document !== 'undefined' ? document.activeElement : null
+    opener.current = el instanceof HTMLElement && el !== document.body ? el : null
+  }
+  wasActive.current = active
+
   useEffect(() => {
     if (!active) return
     const root = ref.current
     if (!root) return
-    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    const previous = opener.current && !root.contains(opener.current) ? opener.current : null
 
     if (!root.contains(document.activeElement)) {
       const first = focusables(root)[0]
@@ -68,7 +90,13 @@ export function useFocusTrap(ref: React.RefObject<HTMLElement>, active: boolean)
       document.removeEventListener('keydown', onKey)
       const at = stack.lastIndexOf(root)
       if (at !== -1) stack.splice(at, 1)
-      if (previous && previous.isConnected) previous.focus()
+      /* Hand focus back only if it is still ours to hand: inside the dialog,
+         or dropped to <body> because the dialog went away. If the close
+         moved it somewhere on purpose, leave it there. An opener that has
+         itself gone (the row a confirm deleted) is skipped. */
+      const now = document.activeElement
+      const ours = !now || now === document.body || root.contains(now)
+      if (ours && previous && previous.isConnected) previous.focus()
     }
   }, [ref, active])
 }

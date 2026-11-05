@@ -1,7 +1,7 @@
-import { useId, useRef } from 'react'
+import { useEffect, useId, useRef } from 'react'
 import type React from 'react'
 import { X } from 'lucide-react'
-import { useFocusTrap } from './useFocusTrap'
+import { useFocusTrap, isTopmostTrap } from './useFocusTrap'
 
 /**
  * A modal dialog.
@@ -10,7 +10,7 @@ import { useFocusTrap } from './useFocusTrap'
  * announces the question being asked rather than the page behind it. Focus
  * moves in on open, stays in while it is open, and goes back to whatever
  * opened it on close. Escape and a click on the backdrop both close it.
- * Dialogs can stack: only the top one traps Tab and hears Escape.
+ * Dialogs can stack: only the top one traps Tab and answers Escape.
  *
  * `className` lands on the panel beside `.ui-dialog`; the console's Modal uses
  * it to keep `.c-modal`, which is what `.c-modal:has(.pd--compact)` widens.
@@ -32,7 +32,23 @@ export function Dialog({ open, onClose, title, children, footer, wide, labelId, 
   const panel = useRef<HTMLDivElement>(null)
   const pressedBackdrop = useRef(false)
 
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
+
   useFocusTrap(panel, open)
+
+  /* Escape is heard on the document, not just the panel, so it still works
+     when focus has fallen to <body> (a focused button that became disabled).
+     Only the topmost trap answers, so a confirm over a modal closes alone. */
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || !isTopmostTrap(panel.current)) return
+      closeRef.current()
+    }
+    document.addEventListener('keydown', handler)
+    return () => document.removeEventListener('keydown', handler)
+  }, [open])
 
   if (!open) return null
 
@@ -47,13 +63,10 @@ export function Dialog({ open, onClose, title, children, footer, wide, labelId, 
         if (pressedBackdrop.current && e.target === e.currentTarget) onClose()
         pressedBackdrop.current = false
       }}>
-      {/* Escape is heard on the panel, not the window: focus is trapped
-          inside, so only the dialog on top hears it and a confirm over a
-          modal closes alone. */}
+      {/* tabIndex -1: a click on plain text inside focuses the panel rather
+          than dropping focus to <body>, so the trap and Escape keep working. */}
       <div ref={panel} className={cls} role="dialog" aria-modal="true" aria-labelledby={titleId}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') { e.stopPropagation(); onClose() }
-        }}>
+        tabIndex={-1}>
         <div className="ui-dialog__head">
           <h2 id={titleId} className="ui-dialog__title">{title}</h2>
           <button type="button" className="ui-dialog__close" onClick={onClose} aria-label="Close">
