@@ -90,7 +90,7 @@ export function MyReviewsCard({ showToast }: { showToast: (m: string) => void })
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>{r.title}</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--brand-gold, #F5A623)', letterSpacing: '1px' }}>{stars(r.rating)}</div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--star)', letterSpacing: '1px' }}>{stars(r.rating)}</div>
                 </div>
                 <span style={{
                   flexShrink: 0, padding: '2px 10px', borderRadius: '999px', fontSize: 'var(--text-xs)', fontWeight: 700,
@@ -133,7 +133,7 @@ export function MyReviewsCard({ showToast }: { showToast: (m: string) => void })
                 style={{
                   background: 'none', border: 'none', cursor: 'pointer', padding: '2px',
                   fontSize: '22px', lineHeight: 1,
-                  color: n <= rating ? 'var(--brand-gold, #F5A623)' : 'var(--border)',
+                  color: n <= rating ? 'var(--star)' : 'var(--border)',
                 }}
               >
                 ★

@@ -183,8 +183,8 @@ export function ProductDetail({ product, onAddToCart, onNavigate, compact = fals
                     <Star
                       key={n}
                       size={18}
-                      fill={n <= Math.round(product.rating!) ? '#F5A623' : 'none'}
-                      color={n <= Math.round(product.rating!) ? '#F5A623' : 'var(--gray-300)'}
+                      fill={n <= Math.round(product.rating!) ? 'var(--star)' : 'none'}
+                      color={n <= Math.round(product.rating!) ? 'var(--star)' : 'var(--gray-300)'}
                     />
                   ))}
                 </div>
@@ -377,7 +377,7 @@ export function ProductDetail({ product, onAddToCart, onNavigate, compact = fals
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'center', margin: '8px 0' }}>
                         {[1, 2, 3, 4, 5].map((n) => (
-                          <Star key={n} size={20} fill={n <= Math.round(product.rating!) ? '#F5A623' : 'none'} color={n <= Math.round(product.rating!) ? '#F5A623' : 'var(--gray-300)'} />
+                          <Star key={n} size={20} fill={n <= Math.round(product.rating!) ? 'var(--star)' : 'none'} color={n <= Math.round(product.rating!) ? 'var(--star)' : 'var(--gray-300)'} />
                         ))}
                       </div>
                       <div style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)' }}>
@@ -427,7 +427,7 @@ export function ProductDetail({ product, onAddToCart, onNavigate, compact = fals
                     {reviews.map(r => (
                       <div key={r.id} style={{ borderTop: '1px solid var(--border-light)', paddingTop: '16px' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                          <span style={{ color: '#F5A623', letterSpacing: '1px' }}>{stars(r.rating)}</span>
+                          <span style={{ color: 'var(--star)', letterSpacing: '1px' }}>{stars(r.rating)}</span>
                           <span style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>{r.title}</span>
                           {/* Badged when the order is on file, silent otherwise. There is no
                               "unverified" badge on purpose — it reads as an accusation against

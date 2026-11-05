@@ -157,7 +157,7 @@ export function EnterpriseListingModal(
 
             {listing.rating > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '10px', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
-                <Star size={13} style={{ color: '#F5A623' }} fill="#F5A623" />
+                <Star size={13} style={{ color: 'var(--star)' }} fill="var(--star)" />
                 {listing.rating} · {fmtInt(listing.reviews)} reviews from buyers on this marketplace
               </div>
             )}

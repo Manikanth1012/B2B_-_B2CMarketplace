@@ -104,7 +104,7 @@ export function PartnerReviews({ partnerId }: { partnerId: string }) {
 
           {inModeration.map(r => (
             <div key={r.id} style={{ display: 'flex', gap: '9px', alignItems: 'baseline', padding: '7px 0', borderTop: '1px solid var(--border-light)', flexWrap: 'wrap' }}>
-              <span style={{ color: 'var(--brand-gold, #F5A623)', letterSpacing: '1px', fontSize: '11px' }}>{stars(r.rating)}</span>
+              <span style={{ color: 'var(--star)', letterSpacing: '1px', fontSize: '11px' }}>{stars(r.rating)}</span>
               <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, flex: 1, minWidth: '140px' }}>{r.title}</span>
               <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
                 {products[r.product_id]?.name} · {formatDateOnly(r.submitted)}
@@ -144,7 +144,7 @@ export function PartnerReviews({ partnerId }: { partnerId: string }) {
             borderRadius: 'var(--radius-lg)', padding: '16px',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <span style={{ color: 'var(--brand-gold, #F5A623)', letterSpacing: '1px' }}>{stars(r.rating)}</span>
+              <span style={{ color: 'var(--star)', letterSpacing: '1px' }}>{stars(r.rating)}</span>
               <span style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>{r.title}</span>
               {/* The same badge the shopper sees, so a seller answering a review
                   knows whether the reader was shown one. */}

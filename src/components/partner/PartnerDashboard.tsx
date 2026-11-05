@@ -188,7 +188,7 @@ export function PartnerDashboard({ partnerId, onNavigate }: {
                 <div style={{ fontSize: '30px', fontWeight: 800, color: 'var(--text)' }}>{PARTNER_PROFILE.rating.toFixed(1)}</div>
                 <div style={{ display: 'flex', gap: '2px', marginTop: '4px' }}>
                   {[1, 2, 3, 4, 5].map(n => (
-                    <Star key={n} size={14} style={{ color: n <= Math.round(PARTNER_PROFILE.rating) ? '#F5A623' : 'var(--border)' }} fill={n <= Math.round(PARTNER_PROFILE.rating) ? '#F5A623' : 'none'} />
+                    <Star key={n} size={14} style={{ color: n <= Math.round(PARTNER_PROFILE.rating) ? 'var(--star)' : 'var(--border)' }} fill={n <= Math.round(PARTNER_PROFILE.rating) ? 'var(--star)' : 'none'} />
                   ))}
                 </div>
               </div>

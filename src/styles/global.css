@@ -10,6 +10,9 @@
   --brand-accent-dark: #007575;   /* 5.52:1 on white, 5.14:1 on --bg-alt — the teal for small text */
   --brand-accent-darker: #005F5F;
   --brand-gold: #F5A623;
+  /* Rating stars: the stars alone carry the rating, so they need text contrast.
+     #F5A623 was 2.03:1 on white; this is 4.92:1 (4.58:1 on --bg-alt). */
+  --star: #A16207;
   --brand-red: #E63946;
 
   --blue: #0756A5;                 /* links and small accent text on light surfaces — 7.28:1 */
