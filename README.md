@@ -334,6 +334,15 @@ The operator sidebar (`OperatorShell.tsx`) is grouped; the group holding the cur
 
 On Business Accounts, the status chips filter with `inBand` and the summary cards count with `bandCounts` (both in `src/lib/accounts.ts`), so a chip and its card cannot disagree.
 
+**Enquiries (spec 6).** A business buyer can ask before it buys: **Request a quote** and **Book a demo** on a listing, **Request a quote for this basket** in the requisition drawer, and **Contact Sales** in the header. Each becomes one `enquiries` record (`quote`, `demo` or `sales`) with its lines, demo times, a conversation and an audit trail, in `supabase/migrations/20261105100000_a_business_can_ask_before_it_buys.sql`.
+
+- **Who answers.** A quote or demo whose lines all belong to one seller goes to that seller's Enquiries screen; a multi-seller quote, anything first-party and every Contact Sales question go to the operator desk (Service → Enquiries). The `raise_*` functions route it from the catalogue; only the operator reassigns, with a reason.
+- **Quotes.** Prices are set only by `send_quote`, which prices every line, dates the quote 1–90 days ahead and tells the buyer in one transaction; re-quoting is the only way to change a price. A quote past its date is expired on read and cannot be accepted.
+- **Accepting is not ordering.** Accepted lines go into the requisition at the quoted price and carry `quote_line_id`; `guard_quoted_line` holds the requisition line to the quote's product, quantity, price, currency and account, and lets a quote line back only one live requisition.
+- **Demos.** Either side proposes up to three times while the demo is requested; whoever did not propose a time confirms it, with a joining link or address.
+- **Notifications.** `enquiry.raised`, `enquiry.answered` and `enquiry.decided` write in-app entries to `notification_log` as the enquiry changes; other channels are logged as suppressed (no gateway).
+- **Code.** The rules are mirrored as pure functions in `src/lib/enquiries.ts` (tested), data access is `src/lib/enquiryRepo.ts`, the shared list and detail are in `src/components/enquiries/`, and `src/lib/enquiries.integration.test.ts` exercises the flows against the live database, cleaning up after itself.
+
 **Shared components** live in `src/components/ui/`, are class-based, and are styled by `src/styles/ui.css` (imported in `src/main.tsx` after `global.css`).
 
 | Component | Use it for |

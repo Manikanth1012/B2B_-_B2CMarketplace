@@ -17,8 +17,9 @@ closed by spec 5, except the two noted below.
 
 ## New enterprise features (deferred from spec 2 — 2026-11-04)
 
-In progress: quote, demo, Contact Sales and enquiry tracking are spec 6
-(`2026-11-05-enterprise-enquiries-design.md`); bundles follow as spec 7.
+Done: quote, demo, Contact Sales and enquiry tracking are spec 6
+(`2026-11-05-enterprise-enquiries-design.md`), migration applied 2026-11-05.
+Bundles follow as spec 7.
 Today's bundles are fixed and composed by the operator (Catalogue Review →
 Compose a bundle); spec 7 is the buyer-built kind.
 
@@ -27,10 +28,10 @@ the app today, and each needs database tables with RLS, an operator-side
 screen to answer it, and notifications — so they are features, not a
 restyle, and get their own spec after the revamp.
 
-- [ ] **Request a quote** — buyer asks for pricing on a listing or a basket; operator/seller responds.
-- [ ] **Request a demo** — buyer books a demo of a product or service.
-- [ ] **Contact Sales** — a tracked enquiry rather than a mailto link.
-- [ ] **Enterprise enquiry tracking** — the buyer's list of quotes, demos and enquiries with status.
+- [x] **Request a quote** — buyer asks for pricing on a listing or a basket; operator/seller responds.
+- [x] **Request a demo** — buyer books a demo of a product or service.
+- [x] **Contact Sales** — a tracked enquiry rather than a mailto link.
+- [x] **Enterprise enquiry tracking** — the buyer's list of quotes, demos and enquiries with status.
 - [ ] **Configurable product bundles** — buyer assembles a bundle with options and gets one price.
 
 ## Still open after spec 5 (small, non-blocking)
@@ -58,7 +59,18 @@ Found by the spec 5 reviews and sweep, judged not worth holding the merge.
 - The public header's nav collapses into the menu below 1024px (was 900px).
 - A signed-in shopper is pinned to their home market (the picker ignores a switch), so a basket is never carried across markets; only signed-out visitors switch market.
 
+## Still open after spec 6 (small, non-blocking)
+
+- [ ] No calendar invites or email for demos and quotes — in-app notifications only (no gateway).
+- [ ] The seller of a multi-seller desk quote can read its own lines but has no screen to tell the desk its price; the desk asks in the conversation.
+- [ ] The requisition basket is not saved across a reload; an accepted quote offers "Add to requisition" again until it is on a live requisition.
+- [ ] Expiry is checked against the browser's date on screen and the database's date on accept; around midnight they can differ by a day.
+- [ ] Seed enquiries name SKU-5004, which is paused on the live shelf; new enquiries need a live listing.
+
 ## Data to check (not code)
+
+- [ ] Nimbus Sensors' (PTR-1004) AE market grant was left `suspended` by an interrupted pricing test (2026-11-05); set it back to approved.
+- [ ] ~30 `notification_log` rows `NL-ENQ-*` point at deleted test enquiries (`ENQ-10xx`); only the service role can remove them.
 
 - [ ] Beacon IoT Care (SKU-7011) has no INR price — confirm that is intended (seller not approved in India).
 - [ ] 13 integration tests fail against the shared live database (contract renewals, credit, disputes, help coverage, partner certificates, settlement idempotency, withholding) — the seed data has drifted since it was written. Unchanged by the revamp.
