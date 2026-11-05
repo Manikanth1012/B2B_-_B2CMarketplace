@@ -13,13 +13,15 @@ export interface QuoteResponseFormProps {
   today: string
   /** product_id -> the seller's agreed floor, where it could be read. */
   floors: Readonly<Record<string, number>>
+  /** True when the floors could not be read, so no warning can be shown. */
+  floorsFailed?: boolean
   money: (n: number, currency: string) => string
   /** Returns the error to show, or null when it worked. */
   onSubmit: (prices: Record<string, number>, validUntil: string, note: string) => Promise<string | null>
   onCancel: () => void
 }
 
-export function QuoteResponseForm({ enquiry, lines, today, floors, money, onSubmit, onCancel }: QuoteResponseFormProps) {
+export function QuoteResponseForm({ enquiry, lines, today, floors, floorsFailed, money, onSubmit, onCancel }: QuoteResponseFormProps) {
   const cur = enquiry.currency ?? ''
   const [prices, setPrices] = useState<Record<string, string>>(() =>
     Object.fromEntries(lines.map(l => [l.id, l.quoted_unit_price !== null ? String(l.quoted_unit_price) : ''])))
@@ -47,7 +49,11 @@ export function QuoteResponseForm({ enquiry, lines, today, floors, money, onSubm
     const dateProblem = validUntilProblem(until, today)
     if (dateProblem) next.until = dateProblem
     setErrors(next)
-    if (Object.keys(next).length) return
+    if (Object.keys(next).length) {
+      const first = lines.find(l => next[l.id])
+      document.getElementById(first ? `enq-q-${first.id}` : 'enq-q-until')?.focus()
+      return
+    }
     setBusy(true); setFailure(null)
     const err = await onSubmit(out, until, note.trim())
     setBusy(false)
@@ -63,13 +69,16 @@ export function QuoteResponseForm({ enquiry, lines, today, floors, money, onSubm
         const id = `enq-q-${l.id}`
         return (
           <div key={l.id} className="enq-resp__line">
-            <FormField label={`${l.name} · unit price (${cur})`}
-              hint={`${fmtInt(l.quantity)} wanted${l.target_unit_price !== null ? ` · they hope for ${money(l.target_unit_price, cur)}` : ''}`}>
-              <TextInput id={id} inputMode="decimal" value={prices[l.id] ?? ''}
-                onChange={e => setPrices(p => ({ ...p, [l.id]: e.target.value }))}
-                aria-invalid={errors[l.id] ? true : undefined}
-                aria-describedby={`${id}-msg`} />
-            </FormField>
+            {/* The label and the description are written here, not through FormField,
+                which would overwrite aria-describedby. */}
+            <label htmlFor={id} className="c-field__label">{l.name} · unit price ({cur})</label>
+            <TextInput id={id} inputMode="decimal" value={prices[l.id] ?? ''}
+              onChange={e => setPrices(p => ({ ...p, [l.id]: e.target.value }))}
+              aria-invalid={errors[l.id] ? true : undefined}
+              aria-describedby={`${id}-hint ${id}-msg`} />
+            <div id={`${id}-hint`} className="c-field__hint">
+              {fmtInt(l.quantity)} wanted{l.target_unit_price !== null ? ` · they hope for ${money(l.target_unit_price, cur)}` : ''}
+            </div>
             <div id={`${id}-msg`}>
               {errors[l.id] && <p className="enq-error" role="alert">{errors[l.id]}</p>}
               {below && (
@@ -82,10 +91,12 @@ export function QuoteResponseForm({ enquiry, lines, today, floors, money, onSubm
         )
       })}
       <FormField label="Quote valid until" required>
-        <TextInput type="date" value={until} min={today} onChange={e => setUntil(e.target.value)}
-          aria-invalid={errors.until ? true : undefined} />
+        <TextInput id="enq-q-until" type="date" value={until} min={today} onChange={e => setUntil(e.target.value)}
+          aria-invalid={errors.until ? true : undefined}
+          aria-describedby={errors.until ? 'enq-q-until-msg' : undefined} />
       </FormField>
-      {errors.until && <p className="enq-error" role="alert">{errors.until}</p>}
+      {errors.until && <p id="enq-q-until-msg" className="enq-error" role="alert">{errors.until}</p>}
+      {floorsFailed && <p className="enq-muted" role="status">Couldn't check your price floors — quote as usual.</p>}
       <FormField label="Note to the buyer (optional)">
         <TextArea rows={3} value={note} onChange={e => setNote(e.target.value)} />
       </FormField>

@@ -10,9 +10,8 @@ import { QuoteResponseForm } from '../enquiries/QuoteResponseForm'
 import { SlotResponseForm } from '../enquiries/SlotResponseForm'
 import type { Action } from '../../lib/enquiries'
 import type { Chip, TypeFilter } from '../../lib/enquiryList'
-import { loadEnquiries, sendQuote, decline, markDone, confirmSlot, proposeSlot, reply } from '../../lib/enquiryRepo'
+import { loadEnquiries, sendQuote, decline, markDone, confirmSlot, proposeSlot, reply, loadFloors } from '../../lib/enquiryRepo'
 import type { EnquiryBook } from '../../lib/enquiryRepo'
-import { supabase } from '../../lib/supabase'
 import { useMarket } from '../../lib/MarketContext'
 
 const EMPTY: EnquiryBook = { enquiries: [], lines: [], slots: [], messages: [], events: [], loadError: null }
@@ -37,26 +36,19 @@ export function PartnerEnquiries({ partnerId }: { partnerId: string }) {
   const [form, setForm] = useState<Form>(null)
   const [reason, setReason] = useState('')
   const [formError, setFormError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const [busy, setBusy] = useState(false)          // mark done
+  const [declining, setDeclining] = useState(false)
+  const [floorsFailed, setFloorsFailed] = useState(false)
   const day = today()
 
   const reload = useCallback(async () => {
     const b = await loadEnquiries()
     setBook(b)
     setLoading(false)
-    /* The seller's agreed floors, read from their own listings; if the read
-       fails the quote form simply shows no floor warning. */
-    const ids = [...new Set(b.lines.map(l => l.product_id))]
-    if (ids.length) {
-      try {
-        const { data } = await supabase.from('products').select('id,floor_price').in('id', ids)
-        const m: Record<string, number> = {}
-        for (const r of (data ?? []) as { id: string; floor_price: number | null }[]) {
-          if (typeof r.floor_price === 'number' && r.floor_price > 0) m[r.id] = r.floor_price
-        }
-        setFloors(m)
-      } catch { setFloors({}) }
-    }
+    /* The seller's agreed floors; if the read fails the quote form shows no
+       floor warning and says so. */
+    const f = await loadFloors(b.lines.map(l => l.product_id))
+    if (f.ok) { setFloors(f.floors); setFloorsFailed(false) } else { setFloors({}); setFloorsFailed(true) }
   }, [])
   useEffect(() => { void reload() }, [reload, partnerId])
 
@@ -121,7 +113,7 @@ export function PartnerEnquiries({ partnerId }: { partnerId: string }) {
       )}
 
       <Dialog open={form?.kind === 'quote' && !!open} onClose={close} title="Send a quote" wide>
-        {open && <QuoteResponseForm enquiry={open} lines={openLines} today={day} floors={floors} money={money}
+        {open && <QuoteResponseForm enquiry={open} lines={openLines} today={day} floors={floors} floorsFailed={floorsFailed} money={money}
           onCancel={close}
           onSubmit={async (prices, until, note) => done(await sendQuote(open.id, prices, until, note || null))} />}
       </Dialog>
@@ -131,9 +123,9 @@ export function PartnerEnquiries({ partnerId }: { partnerId: string }) {
           ev.preventDefault()
           if (!open) return
           if (!reason.trim()) { setFormError('Say why, so the buyer knows what to do next.'); return }
-          setBusy(true); setFormError(null)
+          setDeclining(true); setFormError(null)
           const err = await done(await decline(open.id, reason.trim()))
-          setBusy(false)
+          setDeclining(false)
           if (err) setFormError(err)
         }} noValidate>
           <FormField label="Reason" required>
@@ -142,8 +134,8 @@ export function PartnerEnquiries({ partnerId }: { partnerId: string }) {
           </FormField>
           {formError && <p className="enq-error" role="alert">{formError}</p>}
           <div className="enq-actions">
-            <Btn type="button" variant="secondary" onClick={close} disabled={busy}>Keep it open</Btn>
-            <Btn type="submit" variant="danger" disabled={busy}>{busy ? 'Declining…' : 'Decline'}</Btn>
+            <Btn type="button" variant="secondary" onClick={close} disabled={declining}>Keep it open</Btn>
+            <Btn type="submit" variant="danger" disabled={declining}>{declining ?'Declining…' : 'Decline'}</Btn>
           </div>
         </form>
       </Dialog>

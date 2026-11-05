@@ -23,11 +23,14 @@ export function SlotResponseForm({ mode, when, location, onSubmit, onCancel, now
   const [problem, setProblem] = useState<{ where?: string; at?: string }>({})
   const [failure, setFailure] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  /* A time that already has a place is confirmed as it stands (confirmSlot
+     would ignore anything typed), so the place is shown, not asked for. */
+  const fixedPlace = mode === 'confirm' && (location ?? '').trim() !== ''
 
   const submit = async (ev: React.FormEvent) => {
     ev.preventDefault()
     const p: { where?: string; at?: string } = {}
-    if (!where.trim()) p.where = 'Give a joining link or an address.'
+    if (!fixedPlace && !where.trim()) p.where = 'Give a joining link or an address.'
     let iso: string | undefined
     if (mode === 'propose') {
       const t = Date.parse(at)
@@ -36,9 +39,12 @@ export function SlotResponseForm({ mode, when, location, onSubmit, onCancel, now
       else iso = new Date(t).toISOString()
     }
     setProblem(p)
-    if (p.where || p.at) return
+    if (p.where || p.at) {
+      document.getElementById(p.at ? 'enq-s-at' : 'enq-s-where')?.focus()
+      return
+    }
     setBusy(true); setFailure(null)
-    const err = await onSubmit({ location: where.trim(), startsAt: iso })
+    const err = await onSubmit({ location: fixedPlace ? (location ?? '').trim() : where.trim(), startsAt: iso })
     setBusy(false)
     if (err) setFailure(err)
   }
@@ -48,16 +54,24 @@ export function SlotResponseForm({ mode, when, location, onSubmit, onCancel, now
       {mode === 'confirm' && when && <p className="enq-muted">Confirming the time the buyer offered: <strong>{when}</strong></p>}
       {mode === 'propose' && (
         <FormField label="New date and time" required>
-          <TextInput type="datetime-local" value={at} onChange={e => setAt(e.target.value)}
-            aria-invalid={problem.at ? true : undefined} />
+          <TextInput id="enq-s-at" type="datetime-local" value={at} onChange={e => setAt(e.target.value)}
+            aria-invalid={problem.at ? true : undefined}
+            aria-describedby={problem.at ? 'enq-s-at-msg' : undefined} />
         </FormField>
       )}
-      {problem.at && <p className="enq-error" role="alert">{problem.at}</p>}
-      <FormField label="Joining link or address" required>
-        <TextInput value={where} onChange={e => setWhere(e.target.value)}
-          aria-invalid={problem.where ? true : undefined} />
-      </FormField>
-      {problem.where && <p className="enq-error" role="alert">{problem.where}</p>}
+      {problem.at && <p id="enq-s-at-msg" className="enq-error" role="alert">{problem.at}</p>}
+      {fixedPlace ? (
+        <p className="enq-muted">Meeting at: <strong>{location}</strong></p>
+      ) : (
+        <>
+          <FormField label="Joining link or address" required>
+            <TextInput id="enq-s-where" value={where} onChange={e => setWhere(e.target.value)}
+              aria-invalid={problem.where ? true : undefined}
+              aria-describedby={problem.where ? 'enq-s-where-msg' : undefined} />
+          </FormField>
+          {problem.where && <p id="enq-s-where-msg" className="enq-error" role="alert">{problem.where}</p>}
+        </>
+      )}
       {failure && <p className="enq-error" role="alert">{failure}</p>}
       <div className="enq-actions">
         <Btn type="button" variant="secondary" onClick={onCancel} disabled={busy}>Cancel</Btn>
