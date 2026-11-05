@@ -201,7 +201,8 @@ export function EnterpriseBrowse() {
           {
             id: 'vertical', title: 'Marketplace', selected: vertical,
             onSelect: v => { setVertical(v); setCategory(null) },
-            options: ['iot', 'security', 'device'].map(v => ({
+            /* Taken from the loaded listings (first-seen order), not a fixed trio. */
+            options: shelves.map(v => ({
               value: v, label: VERTICAL_NAMES[v]?.replace(' Marketplace', '') ?? v,
               count: all.filter(p => p.category_id === v).length,
             })),

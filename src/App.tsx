@@ -632,6 +632,7 @@ function AppInner() {
             product={selectedProduct}
             onAddToCart={addToCart}
             onNavigate={navigate}
+            onNotifyMe={setNotifyProduct}
           />
         )}
         {!loading && view === 'checkout' && (

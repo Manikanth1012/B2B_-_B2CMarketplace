@@ -18,6 +18,7 @@ import type { MissingField } from '../../lib/requisitionBasket'
 import { raiseRequisition, loadAccount } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
 import { useMarket } from '../../lib/MarketContext'
+import { useFocusTrap } from '../ui/useFocusTrap'
 import { VERTICAL_NAMES } from './data'
 import { getProductImage } from '../../lib/images'
 import { round2 } from '../../lib/money'
@@ -70,6 +71,8 @@ export function RequisitionPanel({ onRaised }: {
      modal dialog, so leaving focus on a control that has just been unmounted
      would drop a keyboard user at the top of the page. */
   const drawer = useRef<HTMLDivElement>(null)
+  /* Tab stays inside the drawer while it is open. */
+  useFocusTrap(drawer, open)
   useEffect(() => {
     if (!open) return
     /* Taken before the drawer moves focus. A click that did not focus its

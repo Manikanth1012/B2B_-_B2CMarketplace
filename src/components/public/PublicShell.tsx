@@ -87,6 +87,9 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, onSearch, children
     navRef.current?.querySelector<HTMLElement>('button, a[href]')?.focus()
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
+      /* One layer at a time: while the Discover panel is open, its own Escape
+         handler closes it and the menu stays. */
+      if (navRef.current?.querySelector('.discover__panel')) return
       setMenuOpen(false)
       menuBtn.current?.focus()
     }

@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { ArrowRight, type LucideIcon } from 'lucide-react'
 import type { Visual } from '../../lib/home'
 
-export function CategoryTile({ name, count, visual, icon: Icon, onClick }: {
+export function CategoryTile({ name, description, count, visual, icon: Icon, onClick }: {
   name: string
+  /** The category's one-line blurb, where the caller has one. */
+  description?: string
   /** Omitted when the catalogue did not load: no count beats a wrong one. */
   count?: number
   visual: Visual | null
@@ -23,6 +25,7 @@ export function CategoryTile({ name, count, visual, icon: Icon, onClick }: {
       <div className="cat-tile__body">
         <div>
           <div className="cat-tile__name">{name}</div>
+          {description && <div className="cat-tile__desc">{description}</div>}
           {count !== undefined && (
             <div className="cat-tile__count">{count} {count === 1 ? 'product' : 'products'}</div>
           )}

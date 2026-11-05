@@ -12,6 +12,8 @@
  * currency — which is the failure mode with no visible symptom.
  */
 import { supabase } from './supabase'
+import { settle } from './loaded'
+import type { Loaded } from './loaded'
 import { wasPriceFor, describeIn } from './money'
 import type { Currency, Rate, Market, MarketCurrency } from './money'
 import type { Product } from '../types'
@@ -105,12 +107,13 @@ export async function loadHome(): Promise<{ market: string | null; currency: str
   }
 }
 
-/** The whole price book for one currency. */
-export async function loadPriceBook(currency: string): Promise<Map<string, PriceRow>> {
-  const { data } = await supabase
-    .from('product_prices').select('*').eq('currency', currency)
+/* The pure result type lives in `loaded.ts` so its test needs no database client. */
+export { settle } from './loaded'
+export type { Loaded } from './loaded'
+
+function toPriceBook(rows: PriceRow[]): Map<string, PriceRow> {
   const out = new Map<string, PriceRow>()
-  for (const r of (data ?? []) as PriceRow[]) {
+  for (const r of rows) {
     out.set(r.product_id, {
       ...r,
       price: Number(r.price),
@@ -120,6 +123,25 @@ export async function loadPriceBook(currency: string): Promise<Map<string, Price
     })
   }
   return out
+}
+
+/** As `loadPriceBook`, but a failed read is reported rather than swallowed. */
+export async function loadPriceBookResult(currency: string): Promise<Loaded<Map<string, PriceRow>>> {
+  try {
+    const { data, error } = await supabase
+      .from('product_prices').select('*').eq('currency', currency)
+    const r = settle<PriceRow[]>((data ?? null) as PriceRow[] | null, error, [])
+    return r.ok ? { ok: true, value: toPriceBook(r.value) } : r
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Price read failed' }
+  }
+}
+
+/** The whole price book for one currency. */
+export async function loadPriceBook(currency: string): Promise<Map<string, PriceRow>> {
+  const { data } = await supabase
+    .from('product_prices').select('*').eq('currency', currency)
+  return toPriceBook((data ?? []) as PriceRow[])
 }
 
 /**
@@ -140,12 +162,27 @@ export interface CopyRow {
   description: string
 }
 
+function toCopyBook(rows: CopyRow[]): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const r of rows) out.set(`${r.product_id}|${r.currency}`, r.description)
+  return out
+}
+
+/** As `loadCopyBook`, but a failed read is reported rather than swallowed. */
+export async function loadCopyBookResult(): Promise<Loaded<Map<string, string>>> {
+  try {
+    const { data, error } = await supabase.from('product_copy').select('*')
+    const r = settle<CopyRow[]>((data ?? null) as CopyRow[] | null, error, [])
+    return r.ok ? { ok: true, value: toCopyBook(r.value) } : r
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : 'Copy read failed' }
+  }
+}
+
 /** Every piece of per-currency copy, keyed for `describeIn`. */
 export async function loadCopyBook(): Promise<Map<string, string>> {
   const { data } = await supabase.from('product_copy').select('*')
-  const out = new Map<string, string>()
-  for (const r of (data ?? []) as CopyRow[]) out.set(`${r.product_id}|${r.currency}`, r.description)
-  return out
+  return toCopyBook((data ?? []) as CopyRow[])
 }
 
 /**
