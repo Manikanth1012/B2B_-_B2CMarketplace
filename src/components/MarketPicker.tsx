@@ -56,7 +56,8 @@ export function MarketPicker({ tone = 'dark' }: { tone?: 'dark' | 'light' }) {
       >
         <Globe size={13} />
         <span>{market.name}</span>
-        <span style={{ opacity: 0.75 }}>· {currency?.code ?? market.currency}</span>
+        {/* Full --text-secondary: at 0.75 opacity it fell to 4.03:1 on white. */}
+        <span style={{ color: 'var(--text-secondary)' }}>· {currency?.code ?? market.currency}</span>
         <ChevronDown size={12} style={{ opacity: 0.6 }} />
       </button>
 
