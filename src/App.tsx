@@ -94,6 +94,7 @@ import { EnterpriseDashboard } from './components/enterprise/EnterpriseDashboard
 import { EnterpriseBrowse } from './components/enterprise/EnterpriseBrowse'
 import { EnterpriseSubs, EnterpriseMarketplace } from './components/enterprise/EnterpriseViews'
 import { EnterpriseOrders } from './components/enterprise/EnterpriseOrders'
+import { EnterpriseEnquiries } from './components/enterprise/EnterpriseEnquiries'
 import { EnterpriseAudit } from './components/enterprise/EnterpriseMisc'
 import { EnterpriseTeam } from './components/enterprise/EnterpriseTeam'
 import { EnterpriseProfile } from './components/enterprise/EnterpriseProfile'
@@ -562,7 +563,7 @@ function AppInner() {
         {/* Raising sends them to the queue their requisition just joined —
             within policy or not, it is waiting for a decision there and that is
             where the order gets placed. */}
-        <RequisitionPanel onRaised={() => setEnView('en-approvals')} />
+        <RequisitionPanel onRaised={() => setEnView('en-approvals')} onQuoteRequested={() => setEnView('en-enquiries')} />
         {enView === 'en-dashboard' && <EnterpriseDashboard onNavigate={setEnView} />}
         {enView === 'en-browse' && <EnterpriseBrowse />}
         {enView === 'en-iot' && <EnterpriseMarketplace vertical="iot" />}
@@ -570,6 +571,7 @@ function AppInner() {
         {enView === 'en-devices' && <EnterpriseMarketplace vertical="device" />}
         {enView === 'en-approvals' && <EnterpriseApprovals />}
         {enView === 'en-orders' && <EnterpriseOrders />}
+        {enView === 'en-enquiries' && <EnterpriseEnquiries />}
         {enView === 'en-subs' && <EnterpriseSubs />}
         {enView === 'en-numbers' && <EnterpriseNumbers />}
         {enView === 'en-refunds' && <EnterpriseRefunds />}

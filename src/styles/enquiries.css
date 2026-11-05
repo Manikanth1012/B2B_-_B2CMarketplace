@@ -99,6 +99,10 @@
 @media (max-width: 599px) { .enq-form__line { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .enq-form__name { grid-column: 1 / -1; } }
 .enq-hint { font-size: var(--text-xs); color: var(--text-secondary); margin: 0 0 8px; }
 
+/* Request a quote / Book a demo in the listing window. */
+.enq-ask { display: flex; flex-wrap: wrap; gap: 8px; }
+.enq-ask .c-btn { min-height: 44px; flex: 1 1 auto; }
+
 /* The header's Contact Sales. */
 .enq-cta {
   display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: var(--radius-full, 999px);
@@ -106,6 +110,11 @@
   font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer; white-space: nowrap;
 }
 .enq-cta:hover { background: var(--bg-alt); }
+/* On a phone the icon stands alone; the words stay for a screen reader. */
+@media (max-width: 767px) {
+  .enq-cta { padding: 0 12px; min-width: 44px; justify-content: center; }
+  .enq-cta__text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
 .enq-cta:focus-visible { outline: 2px solid var(--electric, #168BFF); outline-offset: 2px; }
 
 /* The public Enterprise page's sales band. */

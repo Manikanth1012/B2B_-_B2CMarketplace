@@ -36,6 +36,23 @@ export interface BasketLine {
      so `verticalOf` makes it deliberately. */
   vertical: string
   unit: string | null
+  /* Set when the line came from an accepted quote. Its price and quantity are
+     the quote's, so neither moves: the database (guard_quoted_line) refuses a
+     requisition line whose price or quantity differs from the quoted one. */
+  quote_line_id?: string | null
+}
+
+/** Whether a line came from an accepted quote. */
+export const isQuoted = (l: Pick<BasketLine, 'quote_line_id'>): boolean => !!l.quote_line_id
+
+/** Whether anything in the basket is held at a quoted price. */
+export function holdsQuote(basket: Basket): boolean {
+  return basket.lines.some(isQuoted)
+}
+
+/** What to say when the shelf moves to another currency under a basket holding a quote. */
+export function quoteHoldsCurrency(held: string, shelf: string): string {
+  return `Your requisition holds quoted prices in ${held}, so it stays in ${held}. Raise it, or remove the quoted lines, before adding from the ${shelf} shelf.`
 }
 
 export interface Basket {
@@ -95,6 +112,18 @@ export function addToBasket(
   }
 
   const at = basket.lines.findIndex(l => l.product_id === line.product_id)
+  /* A quoted line is its own line at its own price and quantity, so it never
+     merges with another of the same product, and nothing merges into it. */
+  if (isQuoted(line)) {
+    if (basket.lines.some(l => l.quote_line_id === line.quote_line_id)) {
+      return { ok: false, reason: `${line.name} from this quote is already in your requisition.` }
+    }
+    if (at >= 0) {
+      return { ok: false, reason: `${line.name} is already in your requisition. Remove it first to take it at the quoted price.` }
+    }
+  } else if (at >= 0 && isQuoted(basket.lines[at])) {
+    return { ok: false, reason: `${line.name} is in your requisition at a quoted price and quantity. Raise that first, or remove it, before adding more.` }
+  }
   if (at >= 0) {
     const want = basket.lines[at].quantity + quantity
     if (want > MAX_QUANTITY) {
@@ -124,6 +153,10 @@ export function setQuantity(basket: Basket, product_id: string, quantity: number
     return { ok: false, reason: `That is more than ${MAX_QUANTITY.toLocaleString()} of one thing. Raise it with your account manager instead.` }
   }
   if (quantity <= 0) return removeLine(basket, product_id)
+  const held = basket.lines.find(l => l.product_id === product_id && isQuoted(l))
+  if (held && held.quantity !== quantity) {
+    return { ok: false, reason: `${held.name} is held at the ${held.quantity} that was quoted. Ask for a new quote to change it.` }
+  }
   const lines = basket.lines.map(l => l.product_id === product_id ? { ...l, quantity } : l)
   return { ok: true, basket: { ...basket, lines } }
 }
@@ -182,6 +215,10 @@ export function repriceTo(
 ): { basket: Basket; dropped: string[] } {
   if (!basket.lines.length) return { basket: EMPTY_BASKET, dropped: [] }
   if (basket.currency === currency) return { basket, dropped: [] }
+  /* A quote is priced in one currency and is not on any shelf, so a basket
+     holding one stays where it is: re-reading the shelf would change a price
+     the database will only accept as quoted. */
+  if (holdsQuote(basket)) return { basket, dropped: [] }
 
   const dropped: string[] = []
   const lines: BasketLine[] = []
