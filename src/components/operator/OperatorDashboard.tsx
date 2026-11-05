@@ -16,6 +16,7 @@ const QUICK_ACTIONS: { to: OperatorView; label: string }[] = [
   { to: 'op-settlement', label: 'Settlement Runs' },
   { to: 'op-tickets', label: 'Tickets & SLA' },
   { to: 'op-onboarding', label: 'Onboarding' },
+  { to: 'op-enquiries', label: 'Enquiries' },
 ]
 
 /* A dashboard lists work. It was listing it and then stopping: the operator

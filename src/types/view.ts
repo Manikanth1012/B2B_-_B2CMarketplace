@@ -23,6 +23,7 @@ export type OperatorView =
   | 'op-disputes'
   | 'op-credit'
   | 'op-contracts'
+  | 'op-enquiries'
   | 'op-shelves'
   | 'op-reviews'
   | 'op-feedback'

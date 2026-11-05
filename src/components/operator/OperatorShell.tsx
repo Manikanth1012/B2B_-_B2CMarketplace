@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Building2, Users, Package, DollarSign, Warehouse, Ticket,
   Shield, Code, Megaphone, Tag, TrendingUp, Settings,
   Search, ChevronDown, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store, Wallet as WalletIcon, MessageSquareWarning, RotateCcw, Gift, Scale, BookText, Radio, Receipt, LibraryBig, Globe,
-  User, KeyRound, Monitor, Smartphone, Layers, FileText, PackageSearch, Landmark, FileSignature, CalendarClock } from 'lucide-react'
+  User, KeyRound, Monitor, Smartphone, Layers, FileText, PackageSearch, Landmark, FileSignature, CalendarClock, MessagesSquare } from 'lucide-react'
 import type { OperatorView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
 import { AccountMenu } from '../AccountMenu'
@@ -81,6 +81,7 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
     label: 'Service',
     items: [
       { id: 'op-tickets', label: 'Tickets & SLA', icon: <Ticket size={18} /> },
+      { id: 'op-enquiries', label: 'Enquiries', icon: <MessagesSquare size={18} /> },
       /* Below tickets and separate from them on purpose. A ticket is a question
          and the worst case is somebody is annoyed; a dispute holds money and has
          a clock on it, and merging the two makes every question look like a
