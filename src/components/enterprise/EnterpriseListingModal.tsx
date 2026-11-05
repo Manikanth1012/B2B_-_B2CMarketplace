@@ -14,7 +14,11 @@
  */
 import { useState, useEffect } from 'react'
 import { Star, Package } from 'lucide-react'
-import { Modal, Btn, EmptyState, fmtInt, StatusPill } from '../operator/shared'
+import { Modal, Btn, EmptyState, fmtInt, StatusPill, toast } from '../operator/shared'
+import { RaiseQuoteDialog } from '../enquiries/RaiseQuoteDialog'
+import { RaiseDemoDialog } from '../enquiries/RaiseDemoDialog'
+import { enquiriesChanged } from '../enquiries/events'
+import { demoOffered } from '../../lib/enquiries'
 import { cardAction } from '../../lib/storefront'
 import { StatusBadge, stockTone } from '../ui'
 import { stockLabel } from '../../lib/compare'
@@ -48,6 +52,13 @@ export function EnterpriseListingModal(
 ) {
   const [extra, setExtra] = useState<Extra>(NOTHING)
   const [shown, setShown] = useState(0)
+  const [asking, setAsking] = useState<'quote' | 'demo' | null>(null)
+  useEffect(() => { setAsking(null) }, [listing])
+  const asked = (what: string) => {
+    setAsking(null)
+    toast(`${what} sent to ${listing?.seller ?? 'the seller'}. Follow it on Enquiries.`, 'success')
+    enquiriesChanged()
+  }
 
   useEffect(() => {
     if (!listing) { setExtra(NOTHING); setShown(0); return }
@@ -85,6 +96,7 @@ export function EnterpriseListingModal(
   const action = cardAction('enterprise', listing)
 
   return (
+    <>
     <Modal
       open
       onClose={onClose}
@@ -142,6 +154,15 @@ export function EnterpriseListingModal(
 
             <Btn variant="primary" disabled={action.disabled}
                  onClick={() => { onAdd(listing); onClose() }}>{action.label}</Btn>
+
+            {/* Asking before buying: a price for a volume, or seeing it work.
+                Who answers is the listing's seller. */}
+            <div className="enq-ask">
+              <Btn variant="secondary" onClick={() => setAsking('quote')}>Request a quote</Btn>
+              {demoOffered(listing) && (
+                <Btn variant="secondary" onClick={() => setAsking('demo')}>Book a demo</Btn>
+              )}
+            </div>
 
             <div className="cpe-note">
               <Package size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
@@ -220,6 +241,13 @@ export function EnterpriseListingModal(
         </div>
       </div>
     </Modal>
+    {/* Over the listing, which stays open behind; only the top dialog traps. */}
+    <RaiseQuoteDialog open={asking === 'quote'} seed={[{ product_id: listing.id, name: listing.name, quantity: 1 }]}
+      shownIn={listing.currency}
+      onClose={() => setAsking(null)} onRaised={() => asked('Quote request')} />
+    <RaiseDemoDialog open={asking === 'demo'} product={{ id: listing.id, name: listing.name }}
+      onClose={() => setAsking(null)} onRaised={() => asked('Demo request')} />
+    </>
   )
 }
 

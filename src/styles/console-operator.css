@@ -72,8 +72,11 @@
 .op-alert--clear { background: var(--success-bg); color: var(--success); }
 
 .op-quick { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 16px; }
-/* Alone on its row (no alerts beside it) it has four columns to use. */
-.op-quick--wide { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+/* Alone on its row (no alerts beside it) it has five columns, one per link. */
+.op-quick--wide { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+/* An odd last link takes the whole row rather than leaving a gap beside it. */
+.op-quick:not(.op-quick--wide) > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+@media (max-width: 1199px) { .op-quick > :last-child:nth-child(odd) { grid-column: 1 / -1; } }
 @media (max-width: 1199px) { .op-quick--wide { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 767px) { .op-quick, .op-quick--wide { grid-template-columns: 1fr; } }
 .op-quick__link {

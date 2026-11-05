@@ -14,6 +14,7 @@ import { useAccountMoney } from './money'
 import { getProductImage } from '../../lib/images'
 import { useRequisition } from '../../lib/RequisitionContext'
 import { lineFor } from './EnterpriseBrowse'
+import { holdsQuote, quoteHoldsCurrency } from '../../lib/requisitionBasket'
 import { EnterpriseListingModal } from './EnterpriseListingModal'
 import { useMarket } from '../../lib/MarketContext'
 
@@ -271,6 +272,10 @@ export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
   useEffect(() => {
     if (!currency || !listings || !req.basket.lines.length) return
     if (req.basket.currency === currency) return
+    if (holdsQuote(req.basket)) {
+      toast(quoteHoldsCurrency(req.basket.currency, currency), 'info')
+      return
+    }
     const dropped = req.reprice(currency, listings)
     if (dropped.length) {
       toast(`${dropped.join(' and ')} ${dropped.length === 1 ? 'is' : 'are'} not sold in ${currency}, so ${dropped.length === 1 ? 'it was' : 'they were'} taken out of your requisition.`, 'error')

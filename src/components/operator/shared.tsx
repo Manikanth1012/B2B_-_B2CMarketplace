@@ -45,12 +45,15 @@ export function PriorityPill({ priority }: { priority: string }) {
  * Without a name to aim at, those two items had nowhere to go — which is why
  * they did nothing at all until now.
  */
-export function SectionCard({ title, subtitle, children, action, anchor, pad }: { title: string; subtitle?: string; children: React.ReactNode; action?: React.ReactNode; anchor?: string; pad?: boolean }) {
+export function SectionCard({ title, subtitle, children, action, anchor, pad, level = 3 }: { title: string; subtitle?: string; children: React.ReactNode; action?: React.ReactNode; anchor?: string; pad?: boolean
+  /** The title's heading level. 3 under a page's h2 sections; 2 when the card sits straight under the h1. */
+  level?: 2 | 3 }) {
+  const Title = level === 2 ? 'h2' : 'h3'
   return (
     <div id={anchor} className="c-section">
       <div className="c-section__head">
         <div>
-          <h3 className="c-section__title">{title}</h3>
+          <Title className="c-section__title">{title}</Title>
           {subtitle && <p className="c-section__sub">{subtitle}</p>}
         </div>
         {action}
@@ -366,8 +369,11 @@ export function FormField({ label, children, required, hint }: { label: string; 
     ? React.cloneElement(single as React.ReactElement<Record<string, unknown>>, {
       id: (single.props as { id?: string }).id ?? id,
       /* The hint is part of the field's description, not decoration beside it —
-         "One line per line, as it should be printed" is instruction. */
-      'aria-describedby': hint ? hintId : undefined,
+         "One line per line, as it should be printed" is instruction. A
+         description the caller gave (an error message under the field) is
+         kept beside it, not overwritten. */
+      'aria-describedby': [(single.props as { 'aria-describedby'?: string })['aria-describedby'], hint ? hintId : undefined]
+        .filter(Boolean).join(' ') || undefined,
       'aria-required': required || undefined,
     })
     : children

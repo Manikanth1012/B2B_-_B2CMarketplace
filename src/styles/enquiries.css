@@ -1,0 +1,146 @@
+/* ---------- Enquiries (src/components/enquiries/*) ----------
+   The list, the detail and the forms shared by the buyer, seller and operator
+   consoles. Controls on these screens are 44px; small text never takes the
+   light teal; motion is limited to what reduced-motion users keep. */
+
+.enq { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.enq h1 { font-size: var(--text-2xl); font-weight: 800; color: var(--text); margin: 0; }
+.enq__lede { font-size: var(--text-sm); color: var(--text-secondary); margin-top: 4px; }
+
+/* 44px targets on every new control. */
+.enq .c-btn, .enq-dialog .c-btn, .enq-cta { min-height: 44px; }
+.enq .acct-chip { min-height: 44px; }
+
+/* List above, detail beside it from 1200px. */
+.enq-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (min-width: 1200px) {
+  .enq-layout--split { grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr); }
+}
+
+.enq-list { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.enq-filters { display: flex; flex-direction: column; gap: 12px; }
+.enq-filters__row { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.enq-filter { display: flex; flex-direction: column; gap: 4px; min-width: 160px; }
+.enq-filter--grow { flex: 1 1 240px; min-width: 0; }
+.enq-filter__label { font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary); }
+.enq-search { position: relative; display: block; }
+.enq-search__icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-secondary); }
+.enq-search__input { padding-left: 34px; }
+
+.enq-row.is-open { background: var(--bg-alt); }
+.enq-row__open {
+  display: inline-flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  min-height: 44px; justify-content: center; padding: 0 4px; margin: 0 -4px;
+  background: none; border: none; cursor: pointer; font: inherit; color: var(--text); text-align: left;
+  border-radius: var(--radius);
+}
+.enq-row__open:hover .enq-row__id { text-decoration: underline; }
+.enq-row__open:focus-visible { outline: 2px solid var(--electric, #168BFF); outline-offset: 2px; }
+.enq-row__type { font-weight: 700; }
+.enq-row__id { font-size: var(--text-xs); color: var(--text-secondary); }
+
+/* ---------- Detail ---------- */
+.enq-detail {
+  background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-md);
+  padding: 20px; display: flex; flex-direction: column; gap: 18px; min-width: 0;
+}
+.enq-detail__head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+.enq-detail__kicker { font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary); margin: 0; }
+.enq-detail__title { font-size: var(--text-lg); font-weight: 700; color: var(--text); margin: 2px 0 0; }
+.enq-detail__part { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.enq-detail__h { font-size: var(--text-sm); font-weight: 700; color: var(--text); margin: 0; }
+.enq-detail__h--inline { display: inline; }
+
+.enq-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 10px 16px; margin: 0; }
+.enq-facts dt { font-size: var(--text-xs); color: var(--text-secondary); font-weight: 600; }
+.enq-facts dd { margin: 2px 0 0; font-size: var(--text-sm); color: var(--text); }
+.enq-facts__wide { grid-column: 1 / -1; }
+.enq-total { background: var(--bg-alt); }
+
+.enq-slots { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.enq-slot {
+  display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-card);
+}
+.enq-slot.is-confirmed { border-color: var(--success); background: var(--success-bg); }
+.enq-slot__when { font-weight: 700; font-size: var(--text-sm); color: var(--text); }
+.enq-slot__who, .enq-slot__where { font-size: var(--text-xs); color: var(--text-secondary); }
+
+.enq-thread { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.enq-msg { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-card); }
+.enq-msg--buyer { background: var(--bg-alt); }
+.enq-msg__meta { font-size: var(--text-xs); font-weight: 600; color: var(--text-secondary); }
+.enq-msg__body { font-size: var(--text-sm); color: var(--text); margin-top: 2px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.enq-muted { font-size: var(--text-sm); color: var(--text-secondary); margin: 0; }
+
+.enq-reply { display: flex; flex-direction: column; gap: 8px; }
+.enq-reply .c-field { margin-bottom: 0; }
+.enq-error { font-size: var(--text-sm); font-weight: 600; color: var(--danger); margin: 0; }
+.enq-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.enq-actions--bar { padding-top: 14px; border-top: 1px solid var(--border); }
+
+.enq-history summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; gap: 6px; }
+.enq-history summary:focus-visible { outline: 2px solid var(--electric, #168BFF); outline-offset: 2px; border-radius: var(--radius); }
+.enq-events { list-style: none; margin: 8px 0 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: var(--text-sm); color: var(--text); }
+.enq-events__at { font-size: var(--text-xs); color: var(--text-secondary); }
+.enq-events__note { color: var(--text-secondary); }
+
+/* ---------- Forms (in the shared Dialog) ---------- */
+.enq-form { display: flex; flex-direction: column; gap: 4px; }
+.enq-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 599px) { .enq-two { grid-template-columns: minmax(0, 1fr); } }
+.enq-form__lines { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+.enq-form__line {
+  display: grid; grid-template-columns: minmax(0, 1fr) 110px 150px; gap: 10px; align-items: end;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-md);
+}
+.enq-form__line .c-field { margin-bottom: 0; }
+.enq-form__name { font-size: var(--text-sm); font-weight: 600; color: var(--text); align-self: center; }
+@media (max-width: 599px) { .enq-form__line { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .enq-form__name { grid-column: 1 / -1; } }
+.enq-hint { font-size: var(--text-xs); color: var(--text-secondary); margin: 0 0 8px; }
+
+/* Request a quote / Book a demo in the listing window. */
+.enq-ask { display: flex; flex-wrap: wrap; gap: 8px; }
+.enq-ask .c-btn { min-height: 44px; flex: 1 1 auto; }
+
+/* The header's Contact Sales. */
+.enq-cta {
+  display: inline-flex; align-items: center; gap: 6px; padding: 0 14px; border-radius: var(--radius-full, 999px);
+  border: 1px solid var(--border-strong); background: #fff; color: var(--text);
+  font: inherit; font-size: var(--text-sm); font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.enq-cta:hover { background: var(--bg-alt); }
+/* On a phone the icon stands alone; the words stay for a screen reader. */
+@media (max-width: 767px) {
+  .enq-cta { padding: 0 12px; min-width: 44px; justify-content: center; }
+  .enq-cta__text { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
+.enq-cta:focus-visible { outline: 2px solid var(--electric, #168BFF); outline-offset: 2px; }
+
+/* The public Enterprise page's sales band. */
+.enq-public { background: var(--bg-alt); border-bottom: 1px solid var(--border); }
+.enq-public__inner { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; padding-top: 24px; padding-bottom: 24px; }
+.enq-public__title { font-size: var(--text-lg); font-weight: 700; color: var(--text); margin: 0; }
+.enq-public__text { font-size: var(--text-sm); color: var(--text-secondary); margin: 4px 0 0; }
+.enq-public__link { background: none; border: none; padding: 0; font: inherit; color: var(--brand-navy); text-decoration: underline; cursor: pointer; min-height: 24px; }
+
+/* ---- operator desk ---- */
+.enq-desk .enq-filter { min-width: 180px; }
+.enq-form { display: flex; flex-direction: column; gap: 14px; }
+.enq-dialog .c-input, .enq-dialog select, .enq-dialog textarea { min-height: 44px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .enq *, .enq-dialog * { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
+}
+
+/* ---- seller responses ---- */
+.enq-resp { display: flex; flex-direction: column; gap: 14px; }
+.enq-resp input, .enq-resp textarea { min-height: 44px; }
+.enq-resp .enq-actions .c-btn, .enq-resp .enq-actions button { min-height: 44px; }
+.enq-resp__line { display: flex; flex-direction: column; gap: 6px; }
+.enq-warn {
+  display: flex; align-items: flex-start; gap: 6px; margin: 0; padding: 8px 10px;
+  font-size: var(--text-sm); font-weight: 600; color: var(--warning);
+  background: var(--warning-bg); border-radius: var(--radius-sm, 6px);
+}
+.enq-warn svg { flex: none; margin-top: 2px; }

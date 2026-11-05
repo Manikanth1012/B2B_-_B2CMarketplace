@@ -225,6 +225,27 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
         </div>
       </section>
 
+      {/* Sales talks to signed-in business buyers, where the question can be
+          answered against the account's own terms and catalogue. So Contact
+          Sales signs in; a company without an account applies for one. */}
+      {page === 'enterprise' && (
+        <section className="enq-public" aria-labelledby="enq-public-title">
+          <div className="container enq-public__inner">
+            <div>
+              <h2 id="enq-public-title" className="enq-public__title">Talk to sales</h2>
+              <p className="enq-public__text">
+                Volume pricing, a demo, or something not on the catalogue: sign in and ask from your console.
+                No business account yet?{' '}
+                <button type="button" className="enq-public__link" onClick={onApplyBusiness}>Apply for one</button>.
+              </p>
+            </div>
+            <button type="button" className="btn btn-primary btn-lg" onClick={() => onSignIn('enterprise')}>
+              Contact Sales
+            </button>
+          </div>
+        </section>
+      )}
+
       {/* The catalogue itself. A seller wants to know which marketplaces they can
           list into and what already sells in each, so the partner page shows the six
           categories with real listings under them; the two buyer pages list rows
