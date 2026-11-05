@@ -3,7 +3,7 @@ import { PublicProductModal } from './PublicProductModal'
 import { CategoryShowcase } from './CategoryShowcase'
 import { BANNERS } from '../../lib/assets'
 import { loadCatalogue, loadCategories, countByCategory } from '../../lib/storefrontRepo'
-import { loadPriceBook, loadCopyBook, repriceAll } from '../../lib/moneyRepo'
+import { loadPriceBookResult, loadCopyBookResult, repriceAll } from '../../lib/moneyRepo'
 import { useMarket } from '../../lib/MarketContext'
 import { productsForPage, categoriesForPage, pricedFor, cardAction } from '../../lib/storefront'
 import { filterProducts, SORT_OPTIONS } from '../../lib/listing'
@@ -87,6 +87,8 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
   const [loaded, setLoaded] = useState(false)
   /* Bumped by Try again to re-run the load. */
   const [reloadKey, setReloadKey] = useState(0)
+  /* A failed price read is not "nothing priced for your market"; say so and offer a retry. */
+  const [priceError, setPriceError] = useState(false)
   /* Which product is open. Held here rather than inside the grid because the
      partner page shows categories instead of a grid, and the modal belongs to
      the page either way. */
@@ -99,10 +101,11 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
        and ₹1,599.00 after has been shown two different shops. */
     /* Categories are awaited too: the shelf is empty until both are in, and that
        must not flash "nothing here". */
-    Promise.all([loadCatalogue(), loadPriceBook(currencyCode), loadCopyBook(), loadCategories()])
+    Promise.all([loadCatalogue(), loadPriceBookResult(currencyCode), loadCopyBookResult(), loadCategories()])
       .then(([rows, book, copy, cats]) => {
         if (!live) return
-        setCatalogue(repriceAll(rows, book, currencyCode, copy))
+        setPriceError(!book.ok || !copy.ok)
+        setCatalogue(repriceAll(rows, book.ok ? book.value : new Map(), currencyCode, copy.ok ? copy.value : undefined))
         setCategories(cats)
         setLoaded(true)
       })
@@ -270,6 +273,13 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
                 text="Please check your connection and try again."
                 onClear={() => setReloadKey(k => k + 1)}
                 actionLabel="Try again"
+              />
+            ) : priceError ? (
+              <EmptyListing
+                title="We couldn't load prices just now."
+                text="Please check your connection and try again."
+                onClear={() => setReloadKey(k => k + 1)}
+                actionLabel="Retry"
               />
             ) : shelf.length === 0 ? (
               <EmptyListing

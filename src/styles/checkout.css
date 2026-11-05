@@ -42,7 +42,7 @@
 .cart-line--saved .cart-line__thumb { width: 48px; height: 48px; }
 
 .cart-stepper { display: inline-flex; align-items: center; border: 1px solid var(--border-strong); border-radius: 999px; }
-.cart-stepper button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; color: var(--text); }
+.cart-stepper button { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; border-radius: 50%; color: var(--text); }
 .cart-stepper button:hover { background: var(--bg-alt); }
 .cart-stepper span { min-width: 24px; text-align: center; font-size: var(--text-sm); font-weight: 600; }
 

@@ -25,9 +25,12 @@ interface ProductDetailProps {
   onNavigate?: (view: View, opts?: { category?: string; product?: Product }) => void
   /* Trims the page chrome for the modal the public pages open it in. */
   compact?: boolean
+  /* Opens the app's existing NotifyMeModal (the one the grid cards use). Absent on the
+     public storefront, where there is no signed-in shopper to notify. */
+  onNotifyMe?: (product: Product) => void
 }
 
-export function ProductDetail({ product, onAddToCart, onNavigate, compact = false }: ProductDetailProps) {
+export function ProductDetail({ product, onAddToCart, onNavigate, compact = false, onNotifyMe }: ProductDetailProps) {
   /* The product arrived already priced in the market's currency — `repriceAll`
      did that at load, and it stamped the currency on the row. So this page
      formats what it was given rather than converting anything, the same way the
@@ -231,7 +234,9 @@ export function ProductDetail({ product, onAddToCart, onNavigate, compact = fals
               )}
               {product.stock === 'out' && (
                 <div style={{ marginTop: '8px', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
-                  Notify me when available
+                  {onNotifyMe
+                    ? <button type="button" style={{ minHeight: "44px", padding: "0 4px", background: "none", border: 0, color: "var(--brand-navy)", fontSize: "inherit", fontWeight: 600, textDecoration: "underline", cursor: "pointer" }} onClick={() => onNotifyMe(product)}>Notify me when available</button>
+                    : 'Notify me when available'}
                 </div>
               )}
             </div>

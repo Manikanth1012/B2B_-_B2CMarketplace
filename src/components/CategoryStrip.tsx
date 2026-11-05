@@ -49,6 +49,7 @@ export function CategoryStrip({ onNavigate }: CategoryStripProps) {
           <CategoryTile
             key={cat.id}
             name={cat.name}
+            description={cat.blurb}
             count={counts[cat.id] || 0}
             visual={categoryVisual(cat.id)}
             icon={categoryIcon(cat.id)}
