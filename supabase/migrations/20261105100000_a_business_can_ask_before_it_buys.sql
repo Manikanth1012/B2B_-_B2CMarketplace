@@ -657,9 +657,11 @@ begin
     if v_persona is null then return new; end if;
     /* Raised through `raise_*`, or by the operator. Either way it starts at the
        beginning, unpriced and undecided. */
-    if new.status is distinct from case new.type when 'quote' then 'submitted'
-                                                when 'demo' then 'requested'
-                                                when 'sales' then 'open' end then
+    /* The CASE is in parentheses on purpose: PL/pgSQL ends an IF condition at
+       the first THEN it meets, and without them that would be the CASE's own. */
+    if new.status is distinct from (case new.type when 'quote' then 'submitted'
+                                                 when 'demo' then 'requested'
+                                                 when 'sales' then 'open' end) then
       raise exception 'A % enquiry starts as %, not %.', new.type,
         case new.type when 'quote' then 'submitted' when 'demo' then 'requested' else 'open' end, new.status;
     end if;

@@ -163,4 +163,12 @@ describe('the enquiries migration', () => {
   it('never drops a table without if exists', () => {
     expect(code).not.toMatch(/drop table (?!if exists)/)
   })
+
+  /* PL/pgSQL ends an IF/ELSIF condition at the first THEN it meets, so a bare
+     CASE inside one cuts the condition short ("syntax error at end of input").
+     The first apply failed exactly so; a CASE in a condition goes in brackets. */
+  it('never puts a bare CASE inside an IF condition', () => {
+    const bare = code.split('\n').filter(l => /^\s*(if|elsif)\b/i.test(l) && /(^|[^(])\bcase\b/i.test(l))
+    expect(bare).toEqual([])
+  })
 })
