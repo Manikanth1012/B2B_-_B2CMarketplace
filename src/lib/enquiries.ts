@@ -122,10 +122,12 @@ function buyerActions(e: Enquiry, today: string, canRaise: boolean, slots: reado
       }
       return ['withdraw', 'reply']
     case 'demo': {
-      // The buyer confirms a time the seller proposed (requested -> scheduled) or suggests another.
+      // While requested, the buyer confirms a time the seller proposed (-> scheduled) or
+      // suggests another. Once scheduled, the time is fixed: withdraw or talk it through.
+      if (e.status !== 'requested') return ['withdraw', 'reply']
       const open = slots.filter(s => !s.confirmed)
       const latest = open[open.length - 1]
-      const confirm: Action[] = e.status === 'requested' && latest?.proposed_by === 'responder' ? ['confirm-slot'] : []
+      const confirm: Action[] = latest?.proposed_by === 'responder' ? ['confirm-slot'] : []
       return [...confirm, 'propose-slot', 'withdraw', 'reply']
     }
     case 'sales':

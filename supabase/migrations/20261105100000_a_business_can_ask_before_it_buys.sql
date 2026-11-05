@@ -187,6 +187,19 @@ begin
   return v_me;
 end $$;
 
+/* The subject, in a sentence rather than a constraint name when it is wrong. */
+create or replace function enquiry_subject(p_subject text) returns text
+language plpgsql immutable as $$
+begin
+  if nullif(btrim(coalesce(p_subject, '')), '') is null then
+    raise exception 'Give the enquiry a subject.';
+  end if;
+  if char_length(btrim(p_subject)) > 120 then
+    raise exception 'Keep the subject to 120 characters.';
+  end if;
+  return btrim(p_subject);
+end $$;
+
 /* Who the caller is, by name, for the conversation and the audit trail. */
 create or replace function enquiry_actor_name() returns text
 language sql stable security definer set search_path = public as $$
@@ -326,7 +339,7 @@ begin
   select a.currency into v_currency from enterprise_accounts a where a.id = v_me.account_id;
 
   insert into enquiries (type, account_id, raised_by, partner_id, subject, status, currency, needed_by)
-  values ('quote', v_me.account_id, v_me.id, v_partner, btrim(p_subject), 'submitted', v_currency, p_needed_by)
+  values ('quote', v_me.account_id, v_me.id, v_partner, enquiry_subject(p_subject), 'submitted', v_currency, p_needed_by)
   returning id into v_id;
 
   for v_line in select * from jsonb_array_elements(p_lines) loop
@@ -389,19 +402,19 @@ begin
   if coalesce(array_length(p_slots, 1), 0) not between 1 and 3 then
     raise exception 'Offer between one and three times.';
   end if;
-  if (select count(distinct s) from unnest(p_slots) s) <> array_length(p_slots, 1) then
-    raise exception 'The same time is offered twice.';
-  end if;
   foreach v_slot in array p_slots loop
     if v_slot is null or v_slot <= now() then
       raise exception 'Every time offered has to be in the future.';
     end if;
   end loop;
+  if (select count(distinct s) from unnest(p_slots) s) <> array_length(p_slots, 1) then
+    raise exception 'The same time is offered twice.';
+  end if;
 
   select a.currency into v_currency from enterprise_accounts a where a.id = v_me.account_id;
 
   insert into enquiries (type, account_id, raised_by, partner_id, subject, status, currency, format, attendees)
-  values ('demo', v_me.account_id, v_me.id, v_product.partner_id, btrim(p_subject), 'requested',
+  values ('demo', v_me.account_id, v_me.id, v_product.partner_id, enquiry_subject(p_subject), 'requested',
           v_currency, p_format, p_attendees)
   returning id into v_id;
 
@@ -441,7 +454,7 @@ begin
   select a.currency into v_currency from enterprise_accounts a where a.id = v_me.account_id;
 
   insert into enquiries (type, account_id, raised_by, partner_id, subject, status, currency, contact_pref)
-  values ('sales', v_me.account_id, v_me.id, null, btrim(p_subject), 'open', v_currency, p_contact_pref)
+  values ('sales', v_me.account_id, v_me.id, null, enquiry_subject(p_subject), 'open', v_currency, p_contact_pref)
   returning id into v_id;
 
   insert into enquiry_messages (enquiry_id, author_role, author_name, body)
@@ -470,12 +483,92 @@ begin
   if p_partner_id is not null and not exists (select 1 from partners where id = p_partner_id) then
     raise exception 'There is no seller %.', p_partner_id;
   end if;
-  perform set_config('enquiry.reason', btrim(p_reason), true);
-  update enquiries set partner_id = p_partner_id where id = p_id;
-  if not found then
+  if not exists (select 1 from enquiries where id = p_id) then
     raise exception 'There is no enquiry %.', p_id;
   end if;
+  if exists (select 1 from enquiries where id = p_id and partner_id is not distinct from p_partner_id) then
+    raise exception '% is already with %.', p_id, coalesce(p_partner_id, 'the desk');
+  end if;
+  perform set_config('enquiry.reason', btrim(p_reason), true);
+  update enquiries set partner_id = p_partner_id where id = p_id;
   perform set_config('enquiry.reason', '', true);
+end $$;
+
+/**
+ * Send a quote, or send it again. The only way a price is ever set.
+ *
+ * `p_prices` is `{ "<line id>": 3899.00, ... }` and must price every line on
+ * the quote. In one transaction it writes the prices, dates the quote 1 to 90
+ * days ahead, moves it submitted -> quoted (or re-quotes a quoted one), and
+ * through the guards writes 'quoted' or 'requoted' to the trail and tells the
+ * buyer. A note, if given, goes into the conversation.
+ *
+ * The guards refuse a price or a move to `quoted` made any other way: they
+ * look for `app.enquiry_rpc`, a transaction-local flag only this function
+ * sets. So what the buyer accepts is always a set of prices that were sent to
+ * them together, with a date, and recorded.
+ */
+create or replace function send_quote(p_id text, p_prices jsonb, p_valid_until date, p_note text default null)
+returns void language plpgsql security definer set search_path = public as $$
+declare
+  v_persona text := current_persona();
+  v_e       enquiries;
+  v_bad     text;
+begin
+  select * into v_e from enquiries where id = p_id for update;
+  if v_e.id is null then
+    raise exception 'There is no enquiry %.', p_id;
+  end if;
+  if not ((v_persona = 'partner' and current_partner_id() is not null and v_e.partner_id = current_partner_id())
+          or (v_persona = 'operator' and v_e.partner_id is null)) then
+    raise exception '% is not yours to quote.', p_id;
+  end if;
+  if v_e.type <> 'quote' then
+    raise exception '% is a %, not a quote.', p_id, v_e.type;
+  end if;
+  if v_e.status not in ('submitted', 'quoted') then
+    raise exception '% is %, so it cannot be quoted.', p_id, v_e.status;
+  end if;
+  if p_valid_until is null or p_valid_until < current_date + 1 or p_valid_until > current_date + 90 then
+    raise exception 'A quote has to be valid for between 1 and 90 days from today.';
+  end if;
+  if jsonb_typeof(p_prices) is distinct from 'object' then
+    raise exception 'Give a price for every line.';
+  end if;
+
+  /* Every key is a line of this quote ... */
+  select string_agg(k, ', ') into v_bad
+    from jsonb_object_keys(p_prices) k
+   where not exists (select 1 from enquiry_lines l where l.id = k and l.enquiry_id = p_id);
+  if v_bad is not null then
+    raise exception 'These are not lines of %: %', p_id, v_bad;
+  end if;
+  /* ... every line has a key ... */
+  select string_agg(l.name, ', ' order by l.sort_order) into v_bad
+    from enquiry_lines l where l.enquiry_id = p_id and not (p_prices ? l.id);
+  if v_bad is not null then
+    raise exception 'Price every line before sending the quote. Missing: %', v_bad;
+  end if;
+  /* ... and every value is a number, nought or more. */
+  select string_agg(k, ', ') into v_bad
+    from jsonb_each(p_prices) as x(k, v)
+   where jsonb_typeof(v) <> 'number' or (v #>> '{}')::numeric < 0;
+  if v_bad is not null then
+    raise exception 'These lines have no usable price: %', v_bad;
+  end if;
+
+  perform set_config('app.enquiry_rpc', 'on', true);
+
+  update enquiry_lines l set quoted_unit_price = (p_prices ->> l.id)::numeric
+   where l.enquiry_id = p_id;
+  update enquiries set status = 'quoted', valid_until = p_valid_until where id = p_id;
+
+  perform set_config('app.enquiry_rpc', '', true);
+
+  if nullif(btrim(coalesce(p_note, '')), '') is not null then
+    insert into enquiry_messages (enquiry_id, author_role, author_name, body)
+    values (p_id, 'partner', 'pending', btrim(p_note));   -- author derived by the guard
+  end if;
 end $$;
 
 /* ============================================================ the guards === */
@@ -533,7 +626,11 @@ begin
 
   new.updated_at := now();
   v_moved := new.status is distinct from old.status;
-  v_requote := not v_moved and new.status = 'quoted' and new.valid_until is distinct from old.valid_until;
+  /* A re-quote is `send_quote` on a quote that is already quoted, whether or
+     not the date moved: the prices may have. */
+  v_requote := not v_moved and new.status = 'quoted'
+               and (new.valid_until is distinct from old.valid_until
+                    or coalesce(current_setting('app.enquiry_rpc', true), '') = 'on');
 
   if v_persona is not null then
     /* --------------------------------------------------- who is asking -- */
@@ -549,7 +646,7 @@ begin
       end if;
       v_role := 'buyer';
     elsif v_persona = 'partner' then
-      if old.partner_id is distinct from current_partner_id() then
+      if current_partner_id() is null or old.partner_id is distinct from current_partner_id() then
         raise exception '% is not routed to you.', old.id;
       end if;
       v_role := 'responder';
@@ -587,7 +684,7 @@ begin
     end if;
 
     /* ------------------------------------------------------ the moves -- */
-    if v_moved or new.valid_until is distinct from old.valid_until then
+    if v_moved or v_requote or new.valid_until is distinct from old.valid_until then
       if v_role = 'operator' then
         raise exception '% is the seller''s to answer. Reassign it to the desk first.', old.id;
       end if;
@@ -602,6 +699,13 @@ begin
       end if;
 
       if new.status = 'quoted' then
+        /* Quoting and re-quoting go through `send_quote`, which prices the
+           lines and moves the quote in one transaction. A quote moved here on
+           its own would be a quote the buyer saw priced by whatever happened
+           to be on the lines. */
+        if coalesce(current_setting('app.enquiry_rpc', true), '') <> 'on' then
+          raise exception 'A quote is sent with send_quote, which prices every line and dates it in one step.';
+        end if;
         if new.valid_until is null or new.valid_until < current_date + 1 or new.valid_until > current_date + 90 then
           raise exception 'A quote has to be valid for between 1 and 90 days from today.';
         end if;
@@ -619,6 +723,11 @@ begin
 
       if new.status = 'accepted' and old.valid_until < current_date then
         raise exception 'This quote ran out on %. Ask for it to be re-quoted.', to_char(old.valid_until, 'DD Mon YYYY');
+      end if;
+      /* What is accepted is what was sent: every line still priced. */
+      if new.status = 'accepted' and exists (
+           select 1 from enquiry_lines where enquiry_id = old.id and quoted_unit_price is null) then
+        raise exception '% has a line with no price on it, so it cannot be accepted. Ask for it to be re-quoted.', old.id;
       end if;
 
       if new.status = 'scheduled' and not exists (
@@ -695,8 +804,8 @@ create trigger enquiries_record_raised after insert on enquiries
  *
  * The buyer owns what was asked — the quantity and the price they hope for —
  * and may change it while nobody has answered yet. The responder owns the
- * price they offer, and may set it while the quote is open (submitted or
- * quoted). Neither may write the other's column, and nobody renames a line or
+ * price they offer, and sets it only through `send_quote`, while the quote is
+ * open (submitted or quoted). Neither may write the other's column, and nobody renames a line or
  * points it at a different listing: a quote for one thing that quietly becomes
  * a quote for another is not the quote anybody answered.
  */
@@ -737,6 +846,10 @@ begin
   end if;
 
   if v_persona = 'enterprise' and v_e.account_id = current_account_id() then
+    if not exists (select 1 from enterprise_users
+                    where user_id = auth.uid() and account_id = v_e.account_id and status = 'active') then
+      raise exception 'You are not an active member of this account.';
+    end if;
     v_role := 'buyer';
   elsif v_persona = 'partner' and v_e.partner_id = current_partner_id() then
     v_role := 'responder';
@@ -760,9 +873,19 @@ begin
     if new.quantity is distinct from old.quantity or new.target_unit_price is distinct from old.target_unit_price then
       raise exception 'The quantity and the target price are the buyer''s. Price what was asked for.';
     end if;
-    if new.quoted_unit_price is distinct from old.quoted_unit_price
-       and not (v_e.type = 'quote' and v_e.status in ('submitted', 'quoted')) then
-      raise exception '% is %, so its prices cannot be changed.', v_e.id, v_e.status;
+    if new.quoted_unit_price is distinct from old.quoted_unit_price then
+      /* Prices move only inside `send_quote`, which re-dates the quote, writes
+         it to the trail and tells the buyer. A price changed on its own is a
+         price the buyer may accept without ever having been shown it. */
+      if coalesce(current_setting('app.enquiry_rpc', true), '') <> 'on' then
+        raise exception 'Prices are sent with send_quote, as a quote or a re-quote, never changed on their own.';
+      end if;
+      if not (v_e.type = 'quote' and v_e.status in ('submitted', 'quoted')) then
+        raise exception '% is %, so its prices cannot be changed.', v_e.id, v_e.status;
+      end if;
+      if new.quoted_unit_price is null then
+        raise exception 'A quoted line cannot be un-priced.';
+      end if;
     end if;
   end if;
 
@@ -777,10 +900,9 @@ create trigger enquiry_lines_guard before insert or update on enquiry_lines
  * The times on offer for a demo.
  *
  * Either side may propose a time; whoever did not propose it may confirm it.
- * The side proposing is taken from who is asking, never from the row. The
- * buyer may suggest a time while the demo is requested or already scheduled
- * (a suggestion to move it, discussed in the conversation); the responder
- * proposes while it is requested.
+ * The side proposing is taken from who is asking, never from the row. Either
+ * side proposes only while the demo is requested, and has at most three
+ * unconfirmed future times on offer at once.
  *
  * A confirmed time needs a joining link or an address. The responder gives it
  * when confirming a buyer's time, or when proposing their own — so a buyer
@@ -803,6 +925,10 @@ begin
   end if;
 
   if v_persona = 'enterprise' and v_e.account_id = current_account_id() then
+    if not exists (select 1 from enterprise_users
+                    where user_id = auth.uid() and account_id = v_e.account_id and status = 'active') then
+      raise exception 'You are not an active member of this account.';
+    end if;
     v_role := 'buyer';
   elsif v_persona = 'partner' and v_e.partner_id = current_partner_id() then
     v_role := 'responder';
@@ -816,14 +942,18 @@ begin
     if v_e.type <> 'demo' then
       raise exception 'Only a demo has times.';
     end if;
-    if v_role = 'buyer' and v_e.status not in ('requested', 'scheduled') then
-      raise exception '% is %, so there is nothing left to arrange.', v_e.id, v_e.status;
-    end if;
-    if v_role = 'responder' and v_e.status <> 'requested' then
+    /* Times are proposed while the demo is being arranged. Once it is
+       scheduled the time is fixed: withdraw, decline, or talk it through. */
+    if v_e.status <> 'requested' then
       raise exception '% is %, so a new time cannot be proposed on it.', v_e.id, v_e.status;
     end if;
     if new.starts_at is null or new.starts_at <= now() then
       raise exception 'A time proposed has to be in the future.';
+    end if;
+    /* Three open offers a side, the most anybody can weigh at once. */
+    if (select count(*) from enquiry_slots
+         where enquiry_id = v_e.id and proposed_by = v_role and not confirmed and starts_at > now()) >= 3 then
+      raise exception 'You already have three times on offer for %. Wait for an answer, or say in the conversation which to drop.', v_e.id;
     end if;
     new.proposed_by := v_role;
     new.confirmed := false;
@@ -989,8 +1119,12 @@ alter table enterprise_requisition_lines
 comment on column enterprise_requisition_lines.quote_line_id is
   'The accepted quote line this requisition line was priced from. When set, guard_quoted_line holds the line to the quote: same product, same quantity, the quoted price, an accepted quote that has not run out, on the same account and in the same money. Null for every line priced from the catalogue.';
 
-/* One accepted line buys once. */
-create unique index if not exists enterprise_requisition_lines_quote_line_idx
+/* One accepted line buys once — once at a time. A requisition that was
+   declined or withdrawn bought nothing, so its quote can be raised again; the
+   check is in `guard_quoted_line`, because a unique index cannot see the
+   requisition's state. An earlier version of this file had the plain index. */
+drop index if exists enterprise_requisition_lines_quote_line_idx;
+create index if not exists enterprise_requisition_lines_quote_line_lookup
   on enterprise_requisition_lines(quote_line_id) where quote_line_id is not null;
 
 /**
@@ -1007,8 +1141,14 @@ declare
   v_q   record;
   v_req record;
 begin
-  if new.quote_line_id is null then return new; end if;
   if current_persona() is null then return new; end if;
+  /* A line priced from a quote stays priced from it. Letting go of the link
+     would leave the quoted price on a line nothing holds to it. */
+  if tg_op = 'UPDATE' and old.quote_line_id is not null
+     and new.quote_line_id is distinct from old.quote_line_id then
+    raise exception 'A line priced from a quote stays tied to it. Remove the line and add it again instead.';
+  end if;
+  if new.quote_line_id is null then return new; end if;
 
   if tg_op = 'UPDATE'
      and new.quote_line_id is not distinct from old.quote_line_id
@@ -1056,6 +1196,19 @@ begin
   end if;
   if new.line_total is distinct from round(new.unit_price * new.quantity, 2) then
     raise exception 'The line total has to be the quoted price times the quantity.';
+  end if;
+
+  /* Once at a time. The quoted line is locked first so two requisitions
+     raised at the same moment cannot both see the other as absent. A
+     requisition that is pending or approved holds it; one that was declined
+     or withdrawn (the only other states, 20260801000000) let it go. */
+  perform 1 from enquiry_lines where id = new.quote_line_id for update;
+  if exists (select 1 from enterprise_requisition_lines o
+               join enterprise_requisitions r on r.id = o.requisition_id
+              where o.quote_line_id = new.quote_line_id
+                and o.id is distinct from new.id
+                and r.state not in ('declined', 'withdrawn')) then
+    raise exception 'That quoted line is already on a requisition that is pending or approved.';
   end if;
   return new;
 end $$;
@@ -1171,7 +1324,8 @@ begin
                       else 'An enquiry was passed to you' end;
     v_body := coalesce(v_company, 'A business') || ' asked for ' || v_what || ' on ' || new.id
               || ': "' || new.subject || '". Answer it from Enquiries.';
-  elsif new.status is distinct from old.status or new.valid_until is distinct from old.valid_until then
+  elsif new.status is distinct from old.status or new.valid_until is distinct from old.valid_until
+        or (new.status = 'quoted' and coalesce(current_setting('app.enquiry_rpc', true), '') = 'on') then
     if v_persona = 'enterprise' then
       if new.status not in ('accepted', 'declined', 'withdrawn', 'closed', 'scheduled') then
         return null;
@@ -1232,6 +1386,12 @@ alter table enquiry_events   enable row level security;
 grant select, insert, update, delete on enquiries, enquiry_lines, enquiry_slots to authenticated;
 grant select, insert on enquiry_messages to authenticated;
 grant select on enquiry_events to authenticated;
+/* Supabase's default privileges grant everything to anon and authenticated, so
+   the lines above narrow nothing on their own. These do: messages are read and
+   added, and the trail is only read, whatever policy is added later. */
+revoke all on enquiries, enquiry_lines, enquiry_slots, enquiry_messages, enquiry_events, enquiry_book from anon;
+revoke update, delete, truncate on enquiry_messages from authenticated;
+revoke insert, update, delete, truncate on enquiry_events from authenticated;
 grant select on enquiry_book to authenticated;
 grant usage on sequence enquiry_seq to authenticated;
 
@@ -1359,6 +1519,8 @@ grant execute on function raise_quote(text, jsonb, date, text) to authenticated;
 grant execute on function raise_demo(text, text, text, integer, timestamptz[], text) to authenticated;
 grant execute on function raise_sales(text, text, text) to authenticated;
 grant execute on function reassign_enquiry(text, text, text) to authenticated;
+revoke all on function send_quote(text, jsonb, date, text) from public, anon;
+grant execute on function send_quote(text, jsonb, date, text) to authenticated;
 
 revoke all on function enquiry_routed_to_me(text) from public, anon;
 revoke all on function enquiry_is_desk_quote(text) from public, anon;
@@ -1374,7 +1536,8 @@ revoke all on function enquiry_buyer() from public, anon, authenticated;
 
 /* SmartBuild, so every screen has something on first run: a quote waiting on
    the buyer, a demo booked, a sales question answered, and a two-seller quote
-   waiting on the desk. `ENQ-9` ids, so tests and cleanup can tell them apart.
+   waiting on the desk. `ENQ-SEED-` ids: not a number, so the sequence can never
+   produce one and a re-run can never delete a real enquiry.
    The seller, the listing name and the currency are read from the catalogue
    and the account rather than typed, so the seed cannot route differently from
    the rule it is there to show. */
@@ -1387,27 +1550,27 @@ begin
   /* A requisition already raised from a seed quote would hold the line in
      place; let go of it rather than refuse to re-seed. */
   update enterprise_requisition_lines set quote_line_id = null
-   where quote_line_id in (select l.id from enquiry_lines l where l.enquiry_id like 'ENQ-9%');
-  delete from enquiries where id like 'ENQ-9%';
+   where quote_line_id in (select l.id from enquiry_lines l where l.enquiry_id like 'ENQ-SEED-%');
+  delete from enquiries where id like 'ENQ-SEED-%';
 
   select name into v_nim_name from partners where id = v_nim;
 
   insert into enquiries (id, type, account_id, raised_by, partner_id, subject, status, currency,
                          needed_by, valid_until, format, attendees, contact_pref,
                          created_at, updated_at, decided_at) values
-    ('ENQ-9001', 'quote', 'ENT-2007', 'EU-2007-01', v_nim,
+    ('ENQ-SEED-1', 'quote', 'ENT-2007', 'EU-2007-01', v_nim,
      'Occupancy sensors for the Whitefield office', 'quoted', v_cur,
      current_date + 21, current_date + 30, null, null, null,
      now() - interval '6 days', now() - interval '2 days', null),
-    ('ENQ-9002', 'demo', 'ENT-2007', 'EU-2007-01', v_nim,
+    ('ENQ-SEED-2', 'demo', 'ENT-2007', 'EU-2007-01', v_nim,
      'Occupancy sensing walkthrough for the facilities team', 'scheduled', v_cur,
      null, null, 'video', 6, null,
      now() - interval '5 days', now() - interval '3 days', null),
-    ('ENQ-9003', 'sales', 'ENT-2007', 'EU-2007-01', null,
+    ('ENQ-SEED-3', 'sales', 'ENT-2007', 'EU-2007-01', null,
      'Volume terms across all four sites', 'answered', v_cur,
      null, null, null, null, 'email',
      now() - interval '4 days', now() - interval '1 day', null),
-    ('ENQ-9004', 'quote', 'ENT-2007', 'EU-2007-01', null,
+    ('ENQ-SEED-4', 'quote', 'ENT-2007', 'EU-2007-01', null,
      'Sensors and managed firewalls for the Hubli depot', 'submitted', v_cur,
      current_date + 45, null, null, null, null,
      now() - interval '1 day', now() - interval '1 day', null);
@@ -1416,55 +1579,55 @@ begin
                              target_unit_price, quoted_unit_price, sort_order)
   select v.id, v.enquiry_id, p.id, p.name, p.partner_id, v.quantity, v.target, v.quoted, v.sort_order
     from (values
-      ('EQL-9001-1', 'ENQ-9001', 'SKU-5004', 120, 3800.00::numeric, 3899.00::numeric, 1),
-      ('EQL-9002-1', 'ENQ-9002', 'SKU-5004',   1, null,             null,             1),
-      ('EQL-9004-1', 'ENQ-9004', 'SKU-5004',  40, 4100.00,          null,             1),
-      ('EQL-9004-2', 'ENQ-9004', 'SKU-6001',   4, null,             null,             2)
+      ('EQL-SEED-1-1', 'ENQ-SEED-1', 'SKU-5004', 120, 3800.00::numeric, 3899.00::numeric, 1),
+      ('EQL-SEED-2-1', 'ENQ-SEED-2', 'SKU-5004',   1, null,             null,             1),
+      ('EQL-SEED-4-1', 'ENQ-SEED-4', 'SKU-5004',  40, 4100.00,          null,             1),
+      ('EQL-SEED-4-2', 'ENQ-SEED-4', 'SKU-6001',   4, null,             null,             2)
     ) as v(id, enquiry_id, product_id, quantity, target, quoted, sort_order)
     join products p on p.id = v.product_id;
 
   insert into enquiry_slots (id, enquiry_id, starts_at, proposed_by, confirmed, location, created_at) values
-    ('EQS-9002-1', 'ENQ-9002', date_trunc('day', now()) + interval '8 days 4 hours 30 minutes', 'buyer', true,
+    ('EQS-SEED-2-1', 'ENQ-SEED-2', date_trunc('day', now()) + interval '8 days 4 hours 30 minutes', 'buyer', true,
      'Video call — https://meet.nimbussensors.example/smartbuild-occupancy', now() - interval '5 days'),
-    ('EQS-9002-2', 'ENQ-9002', date_trunc('day', now()) + interval '9 days 9 hours', 'buyer', false,
+    ('EQS-SEED-2-2', 'ENQ-SEED-2', date_trunc('day', now()) + interval '9 days 9 hours', 'buyer', false,
      null, now() - interval '5 days');
 
   insert into enquiry_messages (id, enquiry_id, author_role, author_name, body, created_at) values
-    ('EQM-9001-1', 'ENQ-9001', 'buyer', 'Vikram Shah',
+    ('EQM-SEED-1-1', 'ENQ-SEED-1', 'buyer', 'Vikram Shah',
      'We are fitting out the Whitefield office in two phases. 120 sensors covers both floors. Can you do better than list at this volume?',
      now() - interval '6 days'),
-    ('EQM-9001-2', 'ENQ-9001', 'partner', coalesce(v_nim_name, 'Nimbus Sensors'),
+    ('EQM-SEED-1-2', 'ENQ-SEED-1', 'partner', coalesce(v_nim_name, 'Nimbus Sensors'),
      'Yes — the price on the quote holds for the full 120 and includes the gateway pairing on site. Valid for 30 days.',
      now() - interval '2 days'),
-    ('EQM-9002-1', 'ENQ-9002', 'buyer', 'Vikram Shah',
+    ('EQM-SEED-2-1', 'ENQ-SEED-2', 'buyer', 'Vikram Shah',
      'Six of us from facilities. We mainly want to see how the occupancy dashboard handles shared desks.',
      now() - interval '5 days'),
-    ('EQM-9002-2', 'ENQ-9002', 'partner', coalesce(v_nim_name, 'Nimbus Sensors'),
+    ('EQM-SEED-2-2', 'ENQ-SEED-2', 'partner', coalesce(v_nim_name, 'Nimbus Sensors'),
      'The first time works for us. The joining link is on the booking; we will bring a live floor plan from a customer site.',
      now() - interval '3 days'),
-    ('EQM-9003-1', 'ENQ-9003', 'buyer', 'Vikram Shah',
+    ('EQM-SEED-3-1', 'ENQ-SEED-3', 'buyer', 'Vikram Shah',
      'We buy across four sites and expect to add two more this year. Is there a volume arrangement that applies across sellers?',
      now() - interval '4 days'),
-    ('EQM-9003-2', 'ENQ-9003', 'operator', 'Enquiries desk',
+    ('EQM-SEED-3-2', 'ENQ-SEED-3', 'operator', 'Enquiries desk',
      'There is: Business Plus accounts get a pricing review at every renewal, and multi-seller quotes come through this desk. Send us the list for the new sites and we will quote it as one.',
      now() - interval '1 day'),
-    ('EQM-9004-1', 'ENQ-9004', 'buyer', 'Vikram Shah',
+    ('EQM-SEED-4-1', 'ENQ-SEED-4', 'buyer', 'Vikram Shah',
      'The Hubli depot opens next quarter. Sensors for cold storage and firewalls for the four buildings on site.',
      now() - interval '1 day');
 
   /* The trail behind each one, after the "raised" row the insert trigger
      already wrote. */
   insert into enquiry_events (id, enquiry_id, actor_role, actor_name, action, from_status, to_status, note, at) values
-    ('EQE-9001-2', 'ENQ-9001', 'partner', coalesce(v_nim_name, 'Nimbus Sensors'), 'quoted', 'submitted', 'quoted',
+    ('EQE-SEED-1-2', 'ENQ-SEED-1', 'partner', coalesce(v_nim_name, 'Nimbus Sensors'), 'quoted', 'submitted', 'quoted',
      'Valid until ' || to_char(current_date + 30, 'DD Mon YYYY'), now() - interval '2 days'),
-    ('EQE-9002-2', 'ENQ-9002', 'partner', coalesce(v_nim_name, 'Nimbus Sensors'), 'scheduled', 'requested', 'scheduled',
+    ('EQE-SEED-2-2', 'ENQ-SEED-2', 'partner', coalesce(v_nim_name, 'Nimbus Sensors'), 'scheduled', 'requested', 'scheduled',
      null, now() - interval '3 days'),
-    ('EQE-9003-2', 'ENQ-9003', 'operator', 'Enquiries desk', 'answered', 'open', 'answered',
+    ('EQE-SEED-3-2', 'ENQ-SEED-3', 'operator', 'Enquiries desk', 'answered', 'open', 'answered',
      null, now() - interval '1 day');
 
   /* The seed's actor names on the "raised" rows say who asked, not "Marketplace". */
   update enquiry_events set actor_role = 'buyer', actor_name = 'Vikram Shah'
-   where enquiry_id like 'ENQ-9%' and action = 'raised';
+   where enquiry_id like 'ENQ-SEED-%' and action = 'raised';
 end $$;
 
 /* --------------------------------------------------------- what is true -- */
@@ -1494,13 +1657,13 @@ begin
   if n <> 1 then raise exception 'the requisition line guard went missing'; end if;
 
   /* The seed is the four cases the screens exist to show. */
-  select count(*) into n from enquiries where id like 'ENQ-9%';
+  select count(*) into n from enquiries where id like 'ENQ-SEED-%';
   if n <> 4 then raise exception 'expected 4 seeded enquiries, found %', n; end if;
 
   /* The routing rule holds on the seed: one seller routes to that seller; two
      sellers go to the desk. Asked of the catalogue, not of what was typed. */
   select count(*) into n from enquiries e
-   where e.id like 'ENQ-9%' and e.type in ('quote', 'demo')
+   where e.id like 'ENQ-SEED-%' and e.type in ('quote', 'demo')
      and e.partner_id is distinct from (
        select case when count(distinct p.partner_id) = 1 and count(*) filter (where p.partner_id is null) = 0
                    then min(p.partner_id) end
@@ -1508,11 +1671,11 @@ begin
         where l.enquiry_id = e.id);
   if n > 0 then raise exception '% seeded enquiries are routed against the rule', n; end if;
 
-  select count(*) into n from enquiries where id = 'ENQ-9001' and partner_id is not null;
+  select count(*) into n from enquiries where id = 'ENQ-SEED-1' and partner_id is not null;
   if n <> 1 then raise exception 'the single-seller quote did not route to its seller'; end if;
-  select count(*) into n from enquiries where id = 'ENQ-9004' and partner_id is null;
+  select count(*) into n from enquiries where id = 'ENQ-SEED-4' and partner_id is null;
   if n <> 1 then raise exception 'the two-seller quote did not route to the desk'; end if;
-  select count(distinct partner_id) into n from enquiry_lines where enquiry_id = 'ENQ-9004';
+  select count(distinct partner_id) into n from enquiry_lines where enquiry_id = 'ENQ-SEED-4';
   if n <> 2 then raise exception 'the desk quote does not carry two sellers (found %)', n; end if;
 
   /* A quoted quote has every line priced and a date in range. */
