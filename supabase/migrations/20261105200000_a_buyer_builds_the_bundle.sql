@@ -286,29 +286,22 @@ begin
     return 'these options are not on sale to everyone the bundle is for: ' || v_s || '.';
   end if;
 
-  with d as (
-    select o.product_id
-      from (select o2.product_id, o2.slot_id,
-                   row_number() over (partition by o2.slot_id order by o2.sort_order, o2.id) as rn
-              from bundle_options o2 where o2.is_default) o
-      join bundle_slots s on s.id = o.slot_id
-     where s.template_id = p_template and s.min_pick >= 1 and o.rn <= s.max_pick)
+  /* The default configuration is the one `bundle_default_choices` builds —
+     the same rule as `defaultChoices`. Every value in it is an array. */
   select string_agg(p.name, ', ' order by p.name) into v_s
-    from d join products p on p.id = d.product_id
+    from (select x ->> 'product_id' as product_id
+            from jsonb_each(bundle_default_choices(p_template)) as e(slot_id, picks)
+            cross join lateral jsonb_array_elements(e.picks) as x) d
+    join products p on p.id = d.product_id
    where p.stock = 'out';
   if v_s is not null then
     return 'the default configuration has a part that is out of stock: ' || v_s || '.';
   end if;
 
-  with d as (
-    select o.product_id
-      from (select o2.product_id, o2.slot_id,
-                   row_number() over (partition by o2.slot_id order by o2.sort_order, o2.id) as rn
-              from bundle_options o2 where o2.is_default) o
-      join bundle_slots s on s.id = o.slot_id
-     where s.template_id = p_template and s.min_pick >= 1 and o.rn <= s.max_pick)
   select string_agg(p.name || ' in ' || c.currency, ', ' order by p.name, c.currency) into v_s
-    from d
+    from (select x ->> 'product_id' as product_id
+            from jsonb_each(bundle_default_choices(p_template)) as e(slot_id, picks)
+            cross join lateral jsonb_array_elements(e.picks) as x) d
     join products p on p.id = d.product_id
     cross join (select distinct mc.currency from market_currencies mc) c
    where not exists (select 1 from product_prices pp
@@ -326,7 +319,7 @@ end $$;
  * Price a configuration. Pure: reads the template and the price book, writes
  * nothing.
  *
- * `p_choices` is `{ "<slot id>": [{ "product_id": "SKU-5004", "quantity": 20 }] }`;
+ * `p_choices` is `{ "<slot id>": [{ "product_id": "SKU-5003", "quantity": 20 }] }`;
  * a slot left out is a slot with nothing picked. The checks run in the order
  * `validateChoices` runs them and say what it says.
  *
@@ -1135,10 +1128,14 @@ revoke all on function bundle_template_problem(text, text[]) from public, anon, 
 /* Two templates from listings on sale today, so both shops have a
  * configurable bundle on first run.
  *
- *   Smart office starter kit (business)   sensors · connectivity · a gateway
- *                                         or a firewall (optional)
- *   Home security bundle (shopper)        presence sensors · a tracker ·
+ *   Smart office starter kit (business)   climate sensors or trackers ·
+ *                                         connectivity · a gateway or a
+ *                                         firewall (optional)
+ *   Home security bundle (shopper)        a tracker · device protection ·
  *                                         cloud backup (optional)
+ *
+ * Not the occupancy sensor (SKU-5004): it has been paused since
+ * 20260805040000 while its cell supplier is late.
  *
  * The listings are checked first and the block stops with their names if any
  * is not live or is out of stock — a seed built from what is not on sale would
@@ -1156,8 +1153,8 @@ declare
 begin
   select string_agg(x.id || coalesce(' (' || p.status || ', stock ' || p.stock || ')', ' (no such listing)'), ', ')
     into v_missing
-    from unnest(array['SKU-5004', 'SKU-5003', 'SKU-5001', 'SKU-5002', 'SKU-5007', 'SKU-6001',
-                      'SKU-5005', 'SKU-3007']) as x(id)
+    from unnest(array['SKU-5003', 'SKU-5005', 'SKU-5001', 'SKU-5002', 'SKU-5007', 'SKU-6001',
+                      'SKU-2004', 'SKU-3007']) as x(id)
     left join products p on p.id = x.id
    where p.id is null or p.status <> 'live' or p.stock = 'out';
   if v_missing is not null then
@@ -1169,11 +1166,11 @@ begin
 
   insert into bundle_templates (id, name, description, image, status, audiences, discount_pct) values
     ('BT-SEED-OFFICE', 'Smart office starter kit',
-     'Occupancy or climate sensors for the floor, the SIMs to connect them, and a gateway or a managed firewall if the site needs one. Choose how many of each.',
+     'Climate sensors or asset trackers for the floor, the SIMs to connect them, and a gateway or a managed firewall if the site needs one. Choose how many of each.',
      'https://images.pexels.com/photos/2569842/pexels-photo-2569842.jpeg?auto=compress&cs=tinysrgb&w=600',
      'draft', array['enterprise'], 8.00),
     ('BT-SEED-HOME', 'Home security bundle',
-     'Presence sensors for the rooms that matter, a tracker for the car or the bike, and cloud backup if you want it. One price for the lot.',
+     'A tracker for the car or the bike, cover against theft and accidental damage for your phones, and cloud backup if you want it. One price for the lot.',
      'https://images.pexels.com/photos/1213294/pexels-photo-1213294.jpeg?auto=compress&cs=tinysrgb&w=600',
      'draft', array['consumer'], 10.00)
   on conflict (id) do update set
@@ -1181,22 +1178,22 @@ begin
     audiences = excluded.audiences, discount_pct = excluded.discount_pct, status = 'draft';
 
   insert into bundle_slots (id, template_id, label, min_pick, max_pick, qty_min, qty_max, qty_default, sort_order) values
-    ('BS-SEED-OFFICE-1', 'BT-SEED-OFFICE', 'Sensors',             1, 2, 5, 100, 20, 1),
+    ('BS-SEED-OFFICE-1', 'BT-SEED-OFFICE', 'Sensors and trackers', 1, 2, 5, 100, 20, 1),
     ('BS-SEED-OFFICE-2', 'BT-SEED-OFFICE', 'Connectivity',        1, 1, 5, 100, 20, 2),
     ('BS-SEED-OFFICE-3', 'BT-SEED-OFFICE', 'Gateway or security', 0, 1, 1,   5,  1, 3),
-    ('BS-SEED-HOME-1',   'BT-SEED-HOME',   'Presence sensors',    1, 1, 1,   6,  2, 1),
-    ('BS-SEED-HOME-2',   'BT-SEED-HOME',   'Tracker',             1, 1, 1,   3,  1, 2),
+    ('BS-SEED-HOME-1',   'BT-SEED-HOME',   'Tracker',             1, 1, 1,   3,  1, 1),
+    ('BS-SEED-HOME-2',   'BT-SEED-HOME',   'Device protection',   1, 1, 1,   4,  1, 2),
     ('BS-SEED-HOME-3',   'BT-SEED-HOME',   'Cloud backup',        0, 1, 1,   1,  1, 3);
 
   insert into bundle_options (id, slot_id, product_id, is_default, sort_order) values
-    ('BO-SEED-OFFICE-1-1', 'BS-SEED-OFFICE-1', 'SKU-5004', true,  1),
-    ('BO-SEED-OFFICE-1-2', 'BS-SEED-OFFICE-1', 'SKU-5003', false, 2),
+    ('BO-SEED-OFFICE-1-1', 'BS-SEED-OFFICE-1', 'SKU-5003', true,  1),
+    ('BO-SEED-OFFICE-1-2', 'BS-SEED-OFFICE-1', 'SKU-5005', false, 2),
     ('BO-SEED-OFFICE-2-1', 'BS-SEED-OFFICE-2', 'SKU-5001', true,  1),
     ('BO-SEED-OFFICE-2-2', 'BS-SEED-OFFICE-2', 'SKU-5002', false, 2),
     ('BO-SEED-OFFICE-3-1', 'BS-SEED-OFFICE-3', 'SKU-5007', false, 1),
     ('BO-SEED-OFFICE-3-2', 'BS-SEED-OFFICE-3', 'SKU-6001', false, 2),
-    ('BO-SEED-HOME-1-1',   'BS-SEED-HOME-1',   'SKU-5004', true,  1),
-    ('BO-SEED-HOME-2-1',   'BS-SEED-HOME-2',   'SKU-5005', true,  1),
+    ('BO-SEED-HOME-1-1',   'BS-SEED-HOME-1',   'SKU-5005', true,  1),
+    ('BO-SEED-HOME-2-1',   'BS-SEED-HOME-2',   'SKU-2004', true,  1),
     ('BO-SEED-HOME-3-1',   'BS-SEED-HOME-3',   'SKU-3007', false, 1);
 
   /* Through the publish check, like any other. */
