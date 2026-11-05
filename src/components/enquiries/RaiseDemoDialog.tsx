@@ -26,7 +26,7 @@ export function RaiseDemoDialog({ open, product, onClose, onRaised }: {
 
   useEffect(() => {
     if (!open) return
-    setSubject(product ? `Demo of ${product.name}` : 'Demo')
+    setSubject((product ? `Demo of ${product.name}` : 'Demo').slice(0, 120))
     setFormat('video'); setAttendees('2'); setTimes(['', '', '']); setNote(''); setProblem(null); setBusy(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -35,7 +35,7 @@ export function RaiseDemoDialog({ open, product, onClose, onRaised }: {
     if (!product) return
     if (!subject.trim()) { setProblem('Give the request a subject the seller will recognise.'); return }
     const n = Number(attendees)
-    if (!Number.isInteger(n) || n < 1) { setProblem('Say how many people will attend: a whole number, at least one.'); return }
+    if (!Number.isInteger(n) || n < 1 || n > 500) { setProblem('Say how many people will attend: a whole number from 1 to 500.'); return }
     const typed = times.filter(t => t.trim() !== '')
     const iso = typed.map(localToIso)
     if (iso.some(t => t === null)) { setProblem('One of the times is not a date and time.'); return }
@@ -57,7 +57,7 @@ export function RaiseDemoDialog({ open, product, onClose, onRaised }: {
       </>}>
       <div className="enq-form">
         <FormField label="Subject" required>
-          <TextInput value={subject} onChange={e => setSubject(e.target.value)} />
+          <TextInput value={subject} maxLength={120} onChange={e => setSubject(e.target.value)} />
         </FormField>
         <div className="enq-two">
           <FormField label="Format" required>
@@ -67,7 +67,7 @@ export function RaiseDemoDialog({ open, product, onClose, onRaised }: {
             </Select>
           </FormField>
           <FormField label="Attendees" required>
-            <TextInput type="number" min={1} step={1} inputMode="numeric" value={attendees} onChange={e => setAttendees(e.target.value)} />
+            <TextInput type="number" min={1} max={500} step={1} inputMode="numeric" value={attendees} onChange={e => setAttendees(e.target.value)} />
           </FormField>
         </div>
         <p className="enq-hint">Up to three times that suit you. The seller confirms one or suggests another.</p>

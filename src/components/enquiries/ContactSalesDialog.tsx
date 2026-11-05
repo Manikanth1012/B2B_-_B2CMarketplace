@@ -44,7 +44,7 @@ export function ContactSalesDialog({ open, onClose, onRaised }: {
       <div className="enq-form">
         <p className="enq-hint">Volume pricing, a contract question, something not on the catalogue: the marketplace&rsquo;s sales desk answers.</p>
         <FormField label="Topic" required>
-          <TextInput value={subject} onChange={e => setSubject(e.target.value)} placeholder="Volume pricing for 500 trackers" />
+          <TextInput value={subject} maxLength={120} onChange={e => setSubject(e.target.value)} placeholder="Volume pricing for 500 trackers" />
         </FormField>
         <FormField label="Message" required>
           <TextArea rows={5} value={message} onChange={e => setMessage(e.target.value)} />

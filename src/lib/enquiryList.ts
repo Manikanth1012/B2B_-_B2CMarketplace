@@ -3,7 +3,7 @@
 // No supabase import: it must stay testable in Node.
 
 import { waitingOn, enquiryState } from './enquiries'
-import type { Enquiry, EnquiryType, Role } from './enquiries'
+import type { Enquiry, EnquiryLine, EnquiryType, Role } from './enquiries'
 
 export type Chip = 'all' | 'mine' | 'theirs' | 'closed'
 export type TypeFilter = EnquiryType | 'all'
@@ -68,6 +68,63 @@ export function filterEnquiries(
 export function answererName(e: Pick<Enquiry, 'partner_id'>, partnerNames: ReadonlyMap<string, string>): string {
   if (e.partner_id === null) return 'Marketplace desk'
   return partnerNames.get(e.partner_id) ?? e.partner_id
+}
+
+/** Quote lines already on a requisition that is still live (pending or
+    approved), each mapped to that requisition's id. guard_quoted_line refuses
+    a second live requisition line for the same quote line, so the screen must
+    not offer one. `quote_line_id` is read loosely because the column arrives
+    with the enquiries migration and older rows do not have it. */
+export function liveQuoteLineIds(
+  requisitions: readonly { id: string; state: string }[],
+  lines: readonly { requisition_id: string; quote_line_id?: string | null }[],
+): Map<string, string> {
+  const live = new Set(requisitions.filter(r => r.state === 'pending' || r.state === 'approved').map(r => r.id))
+  const out = new Map<string, string>()
+  for (const l of lines) {
+    if (l.quote_line_id && live.has(l.requisition_id) && !out.has(l.quote_line_id)) out.set(l.quote_line_id, l.requisition_id)
+  }
+  return out
+}
+
+export type QuoteStanding =
+  | { kind: 'none' }
+  | { kind: 'add'; lineIds: string[] }
+  | { kind: 'held'; requisitionId: string }
+
+/** What an accepted quote can still do for the buyer's requisition.
+    `add`: these lines can go in (not in the basket, not on a live requisition).
+    `held`: nothing left to add, and some of it is on that live requisition.
+    `none`: not an accepted, unexpired quote this buyer may requisition, or
+    everything is already in the basket. */
+export function acceptedQuoteStanding(
+  e: Pick<Enquiry, 'id' | 'type' | 'status' | 'valid_until'>,
+  lines: readonly Pick<EnquiryLine, 'id' | 'enquiry_id'>[],
+  today: string, canRaise: boolean,
+  inBasket: ReadonlySet<string>, live: ReadonlyMap<string, string>,
+): QuoteStanding {
+  if (e.type !== 'quote' || e.status !== 'accepted' || !canRaise) return { kind: 'none' }
+  if (e.valid_until !== null && e.valid_until < today) return { kind: 'none' }
+  const mine = lines.filter(l => l.enquiry_id === e.id)
+  if (!mine.length) return { kind: 'none' }
+  const left = mine.filter(l => !inBasket.has(l.id) && !live.has(l.id)).map(l => l.id)
+  if (left.length) return { kind: 'add', lineIds: left }
+  const held = mine.find(l => live.has(l.id))
+  return held ? { kind: 'held', requisitionId: live.get(held.id)! } : { kind: 'none' }
+}
+
+/** Whether the quote's lines differ, in what was quoted, between what the
+    buyer was looking at and what the database now holds. */
+export function quoteChanged(
+  seen: readonly Pick<EnquiryLine, 'id' | 'quantity' | 'quoted_unit_price'>[],
+  now: readonly Pick<EnquiryLine, 'id' | 'quantity' | 'quoted_unit_price'>[],
+): boolean {
+  if (seen.length !== now.length) return true
+  const by = new Map(now.map(l => [l.id, l]))
+  return seen.some(s => {
+    const n = by.get(s.id)
+    return !n || n.quantity !== s.quantity || n.quoted_unit_price !== s.quoted_unit_price
+  })
 }
 
 /** The datetime-local value a person typed, as an ISO instant; null when it is not a time. */

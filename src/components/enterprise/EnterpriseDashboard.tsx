@@ -9,8 +9,7 @@ import { waiting, committed, budgetPosition, NEED_LABEL } from '../../lib/enterp
 import { useAccountMoney } from './money'
 import type { EnterpriseView } from '../../types/view'
 import { loadEnquiries } from '../../lib/enquiryRepo'
-import { waitingOn } from '../../lib/enquiries'
-import { localToday } from './EnterpriseEnquiries'
+import { waitingOn, localToday } from '../../lib/enquiries'
 
 const TODAY = new Date().toISOString().slice(0, 10)
 

@@ -1,6 +1,66 @@
 import { describe, it, expect } from 'vitest'
-import { bandOf, chipCounts, filterEnquiries, answererName, isClosed, localToIso } from './enquiryList'
-import type { Enquiry } from './enquiries'
+import {
+  bandOf, chipCounts, filterEnquiries, answererName, isClosed, localToIso,
+  liveQuoteLineIds, acceptedQuoteStanding, quoteChanged,
+} from './enquiryList'
+import type { Enquiry, EnquiryLine } from './enquiries'
+
+describe('liveQuoteLineIds', () => {
+  const reqs = [
+    { id: 'REQ-1', state: 'pending' }, { id: 'REQ-2', state: 'approved' },
+    { id: 'REQ-3', state: 'declined' }, { id: 'REQ-4', state: 'withdrawn' },
+  ]
+  it('maps quote lines on pending or approved requisitions to that requisition', () => {
+    const m = liveQuoteLineIds(reqs, [
+      { requisition_id: 'REQ-1', quote_line_id: 'Q1' },
+      { requisition_id: 'REQ-2', quote_line_id: 'Q2' },
+      { requisition_id: 'REQ-3', quote_line_id: 'Q3' },
+      { requisition_id: 'REQ-4', quote_line_id: 'Q4' },
+      { requisition_id: 'REQ-1', quote_line_id: null },
+      { requisition_id: 'REQ-1' },
+    ])
+    expect([...m.entries()]).toEqual([['Q1', 'REQ-1'], ['Q2', 'REQ-2']])
+  })
+})
+
+describe('acceptedQuoteStanding', () => {
+  const e = { id: 'E', type: 'quote' as const, status: 'accepted' as const, valid_until: '2026-11-20' }
+  const lines = [{ id: 'L1', enquiry_id: 'E' }, { id: 'L2', enquiry_id: 'E' }, { id: 'X', enquiry_id: 'other' }]
+  const none = new Set<string>(), noLive = new Map<string, string>()
+  const T = '2026-11-05'
+
+  it('offers the lines that are neither in the basket nor on a live requisition', () => {
+    expect(acceptedQuoteStanding(e, lines, T, true, none, noLive)).toEqual({ kind: 'add', lineIds: ['L1', 'L2'] })
+    expect(acceptedQuoteStanding(e, lines, T, true, new Set(['L1']), noLive)).toEqual({ kind: 'add', lineIds: ['L2'] })
+    expect(acceptedQuoteStanding(e, lines, T, true, none, new Map([['L2', 'REQ-9']]))).toEqual({ kind: 'add', lineIds: ['L1'] })
+  })
+  it('names the requisition once everything is on one', () => {
+    const live = new Map([['L1', 'REQ-9'], ['L2', 'REQ-9']])
+    expect(acceptedQuoteStanding(e, lines, T, true, none, live)).toEqual({ kind: 'held', requisitionId: 'REQ-9' })
+  })
+  it('offers nothing when all of it is already in the basket', () => {
+    expect(acceptedQuoteStanding(e, lines, T, true, new Set(['L1', 'L2']), noLive)).toEqual({ kind: 'none' })
+  })
+  it('offers nothing for an expired, unaccepted or not-mine-to-raise quote', () => {
+    expect(acceptedQuoteStanding({ ...e, valid_until: '2026-11-04' }, lines, T, true, none, noLive).kind).toBe('none')
+    expect(acceptedQuoteStanding({ ...e, status: 'quoted' }, lines, T, true, none, noLive).kind).toBe('none')
+    expect(acceptedQuoteStanding(e, lines, T, false, none, noLive).kind).toBe('none')
+    expect(acceptedQuoteStanding(e, [], T, true, none, noLive).kind).toBe('none')
+  })
+})
+
+describe('quoteChanged', () => {
+  const l = (over: Partial<EnquiryLine> = {}) => ({ id: 'L1', quantity: 10, quoted_unit_price: 99, ...over })
+  it('is false when nothing quoted moved', () => {
+    expect(quoteChanged([l(), l({ id: 'L2' })], [l({ id: 'L2' }), l()])).toBe(false)
+  })
+  it('sees a new price, a new quantity or a different set of lines', () => {
+    expect(quoteChanged([l()], [l({ quoted_unit_price: 95 })])).toBe(true)
+    expect(quoteChanged([l()], [l({ quantity: 11 })])).toBe(true)
+    expect(quoteChanged([l()], [l(), l({ id: 'L2' })])).toBe(true)
+    expect(quoteChanged([l()], [l({ id: 'L9' })])).toBe(true)
+  })
+})
 
 const TODAY = '2026-11-05'
 

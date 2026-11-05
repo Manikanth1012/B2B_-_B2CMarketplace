@@ -18,20 +18,14 @@ import {
   loadEnquiries, acceptQuote, decline, withdraw, confirmSlot, proposeSlot, reply, closeEnquiry,
 } from '../../lib/enquiryRepo'
 import type { EnquiryBook } from '../../lib/enquiryRepo'
-import { toRequisitionLines, slotProblems } from '../../lib/enquiries'
-import type { Action, Enquiry } from '../../lib/enquiries'
-import { answererName, localToIso } from '../../lib/enquiryList'
+import { toRequisitionLines, slotProblems, localToday } from '../../lib/enquiries'
+import type { Action, Enquiry, EnquiryLine } from '../../lib/enquiries'
+import { answererName, localToIso, liveQuoteLineIds, acceptedQuoteStanding, quoteChanged } from '../../lib/enquiryList'
 import type { Chip, TypeFilter } from '../../lib/enquiryList'
 import { loadAccount, loadEnterpriseCatalogue } from '../../lib/enterpriseRepo'
 import type { AccountBook, EnterpriseListing } from '../../lib/enterpriseRepo'
 import { useRequisition } from '../../lib/RequisitionContext'
 import { useMarket } from '../../lib/MarketContext'
-
-export function localToday(): string {
-  const n = new Date()
-  const p = (x: number) => String(x).padStart(2, '0')
-  return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}`
-}
 
 type Pending = { action: Action; enquiry: Enquiry; slotId?: string }
 
@@ -52,7 +46,7 @@ export function EnterpriseEnquiries() {
   const reload = useCallback(async () => {
     const [b, a] = await Promise.all([loadEnquiries(), loadAccount()])
     setBook(b); setAccount(a)
-    return b
+    return { book: b, account: a }
   }, [])
   useEffect(() => { void reload() }, [reload])
   useEffect(() => onEnquiriesChanged(() => { void reload() }), [reload])
@@ -77,23 +71,38 @@ export function EnterpriseEnquiries() {
   const enquiries = book?.enquiries ?? []
   const open = openId ? enquiries.find(e => e.id === openId) ?? null : null
 
+  /* Quote lines already on a pending or approved requisition. The database
+     refuses a second one, so they are never offered again. */
+  const liveFrom = (a: AccountBook | null) => liveQuoteLineIds(
+    a?.requisitions ?? [],
+    (a?.lines ?? []) as unknown as { requisition_id: string; quote_line_id?: string | null }[],
+  )
+  const live = useMemo(() => liveFrom(account), [account])
+
   /* The accepted quote's lines into the requisition. Separate from accepting,
      because the requisition is not kept across a reload: an accepted quote
-     can be put back in from here until it expires. */
-  const addToRequisition = async (e: Enquiry): Promise<boolean> => {
-    if (!book) return false
+     can be put back in from here until it expires. Takes the lines to use, so
+     Accept can pass the ones it has just read back. */
+  const addToRequisition = async (e: Enquiry, quoteLines: readonly EnquiryLine[], held: ReadonlyMap<string, string>): Promise<boolean> => {
     let lines
     try {
-      lines = toRequisitionLines(e, book.lines.filter(l => l.enquiry_id === e.id), today)
+      lines = toRequisitionLines(e, quoteLines.filter(l => l.enquiry_id === e.id), today)
     } catch (err) {
       toast(err instanceof Error ? err.message : String(err), 'error')
       return false
     }
     const cur = e.currency ?? currency ?? ''
-    const listings = cur === currency && shelf.length ? shelf : await loadEnterpriseCatalogue(cur)
+    let listings: EnterpriseListing[]
+    try {
+      listings = cur === currency && shelf.length ? shelf : await loadEnterpriseCatalogue(cur)
+    } catch (err) {
+      toast(`The catalogue did not load, so nothing was added: ${err instanceof Error ? err.message : String(err)}`, 'error')
+      return false
+    }
     const refused: string[] = []
     let added = 0
     for (const l of lines) {
+      if (held.has(l.quote_line_id)) continue
       if (req.basket.lines.some(b => b.quote_line_id === l.quote_line_id)) continue
       const p = listings.find(x => x.id === l.product_id)
       if (!p) { refused.push(`${l.name} is no longer on the catalogue, so it cannot go on a requisition.`); continue }
@@ -132,13 +141,10 @@ export function EnterpriseEnquiries() {
   }
 
   const loading = !book || !account
-  /* isExpired only speaks of a quote still in `quoted`; an accepted one runs
-     out on the same date for the requisition's purposes. */
-  const accepted = open && open.type === 'quote' && open.status === 'accepted'
-    && !(open.valid_until !== null && open.valid_until < today)
-  const allIn = open && book
-    ? book.lines.filter(l => l.enquiry_id === open.id).every(l => req.basket.lines.some(b => b.quote_line_id === l.id))
-    : false
+  const inBasket = new Set(req.basket.lines.map(l => l.quote_line_id).filter((x): x is string => !!x))
+  const standing = open && book
+    ? acceptedQuoteStanding(open, book.lines, today, canRaise, inBasket, live)
+    : { kind: 'none' as const }
 
   return (
     <div className="enq">
@@ -175,10 +181,13 @@ export function EnterpriseEnquiries() {
           {open && (
             <EnquiryDetail key={open.id} enquiry={open} book={book} role="buyer" today={today}
               opts={{ canRaise }} onAction={onAction} answerer={answerer(open)} money={fmtIn} busy={busy}
-              extra={accepted && canRaise && !allIn ? (
+              extra={standing.kind === 'add' ? (
                 <Btn variant="primary" disabled={busy} onClick={async () => {
-                  setBusy(true); await addToRequisition(open); setBusy(false)
+                  setBusy(true)
+                  try { await addToRequisition(open, book.lines, live) } finally { setBusy(false) }
                 }}>Add to requisition</Btn>
+              ) : standing.kind === 'held' ? (
+                <span className="enq-muted">Already on requisition {standing.requisitionId}</span>
               ) : undefined} />
           )}
         </div>
@@ -188,11 +197,26 @@ export function EnterpriseEnquiries() {
         <ActionDialog pending={pending} slots={book?.slots ?? []} today={today}
           onClose={() => setPending(null)}
           onAccept={async () => {
-            const r = await acceptQuote(pending.enquiry.id)
+            const id = pending.enquiry.id
+            const seen = (book?.lines ?? []).filter(l => l.enquiry_id === id)
+            const r = await acceptQuote(id)
             if (!r.ok) return r
             setPending(null)
-            await addToRequisition({ ...pending.enquiry, status: 'accepted' })
-            await reload()
+            /* Read back what was accepted rather than trusting the screen: the
+               seller may have re-quoted since this page last loaded, and the
+               database accepts whatever is quoted now. */
+            const fresh = await reload()
+            const now = fresh.book.lines.filter(l => l.enquiry_id === id)
+            const e = fresh.book.enquiries.find(x => x.id === id)
+            if (fresh.book.loadError || !e) {
+              toast('The quote was accepted, but it could not be read back, so nothing was added. Open it again and use Add to requisition.', 'error')
+              return r
+            }
+            if (quoteChanged(seen, now)) {
+              toast('The seller updated the price before you accepted — review it. Nothing was added to your requisition.', 'error')
+              return r
+            }
+            await addToRequisition(e, now, liveFrom(fresh.account))
             return r
           }}
           onDone={done} />

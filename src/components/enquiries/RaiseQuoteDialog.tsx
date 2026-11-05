@@ -36,7 +36,7 @@ export function RaiseQuoteDialog({ open, seed, onClose, onRaised }: {
   useEffect(() => {
     if (!open) return
     setRows(seed.map(s => ({ product_id: s.product_id, name: s.name, quantity: String(s.quantity), target: '' })))
-    setSubject(seed.length === 1 ? `Quote for ${seed[0].name}` : `Quote for ${seed.length} items`)
+    setSubject((seed.length === 1 ? `Quote for ${seed[0].name}` : `Quote for ${seed.length} items`).slice(0, 120))
     setNeededBy(''); setNote(''); setProblem(null); setBusy(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open])
@@ -51,7 +51,7 @@ export function RaiseQuoteDialog({ open, seed, onClose, onRaised }: {
       const q = Number(r.quantity)
       if (!Number.isInteger(q) || q < 1) { setProblem(`Ask for a whole number of ${r.name}, at least one.`); return }
       const t = r.target.trim() === '' ? null : Number(r.target)
-      if (t !== null && (!Number.isFinite(t) || t <= 0)) { setProblem(`The target price for ${r.name} has to be more than nothing, or left empty.`); return }
+      if (t !== null && (!Number.isFinite(t) || t < 0)) { setProblem(`The target price for ${r.name} cannot be below nothing. Leave it empty if you have none.`); return }
       lines.push({ product_id: r.product_id, quantity: q, target_unit_price: t })
     }
     if (neededBy && neededBy < localDate()) { setProblem('The needed-by date has passed. Choose today or later, or leave it empty.'); return }
@@ -74,7 +74,7 @@ export function RaiseQuoteDialog({ open, seed, onClose, onRaised }: {
           requisition at that price; nothing is ordered until the requisition is approved.
         </p>
         <FormField label="Subject" required>
-          <TextInput value={subject} onChange={e => setSubject(e.target.value)} />
+          <TextInput value={subject} maxLength={120} onChange={e => setSubject(e.target.value)} />
         </FormField>
         <div className="enq-form__lines" role="group" aria-label="Lines">
           {rows.map((r, i) => (
