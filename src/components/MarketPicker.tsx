@@ -51,12 +51,17 @@ export function MarketPicker({ tone = 'dark' }: { tone?: 'dark' | 'light' }) {
         style={{
           display: 'inline-flex', alignItems: 'center', gap: '6px',
           background: 'none', border: 'none', cursor: 'pointer',
-          color: ink, fontSize: 'var(--text-xs)', padding: 0,
+          color: ink, fontSize: 'var(--text-xs)', padding: '0 2px',
+          /* WCAG 2.5.8: the text alone was a 14px-tall target. */
+          minHeight: '24px',
         }}
       >
         <Globe size={13} />
         <span>{market.name}</span>
-        <span style={{ opacity: 0.75 }}>· {currency?.code ?? market.currency}</span>
+        {/* Same ink as the market name, at full strength: dimmed to 0.75 it fell
+           to 4.03:1 on the white console header, and the header can be navy
+           (public) or white (consoles), so it inherits rather than naming a colour. */}
+        <span>· {currency?.code ?? market.currency}</span>
         <ChevronDown size={12} style={{ opacity: 0.6 }} />
       </button>
 

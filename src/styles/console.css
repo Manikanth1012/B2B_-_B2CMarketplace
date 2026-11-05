@@ -8,6 +8,8 @@
 .c-stat {
   background: var(--bg-card, #fff); border-radius: var(--radius-card);
   box-shadow: var(--shadow-card); padding: 20px;
+  /* A hairline as well as the shadow: on a white panel the shadow alone leaves no edge. */
+  border: 1px solid var(--border-light);
 }
 .c-stat__label {
   display: flex; align-items: center; gap: 8px;
@@ -23,6 +25,7 @@
 .c-section {
   background: var(--bg-card, #fff); border-radius: var(--radius-card);
   box-shadow: var(--shadow-card); overflow: hidden; scroll-margin-top: 84px;
+  border: 1px solid var(--border-light);
 }
 .c-section__head {
   padding: 16px 20px; border-bottom: 1px solid var(--border-light);
@@ -42,7 +45,10 @@
   /* A header may wrap between its words, never inside one. */
   overflow-wrap: normal; word-break: keep-all;
 }
-.c-table tbody tr:hover > td { background: var(--bg-alt); }
+/* A row that carries its own highlight (an overdue or focused row sets an inline
+   background on the <tr>) keeps it under the pointer: the hover paints the cells,
+   which would cover the row's colour. Those rows have a style attribute. */
+.c-table tbody tr:not([style*="background"]):hover > td { background: var(--bg-alt); }
 .c-td { padding: 12px var(--cell-pad, 10px); border-bottom: 1px solid var(--border-light); color: var(--text); vertical-align: middle; }
 
 /* ---------- Empty state ---------- */
@@ -54,33 +60,13 @@
 }
 
 /* ---------- Modal ---------- */
-.c-modal-back {
-  position: fixed; inset: 0; z-index: 1000; background: rgba(6, 27, 58, 0.5);
-  display: flex; align-items: flex-start; justify-content: center;
-  padding: 40px 16px; overflow-y: auto;
-}
 .c-modal {
   background: var(--bg-card, #fff); border-radius: var(--radius-card); box-shadow: var(--shadow-xl);
   max-width: 640px; width: 100%; margin: 0 auto;
   display: flex; flex-direction: column; max-height: 90vh;
 }
-.c-modal__head {
-  padding: 16px 20px; border-bottom: 1px solid var(--border-light);
-  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
-}
-.c-modal__title { font-size: var(--text-lg); font-weight: 700; color: var(--text); }
-.c-modal__close {
-  border: none; background: none; cursor: pointer; color: var(--text-secondary);
-  padding: 8px; border-radius: 50%; display: inline-flex; min-width: 36px; min-height: 36px;
-  align-items: center; justify-content: center;
-}
-.c-modal__close:hover { background: var(--bg-alt); color: var(--text); }
-/* min-width: 0 keeps the 640px from being a suggestion: see Modal in shared.tsx. */
-.c-modal__body { padding: 20px; overflow-y: auto; flex: 1; min-width: 0; }
-.c-modal__foot {
-  padding: 12px 20px; border-top: 1px solid var(--border-light);
-  display: flex; gap: 8px; justify-content: flex-end; flex-shrink: 0;
-}
+/* The modal's head, body and foot are Dialog's own (.ui-dialog__* in
+   account.css): see Modal in shared.tsx. */
 .c-modal__message { font-size: var(--text-sm); color: var(--text-secondary); }
 
 /* ---------- Form ---------- */
@@ -127,6 +113,11 @@ textarea.c-input { resize: vertical; min-height: 88px; }
   background: var(--gray-100); color: var(--text-secondary);
   border-color: var(--border); cursor: not-allowed;
 }
+/* Danger and success keep their tone when disabled, so a disabled Delete still
+   reads as Delete and not as a disabled primary. Text is the tone colour on its
+   own tint: --danger on --danger-bg is 4.55:1, --success on --success-bg 4.64:1. */
+.c-btn--danger:disabled { background: var(--danger-bg); color: var(--danger); border-color: rgba(202, 35, 35, 0.35); }
+.c-btn--success:disabled { background: var(--success-bg); color: var(--success); border-color: rgba(17, 127, 58, 0.35); }
 
 @media (prefers-reduced-motion: reduce) {
   .c-btn { transition: none; }

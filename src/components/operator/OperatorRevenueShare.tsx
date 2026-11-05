@@ -117,8 +117,10 @@ export function OperatorRevenueShare() {
               <Band width={split.sellerNet / split.gross} colour="var(--brand-navy)"
                     label={`Sellers $${fmtMoney(split.sellerNet)}`} />
               <Band width={split.commission / split.gross} colour="#5E4B9B" label="Commission" />
-              <Band width={split.fees / split.gross} colour="#8B76C9" label="Fees" />
-              <Band width={split.tax / split.gross} colour="#B8A4E8" label="Tax" />
+              {/* White labels need 4.5:1: the lighter purples were 3.9 and 2.21:1
+                  (spec 5 sweep). The ramp keeps its order, one step deeper. */}
+              <Band width={split.fees / split.gross} colour="#6D4BB8" label="Fees" />
+              <Band width={split.tax / split.gross} colour="#7C5CC4" label="Tax" />
               <Band width={(split.refunds + split.withholding) / split.gross} colour="#D9CCF2" label="" />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>

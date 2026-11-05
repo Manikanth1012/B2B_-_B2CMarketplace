@@ -4,7 +4,7 @@ import type { Product, Category } from '../types'
 import { categoriesFor, pricedFor, cardAction } from '../lib/storefront'
 import { filterProducts, SORT_OPTIONS } from '../lib/listing'
 import type { SortKey } from '../lib/listing'
-import { loadPriceBook, loadCopyBook, repriceAll } from '../lib/moneyRepo'
+import { loadPriceBookResult, loadCopyBookResult, repriceAll } from '../lib/moneyRepo'
 import { useMarket } from '../lib/MarketContext'
 import { ProductCard, ListingLayout, ListingGrid, EmptyListing, SectionHeader } from './ui'
 import { CompareTray, CompareTable } from './CompareTray'
@@ -35,6 +35,9 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
   const [products, setProducts] = useState<Product[]>([])
   const [categories, setCategories] = useState<Category[]>([])
   const [loading, setLoading] = useState(true)
+  /* A failed price read is not "nothing priced for your market"; Retry bumps reloadKey. */
+  const [priceError, setPriceError] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
   const [search, setSearch] = useState('')
   const [sortBy, setSortBy] = useState('featured')
   const [subFilter, setSubFilter] = useState<string | null>(null)
@@ -79,11 +82,13 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
     /* Priced as they are loaded, in the market's own currency, rather than
        converted where they are drawn. One place decides the currency; every
        card below just prints the price it was handed. */
-    Promise.all([query, loadPriceBook(currencyCode), loadCopyBook()]).then(([{ data }, book, copy]) => {
-      if (data) setProducts(repriceAll(data as Product[], book, currencyCode, copy))
+    setPriceError(false)
+    Promise.all([query, loadPriceBookResult(currencyCode), loadCopyBookResult()]).then(([{ data }, book, copy]) => {
+      setPriceError(!book.ok) /* copy only adds per-market wording; repriceAll falls back without it */
+      if (data) setProducts(repriceAll(data as Product[], book.ok ? book.value : new Map(), currencyCode, copy.ok ? copy.value : undefined))
       setLoading(false)
     })
-  }, [categoryFilter, categories, currencyCode])
+  }, [categoryFilter, categories, currencyCode, reloadKey])
 
   /* Products the market does not price are not shown, here or in the counts. */
   const priced = useMemo(() => pricedFor(products, currencyCode), [products, currencyCode])
@@ -204,6 +209,9 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
               <div style={{ textAlign: 'center', padding: '64px' }}>
                 <div className="spinner" style={{ margin: '0 auto' }} />
               </div>
+            ) : priceError ? (
+              <EmptyListing title="We couldn't load prices just now." text="Please check your connection and try again."
+                onClear={() => setReloadKey(k => k + 1)} actionLabel="Retry" />
             ) : filtered.length === 0 ? (
               <EmptyListing title="No products match" text="Try a different search or clear the filters." onClear={clearFilters} />
             ) : (
@@ -217,6 +225,9 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
               <div style={{ textAlign: 'center', padding: '64px' }}>
                 <div className="spinner" style={{ margin: '0 auto' }} />
               </div>
+            ) : priceError ? (
+              <EmptyListing title="We couldn't load prices just now." text="Please check your connection and try again."
+                onClear={() => setReloadKey(k => k + 1)} actionLabel="Retry" />
             ) : filtered.length === 0 ? (
               <EmptyListing title="No products yet" text="Nothing is on this shelf for your market right now." />
             ) : (

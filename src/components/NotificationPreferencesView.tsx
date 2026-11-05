@@ -239,12 +239,14 @@ function RuleRow({ entry, busy, sample, onEnabled, onKind, onReset }: {
                 style={{
                   display: 'flex', alignItems: 'center', gap: '4px',
                   padding: '6px 12px', borderRadius: 'var(--radius-full)',
-                  border: `1px solid ${on ? 'var(--brand-accent)' : 'var(--border)'}`,
-                  background: on ? 'var(--brand-accent-dark)' : 'var(--surface, white)',
-                  color: on ? 'white' : 'var(--text-secondary)',
+                  /* With the whole subject off, a chosen channel is drawn as an
+                     outline rather than faded to 45%: faded white-on-teal was
+                     2.32:1, and the chip is still a live control. */
+                  border: `1px ${on && !entry.enabled ? 'dashed' : 'solid'} ${on ? 'var(--brand-accent-dark)' : 'var(--border)'}`,
+                  background: on && entry.enabled ? 'var(--brand-accent-dark)' : 'var(--surface, white)',
+                  color: on && entry.enabled ? 'white' : on ? 'var(--brand-accent-dark)' : 'var(--text-secondary)',
                   fontSize: 'var(--text-xs)', fontWeight: 600,
                   cursor: busy ? 'wait' : 'pointer',
-                  opacity: entry.enabled ? 1 : 0.45,
                 }}
               >
                 {on ? <Check size={12} /> : <Minus size={12} />}
@@ -255,6 +257,7 @@ function RuleRow({ entry, busy, sample, onEnabled, onKind, onReset }: {
         </div>
 
         <button
+          className="np-switch"
           onClick={() => onEnabled(!entry.enabled)}
           disabled={busy || rule.mandatory}
           aria-label={`Turn ${rule.name} ${entry.enabled ? 'off' : 'on'}`}

@@ -10,7 +10,10 @@ brainstorm → spec → plan → build cycle when it is picked up.
 | 1 | Foundation + public homepage | Done — merged 2026-11-04 (`5489bb2`) |
 | 2 | Commerce — retail and enterprise storefronts, product listing and detail, cart, checkout, header search | Done — merged 2026-11-04 (`f5ee450`) |
 | 3 + 4 | Workspace consoles — one pass over the shared console components (`operator/shared.tsx`, used by ~80 operator, partner and enterprise screens) and the three sidebars, then the operator's bento KPI dashboard, grouped navigation and Business Accounts screen. Merged from the original specs 3 and 4 at the user's choice (2026-11-04) | Done — merged 2026-11-04 (`49f40da`) |
-| 5 | Account screens (Orders, Subscriptions, Rewards, My account) and validation sweep across all experiences — spec `2026-11-04-ui-revamp-account-validation-design.md` | Planned; build next |
+| 5 | Account screens (Orders, Subscriptions, Rewards, My account) on a shared account layer and `Dialog`, the carried-over review items, and a validation sweep of every experience at 1280 / 1024 / 390 — spec `2026-11-04-ui-revamp-account-validation-design.md` | Done — merged 2026-11-05 |
+
+Every item carried over from the spec 1, spec 2 and consoles reviews was
+closed by spec 5, except the two noted below.
 
 ## New enterprise features (deferred from spec 2 — 2026-11-04)
 
@@ -25,43 +28,31 @@ restyle, and get their own spec after the revamp.
 - [ ] **Enterprise enquiry tracking** — the buyer's list of quotes, demos and enquiries with status.
 - [ ] **Configurable product bundles** — buyer assembles a bundle with options and gets one price.
 
-## Carried over from spec 1 reviews (non-blocking)
+## Still open after spec 5 (small, non-blocking)
 
-- [ ] Product detail fulfilment icon and remaining decorative glyphs in the light teal (`ProductDetail.tsx:29`) — move to `--brand-accent-dark`.
-- [ ] Extend the contrast guard to colours passed through variables and props (`accentColor`, `catColors`), and to white glyphs on accent fills.
-- [ ] Stale `rgba(0,166,166,…)` tints of the old teal (Checkout, LoginScreen, OperatorShell, OperatorRoles, Hero).
-- [ ] One Escape closes both the mobile menu and the Discover panel; close the inner layer first.
-- [ ] `BentoCard` heading level prop — hero side cards render `h3` before any `h2`.
-- [ ] Remove the now-unused `Carousel.tsx` and `lib/carousel.ts`.
-- [ ] Forced-colours fallback for the gradient headline text.
-- [ ] `.ui-link` touch target size against WCAG 2.5.8 (24px).
+Found by the spec 5 reviews and sweep, judged not worth holding the merge.
 
-## Carried over from spec 2 reviews (non-blocking)
+- [ ] **Component tests need a DOM.** Vitest runs in Node, so `Dialog`, `useFocusTrap`, `AccountTabs` and the price Retry state are covered by pure-function tests plus the browser sweep only. Adding `jsdom` (a dev dependency) would let them be tested directly.
+- [ ] My account form labels (`Field` in `AccountView.tsx`) are not tied to their inputs with `htmlFor`/`id` (pre-existing).
+- [ ] The public product window does not pass `onNotifyMe`, so its "Notify me when available" line stays plain text there (it opens `NotifyMeModal` on the signed-in product page).
+- [ ] Public `CategorySection` tiles have no description line (consumer tiles do).
+- [ ] Rewards figures lost their icons: `KpiCard` has no icon slot.
+- [ ] Order lines show a generic package tile: order items carry no image.
+- [ ] Rewards progress bar: its cyan end is 1.9:1 against the track (the text label carries the meaning, so not an AA failure).
+- [ ] Business Accounts: the Waiting chip counts 0 while a search is typed (applications have no searchable text).
+- [ ] `AccountTabs` sets no `aria-orientation` (the list is vertical only by CSS; arrow keys work both ways).
+- [ ] `Dialog` does not stop Escape propagating, so another document-level Escape listener open beneath a dialog (account menu, cart drawer) would also close — no such stacking exists today.
+- [ ] Contrast guard blind spots: a `catColors = {…}` assignment form and template strings inside style objects; the browser scanner skips `color()`/`oklch()` values.
+- [ ] Build warns that the main chunk is over 500 kB (pre-existing): split by persona with dynamic `import()`.
 
-- [ ] Consumer category tiles no longer show operator blurbs (`CategoryTile` has no description slot).
-- [ ] `loadPriceBook`/`loadCopyBook` swallow errors, so a failed price-book read shows the "nothing priced for your market" message — fix in `src/lib/moneyRepo.ts`.
-- [ ] The requisition drawer has no focus trap.
-- [ ] The enterprise Marketplace filter hardcodes iot/security/device while the tiles come from data.
-- [ ] The product page "Notify me when available" line is inert.
-- [ ] Cart stepper buttons are below the 44px touch target.
+## Changes to be aware of (deliberate, from spec 5)
 
-## Carried over from the consoles spec (non-blocking)
-
-- [ ] Operator nav: clicking the forced-open active group's header does nothing visible.
-- [ ] Operator nav: `aria-controls` points at an unmounted panel.
-- [ ] Quick actions leaves half a row empty when there are no alerts.
-- [ ] Accounts tests lack no-steps and due-today boundary cases.
-- [ ] The Waiting chip ignores search.
-- [ ] Listing modal heading styles are inconsistent.
-- [ ] Stat and section cards have no border on white surfaces.
-- [ ] Table row hover overrides an inline row highlight.
-- [ ] Disabled danger and success buttons look like disabled primary.
-- [ ] PartnerDashboard "Settlement Due" colour is decorative.
-- [ ] Accounts status-chip counts ignore search.
-- [ ] Enterprise listing modal: buy panel is not sticky (spec §5); "Add to requisition" stays enabled under an "Out of stock" badge (unchanged from main).
-- [ ] Operator sidebar brand alt reads "6D Marketplace" (others "6D"); its mobile close button has no label; nav-order comment at `OperatorShell.tsx:24-27` is out of date.
+- `statusTone` now colours console and account pills that were grey: e.g. tickets `new` amber and `closed` green, settlement `paid` green, users `invited` amber, subscriptions `paused` amber and `cancelled` red, bills `open` blue, refunds `approved` green. Refund and ticket `escalated` stay amber, ticket `resolved` is blue ("waiting on you"), a refunded order stays amber.
+- `--text-tertiary` is now `#556479` and rating stars use `--star` `#8F5A06` (both for contrast on tinted rows).
+- The public header's nav collapses into the menu below 1024px (was 900px).
+- A signed-in shopper is pinned to their home market (the picker ignores a switch), so a basket is never carried across markets; only signed-out visitors switch market.
 
 ## Data to check (not code)
 
 - [ ] Beacon IoT Care (SKU-7011) has no INR price — confirm that is intended (seller not approved in India).
-- [ ] 14 integration tests fail against the shared live database (contract renewals, credit, settlement, subscription dates) — the seed data has drifted since it was written.
+- [ ] 13 integration tests fail against the shared live database (contract renewals, credit, disputes, help coverage, partner certificates, settlement idempotency, withholding) — the seed data has drifted since it was written. Unchanged by the revamp.

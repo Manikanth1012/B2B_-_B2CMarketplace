@@ -18,9 +18,25 @@ const expected: Record<string, string> = {
   P1: 'danger', P2: 'warning', P3: 'info', P4: 'neutral',
 }
 
+/* The account screens' words: orders, subscriptions, refunds, bills, team
+   members and tickets. Done is green, moving is blue, waiting is amber,
+   refused or broken is red. */
+const account: Record<string, string> = {
+  placed: 'info', processing: 'info', shipped: 'info', 'in-transit': 'info',
+  'partly-failed': 'danger', refunded: 'success', cancelled: 'danger',
+  requested: 'warning', declined: 'danger', partial: 'info',
+  paid: 'success', overdue: 'danger',
+  invited: 'warning',
+  new: 'warning', inprogress: 'info', closed: 'success',
+  waiting: 'warning',
+}
+
 describe('statusTone', () => {
   for (const [status, tone] of Object.entries(expected)) {
     it(`${status} -> ${tone}`, () => expect(statusTone(status)).toBe(tone))
+  }
+  for (const [status, tone] of Object.entries(account)) {
+    it(`account: ${status} -> ${tone}`, () => expect(statusTone(status)).toBe(tone))
   }
   it('unknown statuses are neutral', () => {
     expect(statusTone('something_new')).toBe('neutral')

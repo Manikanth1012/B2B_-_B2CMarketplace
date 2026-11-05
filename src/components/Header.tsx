@@ -113,7 +113,7 @@ export function Header({ cartCount, onCartClick, onNavigate, onSignOut, currentV
         <div className="container" style={{ display: 'flex', alignItems: 'center', gap: '24px', height: 'var(--header-height)' }}>
           {/* Logo */}
           <button onClick={() => onNavigate('home')} style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
-            <img src="/assets/brand/6d-logo-white.png" alt="6D Marketplace" style={{ height: '32px' }} />
+            <img className="consumer-header__logo" src="/assets/brand/6d-logo-white.png" alt="6D Marketplace" />
           </button>
 
           {/* Search */}

@@ -100,7 +100,7 @@ export function PartnerPerformance() {
             <div style={{ fontSize: '30px', fontWeight: 800 }}>{PARTNER_PROFILE.rating.toFixed(1)}</div>
             <div style={{ display: 'flex', gap: '2px', justifyContent: 'center', marginTop: '4px' }}>
               {[1, 2, 3, 4, 5].map(n => (
-                <Star key={n} size={14} style={{ color: n <= Math.round(PARTNER_PROFILE.rating) ? '#F5A623' : 'var(--border)' }} fill={n <= Math.round(PARTNER_PROFILE.rating) ? '#F5A623' : 'none'} />
+                <Star key={n} size={14} style={{ color: n <= Math.round(PARTNER_PROFILE.rating) ? 'var(--star)' : 'var(--border)' }} fill={n <= Math.round(PARTNER_PROFILE.rating) ? 'var(--star)' : 'none'} />
               ))}
             </div>
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>268 published</div>

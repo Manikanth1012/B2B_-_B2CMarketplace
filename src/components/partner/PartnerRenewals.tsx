@@ -83,6 +83,8 @@ export function PartnerRenewals({ partnerId }: { partnerId?: string }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* Every console screen opens with one h1; this one had none (spec 5 sweep). */}
+      <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Renewals</h1>
       {book.loadError && <Callout tone="danger" title="Some of this did not load">{book.loadError}</Callout>}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>

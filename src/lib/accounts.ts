@@ -176,6 +176,15 @@ export function bandCounts(
   }
 }
 
+/**
+ * How many waiting applications a search leaves. They are not accounts and have
+ * no company, market or industry here to match, so any search text excludes
+ * them — the chip then agrees with the (empty) list a search would give.
+ */
+export function waitingFor(waiting: number, q: string): number {
+  return q.trim() ? 0 : waiting
+}
+
 export function rollup(
   { accounts, steps, waiting, today }: {
     accounts: readonly Account[]; steps: readonly Step[]; waiting: number; today: string

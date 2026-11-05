@@ -15,6 +15,7 @@
 import { useState, useEffect } from 'react'
 import { Star, Package } from 'lucide-react'
 import { Modal, Btn, EmptyState, fmtInt, StatusPill } from '../operator/shared'
+import { cardAction } from '../../lib/storefront'
 import { StatusBadge, stockTone } from '../ui'
 import { stockLabel } from '../../lib/compare'
 import { Callout } from '../OnboardingJourney'
@@ -80,6 +81,8 @@ export function EnterpriseListingModal(
   const gallery = pictures.length ? pictures.map(x => x.url) : [getProductImage(listing.id)]
   const specs = Object.entries(extra.specs)
   const monthly = listing.model === 'monthly'
+  /* The same rule as the catalogue card behind this window: no stock, no add. */
+  const action = cardAction('enterprise', listing)
 
   return (
     <Modal
@@ -87,6 +90,8 @@ export function EnterpriseListingModal(
       onClose={onClose}
       title={listing.name}
       footer={<Btn variant="secondary" onClick={onClose}>Close</Btn>}>
+      {/* Headings: the dialog title is the one h2 (Modal); the sections below are
+          h3, so the outline no longer jumps back up a level inside the dialog. */}
       {/* Laid out as the storefront's product page is (product-detail.css):
           photograph and overview on the left, the buying panel on the right.
           The same fields as before; the price and the Add action moved out of
@@ -135,7 +140,8 @@ export function EnterpriseListingModal(
               </Callout>
             )}
 
-            <Btn variant="primary" onClick={() => { onAdd(listing); onClose() }}>Add to requisition</Btn>
+            <Btn variant="primary" disabled={action.disabled}
+                 onClick={() => { onAdd(listing); onClose() }}>{action.label}</Btn>
 
             <div className="cpe-note">
               <Package size={14} style={{ flexShrink: 0, marginTop: '2px' }} />
@@ -151,7 +157,7 @@ export function EnterpriseListingModal(
 
             {listing.rating > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '10px', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
-                <Star size={13} style={{ color: '#F5A623' }} fill="#F5A623" />
+                <Star size={13} style={{ color: 'var(--star)' }} fill="var(--star)" />
                 {listing.rating} · {fmtInt(listing.reviews)} reviews from buyers on this marketplace
               </div>
             )}
@@ -160,7 +166,7 @@ export function EnterpriseListingModal(
                 comes back as a support ticket the week the thing is provisioned. */}
             {extra.rules.length > 0 && (
               <div className="pd__section">
-                <h2>What this needs alongside it</h2>
+                <h3>What this needs alongside it</h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {extra.rules.map((r, i) => (
                     <div key={i} style={{ display: 'flex', gap: '8px', alignItems: 'baseline', fontSize: 'var(--text-sm)' }}>
@@ -178,13 +184,13 @@ export function EnterpriseListingModal(
               {specs.length === 0
                 ? (
                   <>
-                    <h2>Specification</h2>
+                    <h3>Specification</h3>
                     <EmptyState message="The seller has not published a specification for this listing." />
                   </>
                 )
                 : (
                   <details className="pd-acc" open>
-                    <summary>Specification</summary>
+                    <summary><h3>Specification</h3></summary>
                     <dl>
                       {specs.map(([k, v]) => (
                         <div key={k} style={{ display: 'contents' }}>
@@ -198,7 +204,7 @@ export function EnterpriseListingModal(
             </div>
 
             <div className="pd__section">
-              <h2>Seller</h2>
+              <h3>Seller</h3>
               <div className="pd-acc">
                 <dl style={{ paddingTop: '16px' }}>
                   <dt>Sold by</dt><dd>{listing.seller}</dd>

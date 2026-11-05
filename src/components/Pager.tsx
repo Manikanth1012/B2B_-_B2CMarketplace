@@ -64,12 +64,12 @@ export function Pager<T>(
      dead arrow either side is noise. */
   if (page.total <= PAGE_SIZES[0] && page.pages === 1) {
     return page.total === 0 ? null : (
-      <div style={barStyle}><span style={countStyle}>{pageLabel(page, noun)}</span></div>
+      <div className="pager" style={barStyle}><span style={countStyle}>{pageLabel(page, noun)}</span></div>
     )
   }
 
   return (
-    <div style={barStyle}>
+    <div className="pager" style={barStyle}>
       <span style={countStyle}>{pageLabel(page, noun)}</span>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginLeft: 'auto', flexWrap: 'wrap' }}>
@@ -80,7 +80,7 @@ export function Pager<T>(
               value={page.size}
               onChange={e => page.setSize(Number(e.target.value))}
               style={{
-                padding: '3px 6px', borderRadius: 'var(--radius)',
+                padding: '3px 6px', borderRadius: 'var(--radius)', minHeight: '24px', /* WCAG 2.5.8 */
                 border: '1px solid var(--border)', background: 'white',
                 fontSize: 'var(--text-xs)', color: 'var(--text)', cursor: 'pointer',
               }}

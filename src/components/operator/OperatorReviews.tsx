@@ -161,7 +161,7 @@ export function OperatorReviews() {
                     <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
                       {product ? (product.partner_id ? `sold by ${product.seller}` : 'first party') : ''}
                     </span>
-                    <span style={{ color: 'var(--brand-gold, #F5A623)', letterSpacing: '1px', flexShrink: 0 }}>{stars(r.rating)}</span>
+                    <span style={{ color: 'var(--star)', letterSpacing: '1px', flexShrink: 0 }}>{stars(r.rating)}</span>
                     <span style={{ marginLeft: 'auto', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', flexShrink: 0 }}>
                       {r.author} · {r.submitted}
                     </span>

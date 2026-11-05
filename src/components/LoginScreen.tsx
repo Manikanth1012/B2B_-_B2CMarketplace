@@ -79,7 +79,7 @@ const PERSONA_META: Record<Persona, { label: string; sub: string; user: string; 
     sub: 'Browse add-ons, devices & services',
     user: 'Priya Raman · Gold member',
     icon: <ShoppingBag size={24} />,
-    accentBg: 'rgba(0,166,166,0.2)',
+    accentBg: 'rgba(0, 198, 181, 0.2)',
     accentFg: 'var(--brand-accent-light)',
     accentColor: 'var(--brand-accent-dark)',
   },
@@ -218,8 +218,8 @@ export function LoginScreen(
             role="status"
             style={{
               marginBottom: 'var(--space-6)', padding: 'var(--space-4)',
-              borderRadius: 'var(--radius)', background: 'rgba(0,166,166,0.16)',
-              border: '1px solid rgba(0,166,166,0.4)', color: 'white',
+              borderRadius: 'var(--radius)', background: 'rgba(0, 198, 181, 0.16)',
+              border: '1px solid rgba(0, 198, 181, 0.4)', color: 'white',
               fontSize: 'var(--text-sm)', textAlign: 'center', lineHeight: 1.5,
             }}
           >
@@ -345,7 +345,7 @@ export function LoginScreen(
                         flex: 1, textAlign: 'left', cursor: 'pointer',
                         padding: '9px 11px', borderRadius: 'var(--radius)',
                         border: `1px solid ${i === activeShopper ? 'var(--brand-accent)' : 'var(--border)'}`,
-                        background: i === activeShopper ? 'rgba(0,166,166,0.06)' : 'white',
+                        background: i === activeShopper ? 'rgba(0, 198, 181, 0.06)' : 'white',
                       }}
                     >
                       <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text)' }}>{c.where}</div>
@@ -443,7 +443,7 @@ export function LoginScreen(
                 </div>
 
                 {resetNotice && (
-                  <div role="status" style={{ marginBottom: 'var(--space-4)', padding: 'var(--space-3)', borderRadius: 'var(--radius)', background: 'rgba(0,166,166,0.16)', border: '1px solid rgba(0,166,166,0.4)', color: 'white', fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>
+                  <div role="status" style={{ marginBottom: 'var(--space-4)', padding: 'var(--space-3)', borderRadius: 'var(--radius)', background: 'rgba(0, 198, 181, 0.16)', border: '1px solid rgba(0, 198, 181, 0.4)', color: 'white', fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>
                     {resetNotice}
                   </div>
                 )}

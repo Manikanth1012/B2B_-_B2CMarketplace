@@ -95,3 +95,54 @@ describe('small text never takes the light teal', () => {
     expect(offenders).toEqual([])
   })
 })
+
+/* The check above only sees a literal `color: var(--brand-accent)`. The light
+   teal also reaches text through constants and props (`accentColor`, a
+   `catColors` map) and white is sometimes laid over it as a glyph or label.
+   These two scans read src/lib and src/components for both. */
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir).flatMap((name) => {
+    const p = join(dir, name)
+    if (statSync(p).isDirectory()) return sourceFiles(p)
+    return /\.tsx?$/.test(name) && !/\.test\.tsx?$/.test(name) ? [p] : []
+  })
+}
+const SRC = fileURLToPath(new URL('../', import.meta.url))
+const scanned = ['lib', 'components'].flatMap((d) => sourceFiles(join(SRC, d)))
+
+const LIGHT_TEAL = String.raw`(?:var\(--(?:brand-accent|teal)\)|#00C6B5)`
+const lineOf = (text: string, index: number) => text.slice(0, index).split(/\r?\n/).length
+
+describe('the light teal never reaches text or sits under white', () => {
+  it('no colour constant or prop that resolves to the light teal is a text colour', () => {
+    /* A key that names a text colour (`color`, `accentColor`, `accentFg`,
+       `catColors` entries) whose value is the light teal. Border, background,
+       fill and stroke keys are fills, which the teal may still take. */
+    const keyed = new RegExp(
+      String.raw`(?<![\w-])(?!(?:border|background|outline|fill|stroke|shadow|caret)\w*)([A-Za-z]*(?:[cC]olou?rs?|Fg|Text))['"]?\s*:\s*[^,\n}]*` + LIGHT_TEAL, 'i')
+    const offenders: string[] = []
+    for (const file of scanned) {
+      readFileSync(file, 'utf8').split(/\r?\n/).forEach((line, i) => {
+        if (/^\s*(\/\/|\*|\/\*)/.test(line)) return
+        if (keyed.test(line)) offenders.push(`${relative(process.cwd(), file)}:${i + 1}`)
+      })
+    }
+    expect(offenders).toEqual([])
+  })
+
+  it('no style object sets white text or a white glyph on a light-teal background', () => {
+    const background = new RegExp(String.raw`background(?:Color)?['"]?\s*:\s*[^,}]*` + LIGHT_TEAL, 'i')
+    const white = /(?<![\w-])(?:color|fill|stroke)['"]?\s*:\s*[^,}]*(?:'white'|"white"|#fff(?:fff)?\b|var\(--text-inverse\))/i
+    const offenders: string[] = []
+    for (const file of scanned) {
+      const text = readFileSync(file, 'utf8')
+      /* Innermost { … } blocks: one style object, however many lines it spans. */
+      for (const m of text.matchAll(/\{[^{}]*\}/g)) {
+        if (background.test(m[0]) && white.test(m[0])) {
+          offenders.push(`${relative(process.cwd(), file)}:${lineOf(text, m.index!)}`)
+        }
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+})

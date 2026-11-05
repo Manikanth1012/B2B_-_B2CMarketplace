@@ -299,12 +299,14 @@ The look is defined by tokens in `src/styles/global.css`. Existing variables wer
 | `--bg-alt` | `#F9FAFB` | `#F4F7FC` |
 | `--text` | `#111827` | `#102344` |
 | `--text-secondary` | `#4B5563` | `#475569` |
-| `--text-tertiary` | `#6B7280` | `#5B6B82` |
+| `--text-tertiary` | `#6B7280` | `#556479` |
 | `--border` | `#E5E7EB` | `#E3EAF3` |
 
 New: `--blue #0756A5`, `--electric #168BFF`, `--cyan #12CDE0`, `--teal #00C6B5`, `--grad-navy`, `--grad-cyan`, `--shadow-card`, `--shadow-lift`, `--radius-card` (16px).
 
-`--text-tertiary` is `#5B6B82`, not the `#64748B` the design brief suggested: that slate measures 4.43:1 on the new `#F4F7FC` ground, under AA. `#5B6B82` clears 4.5:1 on both white and `--bg-alt`.
+`--text-tertiary` is `#556479`, not the `#64748B` the design brief suggested: that slate measures 4.43:1 on the new `#F4F7FC` ground, under AA. Spec 1 used `#5B6B82`; the spec 5 sweep found it at 4.44:1 on the pale status tints (a selected or flagged row), and `#556479` clears 4.93:1 on every one of them.
+
+`--star` (`#8F5A06`) colours rating stars. The stars alone carry a rating, so they need text contrast; the old gold `#F5A623` was 2.03:1 on white and is kept only for decorative bars.
 
 **Colour roles.** Teal, cyan and electric (and the brief's success green) are for fills, icons and large type. Small text uses the AA-safe tokens: `--brand-accent-dark` or `--blue` for accents, `--success`, `--warning`, `--danger` and `--info` for state. `src/lib/contrast.test.ts` reads `global.css` and fails if any text/surface pairing the design uses drops under AA: 4.5:1 for text, 3:1 for UI glyphs such as the `--electric` focus ring. It also scans `src/**/*.tsx` and fails if a line sets `color:` to exactly `var(--brand-accent)`, because the light teal is 2.15:1 on white.
 
@@ -371,7 +373,25 @@ Homepage decisions (which products are featured, which sellers appear, tile coun
 
 **Where the futuristic treatment goes.** Navy gradients, the globe and glow belong on discovery and promotional surfaces only. Transactional and operational screens (checkout, orders, settlement, the consoles) stay light and plain, because people there are reading figures and need nothing competing with them.
 
-**The revamp is five specs.** This is spec 1, the foundation and public homepage. The rest: 2, commerce (storefronts, product pages, cart and checkout, header search); 3, operator console; 4, partner portal; 5, a validation sweep.
+**Account screens (spec 5).** Orders, Subscriptions, Rewards and My account share one shell in `src/components/account/`:
+
+- `AccountPage`: the page's single h1, a subtitle and optional actions, on the light `--bg-alt` page at most 1200px wide.
+- `AccountTabs`: My account's nine tabs. A left list from 1024px up, a row of scrolling chips below; arrow keys, Home and End move between tabs, and only the selected tab is in the Tab order.
+- Cards are `BentoCard`; its `headingLevel` prop (2, 3 or 4, default 3) keeps one h1 per page with h2 card titles.
+- Every control on an account page is at least 44px tall (`account-view.css`), including the shared `Pager` (tagged `.pager`).
+- Below 768px the account tables stack into cards and keep explicit `role="table"`/`row`/`cell` so screen readers still read them as tables.
+
+Styles: `src/styles/account.css` (shell, tabs, dialog), `account-screens.css` (Orders, Subscriptions, Rewards), `account-view.css` (My account).
+
+**Dialogs.** `Dialog` (`src/components/ui/Dialog.tsx`) is the one modal: `role="dialog"`, `aria-modal`, labelled by its h2 title, focus held inside by `useFocusTrap`, Escape closes only the top dialog, and focus goes back to whatever opened it (captured before an `autoFocus` field can take it). The console `Modal` and `ConfirmDialog` render through it with their props unchanged, and the requisition drawer uses the same trap.
+
+**When prices fail to load.** `loadPriceBookResult` / `loadCopyBookResult` (`src/lib/moneyRepo.ts`, built on `settle` in `src/lib/loaded.ts`) tell a failed read apart from an empty one, so a shop shows "We couldn't load prices just now" with Retry instead of claiming nothing is priced for the market.
+
+**Checking contrast in the browser.** `scripts/contrast-scan.js` walks every visible text node on the open page and reports anything under AA as `{ checked, failures, unverified }`. Paste it into DevTools, or pass its text to a run-JS-in-page tool. Text on a gradient or photo has no single background and is listed as `unverified`, to check by eye. The spec 5 sweep ran it on every screen of all five experiences at 1280, 1024 and 390px.
+
+**Header breakpoints.** The public header collapses its nav into the menu below 1024px; between 1024 and 1199px it tightens its gaps and shrinks the search. On phones the signed-in consumer header shrinks its logo and the footer stacks its columns.
+
+**The revamp is five specs**, all merged: 1, the foundation and public homepage; 2, commerce (storefronts, product pages, cart and checkout, header search); 3 + 4, the operator, partner and enterprise consoles; 5, the account screens and a validation sweep of every experience. Specs and plans are in `docs/superpowers/`.
 
 ---
 

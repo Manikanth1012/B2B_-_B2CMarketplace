@@ -78,7 +78,7 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, onSearch, children
   const navRef = useRef<HTMLElement>(null)
   const menuBtn = useRef<HTMLButtonElement>(null)
 
-  /* The nav precedes the header's end cluster in the DOM, so below 900px Tab
+  /* The nav precedes the header's end cluster in the DOM, so below 1024px Tab
      from the menu button would skip past the opened menu into the page. Move
      focus into the menu when it opens; Escape closes it and returns to the
      button. */
@@ -87,6 +87,9 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, onSearch, children
     navRef.current?.querySelector<HTMLElement>('button, a[href]')?.focus()
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
+      /* One layer at a time: while the Discover panel is open, its own Escape
+         handler closes it and the menu stays. */
+      if (navRef.current?.querySelector('.discover__panel')) return
       setMenuOpen(false)
       menuBtn.current?.focus()
     }

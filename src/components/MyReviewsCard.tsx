@@ -74,7 +74,7 @@ export function MyReviewsCard({ showToast }: { showToast: (m: string) => void })
   const unreviewed = purchased.filter(p => canReview(p.id, purchased.map(x => x.id), mine).ok)
 
   return (
-    <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-lg)', padding: '24px' }}>
+    <div className="av-panel">
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
         <span style={{ color: 'var(--brand-accent-dark)' }}><Star size={18} /></span>
         <h2 style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>Your reviews</h2>
@@ -90,7 +90,7 @@ export function MyReviewsCard({ showToast }: { showToast: (m: string) => void })
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>{r.title}</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--brand-gold, #F5A623)', letterSpacing: '1px' }}>{stars(r.rating)}</div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--star)', letterSpacing: '1px' }}>{stars(r.rating)}</div>
                 </div>
                 <span style={{
                   flexShrink: 0, padding: '2px 10px', borderRadius: '999px', fontSize: 'var(--text-xs)', fontWeight: 700,
@@ -133,7 +133,7 @@ export function MyReviewsCard({ showToast }: { showToast: (m: string) => void })
                 style={{
                   background: 'none', border: 'none', cursor: 'pointer', padding: '2px',
                   fontSize: '22px', lineHeight: 1,
-                  color: n <= rating ? 'var(--brand-gold, #F5A623)' : 'var(--border)',
+                  color: n <= rating ? 'var(--star)' : 'var(--border)',
                 }}
               >
                 ★

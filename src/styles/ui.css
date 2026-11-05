@@ -12,6 +12,8 @@
 
 .ui-link {
   display: inline-flex; align-items: center; gap: 6px; padding: 0;
+  /* WCAG 2.5.8: a 24px-tall hit area. inline-flex + align-items keeps the label centred, so nothing shifts. */
+  min-height: 24px;
   background: none; border: none; cursor: pointer;
   font-size: var(--text-sm); font-weight: 600; color: var(--blue);
 }
@@ -128,6 +130,7 @@
 .cat-tile:hover .cat-tile__media img { transform: scale(1.04); }
 .cat-tile__body { display: flex; align-items: center; gap: 12px; padding: 14px 16px; }
 .cat-tile__name { font-size: var(--text-base); font-weight: 700; line-height: 1.3; color: var(--text); }
+.cat-tile__desc { font-size: var(--text-xs); color: var(--text-secondary); line-height: 1.5; margin-top: 2px; }
 .cat-tile__count { font-size: var(--text-xs); color: var(--text-tertiary); }
 .cat-tile__arrow {
   margin-left: auto; flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%;
@@ -198,7 +201,7 @@
 .site-header__end { display: flex; align-items: center; gap: 12px; flex-shrink: 0; margin-left: auto; }
 .site-header__menu-btn { display: none; color: #fff; padding: 8px; border-radius: var(--radius); }
 .site-header__menu-btn:hover { background: rgba(255, 255, 255, 0.08); }
-@media (max-width: 899px) {
+@media (max-width: 1023px) {
   .site-nav { display: none; }
   .site-nav.is-open {
     display: flex; position: absolute; top: 64px; left: 0; right: 0; flex-direction: column; align-items: stretch;
@@ -216,9 +219,26 @@
 .site-search:focus-within { border-color: var(--cyan); }
 /* The copy inside the mobile menu only exists for phones. */
 .site-search--menu { display: none; }
-@media (max-width: 1100px) { .site-search { width: 200px; } }
-@media (max-width: 899px) { .site-search { display: none; } .site-nav.is-open .site-search--menu { display: flex; width: 100%; } }
+/* 1024–1199px: the full nav, the search and the market picker overran the bar
+   at 1024 (spec 5 sweep), so the nav collapses into the menu below 1024px and
+   this range gets tighter gaps, nav padding and a shrinkable search. */
+@media (max-width: 1199px) {
+  .site-header__bar { gap: 14px; }
+  .site-nav__item { padding: 8px 8px; }
+  .site-search { width: auto; flex: 0 1 180px; min-width: 120px; }
+}
+@media (max-width: 1023px) { .site-search { display: none; } .site-nav.is-open .site-search--menu { display: flex; width: 100%; } }
 @media (max-width: 520px) { .site-header__divider, .site-header__6d { display: none; } }
+/* Signed-in consumer header: the logo shrinks on phones so the help, account,
+   basket and menu buttons fit beside it at 390px (spec 5 sweep: 39px over). */
+.consumer-header__logo { height: 32px; display: block; }
+@media (max-width: 520px) { .consumer-header__logo { height: 22px; } }
+/* Signed-in footer on phones: 240px brand + a 150px column overran 390px
+   (spec 5 sweep). Brand full width, link columns two to a row beneath it. */
+@media (max-width: 640px) {
+  .site-footer__grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 24px !important; }
+  .site-footer__grid > :first-child { grid-column: 1 / -1; }
+}
 
 .discover { position: relative; }
 .discover__panel {
@@ -228,7 +248,7 @@
   animation: fadeIn var(--transition) ease-out; list-style: none; margin: 0;
 }
 .discover__panel > li { display: contents; }
-@media (max-width: 899px) { .discover__panel { position: static; width: 100%; grid-template-columns: 1fr; margin-top: 4px; box-shadow: none; } }
+@media (max-width: 1023px) { .discover__panel { position: static; width: 100%; grid-template-columns: 1fr; margin-top: 4px; box-shadow: none; } }
 .discover__item {
   display: flex; align-items: flex-start; gap: 12px; padding: 10px 12px; border: none; border-radius: var(--radius-md);
   background: none; color: var(--text); text-align: left; cursor: pointer;
@@ -262,6 +282,10 @@
 }
 .hero-title { font-size: clamp(2rem, 3.3vw, 3.25rem); font-weight: 800; line-height: 1.05; letter-spacing: -0.025em; }
 .hero-title__accent { background: var(--grad-cyan); -webkit-background-clip: text; background-clip: text; color: transparent; }
+/* The gradient is painted through transparent text; forced-colors drops the gradient and would leave the headline invisible. */
+@media (forced-colors: active) {
+  .hero-title__accent { background: none; color: CanvasText; -webkit-text-fill-color: CanvasText; }
+}
 .hero-lede { font-size: var(--text-lg); line-height: 1.55; color: rgba(255, 255, 255, 0.84); }
 .hero-ctas { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; }
 .hero-art { position: absolute; right: clamp(8px, 2vw, 24px); top: 50%; transform: translateY(-50%); width: min(52%, 600px); }
