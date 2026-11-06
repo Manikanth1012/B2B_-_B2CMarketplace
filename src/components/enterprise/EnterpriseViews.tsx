@@ -14,7 +14,7 @@ import { useAccountMoney } from './money'
 import { getProductImage } from '../../lib/images'
 import { useRequisition } from '../../lib/RequisitionContext'
 import { lineFor } from './EnterpriseBrowse'
-import { holdsQuote, quoteHoldsCurrency } from '../../lib/requisitionBasket'
+import { heldCurrencyNote } from '../../lib/bundleLines'
 import { EnterpriseListingModal } from './EnterpriseListingModal'
 import { useMarket } from '../../lib/MarketContext'
 
@@ -272,8 +272,9 @@ export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
   useEffect(() => {
     if (!currency || !listings || !req.basket.lines.length) return
     if (req.basket.currency === currency) return
-    if (holdsQuote(req.basket)) {
-      toast(quoteHoldsCurrency(req.basket.currency, currency), 'info')
+    const held = heldCurrencyNote(req.basket, currency)
+    if (held) {
+      toast(held, 'info')
       return
     }
     const dropped = req.reprice(currency, listings)

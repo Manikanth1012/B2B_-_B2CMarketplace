@@ -2,6 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import type { View, OperatorView, PartnerView, EnterpriseView, Persona, Session, Surface, PublicPage } from './types/view'
 import { supabase } from './lib/supabase'
 import { activeLines, basketCount } from './lib/basket'
+import { bundleIdsOf, priceCartBundles, type BundleInfo } from './lib/bundleLines'
+import { loadBundleInfo } from './lib/bundleBasketRepo'
+import { BUNDLES_CHANGED } from './components/bundles/events'
 import { NotifyMeModal } from './components/NotifyMeModal'
 import { StockWatchCard } from './components/StockWatchCard'
 import { isOpen as watchIsOpen, type Watch } from './lib/stockWatch'
@@ -199,10 +202,19 @@ function AppInner() {
       loadCopyBook(),
     ])
     if (cart) {
-      const lines = (cart as CartItem[]).map(l => ({
+      const shelf = (cart as CartItem[]).map(l => ({
         ...l,
         product: l.product ? reprice(l.product, book, shopCurrency, copy) : l.product,
       }))
+      /* A configured bundle's parts are priced by their selection, not the
+         book. No bundle lines (or no bundles migration) and this is a no-op. */
+      const ids = bundleIdsOf(shelf)
+      let info = new Map<string, BundleInfo>()
+      if (ids.length) {
+        const got = await loadBundleInfo(ids)
+        if (got.ok) info = got.value
+      }
+      const lines = ids.length ? priceCartBundles(shelf, info) : shelf
       setCartItems(lines)
       /* Saved lines are in the basket but not of it — the badge counts what is
          actually being bought. */
@@ -212,6 +224,13 @@ function AppInner() {
 
   useEffect(() => {
     loadCart().then(() => setLoading(false))
+  }, [loadCart])
+
+  /* A bundle added, edited or removed elsewhere (the configurator, the drawer). */
+  useEffect(() => {
+    const reload = () => { void loadCart() }
+    window.addEventListener(BUNDLES_CHANGED, reload)
+    return () => window.removeEventListener(BUNDLES_CHANGED, reload)
   }, [loadCart])
 
 
@@ -228,11 +247,15 @@ function AppInner() {
      in state. Signing in mid-flow adds a row before `cartItems` has been reloaded
      for the new session, and reading the stale copy would insert a duplicate. */
   const addToCart = async (product: Product, quantity = 1) => {
-    const { data: existing } = await supabase
+    /* Bundle parts are not this product's line: their quantity belongs to the
+       bundle, and the database refuses a change to it. `*` rather than naming
+       bundle_selection_id, so this reads the same before the bundles migration. */
+    const { data: rows } = await supabase
       .from('cart_items')
-      .select('id, quantity')
+      .select('*')
       .eq('product_id', product.id)
-      .maybeSingle()
+    const existing = ((rows ?? []) as { id: string; quantity: number; bundle_selection_id?: string | null }[])
+      .find(r => !r.bundle_selection_id) ?? null
 
     if (existing) {
       await supabase

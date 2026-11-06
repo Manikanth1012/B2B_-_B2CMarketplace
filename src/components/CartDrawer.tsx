@@ -7,6 +7,10 @@ import {
   canMoveToBasket, SAVED_CAVEAT,
 } from '../lib/basket'
 import { useMarket } from '../lib/MarketContext'
+import { groupBySelection } from '../lib/bundles'
+import { bundleBlock, partOnSale, BUNDLE_FALLBACK_NAME } from '../lib/bundleLines'
+import { BundleGroup } from './bundles/BundleGroup'
+import { basketSink } from './bundles/sinks'
 
 interface CartDrawerProps {
   open: boolean
@@ -27,7 +31,48 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
   /* The shopper's own money and the rate where they are. Both used to be
      written into this file — a `$` in four places and a hard-coded 0.18, which
      is India's GST charged to a shopper in Nairobi where it is sixteen. */
-  const { market, fmt } = useMarket()
+  const { market, currency, fmt } = useMarket()
+  const shopCurrency = currency?.code ?? market?.currency ?? ''
+  const today = new Date().toISOString().slice(0, 10)
+
+  /* A configured bundle: one grouped line. Ordinary lines are drawn exactly as
+     before — each is its own group. */
+  const bundleOf = (lines: CartItem[], savedGroup: boolean) => {
+    const info = lines[0].bundle ?? null
+    const name = info?.name ?? BUNDLE_FALLBACK_NAME
+    const onSale = new Map(lines.map(l => [l.product_id, partOnSale(l.product)]))
+    const block = savedGroup ? { kind: 'ok' as const } : bundleBlock(info, shopCurrency, today, pid => onSale.get(pid) ?? true)
+    const total = lines.reduce((n, l) => n + (l.product?.price ?? 0) * l.quantity, 0)
+    return (
+      <div key={lines[0].bundle_selection_id} className={savedGroup ? 'cart-line--saved' : undefined}>
+        <BundleGroup
+          compact
+          name={name}
+          parts={lines.map(l => ({
+            key: l.id, name: l.product?.name ?? l.product_id, quantity: l.quantity,
+            lineTotal: (l.product?.price ?? 0) * l.quantity,
+          }))}
+          total={total}
+          partsTotal={info?.selection.parts_total ?? null}
+          fmt={fmt}
+          block={block}
+          editable={info ? {
+            selectionId: info.selection.id, templateId: info.selection.template_id,
+            choices: info.selection.choices, quantity: info.selection.quantity, currency: info.selection.currency,
+          } : null}
+          sink={basketSink}
+          /* One line out takes the rest with it (bundle_cart_follow). */
+          onRemove={() => onRemove(lines[0].id)}
+          actions={
+            <button type="button" className="bundle-group__btn"
+              onClick={() => onSetSaved(lines[0].id, !savedGroup)}>
+              {savedGroup ? 'Move to basket' : 'Save for later'}
+            </button>
+          }
+        />
+      </div>
+    )
+  }
   const money = basketMoney(items, Number(market?.tax_rate ?? 0))
   const taxLabel = market?.tax_label ?? 'Tax'
 
@@ -77,7 +122,7 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
               <p style={{ fontSize: 'var(--text-sm)' }}>Browse the marketplace to add products.</p>
             </div>
           ) : (
-            active.map((item) => (
+            groupBySelection(active).map((g) => g.selectionId ? bundleOf(g.lines, false) : g.lines.map((item) => (
               <div key={item.id} className="cart-line">
                 {/* Thumbnail */}
                 <div className="cart-line__thumb">
@@ -128,7 +173,7 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
                   </button>
                 </div>
               </div>
-            ))
+            )))
           )}
 
           {/* Saved for later — the prototype keeps these in the basket, dimmed,
@@ -142,7 +187,7 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
               <p className="drawer__saved-note">
                 {SAVED_CAVEAT}
               </p>
-              {saved.map(item => {
+              {groupBySelection(saved).map(g => g.selectionId ? bundleOf(g.lines, true) : g.lines.map(item => {
                 const returnable = canMoveToBasket(item)
                 return (
                   <div key={item.id} className="cart-line cart-line--saved">
@@ -180,7 +225,7 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
                     </div>
                   </div>
                 )
-              })}
+              }))}
             </div>
           )}
         </div>

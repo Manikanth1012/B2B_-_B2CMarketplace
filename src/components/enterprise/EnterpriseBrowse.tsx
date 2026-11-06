@@ -10,7 +10,7 @@ import { ProductCard, ListingLayout, ListingGrid, EmptyListing, CategoryTile, ca
 import { pricedFor, cardAction } from '../../lib/storefront'
 import { categoryVisual } from '../../lib/home'
 import { useRequisition } from '../../lib/RequisitionContext'
-import { holdsQuote, quoteHoldsCurrency } from '../../lib/requisitionBasket'
+import { heldCurrencyNote } from '../../lib/bundleLines'
 import type { EnterpriseListing as Listing } from '../../lib/enterpriseRepo'
 
 /* One shape of line from one shape of row, used by both catalogue screens, so
@@ -125,8 +125,9 @@ export function EnterpriseBrowse() {
     if (req.basket.currency === currency) return
     /* A quoted price is in the quote's currency and is not on any shelf, so a
        basket holding one stays where it is (repriceTo leaves it alone too). */
-    if (holdsQuote(req.basket)) {
-      toast(quoteHoldsCurrency(req.basket.currency, currency), 'info')
+    const held = heldCurrencyNote(req.basket, currency)
+    if (held) {
+      toast(held, 'info')
       return
     }
     const dropped = req.reprice(currency, listings)

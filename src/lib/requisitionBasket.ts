@@ -18,6 +18,7 @@
 import { requisitionTotal, needFor, policyNoteFor, inPolicyMoney, money } from './enterprise'
 import type { Policy, Account, Need, Check, Fmt } from './enterprise'
 import type { Rate } from './money'
+import type { BundleMeta } from './bundleLines'
 
 export interface BasketLine {
   product_id: string
@@ -40,6 +41,12 @@ export interface BasketLine {
      the quote's, so neither moves: the database (guard_quoted_line) refuses a
      requisition line whose price or quantity differs from the quoted one. */
   quote_line_id?: string | null
+  /* Set when the line is a part of a configured bundle. Its price and quantity
+     are the selection's (guard_bundle_requisition_line holds them), so it never
+     merges with an ordinary line of the same product, is never re-read from a
+     shelf, and moves only with the rest of its bundle. */
+  bundle_selection_id?: string | null
+  bundle?: BundleMeta
 }
 
 /** Whether a line came from an accepted quote. */
@@ -111,7 +118,8 @@ export function addToBasket(
     }
   }
 
-  const at = basket.lines.findIndex(l => l.product_id === line.product_id)
+  /* A bundle's part is not "already there" for an ordinary add of the same product. */
+  const at = basket.lines.findIndex(l => l.product_id === line.product_id && !l.bundle_selection_id)
   /* A quoted line is its own line at its own price and quantity, so it never
      merges with another of the same product, and nothing merges into it. */
   if (isQuoted(line)) {
@@ -153,16 +161,17 @@ export function setQuantity(basket: Basket, product_id: string, quantity: number
     return { ok: false, reason: `That is more than ${MAX_QUANTITY.toLocaleString()} of one thing. Raise it with your account manager instead.` }
   }
   if (quantity <= 0) return removeLine(basket, product_id)
-  const held = basket.lines.find(l => l.product_id === product_id && isQuoted(l))
+  const held = basket.lines.find(l => l.product_id === product_id && !l.bundle_selection_id && isQuoted(l))
   if (held && held.quantity !== quantity) {
     return { ok: false, reason: `${held.name} is held at the ${held.quantity} that was quoted. Ask for a new quote to change it.` }
   }
-  const lines = basket.lines.map(l => l.product_id === product_id ? { ...l, quantity } : l)
+  const lines = basket.lines.map(l => l.product_id === product_id && !l.bundle_selection_id ? { ...l, quantity } : l)
   return { ok: true, basket: { ...basket, lines } }
 }
 
 export function removeLine(basket: Basket, product_id: string): BasketResult {
-  const lines = basket.lines.filter(l => l.product_id !== product_id)
+  /* A bundle's parts leave only with their bundle (removeBundleFromBasket). */
+  const lines = basket.lines.filter(l => l.product_id !== product_id || !!l.bundle_selection_id)
   /* The currency goes with the last line. Keeping it would leave an empty
      basket that still refused the other currency. */
   return { ok: true, basket: lines.length ? { ...basket, lines } : EMPTY_BASKET }
@@ -219,6 +228,8 @@ export function repriceTo(
      holding one stays where it is: re-reading the shelf would change a price
      the database will only accept as quoted. */
   if (holdsQuote(basket)) return { basket, dropped: [] }
+  /* Likewise a configured bundle: priced once, in one currency, by the database. */
+  if (basket.lines.some(l => !!l.bundle_selection_id)) return { basket, dropped: [] }
 
   const dropped: string[] = []
   const lines: BasketLine[] = []

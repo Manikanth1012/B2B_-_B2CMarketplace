@@ -5,6 +5,7 @@
    in the buyer's own words, and again by `guard_requisition()` in the database
    so a refusal cannot be skipped by talking to the API directly. */
 
+import { bundleColumns } from './bundleLines'
 import { supabase } from './supabase'
 import { loadPriceBook, loadCopyBook, describeIn } from './moneyRepo'
 import {
@@ -276,6 +277,9 @@ export interface Draft {
     /* The accepted quote line this came from, if any. guard_quoted_line holds
        its price and quantity to the quote. */
     quote_line_id?: string | null
+    /* The configured bundle this part belongs to, if any. Its unit price is the
+       selection's; guard_bundle_requisition_line holds it to that. */
+    bundle_selection_id?: string | null
   }[]
 }
 
@@ -358,6 +362,7 @@ export async function raiseRequisition(
       /* Only sent when there is one, so an ordinary requisition writes exactly
          the columns it always has. */
       ...(l.quote_line_id ? { quote_line_id: l.quote_line_id } : {}),
+      ...bundleColumns(l),
     })),
   )
   if (lineError) {

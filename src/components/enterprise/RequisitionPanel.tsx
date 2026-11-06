@@ -24,6 +24,10 @@ import { getProductImage } from '../../lib/images'
 import { round2 } from '../../lib/money'
 import { RaiseQuoteDialog } from '../enquiries/RaiseQuoteDialog'
 import { enquiriesChanged } from '../enquiries/events'
+import { groupBySelection } from '../../lib/bundles'
+import { BUNDLE_FALLBACK_NAME, type BundleBlock } from '../../lib/bundleLines'
+import { BundleGroup } from '../bundles/BundleGroup'
+import { requisitionSink } from '../bundles/sinks'
 
 const BLANK = { title: '', reason: '', cost_centre: null as string | null, po_ref: '' }
 
@@ -44,7 +48,7 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
   onQuoteRequested?: () => void
 }) {
   const [quoting, setQuoting] = useState(false)
-  const { basket, open, setOpen, setQuantity, remove, empty, total, count } = useRequisition()
+  const { basket, open, setOpen, setQuantity, remove, removeBundle, empty, total, count } = useRequisition()
   /* The marketplace's formatter, with the currency table in it. This panel used
      to import `money` from `enterprise.ts`, which has no table and writes
      "INR 400,000.00" — every price on the panel, not only the threshold. */
@@ -124,7 +128,15 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
      somebody who cannot see the thing it is refusing over, is indistinguishable
      from one that is broken. It stays live, and pressing it takes you to the
      first thing it needs. */
-  const blocked = !!(v?.blocked) || !!(me && !me.can_raise) || !account || !policy
+  /* A configured bundle holds its price for seven days; after that it has to
+     be priced again before it can be raised. The database decides the rest
+     (parts still on sale) when the requisition is written. */
+  const bundleBlockOf = (meta: { name: string; validUntil: string } | undefined): BundleBlock =>
+    meta && meta.validUntil.slice(0, 10) < today
+      ? { kind: 'expired', says: `The price of ${meta.name} was held for seven days and that has passed. Re-price it to raise it.` }
+      : { kind: 'ok' }
+  const expiredBundle = basket.lines.find(l => l.bundle_selection_id && bundleBlockOf(l.bundle).kind !== 'ok')
+  const blocked = !!(v?.blocked) || !!(me && !me.can_raise) || !account || !policy || !!expiredBundle
 
   const raise = async () => {
     if (!account || !me || !policy) return
@@ -149,6 +161,7 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
           product_id: l.product_id, name: l.name, seller: l.seller,
           partner_id: l.partner_id, quantity: l.quantity, unit_price: l.unit_price,
           quote_line_id: l.quote_line_id ?? null,
+          bundle_selection_id: l.bundle_selection_id ?? null,
         })),
       },
       me, account, policy, currencies, rates,
@@ -176,7 +189,7 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
   } as const
 
   /* Lines already at a quoted price are not asked about again. */
-  const toQuote = basket.lines.filter(l => !l.quote_line_id)
+  const toQuote = basket.lines.filter(l => !l.quote_line_id && !l.bundle_selection_id)
     .map(l => ({ product_id: l.product_id, name: l.name, quantity: l.quantity }))
 
   return (
@@ -214,8 +227,27 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
             <>
               {/* What is in it */}
               <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
-                {basket.lines.map((l, i) => (
-                  <div key={l.product_id} style={{ display: 'flex', gap: '12px', padding: '12px', borderTop: i ? '1px solid var(--border-light)' : 'none', alignItems: 'center' }}>
+                {groupBySelection(basket.lines).map((g, gi) => g.selectionId ? (() => {
+                  const meta = g.lines[0].bundle
+                  return (
+                    <div key={g.selectionId} style={{ padding: '12px', borderTop: gi ? '1px solid var(--border-light)' : 'none' }}>
+                      <BundleGroup
+                        name={meta?.name ?? BUNDLE_FALLBACK_NAME}
+                        parts={g.lines.map(l => ({ key: l.product_id, name: l.name, seller: l.seller, quantity: l.quantity, lineTotal: round2(l.quantity * l.unit_price) }))}
+                        total={round2(g.lines.reduce((n, l) => n + round2(l.quantity * l.unit_price), 0))}
+                        fmt={n => money(n, basket.currency)}
+                        block={bundleBlockOf(meta)}
+                        editable={meta ? {
+                          selectionId: g.selectionId!, templateId: meta.templateId, choices: meta.choices,
+                          quantity: meta.quantity, currency: meta.currency,
+                        } : null}
+                        sink={requisitionSink}
+                        onRemove={() => removeBundle(g.selectionId!)}
+                      />
+                    </div>
+                  )
+                })() : g.lines.map((l) => (
+                  <div key={l.product_id} style={{ display: 'flex', gap: '12px', padding: '12px', borderTop: gi ? '1px solid var(--border-light)' : 'none', alignItems: 'center' }}>
                     <div style={{ width: 48, height: 48, borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--bg-alt)', flexShrink: 0 }}>
                       <img src={getProductImage(l.product_id)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     </div>
@@ -250,7 +282,7 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
                       <Trash2 size={16} />
                     </button>
                   </div>
-                ))}
+                )))}
                 <div style={{ padding: '12px', borderTop: '1px solid var(--border)', background: 'var(--bg-alt)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
                     Total{modelOf(basket.lines) === 'monthly' ? ' per month' : ''}
@@ -325,6 +357,10 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
             {me && !me.can_raise ? (
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--warning)' }}>
                 Your role on this account cannot raise a requisition. Ask a colleague who can, or an administrator to move you to a role that raises.
+              </div>
+            ) : expiredBundle ? (
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', fontWeight: 600 }}>
+                {bundleBlockOf(expiredBundle.bundle).kind === 'expired' && (bundleBlockOf(expiredBundle.bundle) as { says: string }).says}
               </div>
             ) : stopper && (
               <div style={{ fontSize: 'var(--text-xs)', color: attempted ? 'var(--danger)' : 'var(--text-tertiary)', fontWeight: attempted ? 600 : 400 }}>
