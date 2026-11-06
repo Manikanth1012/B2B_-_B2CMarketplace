@@ -34,3 +34,10 @@
 @media (prefers-reduced-motion: reduce) {
   .tb *, .tb-section * { transition: none !important; animation: none !important; }
 }
+
+/* Messages beside the field they are about, and the save line in the footer. */
+.tb-err { font-size: var(--text-sm); color: var(--danger); margin-top: 4px; }
+.tb .c-input[aria-invalid="true"] { border-color: var(--danger); }
+.tb-foot { flex: 1 1 100%; min-width: 0; }
+.tb-foot__err { font-size: var(--text-sm); color: var(--danger); margin: 0 0 4px; overflow-wrap: anywhere; }
+.tb .c-btn.tb-save--blocked { opacity: .6; cursor: not-allowed; }

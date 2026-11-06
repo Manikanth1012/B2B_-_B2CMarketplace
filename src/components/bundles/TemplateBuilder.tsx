@@ -1,13 +1,14 @@
 /* The operator's bundle builder: what the bundle is, what the buyer chooses,
    and what it would cost. It writes through saveTemplate and decides nothing
    the database would refuse — it shows the database's sentence. */
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { Plus, Trash2 } from 'lucide-react'
 import { Dialog } from '../ui/Dialog'
 import { Btn, FormField, TextArea, TextInput, Select } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
 import { TemplatePreview } from './TemplatePreview'
 import type { PreviewSlot } from './previewPrices'
+import { draftProblems, hasProblems } from './templateDraftProblems'
 import type { BundleTemplate } from '../../lib/bundles'
 import type { SlotInput } from '../../lib/bundlePayload'
 import type { ProductRow } from '../../lib/catalogue'
@@ -58,13 +59,20 @@ export function TemplateBuilder({ initial, products, rule, onClose, onSave }: {
   products: ProductRow[]
   rule: BundleRule
   onClose: () => void
-  /** Resolves to the database's sentence when it refused, or null when saved. */
-  onSave: (draft: TemplateDraft) => Promise<string | null>
+  /** Resolves to the database's sentence when it refused (with the id of a
+      partly created template, if one now exists), or null when saved. */
+  onSave: (draft: TemplateDraft) => Promise<{ error: string; id?: string } | null>
 }) {
   const [d, setD] = useState<TemplateDraft>(initial)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [tried, setTried] = useState(false)
+  const body = useRef<HTMLDivElement>(null)
   const frozen = d.status === 'live'
+  const problems = useMemo(() => draftProblems(d, rule.max_discount), [d, rule.max_discount])
+  const bad = hasProblems(problems)
+  const bp = (k: string) => (tried ? problems.bundle[k] : undefined)
+  const sp = (key: string, k: string) => (tried ? problems.slots[key]?.[k] : undefined)
 
   const byId = useMemo(() => new Map(products.map(p => [p.id, p])), [products])
   const nameOf = useCallback((id: string) => byId.get(id)?.name ?? id, [byId])
@@ -82,25 +90,39 @@ export function TemplateBuilder({ initial, products, rule, onClose, onSave }: {
   })), [d.slots])
 
   const save = async () => {
+    if (bad) {
+      setTried(true)
+      // Wait for the messages to render, then land on the first field that is wrong.
+      setTimeout(() => body.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(), 0)
+      return
+    }
     setBusy(true); setError(null)
-    const sentence = await onSave(d)
+    const refused = await onSave(d)
     setBusy(false)
-    if (sentence) setError(sentence)
+    if (refused) {
+      setError(refused.error)
+      if (refused.id && !d.id) set({ id: refused.id })
+    }
   }
 
-  const canSave = d.name.trim() !== '' && d.audiences.length > 0 && d.slots.every(s => s.label.trim() !== '')
+  const count = Object.keys(problems.bundle).length + Object.values(problems.slots).reduce((n, p) => n + Object.keys(p).length, 0)
+  const inv = (msg: string | undefined, id: string) => (msg ? { 'aria-invalid': true as const, 'aria-describedby': id } : {})
+  const Err = ({ id, msg }: { id: string; msg?: string }) => (msg ? <div id={id} className="tb-err">{msg}</div> : null)
 
   return (
     <Dialog open onClose={busy ? () => undefined : onClose} wide className="tb"
       title={d.id ? `Edit ${initial.name || 'bundle'}` : 'Build a configurable bundle'}
       footer={(
         <>
+          <div className="tb-foot">
+            {error && <p role="alert" className="tb-foot__err"><strong>That was not saved.</strong> {error}</p>}
+            {tried && bad && <p role="status" className="tb-foot__err">{count} thing{count === 1 ? '' : 's'} to fix before this can be saved.</p>}
+          </div>
           <Btn variant="secondary" onClick={onClose} disabled={busy}>Cancel</Btn>
-          <Btn onClick={save} disabled={busy || !canSave}>{busy ? 'Saving...' : 'Save bundle'}</Btn>
+          <Btn onClick={save} disabled={busy} aria-disabled={bad || undefined} className={bad ? 'tb-save--blocked' : undefined}>{busy ? 'Saving...' : 'Save bundle'}</Btn>
         </>
       )}>
-      <div className="tb-body">
-        {error && <Callout tone="danger" title="That was not saved">{error}</Callout>}
+      <div className="tb-body" ref={body}>
         {frozen && (
           <Callout tone="info" title="This bundle is on sale">
             Its parts and options are locked while buyers can choose from them. Pause the bundle first to change them;
@@ -110,11 +132,11 @@ export function TemplateBuilder({ initial, products, rule, onClose, onSave }: {
 
         <div className="tb-grid">
           <FormField label="Name" required>
-            <TextInput value={d.name} maxLength={80} onChange={e => set({ name: e.target.value })} />
+            <TextInput value={d.name} maxLength={80} {...inv(bp('name'), 'tb-e-name')} onChange={e => set({ name: e.target.value })} />
           </FormField>
           <FormField label="Discount off the parts (%)" required
             hint={`At most ${rule.max_discount}% under the published rule. No part is ever priced below its floor.`}>
-            <TextInput type="number" min={0.5} max={rule.max_discount} step={0.5} value={d.discount_pct}
+            <TextInput type="number" min={0} max={rule.max_discount} step="any" value={d.discount_pct} {...inv(bp('discount'), 'tb-e-discount')}
               onChange={e => set({ discount_pct: num(e.target.value) })} />
           </FormField>
         </div>
@@ -125,7 +147,7 @@ export function TemplateBuilder({ initial, products, rule, onClose, onSave }: {
           <TextInput value={d.image} onChange={e => set({ image: e.target.value })} />
         </FormField>
 
-        <fieldset className="tb-aud">
+        <fieldset className="tb-aud" aria-describedby={bp('audiences') ? 'tb-e-aud' : undefined}>
           <legend className="c-field__label">Sold to</legend>
           {AUDIENCES.map(a => (
             <label key={a.id} className="tb-check">
@@ -134,6 +156,7 @@ export function TemplateBuilder({ initial, products, rule, onClose, onSave }: {
               {a.label}
             </label>
           ))}
+          <Err id="tb-e-aud" msg={bp('audiences')} />
         </fieldset>
 
         <h3 className="tb-h">What the buyer chooses</h3>
@@ -148,7 +171,7 @@ export function TemplateBuilder({ initial, products, rule, onClose, onSave }: {
             <section key={s.key} className="tb-slot" aria-label={`Part ${i + 1}`}>
               <div className="tb-slot__top">
                 <FormField label={`Part ${i + 1} name`} required>
-                  <TextInput value={s.label} disabled={frozen} maxLength={60} placeholder="For example, Laptop"
+                  <TextInput value={s.label} disabled={frozen} maxLength={60} placeholder="For example, Laptop" {...inv(sp(s.key, 'label'), `tb-e-${s.key}-label`)}
                     onChange={e => setSlot(s.key, { label: e.target.value })} />
                 </FormField>
                 <Btn variant="secondary" disabled={frozen} aria-label={`Remove part ${i + 1}`}
@@ -164,10 +187,13 @@ export function TemplateBuilder({ initial, products, rule, onClose, onSave }: {
                   ['qty_max', 'Most of each', ''],
                   ['qty_default', 'Starts at', ''],
                 ] as const).map(([k, label, hint]) => (
-                  <FormField key={k} label={label} hint={hint || undefined}>
-                    <TextInput type="number" min={0} step={1} value={s[k]} disabled={frozen}
-                      onChange={e => setSlot(s.key, { [k]: num(e.target.value) })} />
-                  </FormField>
+                  <div key={k}>
+                    <FormField label={label} hint={hint || undefined}>
+                      <TextInput type="number" min={0} step={1} value={s[k]} disabled={frozen} {...inv(sp(s.key, k), `tb-e-${s.key}-${k}`)}
+                        onChange={e => setSlot(s.key, { [k]: num(e.target.value) })} />
+                    </FormField>
+                    <Err id={`tb-e-${s.key}-${k}`} msg={sp(s.key, k)} />
+                  </div>
                 ))}
               </div>
 
@@ -177,7 +203,8 @@ export function TemplateBuilder({ initial, products, rule, onClose, onSave }: {
                   const p = byId.get(o.product_id)
                   return (
                     <li key={o.product_id} className="tb-opt">
-                      <span className="tb-opt__name">{nameOf(o.product_id)}{p && <span className="tb-muted"> - {p.seller}</span>}</span>
+                      <span className="tb-opt__name">{nameOf(o.product_id)}{p && <span className="tb-muted"> - {p.seller}</span>}
+                        {(!p || p.status !== 'live') && <span className="tb-bad">No longer on sale - remove it before publishing</span>}</span>
                       <label className="tb-check">
                         <input type="checkbox" checked={o.is_default} disabled={frozen}
                           onChange={e => setSlot(s.key, { options: s.options.map(x => (x.product_id === o.product_id ? { ...x, is_default: e.target.checked } : x)) })} />
@@ -192,12 +219,13 @@ export function TemplateBuilder({ initial, products, rule, onClose, onSave }: {
                 })}
               </ul>
               <FormField label="Add an option">
-                <Select value="" disabled={frozen || free.length === 0}
+                <Select value="" disabled={frozen || free.length === 0} {...inv(sp(s.key, 'options'), `tb-e-${s.key}-options`)}
                   onChange={e => { if (e.target.value) setSlot(s.key, { options: [...s.options, { product_id: e.target.value, is_default: s.options.length === 0 }] }) }}>
                   <option value="">{free.length === 0 ? 'No live listing left to offer' : 'Choose a live listing...'}</option>
                   {free.map(p => <option key={p.id} value={p.id}>{p.name} - {p.seller}</option>)}
                 </Select>
               </FormField>
+              <Err id={`tb-e-${s.key}-options`} msg={sp(s.key, 'options')} />
             </section>
           )
         })}

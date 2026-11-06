@@ -40,19 +40,18 @@ export function BundleTemplates({ products, rule }: { products: ProductRow[]; ru
     })),
   })
 
-  const save = async (d: TemplateDraft): Promise<string | null> => {
+  const save = async (d: TemplateDraft): Promise<{ error: string; id?: string } | null> => {
     const [t, slots] = draftToSave(d)
+    const before = new Set(b.templates.map(x => x.id))
     const res = await saveTemplate(t, slots)
     // Not one transaction: whatever happened, show what stands now.
-    await reload()
+    const fresh = await loadBundleBook()
+    setBook(fresh)
     if (!res.ok) {
-      if (!d.id) {
-        // A partly built draft may now be in the list; edit it from there.
-        setEditing(null)
-        toast(`Not finished: ${res.error} A partly built draft may be in the list.`, 'error')
-        return null
-      }
-      return res.error
+      // A new template that failed part-way may now exist; the builder keeps
+      // the typed fields and carries on with it rather than starting another.
+      const made = d.id ? undefined : fresh.templates.find(x => !before.has(x.id) && x.name === t.name)
+      return { error: res.error, id: made?.id }
     }
     toast(`${d.name.trim()} saved`)
     setEditing(null)
