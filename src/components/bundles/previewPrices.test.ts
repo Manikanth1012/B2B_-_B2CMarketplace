@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { previewConfiguration } from './templatePreview'
-import type { PreviewSlot } from './templatePreview'
+import { previewConfiguration } from './previewPrices'
+import type { PreviewSlot } from './previewPrices'
 
 const slot = (id: string, over: Partial<PreviewSlot>): PreviewSlot => ({
   id, label: id, min_pick: 1, max_pick: 1, qty_min: 1, qty_max: 3, qty_default: 2, sort_order: 0, options: [], ...over,

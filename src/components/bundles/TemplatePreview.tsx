@@ -3,8 +3,8 @@ import { loadMoneyBook, loadPriceBook } from '../../lib/moneyRepo'
 import type { PriceRow } from '../../lib/moneyRepo'
 import { useMarket } from '../../lib/MarketContext'
 import { Callout } from '../OnboardingJourney'
-import { previewConfiguration } from './templatePreview'
-import type { PreviewKind, PreviewResult, PreviewSlot } from './templatePreview'
+import { previewConfiguration } from './previewPrices'
+import type { PreviewKind, PreviewResult, PreviewSlot } from './previewPrices'
 
 const KINDS: { kind: PreviewKind; label: string }[] = [
   { kind: 'default', label: 'Starting point' },
