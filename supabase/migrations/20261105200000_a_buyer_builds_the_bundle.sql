@@ -31,7 +31,9 @@
  *   saving      = parts_total − total
  *
  * `list` and `floor` are `product_prices.price` and `.floor_price` for the
- * currency — the row the shop shows. No seller is ever priced below its floor.
+ * currency — the row the shop shows, the floor taken to 2 dp. No seller is
+ * priced below its floor as it stood when the bundle was priced; a floor
+ * raised during the seven-day hold does not reprice a held selection.
  *
  * The rules of a configuration are mirrored in `validateChoices` and
  * `defaultChoices`, so a screen never offers what this file refuses. This file
@@ -1083,6 +1085,142 @@ create constraint trigger order_items_bundle_whole
   for each row when (new.bundle_selection_id is not null)
   execute function bundle_order_complete();
 
+/* ============================================ the order a requisition becomes === */
+
+/**
+ * `place_requisition_order`, as `20260809250000` left it, plus one branch.
+ *
+ * A requisition carrying a bundle is ordered line by line: every line of the
+ * requisition goes onto the order at its own unit price, and a bundle line
+ * keeps its `bundle_selection_id`, so the order says what was bought as a
+ * bundle and each seller settles its own parts at their share. The order
+ * names a seller only when every line is that seller's (`guard_order_seller`
+ * reads null as "spans sellers"). The whole bundle is on one order, so
+ * `bundle_order_complete` checks it whole at commit.
+ *
+ * A requisition with no bundle line goes down exactly the path it always did:
+ * the same checks in the same order, the header's product and quantity, the
+ * line named after the product. Only the test for "is there a bundle on it"
+ * comes before the product check, because a bundle requisition names no
+ * single product.
+ */
+create or replace function public.place_requisition_order(p_req_id text)
+returns text language plpgsql security definer
+set search_path to 'public', 'extensions' as $$
+declare
+  req      record;
+  prod     record;
+  acct     record;
+  rate     numeric;
+  ref      text;
+  oid      uuid;
+  sub      numeric;
+  tax      numeric;
+  extant   text;
+  v_bundle boolean;
+  v_sum    numeric;
+  v_seller text;
+  v_bad    text;
+begin
+  select * into req from enterprise_requisitions where id = p_req_id;
+  if req.id is null then raise exception 'No such requisition.'; end if;
+  if req.state <> 'approved' then
+    raise exception '% is %, so there is nothing to order.', req.id, req.state;
+  end if;
+
+  if coalesce(req.credit_hold, false) then
+    raise exception
+      '% is held on credit and cannot go to the seller yet. %',
+      req.id, coalesce(req.credit_note, 'Finance can release it against an early payment.');
+  end if;
+
+  v_bundle := exists (select 1 from enterprise_requisition_lines l
+                       where l.requisition_id = req.id and l.bundle_selection_id is not null);
+
+  if not v_bundle and req.product_id is null then
+    raise exception '% does not say what it is buying, so no order line can be written for it.', req.id;
+  end if;
+
+  select order_ref into extant from orders where requisition_id = req.id limit 1;
+  if extant is not null then
+    update enterprise_requisitions set order_ref = extant
+     where id = req.id and order_ref is distinct from extant;
+    return extant;
+  end if;
+
+  if v_bundle then
+    select string_agg(l.name, ', ' order by l.sort_order) into v_bad
+      from enterprise_requisition_lines l
+     where l.requisition_id = req.id and l.product_id is null;
+    if v_bad is not null then
+      raise exception '% has lines that name no listing (%), so no order line can be written for them.', req.id, v_bad;
+    end if;
+    select coalesce(sum(l.line_total), 0) into v_sum
+      from enterprise_requisition_lines l where l.requisition_id = req.id;
+    if v_sum is distinct from req.amount then
+      raise exception '% was approved for % but its lines add up to %, so it cannot be ordered as it stands.',
+        req.id, req.amount, v_sum;
+    end if;
+    select case when count(distinct p.seller) = 1 then min(p.seller) end into v_seller
+      from enterprise_requisition_lines l join products p on p.id = l.product_id
+     where l.requisition_id = req.id;
+  else
+    select * into prod from products where id = req.product_id;
+    v_seller := prod.seller;
+  end if;
+
+  select * into acct from enterprise_accounts where id = req.account_id;
+
+  select m.tax_rate into rate from markets m where m.code = coalesce(acct.market, 'IN');
+  rate := coalesce(rate, 0);
+
+  sub := round(req.amount / (1 + rate / 100), 2);
+  tax := round(req.amount - sub, 2);
+
+  ref := 'ORD-8821' || right(regexp_replace(req.id, '\D', '', 'g'), 2);
+  while exists (select 1 from orders where order_ref = ref) loop
+    ref := 'ORD-8821' || right(regexp_replace(req.id, '\D', '', 'g'), 2)
+           || '-' || substr(md5(clock_timestamp()::text), 1, 3);
+  end loop;
+
+  oid := gen_random_uuid();
+  insert into orders (
+    id, order_ref, status, total, subtotal, tax, discount, payment_method,
+    buyer_name, buyer_email, created_at, placed_date, seller, vertical,
+    failed, stage, stages, account_id, requisition_id, ordered_by,
+    cost_centre, po_ref, currency, market, tax_rate)
+  values (
+    oid, ref, 'placed', req.amount, sub, tax, 0, 'On account — Net 30',
+    acct.company, (select u.email from enterprise_users u where u.id = req.raised_by),
+    now(), to_char(now(), 'DD Mon YYYY'),
+    v_seller, req.vertical,
+    false, 1, array['Ordered', 'Approved', 'Packed', 'In transit', 'Delivered'],
+    req.account_id, req.id, req.raised_by,
+    req.cost_centre, req.po_ref, req.currency, coalesce(acct.market, 'IN'), rate);
+
+  if v_bundle then
+    /* Every line, in one insert, at the price the requisition was approved
+       at; the product's own name, as every order line carries. */
+    insert into order_items (id, order_id, product_id, product_name, price, quantity, fulfil, status,
+                             bundle_selection_id)
+    select gen_random_uuid(), oid, l.product_id, p.name, l.unit_price, l.quantity, 'pending', 'placed',
+           l.bundle_selection_id
+      from enterprise_requisition_lines l join products p on p.id = l.product_id
+     where l.requisition_id = req.id
+     order by l.sort_order, l.id;
+  else
+    /* The product's name, not the requisition's title (20260809250000). */
+    insert into order_items (id, order_id, product_id, product_name, price, quantity, fulfil, status)
+    values (gen_random_uuid(), oid, prod.id, prod.name,
+            round(req.amount / greatest(req.quantity, 1), 2), req.quantity, 'pending', 'placed');
+  end if;
+
+  update enterprise_requisitions set order_ref = ref where id = req.id;
+  return ref;
+end $$;
+
+grant execute on function public.place_requisition_order(text) to authenticated;
+
 /* ================================================================= RLS === */
 
 alter table bundle_templates       enable row level security;
@@ -1401,6 +1539,19 @@ begin
       if n < 2 then raise exception '% in % prices % parts; a bundle has at least two', t, c, n; end if;
     end loop;
   end loop;
+
+  /* A requisition carrying a bundle is ordered line by line, and every check
+     the order path had before is still in it. */
+  select pg_get_functiondef(p.oid) into t from pg_proc p
+    join pg_namespace ns on ns.oid = p.pronamespace
+   where ns.nspname = 'public' and p.proname = 'place_requisition_order';
+  if t not like '%l.bundle_selection_id%' then
+    raise exception 'place_requisition_order does not carry bundle lines onto the order';
+  end if;
+  if t not like '%credit_hold%' or t not like '%oid, prod.id, prod.name%'
+     or t not like '%does not say what it is buying%' or t not like '%from orders where requisition_id = req.id%' then
+    raise exception 'place_requisition_order lost a check it had before';
+  end if;
 
   /* The Catalogue Review article, if there is one, explains them once. */
   /* The CASE keeps jsonb_array_elements away from a body that is not a list,
