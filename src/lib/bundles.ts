@@ -69,7 +69,7 @@ export function validateChoices(
 
 /**
  * Same arithmetic as the database's price_bundle; keep them identical.
- * unit_price = max(round2(list × (1 − d/100)), floor ?? 0); line quantity =
+ * unit_price = max(round2(list × (1 − d/100)), round2(floor ?? 0)); line quantity =
  * part quantity × bundle quantity; each line is rounded, the total is exactly
  * the sum of the rounded lines.
  */
@@ -79,7 +79,9 @@ export function priceBundle(parts: readonly PricedPart[], discountPct: number, b
   const lines: PricedLine[] = parts.map(p => {
     const quantity = p.quantity * bundleQty
     const discounted = round2(p.list * (1 - discountPct / 100))
-    const floor = p.floor ?? 0
+    /* Rounded to 2 dp once, as price_bundle does, so a floor stored with more
+       decimals cannot make the screen and the database disagree by a cent. */
+    const floor = round2(p.floor ?? 0)
     const at_floor = discounted < floor
     const unit_price = at_floor ? floor : discounted
     return { ...p, quantity, unit_price, line_total: round2(unit_price * quantity), at_floor }

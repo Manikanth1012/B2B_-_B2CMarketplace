@@ -132,8 +132,8 @@ export const slotFields = (s: SlotFields): SlotFields => ({
  * for. A live template is frozen by the database, so a save that changes no
  * slot and no option must write none — otherwise renaming a live template
  * would be refused for rewriting slots it never changed. Order of the input is
- * the order shown: each slot's sort_order is taken from its place unless the
- * caller already set one.
+ * the order shown: sort_order is always the 1-based place in the list (the
+ * convention the seed and the migration use), whatever the caller set.
  */
 export function planTemplateSave(
   existingSlots: readonly BundleSlot[],
@@ -144,8 +144,8 @@ export function planTemplateSave(
   const keep = new Set(wanted.map(w => w.id).filter((id): id is string => !!id && have.has(id)))
   const removeSlots = existingSlots.filter(s => !keep.has(s.id)).map(s => s.id)
 
-  const slots: SlotPlan[] = wanted.map(w => {
-    const fields = slotFields(w)
+  const slots: SlotPlan[] = wanted.map((w, wi) => {
+    const fields = slotFields({ ...w, sort_order: wi + 1 })
     const cur = w.id ? have.get(w.id) : undefined
     const id = cur ? cur.id : null
     const curFields = cur ? slotFields(cur) : null
@@ -160,9 +160,9 @@ export function planTemplateSave(
     }
     w.options.forEach((o, i) => {
       const prev = byProduct.get(o.product_id)
-      if (!prev) options.add.push({ product_id: o.product_id, is_default: o.is_default, sort_order: i })
-      else if (prev.is_default !== o.is_default || prev.sort_order !== i) {
-        options.change.push({ id: prev.id, is_default: o.is_default, sort_order: i })
+      if (!prev) options.add.push({ product_id: o.product_id, is_default: o.is_default, sort_order: i + 1 })
+      else if (prev.is_default !== o.is_default || prev.sort_order !== i + 1) {
+        options.change.push({ id: prev.id, is_default: o.is_default, sort_order: i + 1 })
       }
     })
     return { id, fields, write, options }

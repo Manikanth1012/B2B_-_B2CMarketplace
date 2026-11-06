@@ -238,9 +238,11 @@ describe('the bundles migration', () => {
 
   it('prices with the arithmetic priceBundle uses', () => {
     const body = fn('price_bundle')
-    expect(body).toContain('v_floor      := coalesce(v_product.floor, 0)')
+    expect(body).toContain('v_floor      := round(coalesce(v_product.floor, 0), 2)')
     expect(body).toContain('v_disc       := round(v_list * (1 - v_t.discount_pct / 100), 2)')
-    expect(body).toContain('v_unit       := round(greatest(v_disc, v_floor), 2)')
+    expect(body).toContain('v_unit       := greatest(v_disc, v_floor)')
+    // a JSON 20.0 is twenty, not a cast error
+    expect(body).toContain("(v_pick ->> 'quantity')::numeric::integer")
     expect(body).toContain('v_line_total := round(v_unit * v_line_qty, 2)')
     expect(body).toContain('v_total := v_total + v_line_total')
     expect(body).toContain('v_parts := v_parts + round(v_list * v_line_qty, 2)')
@@ -292,12 +294,23 @@ describe('the bundles migration', () => {
     expect(lower).toContain('revoke all on function bundle_template_problem(text, text[]) from public, anon, authenticated;')
   })
 
-  it('lets nobody write a selection but configure_bundle', () => {
+  it('lets nobody write a selection but configure_bundle, and only the operator delete one', () => {
     expect(lower).toContain('revoke insert, update, delete, truncate on bundle_selections, bundle_selection_lines from authenticated;')
     expect(lower).toContain('revoke all on bundle_selections, bundle_selection_lines from anon;')
-    const policies = [...lower.matchAll(/create policy "[^"]+" on (bundle_selections|bundle_selection_lines) for (\w+)/g)]
+    expect(lower).toContain('grant delete on bundle_selections to authenticated;')
+    const policies = [...lower.matchAll(/create policy "([^"]+)" on (bundle_selections|bundle_selection_lines) for (\w+)/g)]
     expect(policies.length).toBeGreaterThan(0)
-    for (const p of policies) expect(p[2]).toBe('select')
+    for (const p of policies) {
+      if (p[1] === 'operator_delete_bundle_selections') continue
+      expect(p[3], p[1]).toBe('select')
+    }
+    expect(lower).toMatch(/create policy "operator_delete_bundle_selections" on bundle_selections for delete to authenticated\s+using \(current_persona\(\) = 'operator'\);/)
+  })
+
+  it('lets a deleted selection let go of its lines, and refuses detaching otherwise', () => {
+    for (const name of ['guard_bundle_cart_line', 'guard_bundle_requisition_line', 'guard_bundle_order_line']) {
+      expect(fn(name)).toContain('and exists (select 1 from bundle_selections x where x.id = old.bundle_selection_id) then')
+    }
   })
 
   it('lets only the operator author templates', () => {
@@ -346,10 +359,43 @@ describe('the bundles migration', () => {
     }
   })
 
-  it('checks bundles go in whole when the transaction commits', () => {
-    for (const t of ['cart_items_bundle_whole', 'enterprise_requisition_lines_bundle_whole', 'order_items_bundle_whole']) {
-      expect(lower).toMatch(new RegExp(`create constraint trigger ${t} after insert on \\w+\\s+deferrable initially deferred`))
+  it('checks bundles go in whole at commit, on insert and on the updates that move a line', () => {
+    const whole: [string, string, string][] = [
+      ['cart_items_bundle_whole', 'cart_items', 'user_id'],
+      ['enterprise_requisition_lines_bundle_whole', 'enterprise_requisition_lines', 'requisition_id'],
+      ['order_items_bundle_whole', 'order_items', 'order_id'],
+    ]
+    for (const [t, table, container] of whole) {
+      expect(lower).toMatch(new RegExp(
+        `create constraint trigger ${t}\\s+after insert or update of bundle_selection_id, product_id, ${container} on ${table}\\s+deferrable initially deferred`))
     }
+    // the line guards already fire on every update
+    for (const t of ['cart_items_bundle_guard', 'enterprise_requisition_lines_bundle_guard', 'order_items_bundle_guard']) {
+      expect(lower).toMatch(new RegExp(`create trigger ${t}\\s+before insert or update on`))
+    }
+  })
+
+  it("checks a shopper's bundle across their basket and orders, not per order", () => {
+    // checkout places one order per seller, so no one order can hold a multi-seller bundle
+    expect(fn('bundle_order_complete')).toContain('o.account_id is not null')
+    const guard = fn('guard_bundle_order_line')
+    expect(guard).toContain('from cart_items c')
+    expect(guard).toContain('from order_items oi join orders o on o.id = oi.order_id')
+    expect(guard).toContain('a bundle is bought whole, and these parts of it are neither in the basket nor ordered')
+  })
+
+  it('replaces place_requisition_order so a bundle requisition orders every line, keeping its old checks', () => {
+    const body = fn('public\\.place_requisition_order')
+    expect(body).toContain("set search_path to 'public', 'extensions'")
+    expect(body).toContain('coalesce(req.credit_hold, false)')
+    expect(body).toContain("if req.state <> 'approved' then")
+    expect(body).toContain('if not v_bundle and req.product_id is null then')
+    expect(body).toContain('select order_ref into extant from orders where requisition_id = req.id limit 1;')
+    // the ordinary path writes the line it always wrote
+    expect(body).toMatch(/values \(gen_random_uuid\(\), oid, prod\.id, prod\.name,\s+round\(req\.amount \/ greatest\(req\.quantity, 1\), 2\), req\.quantity, 'pending', 'placed'\);/)
+    // the bundle path copies every line with its selection and its unit price
+    expect(body).toMatch(/l\.unit_price, l\.quantity, 'pending', 'placed',\s+l\.bundle_selection_id/)
+    expect(lower).toContain('grant execute on function public.place_requisition_order(text) to authenticated;')
   })
 
   it('makes every SECURITY DEFINER function set its search path', () => {
