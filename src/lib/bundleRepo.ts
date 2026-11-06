@@ -127,6 +127,30 @@ export async function saveTemplate(
   t: Omit<BundleTemplate, 'id'> & { id?: string },
   slots: SlotInput[],
 ): Promise<Result<string>> {
+  let created: string | null = null
+  try {
+    const r = await saveTemplateSteps(t, slots, id => { created = id })
+    if (!r.ok && created) await discardDraft(created)
+    return r
+  } catch (err) {
+    if (created) await discardDraft(created)
+    return { ok: false, error: errorText(err) }
+  }
+}
+
+/** A create that failed leaves nothing behind: the new draft (its slots and
+    options go with it) is removed, so a retry cannot make a second one. If the
+    delete itself is refused the draft stays and is harmless; the error shown
+    is still the original one. */
+async function discardDraft(id: string): Promise<void> {
+  try { await supabase.from('bundle_templates').delete().eq('id', id) } catch { /* the original error is the one to show */ }
+}
+
+async function saveTemplateSteps(
+  t: Omit<BundleTemplate, 'id'> & { id?: string },
+  slots: SlotInput[],
+  onCreated: (id: string) => void,
+): Promise<Result<string>> {
   try {
     let id = t.id
     let existingSlots: BundleSlot[] = []
@@ -146,6 +170,7 @@ export async function saveTemplate(
       if (ins.error) return { ok: false, error: ins.error.message }
       id = (ins.data?.[0] as { id: string } | undefined)?.id
       if (!id) return { ok: false, error: NOTHING }
+      onCreated(id)
     }
 
     const plan = planTemplateSave(existingSlots, existingOptions, slots)
@@ -153,6 +178,7 @@ export async function saveTemplate(
     if (plan.removeSlots.length) {
       const r = await supabase.from('bundle_slots').delete().in('id', plan.removeSlots).select('id')
       if (r.error) return { ok: false, error: r.error.message }
+      if (!r.data?.length) return { ok: false, error: NOTHING }
     }
 
     for (const sp of plan.slots) {
@@ -170,6 +196,7 @@ export async function saveTemplate(
       if (sp.options.remove.length) {
         const r = await supabase.from('bundle_options').delete().in('id', sp.options.remove).select('id')
         if (r.error) return { ok: false, error: r.error.message }
+        if (!r.data?.length) return { ok: false, error: NOTHING }
       }
       for (const c of sp.options.change) {
         const r = await supabase.from('bundle_options').update({ is_default: c.is_default, sort_order: c.sort_order }).eq('id', c.id).select('id')
@@ -179,6 +206,7 @@ export async function saveTemplate(
       if (sp.options.add.length) {
         const r = await supabase.from('bundle_options').insert(sp.options.add.map(a => ({ ...a, slot_id: slotId }))).select('id')
         if (r.error) return { ok: false, error: r.error.message }
+        if (!r.data?.length) return { ok: false, error: NOTHING }
       }
     }
 

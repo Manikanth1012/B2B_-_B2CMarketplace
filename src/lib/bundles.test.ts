@@ -52,6 +52,13 @@ describe('validateChoices', () => {
 })
 
 describe('priceBundle', () => {
+  it('rounds a floor with more than two decimals before comparing, as price_bundle does', () => {
+    // 10% off 100 is 90.00; a floor of 90.004 rounds to 90.00, so the part is not held at it.
+    const r = priceBundle([{ product_id: 'P', list: 100, floor: 90.004, quantity: 1 }], 10, 1)
+    expect(r.lines[0].unit_price).toBe(90)
+    expect(r.lines[0].at_floor).toBe(false)
+  })
+
   const parts = [
     { product_id: 'A', list: 100, floor: 50, quantity: 1 },
     { product_id: 'B', list: 40, floor: null, quantity: 2 },

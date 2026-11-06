@@ -74,3 +74,47 @@
 @media (prefers-reduced-motion: reduce) {
   .bundle-group, .bundle-group__btn, .bundle-group__stepper button { transition: none; }
 }
+
+/* ---- operator builder ---- */
+
+/* The template list and builder dialog. Controls are 44px; no small text on
+   the light teal; nothing here animates. */
+.tb-section { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.tb-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.tb-actions .c-btn, .tb .c-btn { min-height: 44px; }
+.tb-body { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.tb-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+@media (min-width: 720px) { .tb-grid { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); } }
+.tb-h { font-size: var(--text-lg); font-weight: 700; color: var(--text); margin: 8px 0 0; }
+.tb-hint, .tb-muted { font-size: var(--text-sm); color: var(--text-secondary); }
+.tb-bad { font-size: var(--text-sm); color: var(--danger); display: block; }
+.tb-warn { font-size: var(--text-sm); color: var(--warning); display: block; }
+.tb-aud { border: 0; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.tb-check { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; font-size: var(--text-sm); color: var(--text); cursor: pointer; }
+.tb-check input { width: 20px; height: 20px; }
+
+.tb-slot { border: 1px solid var(--border-strong); border-radius: var(--radius-md, 8px); padding: 16px; display: flex; flex-direction: column; gap: 12px; background: var(--bg); min-width: 0; }
+.tb-slot__top { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.tb-slot__top > .c-field { flex: 1 1 240px; min-width: 0; }
+.tb-nums { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; }
+.tb-opts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.tb-opt { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border); }
+.tb-opt__name { flex: 1 1 200px; min-width: 0; font-size: var(--text-sm); color: var(--text); overflow-wrap: anywhere; }
+
+.tb-preview { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid var(--border); padding-top: 12px; }
+.tb-scroll { overflow-x: auto; max-width: 100%; }
+.tb-table { border-collapse: collapse; width: 100%; font-size: var(--text-sm); }
+.tb-table th, .tb-table td { text-align: left; vertical-align: top; padding: 8px 12px; border-bottom: 1px solid var(--border); color: var(--text); }
+.tb-table thead th { color: var(--text-secondary); font-weight: 600; }
+.tb-table td { min-width: 150px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tb *, .tb-section * { transition: none !important; animation: none !important; }
+}
+
+/* Messages beside the field they are about, and the save line in the footer. */
+.tb-err { font-size: var(--text-sm); color: var(--danger); margin-top: 4px; }
+.tb .c-input[aria-invalid="true"] { border-color: var(--danger); }
+.tb-foot { flex: 1 1 100%; min-width: 0; }
+.tb-foot__err { font-size: var(--text-sm); color: var(--danger); margin: 0 0 4px; overflow-wrap: anywhere; }
+.tb .c-btn.tb-save--blocked { opacity: .6; cursor: not-allowed; }

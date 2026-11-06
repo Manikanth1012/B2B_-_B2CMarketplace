@@ -14,7 +14,7 @@ const opt = (o: Partial<BundleOption> = {}): BundleOption => ({
   id: 'o1', slot_id: 's1', product_id: 'P1', is_default: true, sort_order: 0, ...o,
 })
 const input = (o: Record<string, unknown> = {}) => ({
-  id: 's1', label: 'Sensors', min_pick: 1, max_pick: 1, qty_min: 1, qty_max: 10, qty_default: 2, sort_order: 0,
+  id: 's1', label: 'Sensors', min_pick: 1, max_pick: 1, qty_min: 1, qty_max: 10, qty_default: 2, sort_order: 99,
   options: [{ product_id: 'P1', is_default: true }], ...o,
 }) as Parameters<typeof planTemplateSave>[2][number]
 
@@ -65,7 +65,7 @@ describe('templateRow', () => {
 
 describe('planTemplateSave', () => {
   it('writes nothing when nothing changed (a live template can then be renamed)', () => {
-    const plan = planTemplateSave([slot()], [opt()], [input()])
+    const plan = planTemplateSave([slot({ sort_order: 1 })], [opt({ sort_order: 1 })], [input()])
     expect(plan.removeSlots).toEqual([])
     expect(plan.slots).toHaveLength(1)
     expect(plan.slots[0].write).toBe(false)
@@ -75,25 +75,53 @@ describe('planTemplateSave', () => {
     const plan = planTemplateSave([], [], [input({ id: undefined, options: [{ product_id: 'A', is_default: true }, { product_id: 'B', is_default: false }] })])
     expect(plan.slots[0]).toMatchObject({ id: null, write: true })
     expect(plan.slots[0].options.add).toEqual([
-      { product_id: 'A', is_default: true, sort_order: 0 }, { product_id: 'B', is_default: false, sort_order: 1 },
+      { product_id: 'A', is_default: true, sort_order: 1 }, { product_id: 'B', is_default: false, sort_order: 2 },
     ])
   })
   it('treats an unknown id as a new slot', () => {
-    expect(planTemplateSave([slot()], [opt()], [input({ id: 'ghost' })]).slots[0].id).toBeNull()
+    expect(planTemplateSave([slot({ sort_order: 1 })], [opt({ sort_order: 1 })], [input({ id: 'ghost' })]).slots[0].id).toBeNull()
   })
   it('removes slots left out and options left out', () => {
     const plan = planTemplateSave(
-      [slot(), slot({ id: 's2' })], [opt(), opt({ id: 'o2', product_id: 'P2', is_default: false })],
+      [slot({ sort_order: 1 }), slot({ id: 's2' })], [opt({ sort_order: 1 }), opt({ id: 'o2', product_id: 'P2', is_default: false })],
       [input({ options: [{ product_id: 'P1', is_default: true }] })],
     )
     expect(plan.removeSlots).toEqual(['s2'])
     expect(plan.slots[0].options.remove).toEqual(['o2'])
   })
   it('updates a changed slot and a changed option default or position', () => {
-    const plan = planTemplateSave([slot()], [opt()], [input({ qty_default: 3, options: [{ product_id: 'P1', is_default: false }] })])
+    const plan = planTemplateSave([slot({ sort_order: 1 })], [opt({ sort_order: 1 })], [input({ qty_default: 3, options: [{ product_id: 'P1', is_default: false }] })])
     expect(plan.slots[0].write).toBe(true)
     expect(plan.slots[0].fields.qty_default).toBe(3)
-    expect(plan.slots[0].options.change).toEqual([{ id: 'o1', is_default: false, sort_order: 0 }])
+    expect(plan.slots[0].options.change).toEqual([{ id: 'o1', is_default: false, sort_order: 1 }])
+  })
+})
+
+describe('renaming a seeded live template', () => {
+  it('plans no slot or option write when only the name changes (1-based stored order)', () => {
+    const slots = [slot({ id: 'a', sort_order: 1 }), slot({ id: 'b', sort_order: 2 })]
+    const opts = [
+      opt({ id: 'o1', slot_id: 'a', product_id: 'P1', sort_order: 1 }),
+      opt({ id: 'o2', slot_id: 'a', product_id: 'P2', is_default: false, sort_order: 2 }),
+      opt({ id: 'o3', slot_id: 'b', product_id: 'P3', sort_order: 1 }),
+    ]
+    const wanted = [
+      input({ id: 'a', sort_order: 0, options: [{ product_id: 'P1', is_default: true }, { product_id: 'P2', is_default: false }] }),
+      input({ id: 'b', sort_order: 0, options: [{ product_id: 'P3', is_default: true }] }),
+    ]
+    const plan = planTemplateSave(slots, opts, wanted)
+    expect(plan.removeSlots).toEqual([])
+    for (const sp of plan.slots) {
+      expect(sp.write).toBe(false)
+      expect(sp.options).toEqual({ remove: [], add: [], change: [] })
+    }
+  })
+})
+
+describe('creating a template', () => {
+  it('plans every slot as new, in 1-based order', () => {
+    const plan = planTemplateSave([], [], [input({ id: undefined }), input({ id: undefined, label: 'B' })])
+    expect(plan.slots.map(s => [s.id, s.write, s.fields.sort_order])).toEqual([[null, true, 1], [null, true, 2]])
   })
 })
 
