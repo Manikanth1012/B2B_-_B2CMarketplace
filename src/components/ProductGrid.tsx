@@ -11,6 +11,7 @@ import { CompareTray, CompareTable } from './CompareTray'
 import { toggleCompare, COMPARE_CAP, stockLabel } from '../lib/compare'
 import type { Comparable } from '../lib/compare'
 import { toast } from './operator/shared'
+import { BundleCards } from './bundles/BundleCard'
 
 import type { View } from '../types/view'
 
@@ -179,6 +180,13 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
     />
   ))
 
+  /* Configurable bundles sit at the front of the grid. They are not products,
+     so a Type or Availability filter (product facets) leaves them out; with no
+     templates, or before the bundle tables exist, this renders nothing. */
+  const bundles = !subFilter && !stockFilter
+    ? <BundleCards audience="consumer" currency={currencyCode} category={categoryFilter} search={search} />
+    : null
+
   const title = activeCategory ? activeCategory.name : 'All products'
 
   return (
@@ -215,7 +223,7 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
             ) : filtered.length === 0 ? (
               <EmptyListing title="No products match" text="Try a different search or clear the filters." onClear={clearFilters} />
             ) : (
-              <ListingGrid>{cards}</ListingGrid>
+              <ListingGrid>{bundles}{cards}</ListingGrid>
             )}
           </ListingLayout>
         ) : (
@@ -231,7 +239,7 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
             ) : filtered.length === 0 ? (
               <EmptyListing title="No products yet" text="Nothing is on this shelf for your market right now." />
             ) : (
-              <ListingGrid>{cards}</ListingGrid>
+              <ListingGrid>{bundles}{cards}</ListingGrid>
             )}
           </div>
         )}

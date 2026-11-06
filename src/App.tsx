@@ -109,6 +109,7 @@ import { EnterpriseAgreement } from './components/enterprise/EnterpriseAgreement
 import { EnterpriseRewards } from './components/enterprise/EnterpriseRewards'
 import { EnterpriseSupport } from './components/enterprise/EnterpriseSupport'
 import { KnowledgeBase } from './components/KnowledgeBase'
+import { BundleConfiguratorHost } from './components/bundles/BundleConfigurator'
 
 /* The market — and so the currency and the tax — is chosen once and read
    everywhere, so the provider wraps the app rather than sitting inside it.
@@ -455,6 +456,9 @@ function AppInner() {
             }}
           />
         )}
+        {/* Visitors can configure and see the price; adding needs a sign-in. */}
+        <BundleConfiguratorHost shop="consumer" signedIn={false}
+          onSignIn={() => setSurface({ kind: 'login', prefill: 'consumer' })} />
       </PublicShell>
     )
   }
@@ -587,6 +591,8 @@ function AppInner() {
         {enView === 'en-profile' && <EnterpriseProfile anchor={enAnchor} />}
         {enView === 'en-wallet' && <EnterpriseWallet />}
         {enView === 'en-kb' && <KnowledgeBase persona="enterprise" title="Knowledge base" feedbackAs={{ actor: 'Vikram Shah', org: 'SmartBuild Ltd' }} />}
+        {/* One configurator for the whole console, opened by any bundle card. */}
+        <BundleConfiguratorHost shop="enterprise" onOpenEnquiries={() => setEnView('en-enquiries')} />
       </EnterpriseShell>
       {/* Mounted in every persona, not only the shopper's.
 
@@ -681,6 +687,8 @@ function AppInner() {
           navigate('checkout')
         }}
       />
+      {/* One configurator for the shop, opened by bundle cards and Edit bundle. */}
+      <BundleConfiguratorHost shop="consumer" />
       <ToastHost />
     </>
   )
