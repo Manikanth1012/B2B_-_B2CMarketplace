@@ -31,7 +31,9 @@
  *   saving      = parts_total − total
  *
  * `list` and `floor` are `product_prices.price` and `.floor_price` for the
- * currency — the row the shop shows. No seller is ever priced below its floor.
+ * currency — the row the shop shows, the floor taken to 2 dp. No seller is
+ * priced below its floor as it stood when the bundle was priced; a floor
+ * raised during the seven-day hold does not reprice a held selection.
  *
  * The rules of a configuration are mirrored in `validateChoices` and
  * `defaultChoices`, so a screen never offers what this file refuses. This file
@@ -446,7 +448,7 @@ begin
       select x.value from jsonb_array_elements(v_picks) with ordinality as x(value, ord) order by x.ord
     loop
       v_key := v_pick ->> 'product_id';
-      v_pick_qty := (v_pick ->> 'quantity')::integer;
+      v_pick_qty := (v_pick ->> 'quantity')::numeric::integer;   -- 20.0 is twenty
 
       if v_key = any(v_all) then
         raise exception '% is chosen in two parts of this bundle. Choose it once.', v_key;
@@ -477,10 +479,10 @@ begin
 
       /* The arithmetic in the header, line for line with `priceBundle`. */
       v_list       := v_product.list;
-      v_floor      := coalesce(v_product.floor, 0);
+      v_floor      := round(coalesce(v_product.floor, 0), 2);
       v_line_qty   := v_pick_qty * p_quantity;
       v_disc       := round(v_list * (1 - v_t.discount_pct / 100), 2);
-      v_unit       := round(greatest(v_disc, v_floor), 2);
+      v_unit       := greatest(v_disc, v_floor);
       v_line_total := round(v_unit * v_line_qty, 2);
       if v_list > 99999999.99 or v_line_total > 9999999999.99 then
         raise exception 'The line for % is larger than a bundle can carry. Choose fewer.', v_product.name;
@@ -499,7 +501,7 @@ begin
         'quantity',         v_line_qty,
         'list_unit_price',  v_list,
         'unit_price',       v_unit,
-        'floor_unit_price', v_product.floor,
+        'floor_unit_price', round(v_product.floor, 2),
         'line_total',       v_line_total,
         'at_floor',         v_disc < v_floor,
         'sort_order',       v_n));
@@ -722,8 +724,11 @@ declare
   v_gone text;
 begin
   if current_persona() is null then return new; end if;
+  /* Detaching is refused — except the foreign key's own `set null` once the
+     selection itself has been deleted (`operator_delete_bundle_selections`). */
   if tg_op = 'UPDATE' and old.bundle_selection_id is not null
-     and new.bundle_selection_id is distinct from old.bundle_selection_id then
+     and new.bundle_selection_id is distinct from old.bundle_selection_id
+     and exists (select 1 from bundle_selections x where x.id = old.bundle_selection_id) then
     raise exception 'A part of a bundle stays part of it. Remove the bundle and add it again instead.';
   end if;
   if new.bundle_selection_id is null then return new; end if;
@@ -811,8 +816,11 @@ declare
   v_gone text;
 begin
   if current_persona() is null then return new; end if;
+  /* Detaching is refused — except the foreign key's own `set null` once the
+     selection itself has been deleted (`operator_delete_bundle_selections`). */
   if tg_op = 'UPDATE' and old.bundle_selection_id is not null
-     and new.bundle_selection_id is distinct from old.bundle_selection_id then
+     and new.bundle_selection_id is distinct from old.bundle_selection_id
+     and exists (select 1 from bundle_selections x where x.id = old.bundle_selection_id) then
     raise exception 'A part of a bundle stays part of it. Remove the bundle and add it again instead.';
   end if;
   if new.bundle_selection_id is null then return new; end if;
@@ -907,8 +915,11 @@ declare
   v_gone text;
 begin
   if current_persona() is null then return new; end if;
+  /* Detaching is refused — except the foreign key's own `set null` once the
+     selection itself has been deleted (`operator_delete_bundle_selections`). */
   if tg_op = 'UPDATE' and old.bundle_selection_id is not null
-     and new.bundle_selection_id is distinct from old.bundle_selection_id then
+     and new.bundle_selection_id is distinct from old.bundle_selection_id
+     and exists (select 1 from bundle_selections x where x.id = old.bundle_selection_id) then
     raise exception 'A part of a bundle stays part of it.';
   end if;
   if new.bundle_selection_id is null then return new; end if;
@@ -958,6 +969,35 @@ begin
     if v_gone is not null then
       raise exception '% is no longer available as it was configured, so the bundle cannot be bought. Edit the bundle to continue.', v_gone;
     end if;
+
+    /* Bought whole, for a shopper. Checkout places one order per seller, each
+       in its own request, and `guard_order_seller` keeps an order to one
+       seller — so a bundle whose parts come from three sellers arrives as
+       three orders, and no single order can hold it. Instead, at the moment
+       each part is ordered, every other part of the selection must be either
+       still in this shopper's basket (same product and quantity) or already
+       ordered by them.
+
+       Accepted residual risk: a shopper who removes the rest of the bundle
+       from their basket between two of checkout's requests buys part of a
+       bundle at its bundle price. No seller is below its floor (every price
+       on the selection was held at or above it), so what is exposed is the
+       marketplace's discount on that part, nothing a seller agreed not to
+       give. */
+    select string_agg(l.name, ', ' order by l.sort_order) into v_gone
+      from bundle_selection_lines l
+     where l.selection_id = v_s.id
+       and l.product_id is distinct from new.product_id
+       and not exists (select 1 from cart_items c
+                        where c.bundle_selection_id = v_s.id and c.user_id = v_s.user_id
+                          and c.product_id = l.product_id and c.quantity = l.quantity)
+       and not exists (select 1 from order_items oi join orders o on o.id = oi.order_id
+                        where oi.bundle_selection_id = v_s.id and o.user_id = v_s.user_id
+                          and o.account_id is null
+                          and oi.product_id = l.product_id and oi.quantity = l.quantity);
+    if v_gone is not null then
+      raise exception 'A bundle is bought whole, and these parts of it are neither in the basket nor ordered: %. Add the bundle again.', v_gone;
+    end if;
   end if;
   return new;
 end $$;
@@ -988,7 +1028,8 @@ begin
 end $$;
 
 drop trigger if exists cart_items_bundle_whole on cart_items;
-create constraint trigger cart_items_bundle_whole after insert on cart_items
+create constraint trigger cart_items_bundle_whole
+  after insert or update of bundle_selection_id, product_id, user_id on cart_items
   deferrable initially deferred
   for each row when (new.bundle_selection_id is not null)
   execute function bundle_cart_complete();
@@ -1009,16 +1050,24 @@ begin
 end $$;
 
 drop trigger if exists enterprise_requisition_lines_bundle_whole on enterprise_requisition_lines;
-create constraint trigger enterprise_requisition_lines_bundle_whole after insert on enterprise_requisition_lines
+create constraint trigger enterprise_requisition_lines_bundle_whole
+  after insert or update of bundle_selection_id, product_id, requisition_id on enterprise_requisition_lines
   deferrable initially deferred
   for each row when (new.bundle_selection_id is not null)
   execute function bundle_requisition_complete();
 
+/* Per order only where one order holds the whole bundle: a business order,
+   which `place_requisition_order` writes from the requisition in one insert. A
+   shopper's bundle spans one order per seller and is checked line by line in
+   `guard_bundle_order_line` instead. */
 create or replace function bundle_order_complete() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare v_have integer; v_need integer;
 begin
   if new.bundle_selection_id is null or current_persona() is null then return null; end if;
+  if not exists (select 1 from orders o where o.id = new.order_id and o.account_id is not null) then
+    return null;
+  end if;
   select count(*) into v_have from order_items
    where order_id = new.order_id and bundle_selection_id = new.bundle_selection_id;
   if v_have = 0 then return null; end if;
@@ -1030,10 +1079,147 @@ begin
 end $$;
 
 drop trigger if exists order_items_bundle_whole on order_items;
-create constraint trigger order_items_bundle_whole after insert on order_items
+create constraint trigger order_items_bundle_whole
+  after insert or update of bundle_selection_id, product_id, order_id on order_items
   deferrable initially deferred
   for each row when (new.bundle_selection_id is not null)
   execute function bundle_order_complete();
+
+/* ============================================ the order a requisition becomes === */
+
+/**
+ * `place_requisition_order`, as `20260809250000` left it, plus one branch.
+ *
+ * A requisition carrying a bundle is ordered line by line: every line of the
+ * requisition goes onto the order at its own unit price, and a bundle line
+ * keeps its `bundle_selection_id`, so the order says what was bought as a
+ * bundle and each seller settles its own parts at their share. The order
+ * names a seller only when every line is that seller's (`guard_order_seller`
+ * reads null as "spans sellers"). The whole bundle is on one order, so
+ * `bundle_order_complete` checks it whole at commit.
+ *
+ * A requisition with no bundle line goes down exactly the path it always did:
+ * the same checks in the same order, the header's product and quantity, the
+ * line named after the product. Only the test for "is there a bundle on it"
+ * comes before the product check, because a bundle requisition names no
+ * single product.
+ */
+create or replace function public.place_requisition_order(p_req_id text)
+returns text language plpgsql security definer
+set search_path to 'public', 'extensions' as $$
+declare
+  req      record;
+  prod     record;
+  acct     record;
+  rate     numeric;
+  ref      text;
+  oid      uuid;
+  sub      numeric;
+  tax      numeric;
+  extant   text;
+  v_bundle boolean;
+  v_sum    numeric;
+  v_seller text;
+  v_bad    text;
+begin
+  select * into req from enterprise_requisitions where id = p_req_id;
+  if req.id is null then raise exception 'No such requisition.'; end if;
+  if req.state <> 'approved' then
+    raise exception '% is %, so there is nothing to order.', req.id, req.state;
+  end if;
+
+  if coalesce(req.credit_hold, false) then
+    raise exception
+      '% is held on credit and cannot go to the seller yet. %',
+      req.id, coalesce(req.credit_note, 'Finance can release it against an early payment.');
+  end if;
+
+  v_bundle := exists (select 1 from enterprise_requisition_lines l
+                       where l.requisition_id = req.id and l.bundle_selection_id is not null);
+
+  if not v_bundle and req.product_id is null then
+    raise exception '% does not say what it is buying, so no order line can be written for it.', req.id;
+  end if;
+
+  select order_ref into extant from orders where requisition_id = req.id limit 1;
+  if extant is not null then
+    update enterprise_requisitions set order_ref = extant
+     where id = req.id and order_ref is distinct from extant;
+    return extant;
+  end if;
+
+  if v_bundle then
+    select string_agg(l.name, ', ' order by l.sort_order) into v_bad
+      from enterprise_requisition_lines l
+     where l.requisition_id = req.id and l.product_id is null;
+    if v_bad is not null then
+      raise exception '% has lines that name no listing (%), so no order line can be written for them.', req.id, v_bad;
+    end if;
+    select coalesce(sum(l.line_total), 0) into v_sum
+      from enterprise_requisition_lines l where l.requisition_id = req.id;
+    if v_sum is distinct from req.amount then
+      raise exception '% was approved for % but its lines add up to %, so it cannot be ordered as it stands.',
+        req.id, req.amount, v_sum;
+    end if;
+    select case when count(distinct p.seller) = 1 then min(p.seller) end into v_seller
+      from enterprise_requisition_lines l join products p on p.id = l.product_id
+     where l.requisition_id = req.id;
+  else
+    select * into prod from products where id = req.product_id;
+    v_seller := prod.seller;
+  end if;
+
+  select * into acct from enterprise_accounts where id = req.account_id;
+
+  select m.tax_rate into rate from markets m where m.code = coalesce(acct.market, 'IN');
+  rate := coalesce(rate, 0);
+
+  sub := round(req.amount / (1 + rate / 100), 2);
+  tax := round(req.amount - sub, 2);
+
+  ref := 'ORD-8821' || right(regexp_replace(req.id, '\D', '', 'g'), 2);
+  while exists (select 1 from orders where order_ref = ref) loop
+    ref := 'ORD-8821' || right(regexp_replace(req.id, '\D', '', 'g'), 2)
+           || '-' || substr(md5(clock_timestamp()::text), 1, 3);
+  end loop;
+
+  oid := gen_random_uuid();
+  insert into orders (
+    id, order_ref, status, total, subtotal, tax, discount, payment_method,
+    buyer_name, buyer_email, created_at, placed_date, seller, vertical,
+    failed, stage, stages, account_id, requisition_id, ordered_by,
+    cost_centre, po_ref, currency, market, tax_rate)
+  values (
+    oid, ref, 'placed', req.amount, sub, tax, 0, 'On account — Net 30',
+    acct.company, (select u.email from enterprise_users u where u.id = req.raised_by),
+    now(), to_char(now(), 'DD Mon YYYY'),
+    v_seller, req.vertical,
+    false, 1, array['Ordered', 'Approved', 'Packed', 'In transit', 'Delivered'],
+    req.account_id, req.id, req.raised_by,
+    req.cost_centre, req.po_ref, req.currency, coalesce(acct.market, 'IN'), rate);
+
+  if v_bundle then
+    /* Every line, in one insert, at the price the requisition was approved
+       at; the product's own name, as every order line carries. */
+    insert into order_items (id, order_id, product_id, product_name, price, quantity, fulfil, status,
+                             bundle_selection_id)
+    select gen_random_uuid(), oid, l.product_id, p.name, l.unit_price, l.quantity, 'pending', 'placed',
+           l.bundle_selection_id
+      from enterprise_requisition_lines l join products p on p.id = l.product_id
+     where l.requisition_id = req.id
+     order by l.sort_order, l.id;
+  else
+    /* The product's name, not the requisition's title (20260809250000). */
+    insert into order_items (id, order_id, product_id, product_name, price, quantity, fulfil, status)
+    values (gen_random_uuid(), oid, prod.id, prod.name,
+            round(req.amount / greatest(req.quantity, 1), 2), req.quantity, 'pending', 'placed');
+  end if;
+
+  update enterprise_requisitions set order_ref = ref where id = req.id;
+  return ref;
+end $$;
+
+grant execute on function public.place_requisition_order(text) to authenticated;
 
 /* ================================================================= RLS === */
 
@@ -1054,6 +1240,11 @@ revoke truncate on bundle_templates, bundle_slots, bundle_options from authentic
 revoke all on bundle_selections, bundle_selection_lines from anon;
 grant select on bundle_selections, bundle_selection_lines to authenticated;
 revoke insert, update, delete, truncate on bundle_selections, bundle_selection_lines from authenticated;
+/* Delete, for the operator alone (the policy below): cleaning up after a test
+   or a mistake. Lines go with it; basket lines go too; requisition and order
+   lines keep their price and lose the link (`on delete set null`, which the
+   detach guards let through once the selection is gone). */
+grant delete on bundle_selections to authenticated;
 grant usage on sequence bundle_template_seq to authenticated;
 
 drop policy if exists "operator_all_bundle_templates"      on bundle_templates;
@@ -1065,6 +1256,7 @@ drop policy if exists "operator_all_bundle_options"        on bundle_options;
 drop policy if exists "shop_read_bundle_options"           on bundle_options;
 drop policy if exists "operator_read_bundle_selections"    on bundle_selections;
 drop policy if exists "owner_read_bundle_selections"       on bundle_selections;
+drop policy if exists "operator_delete_bundle_selections"  on bundle_selections;
 drop policy if exists "operator_read_bundle_selection_lines" on bundle_selection_lines;
 drop policy if exists "owner_read_bundle_selection_lines"  on bundle_selection_lines;
 
@@ -1094,9 +1286,12 @@ create policy "shop_read_bundle_slots" on bundle_slots for select to anon, authe
 create policy "shop_read_bundle_options" on bundle_options for select to anon, authenticated
   using (exists (select 1 from bundle_slots s where s.id = bundle_options.slot_id));
 
-/* Selections: the buyer's own, and the operator's view of all. No insert,
-   update or delete policy for anybody — `configure_bundle` writes them. */
+/* Selections: the buyer's own, and the operator's view of all. No insert or
+   update policy for anybody — `configure_bundle` writes them — and only the
+   operator may delete one. */
 create policy "operator_read_bundle_selections" on bundle_selections for select to authenticated
+  using (current_persona() = 'operator');
+create policy "operator_delete_bundle_selections" on bundle_selections for delete to authenticated
   using (current_persona() = 'operator');
 create policy "owner_read_bundle_selections" on bundle_selections for select to authenticated
   using ((current_persona() = 'consumer' and user_id = auth.uid())
@@ -1254,10 +1449,12 @@ begin
   end loop;
 
   /* Nobody writes a selection but configure_bundle. */
+  if has_table_privilege('anon', 'bundle_selections', 'delete') then
+    raise exception 'anon can delete selections';
+  end if;
   foreach t in array array['anon', 'authenticated'] loop
     if has_table_privilege(t, 'bundle_selections', 'insert')
        or has_table_privilege(t, 'bundle_selections', 'update')
-       or has_table_privilege(t, 'bundle_selections', 'delete')
        or has_table_privilege(t, 'bundle_selection_lines', 'insert')
        or has_table_privilege(t, 'bundle_selection_lines', 'update')
        or has_table_privilege(t, 'bundle_selection_lines', 'delete') then
@@ -1269,8 +1466,16 @@ begin
   end if;
   select count(*) into n from pg_policies
    where schemaname = 'public' and tablename in ('bundle_selections', 'bundle_selection_lines')
-     and cmd in ('INSERT', 'UPDATE', 'DELETE', 'ALL');
+     and cmd in ('INSERT', 'UPDATE', 'ALL');
   if n <> 0 then raise exception '% write policies on selections; there should be none', n; end if;
+  /* The one delete policy is the operator's. */
+  select count(*) into n from pg_policies
+   where schemaname = 'public' and tablename in ('bundle_selections', 'bundle_selection_lines') and cmd = 'DELETE';
+  if n <> 1 then raise exception 'expected one delete policy on selections, found %', n; end if;
+  select count(*) into n from pg_policies
+   where schemaname = 'public' and tablename = 'bundle_selections'
+     and policyname = 'operator_delete_bundle_selections' and cmd = 'DELETE';
+  if n <> 1 then raise exception 'the operator cannot delete selections'; end if;
 
   /* The functions are callable by whom they are for, and by nobody else. */
   if has_function_privilege('anon', 'configure_bundle(text, jsonb, text, integer)', 'execute')
@@ -1334,6 +1539,19 @@ begin
       if n < 2 then raise exception '% in % prices % parts; a bundle has at least two', t, c, n; end if;
     end loop;
   end loop;
+
+  /* A requisition carrying a bundle is ordered line by line, and every check
+     the order path had before is still in it. */
+  select pg_get_functiondef(p.oid) into t from pg_proc p
+    join pg_namespace ns on ns.oid = p.pronamespace
+   where ns.nspname = 'public' and p.proname = 'place_requisition_order';
+  if t not like '%l.bundle_selection_id%' then
+    raise exception 'place_requisition_order does not carry bundle lines onto the order';
+  end if;
+  if t not like '%credit_hold%' or t not like '%oid, prod.id, prod.name%'
+     or t not like '%does not say what it is buying%' or t not like '%from orders where requisition_id = req.id%' then
+    raise exception 'place_requisition_order lost a check it had before';
+  end if;
 
   /* The Catalogue Review article, if there is one, explains them once. */
   /* The CASE keeps jsonb_array_elements away from a body that is not a list,
