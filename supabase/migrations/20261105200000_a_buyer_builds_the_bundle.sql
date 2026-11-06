@@ -446,7 +446,7 @@ begin
       select x.value from jsonb_array_elements(v_picks) with ordinality as x(value, ord) order by x.ord
     loop
       v_key := v_pick ->> 'product_id';
-      v_pick_qty := (v_pick ->> 'quantity')::integer;
+      v_pick_qty := (v_pick ->> 'quantity')::numeric::integer;   -- 20.0 is twenty
 
       if v_key = any(v_all) then
         raise exception '% is chosen in two parts of this bundle. Choose it once.', v_key;
@@ -477,10 +477,10 @@ begin
 
       /* The arithmetic in the header, line for line with `priceBundle`. */
       v_list       := v_product.list;
-      v_floor      := coalesce(v_product.floor, 0);
+      v_floor      := round(coalesce(v_product.floor, 0), 2);
       v_line_qty   := v_pick_qty * p_quantity;
       v_disc       := round(v_list * (1 - v_t.discount_pct / 100), 2);
-      v_unit       := round(greatest(v_disc, v_floor), 2);
+      v_unit       := greatest(v_disc, v_floor);
       v_line_total := round(v_unit * v_line_qty, 2);
       if v_list > 99999999.99 or v_line_total > 9999999999.99 then
         raise exception 'The line for % is larger than a bundle can carry. Choose fewer.', v_product.name;
@@ -499,7 +499,7 @@ begin
         'quantity',         v_line_qty,
         'list_unit_price',  v_list,
         'unit_price',       v_unit,
-        'floor_unit_price', v_product.floor,
+        'floor_unit_price', round(v_product.floor, 2),
         'line_total',       v_line_total,
         'at_floor',         v_disc < v_floor,
         'sort_order',       v_n));
@@ -722,8 +722,11 @@ declare
   v_gone text;
 begin
   if current_persona() is null then return new; end if;
+  /* Detaching is refused — except the foreign key's own `set null` once the
+     selection itself has been deleted (`operator_delete_bundle_selections`). */
   if tg_op = 'UPDATE' and old.bundle_selection_id is not null
-     and new.bundle_selection_id is distinct from old.bundle_selection_id then
+     and new.bundle_selection_id is distinct from old.bundle_selection_id
+     and exists (select 1 from bundle_selections x where x.id = old.bundle_selection_id) then
     raise exception 'A part of a bundle stays part of it. Remove the bundle and add it again instead.';
   end if;
   if new.bundle_selection_id is null then return new; end if;
@@ -811,8 +814,11 @@ declare
   v_gone text;
 begin
   if current_persona() is null then return new; end if;
+  /* Detaching is refused — except the foreign key's own `set null` once the
+     selection itself has been deleted (`operator_delete_bundle_selections`). */
   if tg_op = 'UPDATE' and old.bundle_selection_id is not null
-     and new.bundle_selection_id is distinct from old.bundle_selection_id then
+     and new.bundle_selection_id is distinct from old.bundle_selection_id
+     and exists (select 1 from bundle_selections x where x.id = old.bundle_selection_id) then
     raise exception 'A part of a bundle stays part of it. Remove the bundle and add it again instead.';
   end if;
   if new.bundle_selection_id is null then return new; end if;
@@ -907,8 +913,11 @@ declare
   v_gone text;
 begin
   if current_persona() is null then return new; end if;
+  /* Detaching is refused — except the foreign key's own `set null` once the
+     selection itself has been deleted (`operator_delete_bundle_selections`). */
   if tg_op = 'UPDATE' and old.bundle_selection_id is not null
-     and new.bundle_selection_id is distinct from old.bundle_selection_id then
+     and new.bundle_selection_id is distinct from old.bundle_selection_id
+     and exists (select 1 from bundle_selections x where x.id = old.bundle_selection_id) then
     raise exception 'A part of a bundle stays part of it.';
   end if;
   if new.bundle_selection_id is null then return new; end if;
@@ -958,6 +967,35 @@ begin
     if v_gone is not null then
       raise exception '% is no longer available as it was configured, so the bundle cannot be bought. Edit the bundle to continue.', v_gone;
     end if;
+
+    /* Bought whole, for a shopper. Checkout places one order per seller, each
+       in its own request, and `guard_order_seller` keeps an order to one
+       seller — so a bundle whose parts come from three sellers arrives as
+       three orders, and no single order can hold it. Instead, at the moment
+       each part is ordered, every other part of the selection must be either
+       still in this shopper's basket (same product and quantity) or already
+       ordered by them.
+
+       Accepted residual risk: a shopper who removes the rest of the bundle
+       from their basket between two of checkout's requests buys part of a
+       bundle at its bundle price. No seller is below its floor (every price
+       on the selection was held at or above it), so what is exposed is the
+       marketplace's discount on that part, nothing a seller agreed not to
+       give. */
+    select string_agg(l.name, ', ' order by l.sort_order) into v_gone
+      from bundle_selection_lines l
+     where l.selection_id = v_s.id
+       and l.product_id is distinct from new.product_id
+       and not exists (select 1 from cart_items c
+                        where c.bundle_selection_id = v_s.id and c.user_id = v_s.user_id
+                          and c.product_id = l.product_id and c.quantity = l.quantity)
+       and not exists (select 1 from order_items oi join orders o on o.id = oi.order_id
+                        where oi.bundle_selection_id = v_s.id and o.user_id = v_s.user_id
+                          and o.account_id is null
+                          and oi.product_id = l.product_id and oi.quantity = l.quantity);
+    if v_gone is not null then
+      raise exception 'A bundle is bought whole, and these parts of it are neither in the basket nor ordered: %. Add the bundle again.', v_gone;
+    end if;
   end if;
   return new;
 end $$;
@@ -988,7 +1026,8 @@ begin
 end $$;
 
 drop trigger if exists cart_items_bundle_whole on cart_items;
-create constraint trigger cart_items_bundle_whole after insert on cart_items
+create constraint trigger cart_items_bundle_whole
+  after insert or update of bundle_selection_id, product_id, user_id on cart_items
   deferrable initially deferred
   for each row when (new.bundle_selection_id is not null)
   execute function bundle_cart_complete();
@@ -1009,16 +1048,24 @@ begin
 end $$;
 
 drop trigger if exists enterprise_requisition_lines_bundle_whole on enterprise_requisition_lines;
-create constraint trigger enterprise_requisition_lines_bundle_whole after insert on enterprise_requisition_lines
+create constraint trigger enterprise_requisition_lines_bundle_whole
+  after insert or update of bundle_selection_id, product_id, requisition_id on enterprise_requisition_lines
   deferrable initially deferred
   for each row when (new.bundle_selection_id is not null)
   execute function bundle_requisition_complete();
 
+/* Per order only where one order holds the whole bundle: a business order,
+   which `place_requisition_order` writes from the requisition in one insert. A
+   shopper's bundle spans one order per seller and is checked line by line in
+   `guard_bundle_order_line` instead. */
 create or replace function bundle_order_complete() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare v_have integer; v_need integer;
 begin
   if new.bundle_selection_id is null or current_persona() is null then return null; end if;
+  if not exists (select 1 from orders o where o.id = new.order_id and o.account_id is not null) then
+    return null;
+  end if;
   select count(*) into v_have from order_items
    where order_id = new.order_id and bundle_selection_id = new.bundle_selection_id;
   if v_have = 0 then return null; end if;
@@ -1030,7 +1077,8 @@ begin
 end $$;
 
 drop trigger if exists order_items_bundle_whole on order_items;
-create constraint trigger order_items_bundle_whole after insert on order_items
+create constraint trigger order_items_bundle_whole
+  after insert or update of bundle_selection_id, product_id, order_id on order_items
   deferrable initially deferred
   for each row when (new.bundle_selection_id is not null)
   execute function bundle_order_complete();
@@ -1054,6 +1102,11 @@ revoke truncate on bundle_templates, bundle_slots, bundle_options from authentic
 revoke all on bundle_selections, bundle_selection_lines from anon;
 grant select on bundle_selections, bundle_selection_lines to authenticated;
 revoke insert, update, delete, truncate on bundle_selections, bundle_selection_lines from authenticated;
+/* Delete, for the operator alone (the policy below): cleaning up after a test
+   or a mistake. Lines go with it; basket lines go too; requisition and order
+   lines keep their price and lose the link (`on delete set null`, which the
+   detach guards let through once the selection is gone). */
+grant delete on bundle_selections to authenticated;
 grant usage on sequence bundle_template_seq to authenticated;
 
 drop policy if exists "operator_all_bundle_templates"      on bundle_templates;
@@ -1065,6 +1118,7 @@ drop policy if exists "operator_all_bundle_options"        on bundle_options;
 drop policy if exists "shop_read_bundle_options"           on bundle_options;
 drop policy if exists "operator_read_bundle_selections"    on bundle_selections;
 drop policy if exists "owner_read_bundle_selections"       on bundle_selections;
+drop policy if exists "operator_delete_bundle_selections"  on bundle_selections;
 drop policy if exists "operator_read_bundle_selection_lines" on bundle_selection_lines;
 drop policy if exists "owner_read_bundle_selection_lines"  on bundle_selection_lines;
 
@@ -1094,9 +1148,12 @@ create policy "shop_read_bundle_slots" on bundle_slots for select to anon, authe
 create policy "shop_read_bundle_options" on bundle_options for select to anon, authenticated
   using (exists (select 1 from bundle_slots s where s.id = bundle_options.slot_id));
 
-/* Selections: the buyer's own, and the operator's view of all. No insert,
-   update or delete policy for anybody — `configure_bundle` writes them. */
+/* Selections: the buyer's own, and the operator's view of all. No insert or
+   update policy for anybody — `configure_bundle` writes them — and only the
+   operator may delete one. */
 create policy "operator_read_bundle_selections" on bundle_selections for select to authenticated
+  using (current_persona() = 'operator');
+create policy "operator_delete_bundle_selections" on bundle_selections for delete to authenticated
   using (current_persona() = 'operator');
 create policy "owner_read_bundle_selections" on bundle_selections for select to authenticated
   using ((current_persona() = 'consumer' and user_id = auth.uid())
@@ -1254,10 +1311,12 @@ begin
   end loop;
 
   /* Nobody writes a selection but configure_bundle. */
+  if has_table_privilege('anon', 'bundle_selections', 'delete') then
+    raise exception 'anon can delete selections';
+  end if;
   foreach t in array array['anon', 'authenticated'] loop
     if has_table_privilege(t, 'bundle_selections', 'insert')
        or has_table_privilege(t, 'bundle_selections', 'update')
-       or has_table_privilege(t, 'bundle_selections', 'delete')
        or has_table_privilege(t, 'bundle_selection_lines', 'insert')
        or has_table_privilege(t, 'bundle_selection_lines', 'update')
        or has_table_privilege(t, 'bundle_selection_lines', 'delete') then
@@ -1269,8 +1328,16 @@ begin
   end if;
   select count(*) into n from pg_policies
    where schemaname = 'public' and tablename in ('bundle_selections', 'bundle_selection_lines')
-     and cmd in ('INSERT', 'UPDATE', 'DELETE', 'ALL');
+     and cmd in ('INSERT', 'UPDATE', 'ALL');
   if n <> 0 then raise exception '% write policies on selections; there should be none', n; end if;
+  /* The one delete policy is the operator's. */
+  select count(*) into n from pg_policies
+   where schemaname = 'public' and tablename in ('bundle_selections', 'bundle_selection_lines') and cmd = 'DELETE';
+  if n <> 1 then raise exception 'expected one delete policy on selections, found %', n; end if;
+  select count(*) into n from pg_policies
+   where schemaname = 'public' and tablename = 'bundle_selections'
+     and policyname = 'operator_delete_bundle_selections' and cmd = 'DELETE';
+  if n <> 1 then raise exception 'the operator cannot delete selections'; end if;
 
   /* The functions are callable by whom they are for, and by nobody else. */
   if has_function_privilege('anon', 'configure_bundle(text, jsonb, text, integer)', 'execute')
