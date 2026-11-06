@@ -34,6 +34,7 @@ import type { ComponentPick, TelcoItem } from '../../lib/federation'
 import { canApprove, summarise, bundleView, rulesFor, applyPolicy, policyFailures, splitOf } from '../../lib/catalogue'
 import type { ProductRow, Submission } from '../../lib/catalogue'
 import { Pager, usePaging } from '../Pager'
+import { BundleTemplates } from './BundleTemplates'
 
 const ACTOR = 'Aventa catalogue desk'
 
@@ -344,6 +345,7 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
               comes from. Without it "first party" is only a statement about who
               does not sell a thing. */}
           <RateCard telco={snap.telco} rule={snap.bundleRule} used={snap.packComponents} />
+          <BundleTemplates products={snap.products} rule={snap.bundleRule} />
 
           <SectionCard
             title={`Operator packs (${packs.length})`}
