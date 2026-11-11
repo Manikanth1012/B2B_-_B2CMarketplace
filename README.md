@@ -343,6 +343,15 @@ On Business Accounts, the status chips filter with `inBand` and the summary card
 - **Notifications.** `enquiry.raised`, `enquiry.answered` and `enquiry.decided` write in-app entries to `notification_log` as the enquiry changes; other channels are logged as suppressed (no gateway).
 - **Code.** The rules are mirrored as pure functions in `src/lib/enquiries.ts` (tested), data access is `src/lib/enquiryRepo.ts`, the shared list and detail are in `src/components/enquiries/`, and `src/lib/enquiries.integration.test.ts` exercises the flows against the live database, cleaning up after itself.
 
+**Configurable bundles (spec 7).** The operator builds a bundle the buyer finishes; the buyer picks and gets one price. Migration `supabase/migrations/20261105200000_a_buyer_builds_the_bundle.sql`.
+
+- **Templates.** In Catalogue Review (First party tab) → Configurable bundles: parts (slots) with the listings each offers, pick limits, quantity ranges, a starting option, and a discount no higher than the published bundle rule. Publishing is checked by the database (2–6 parts, options live and sold to the audience, the starting configuration priced and in stock in every market currency); a live template is frozen — pause, edit, publish again.
+- **Pricing.** `price_bundle` prices from the market's price book: each part at `max(list × (1 − discount), floor)`, each line rounded, the total the sum of the lines. `priceBundle` in `src/lib/bundles.ts` is the same arithmetic for the on-screen estimate; the server's price is the one saved.
+- **Selections.** `configure_bundle` saves the priced bundle for the buyer (consumer: their home currency; business: the account's currency) and holds the price for 7 days.
+- **Settles as parts.** A bundle's lines go into the basket, requisition and order as ordinary lines carrying `bundle_selection_id` at their share of the price, so each seller is paid, refunded and settled for its own parts. Guards keep the lines to the selection (product, quantity, price, owner, currency, the hold, parts on sale); a bundle goes in whole, removing a part removes it all, and each part is ordered once. `place_requisition_order` copies bundle lines onto the business order.
+- **Screens.** Bundle cards (marked Configurable) in both shops open `BundleConfigurator`; the basket, checkout and requisition show a bundle as one group with Edit, Re-price and Remove. The configurator hands off through `src/components/bundles/handoff.ts`; the basket and requisition sinks are registered in `App.tsx` for the persona that has one.
+- **Tests.** `src/lib/bundles.test.ts` (pure rules), `bundles.migration.test.ts` (structure, including constraint-name clashes and CASE-in-IF), and `bundles.integration.test.ts` against the live database, cleaning up after itself.
+
 **Shared components** live in `src/components/ui/`, are class-based, and are styled by `src/styles/ui.css` (imported in `src/main.tsx` after `global.css`).
 
 | Component | Use it for |

@@ -19,7 +19,8 @@ closed by spec 5, except the two noted below.
 
 Done — merged 2026-11-05 (`8fd5759`): quote, demo, Contact Sales and enquiry tracking are spec 6
 (`2026-11-05-enterprise-enquiries-design.md`), migration applied 2026-11-05.
-Bundles follow as spec 7.
+Done — merged 2026-11-11: buyer-built bundles are spec 7
+(`2026-11-05-buyer-built-bundles-design.md`), migration applied 2026-11-11.
 Today's bundles are fixed and composed by the operator (Catalogue Review →
 Compose a bundle); spec 7 is the buyer-built kind.
 
@@ -32,7 +33,7 @@ restyle, and get their own spec after the revamp.
 - [x] **Request a demo** — buyer books a demo of a product or service.
 - [x] **Contact Sales** — a tracked enquiry rather than a mailto link.
 - [x] **Enterprise enquiry tracking** — the buyer's list of quotes, demos and enquiries with status.
-- [ ] **Configurable product bundles** — buyer assembles a bundle with options and gets one price.
+- [x] **Configurable product bundles** — buyer assembles a bundle with options and gets one price.
 
 ## Still open after spec 5 (small, non-blocking)
 
@@ -87,6 +88,16 @@ Also worth considering:
 - [ ] Buyer-facing AI shopping assistant (M–L)
 - [ ] Procurement AI: renewal alerts, spend classification (S–M)
 - [ ] Delivery scheduling and consolidation (S)
+
+## Still open after spec 7 (small, non-blocking)
+
+- [ ] **Decision needed — existing bug:** an ordinary (non-bundle) business requisition raised from the basket fails at approval: `raiseRequisition` never sets the requisition's `product_id` and `place_requisition_order` orders from that single header product, ignoring the lines. Spec 7 orders bundle requisitions line by line; ordinary multi-line requisitions still fail. Fixing it changes a live flow.
+- [ ] Accepted risk: a shopper who removes the rest of a bundle mid-checkout buys one part at its bundle price. No seller goes below its floor; only the marketplace's discount is exposed. Each part can be ordered only once.
+- [ ] A requisition raised in a secondary currency cannot hold a bundle (bundles are priced in the account's currency).
+- [ ] Refund picker and operator order views do not group bundle lines yet (refunds work per part at its price).
+- [ ] "A paused part blocks the bundle" is enforced by the database but not covered by a live test (it would pause a real product).
+- [ ] The shared dialog's Close button is 36px tall (24px AA minimum met; 44px target not).
+- [ ] Seller-authored templates and a free-form build-your-own are out of scope.
 
 ## Still open after spec 6 (small, non-blocking)
 
