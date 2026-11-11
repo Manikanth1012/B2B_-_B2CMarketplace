@@ -17,6 +17,12 @@ import type { PaymentMethod, PaymentAttempt, MethodKind } from '../lib/gateway'
 import { loadPaymentCatalogue, startPayment, newReference } from '../lib/gatewayRepo'
 import type { PaymentCatalogue } from '../lib/gatewayRepo'
 import { PaymentGateway } from './PaymentGateway'
+import { groupBySelection } from '../lib/bundles'
+import { basketBundleBlocks, bundleColumns, BUNDLE_FALLBACK_NAME, type BundleBlock } from '../lib/bundleLines'
+import { removeCartBundle } from '../lib/bundleBasketRepo'
+import { BundleGroup } from './bundles/BundleGroup'
+import { basketSink } from './bundles/sinks'
+import { bundlesChanged } from './bundles/events'
 
 /* One icon per rail, so the list reads at a glance rather than as six identical
    rows of text. */
@@ -122,6 +128,14 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
    */
   const groups = bySeller(cartItems)
 
+  /* A configured bundle is bought at its selection's prices, inside its seven
+     days, with every part still on sale. One that is not stops the order here,
+     named, before anything is written. Ordinary baskets have none. */
+  const bundleBlocks = basketBundleBlocks(cartItems, shopCurrency, new Date().toISOString())
+  const blockOf = (id: string): BundleBlock => bundleBlocks.find(b => b.selectionId === id)?.block ?? { kind: 'ok' }
+  /* The price an order line is written at: a bundle part's is the selection's. */
+  const unitPrice = (item: CartItem) => item.bundle_selection_id ? (item.bundle_unit_price ?? 0) : (item.product?.price || 0)
+
   /* What this shopper, in this market, may pay with — from the marketplace's
      own catalogue rather than four options typed into this file. The old list
      offered "PayTM, Airtel Money, M-Pesa" on one line to everybody, which is
@@ -157,6 +171,7 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
    */
   const handleSubmit = async () => {
     if (!method || !provider || !marketCode) return
+    if (bundleBlocks.length) { setFailure(`${bundleBlocks[0].block.says} Nothing has been charged.`); return }
     setProcessing(true)
     setFailure(null)
 
@@ -222,10 +237,14 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
         order_id: order.id,
         product_id: item.product_id,
         product_name: item.product?.name || '',
-        price: item.product?.price || 0,
+        price: unitPrice(item),
         quantity: item.quantity,
         fulfil: item.product?.fulfil || 'instant',
         status: 'placed',
+        /* Only on a bundle part, so an ordinary line writes what it always has.
+           Each seller's order carries that seller's parts; the cart is kept
+           until every order is written, which the database checks against. */
+        ...bundleColumns(item),
       }))
       const { error: itemsErr } = await supabase.from('order_items').insert(orderItems)
 
@@ -254,7 +273,7 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
              `ORD-14800252-2` started on the 7th and was already renewing on the
              6th before it had billed once. */
           next_renewal: nextRenewalFrom(new Date().toISOString().slice(0, 10)),
-          price: item.product?.price || 0,
+          price: unitPrice(item),
           /* NOT NULL since subscriptions got a currency, and guarded against the
              customer's bills — so this insert was failing outright, not merely
              recording the wrong mark. */
@@ -602,14 +621,38 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
           <div className="co__summary">
             <h3>Order Summary</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '16px' }}>
-              {cartItems.map((item) => (
+              {groupBySelection(cartItems).map((g) => g.selectionId ? (() => {
+                const info = g.lines[0].bundle ?? null
+                return (
+                  <BundleGroup
+                    key={g.selectionId}
+                    compact
+                    name={info?.name ?? BUNDLE_FALLBACK_NAME}
+                    parts={g.lines.map(l => ({ key: l.id, name: l.product?.name ?? l.product_id, quantity: l.quantity, lineTotal: unitPrice(l) * l.quantity }))}
+                    total={g.lines.reduce((n, l) => n + unitPrice(l) * l.quantity, 0)}
+                    partsTotal={info?.selection.parts_total ?? null}
+                    fmt={fmt}
+                    block={blockOf(g.selectionId)}
+                    editable={info ? {
+                      selectionId: info.selection.id, templateId: info.selection.template_id,
+                      choices: info.selection.choices, quantity: info.selection.quantity, currency: info.selection.currency,
+                    } : null}
+                    sink={basketSink}
+                    onRemove={async () => {
+                      const r = await removeCartBundle(g.selectionId!)
+                      if (!r.ok) setFailure(r.error)
+                      bundlesChanged()
+                    }}
+                  />
+                )
+              })() : g.lines.map((item) => (
                 <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 'var(--text-sm)' }}>
                   <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                     {item.product?.name} × {item.quantity}
                   </span>
                   <span style={{ fontWeight: 500 }}>{fmt((item.product?.price || 0) * item.quantity)}</span>
                 </div>
-              ))}
+              )))}
             </div>
             {/* Worded the same way as the cart drawer, and for the same reason:
                 a subtotal above a tax line above a larger total reads as tax
@@ -648,12 +691,15 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
             {step === 'payment' && (
               <button
                 onClick={handleSubmit}
-                disabled={processing || !handoff.ok}
+                disabled={processing || !handoff.ok || bundleBlocks.length > 0}
                 className="btn btn-cyan btn-lg"
                 style={{ width: '100%', marginTop: '16px' }}
               >
                 {processing ? 'Taking you to the provider…' : `Pay ${fmt(total)}`}
               </button>
+            )}
+            {bundleBlocks.length > 0 && (
+              <p className="bundle-checkout-block" role="status">{bundleBlocks[0].block.says}</p>
             )}
           </div>
         </div>

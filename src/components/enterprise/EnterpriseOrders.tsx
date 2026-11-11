@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
+import { groupBySelection } from '../../lib/bundles'
+import { useBundleNames } from '../bundles/useBundleNames'
 import { supabase } from '../../lib/supabase'
 import { ShoppingCart, TriangleAlert as AlertTriangle, Package, Check } from 'lucide-react'
 import {
@@ -58,6 +60,7 @@ interface Item {
   quantity: number
   fulfil: string
   status: string
+  bundle_selection_id?: string | null
 }
 
 interface Refund { id: string; order_ref: string; amount: number; state: string; reason: string }
@@ -218,6 +221,8 @@ function Detail({ order, items, account, refunds, tickets }: {
   order: Order; items: Item[]; account: AccountBook; refunds: Refund[]; tickets: Ticket[]
 }) {
   const { money } = useAccountMoney(account.account?.currency)
+  /* A configured bundle is one group; an order with none reads as before. */
+  const bundleName = useBundleNames(items)
   const req = account.requisitions.find(r => r.id === order.requisition_id)
   const invoice = account.invoices.find(i => i.id === order.invoice_id)
   const centre = account.centres.find(c => c.id === order.cost_centre)
@@ -225,15 +230,23 @@ function Detail({ order, items, account, refunds, tickets }: {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
       <Table headers={['Item', 'How it is fulfilled', 'Qty', 'Unit', 'Line']}>
-        {items.map(i => (
-          <tr key={i.id}>
+        {groupBySelection(items).flatMap(g => [
+          ...(g.selectionId ? [
+            <tr key={`b-${g.selectionId}`} className="bundle-row-head">
+              <td className="c-td" colSpan={4}><strong>Bundle: {bundleName(g.selectionId)}</strong></td>
+              <Td right style={{ fontWeight: 700 }}>{money(g.lines.reduce((n, l) => n + Number(l.price) * l.quantity, 0))}</Td>
+            </tr>,
+          ] : []),
+          ...g.lines.map(i => (
+          <tr key={i.id} className={g.selectionId ? 'bundle-row-part' : undefined}>
             <Td>{i.product_name}</Td>
             <Td right style={{ fontSize: 'var(--text-xs)' }}>{i.fulfil === 'digital' ? 'Provisioned' : 'Shipped'}</Td>
             <Td right>{fmtInt(i.quantity)}</Td>
             <Td right>{money(Number(i.price))}</Td>
             <Td right style={{ fontWeight: 600 }}>{money(Number(i.price) * i.quantity)}</Td>
           </tr>
-        ))}
+          )),
+        ])}
       </Table>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' }}>

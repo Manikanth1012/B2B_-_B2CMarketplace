@@ -10,13 +10,29 @@
  * and a policy that are re-read on every load, and restoring one from last week
  * would put stale figures in front of an approver.
  */
-import { createContext, useContext, useMemo, useState, useRef, useCallback } from 'react'
+import { createContext, useContext, useMemo, useState, useRef, useCallback, useEffect } from 'react'
 import type { ReactNode } from 'react'
 import {
   EMPTY_BASKET, addToBasket, setQuantity as setQty, removeLine as dropLine, repriceTo,
   basketCount, basketTotal,
 } from './requisitionBasket'
 import type { Basket, BasketLine } from './requisitionBasket'
+import { addBundleToBasket, removeBundleFromBasket } from './bundleLines'
+
+type AddBundle = (lines: BasketLine[], currency: string, replaceSelectionId?: string) =>
+  { ok: true; note: string } | { ok: false; reason: string }
+
+/* The bundle configurator's hand-off reaches the basket from outside the tree
+   (a window event opens it from anywhere), so the provider lends its
+   `addBundle` here while it is mounted. Null when there is no provider. */
+let bridge: AddBundle | null = null
+
+/** Put a whole configured bundle into the requisition being built. */
+export function addBundleToRequisition(lines: BasketLine[], currency: string, replaceSelectionId?: string):
+  { ok: true; note: string } | { ok: false; reason: string } {
+  if (!bridge) return { ok: false, reason: 'There is no requisition open to add the bundle to.' }
+  return bridge(lines, currency, replaceSelectionId)
+}
 
 export interface RequisitionState {
   basket: Basket
@@ -33,6 +49,10 @@ export interface RequisitionState {
   setQuantity: (product_id: string, quantity: number) =>
     { ok: true } | { ok: false; reason: string }
   remove: (product_id: string) => void
+  /** A configured bundle, whole; in place of `replaceSelectionId` when given. */
+  addBundle: AddBundle
+  /** Every line of one bundle. */
+  removeBundle: (selectionId: string) => void
   empty: () => void
   /** Move the whole basket onto another currency's shelf. Returns what fell off. */
   reprice: (currency: string, shelf: readonly { id: string; price: number; model: string; unit: string | null }[]) => string[]
@@ -89,6 +109,24 @@ export function RequisitionProvider({ children }: { children: ReactNode }) {
 
   const empty = useCallback(() => commit(EMPTY_BASKET), [commit])
 
+  const addBundle: AddBundle = useCallback((lines, currency, replaceSelectionId) => {
+    const wasEmpty = live.current.lines.length === 0
+    const r = addBundleToBasket(live.current, lines, currency, replaceSelectionId)
+    if (!r.ok) return r
+    commit(r.basket)
+    if (wasEmpty) setOpen(true)
+    return { ok: true, note: r.note }
+  }, [commit])
+
+  const removeBundle = useCallback((selectionId: string) => {
+    commit(removeBundleFromBasket(live.current, selectionId))
+  }, [commit])
+
+  useEffect(() => {
+    bridge = addBundle
+    return () => { if (bridge === addBundle) bridge = null }
+  }, [addBundle])
+
   const reprice: RequisitionState['reprice'] = useCallback((currency, shelf) => {
     const r = repriceTo(live.current, currency, shelf)
     commit(r.basket)
@@ -99,8 +137,8 @@ export function RequisitionProvider({ children }: { children: ReactNode }) {
     basket,
     count: basketCount(basket),
     total: basketTotal(basket),
-    open, setOpen, add, setQuantity, remove, empty, reprice,
-  }), [basket, open, add, setQuantity, remove, empty, reprice])
+    open, setOpen, add, setQuantity, remove, addBundle, removeBundle, empty, reprice,
+  }), [basket, open, add, setQuantity, remove, addBundle, removeBundle, empty, reprice])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

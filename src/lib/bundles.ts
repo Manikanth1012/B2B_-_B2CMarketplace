@@ -93,15 +93,19 @@ export function priceBundle(parts: readonly PricedPart[], discountPct: number, b
 
 export type Standing = { kind: 'ok' } | { kind: 'expired' } | { kind: 'part-unavailable'; product_id: string; name: string }
 
-/** Whether a configured price can still be bought. Dates are 'YYYY-MM-DD',
-    compared as text; valid_until may be a timestamp, so only its date counts. */
+/** Whether a configured price can still be bought. Judged as the database
+    judges it, `valid_until < now()`: both are instants (ISO strings) compared
+    in full, not by date, so a hold that ended earlier today has ended. An
+    instant that cannot be read counts as ended rather than held. */
 export function bundleStanding(
   sel: { valid_until: string },
   lines: readonly { product_id: string; name: string }[],
-  today: string,
+  now: string,
   available: (productId: string) => boolean,
 ): Standing {
-  if (sel.valid_until.slice(0, 10) < today) return { kind: 'expired' }
+  const until = Date.parse(sel.valid_until)
+  const at = Date.parse(now)
+  if (Number.isNaN(until) || Number.isNaN(at) || until < at) return { kind: 'expired' }
   const gone = lines.find(l => !available(l.product_id))
   return gone ? { kind: 'part-unavailable', product_id: gone.product_id, name: gone.name } : { kind: 'ok' }
 }
