@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import { Modal, Btn, FormField, TextArea } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
 import { useMarket } from '../../lib/MarketContext'
+import { priceText } from '../../lib/priceText'
 import { endAccountPrice } from '../../lib/priceBookRepo'
 import { endOn } from '../../lib/accountPrices'
 import type { AccountPrice } from '../../lib/accountPrices'
@@ -17,7 +18,7 @@ export function endSentence(p: Pick<AccountPrice, 'starts_on'>, today: string): 
   const e = endOn(p, today)
   if (e >= p.starts_on) return `It will end on ${day(e)}.`
   if (p.starts_on > today) return 'It has not started, so it will be withdrawn: it never applies.'
-  return 'It started today, so ending it withdraws it: it will read as never having applied.'
+  return 'It started today, so ending it today withdraws it: it will read as never having applied, though requisitions already raised at it keep it.'
 }
 
 export function EndPriceDialog({ price, productName, today, onClose, onEnded }: {
@@ -27,7 +28,7 @@ export function EndPriceDialog({ price, productName, today, onClose, onEnded }: 
   onClose: () => void
   onEnded: () => void
 }) {
-  const { fmtIn } = useMarket()
+  const { book } = useMarket()
   const ids = useId()
   const [reason, setReason] = useState('')
   const [tried, setTried] = useState(false)
@@ -38,7 +39,7 @@ export function EndPriceDialog({ price, productName, today, onClose, onEnded }: 
 
   if (!price) return null
   const missing = reason.trim() === ''
-  const problem = missing ? 'Say why the price is ending.' : reason.trim().length > 300 ? 'Keep the reason to 300 characters or fewer.' : null
+  const problem = missing ? 'Say why the price is ending.' : null
 
   async function submit() {
     setTried(true)
@@ -60,7 +61,7 @@ export function EndPriceDialog({ price, productName, today, onClose, onEnded }: 
       </>}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <p style={{ margin: 0 }}>
-          {productName} at {fmtIn(price.unit_price, price.currency, { decimals: true })}, from {day(price.starts_on)}
+          {productName} at {priceText(price.unit_price, price.currency, book?.currencies ?? [], true)}, from {day(price.starts_on)}
           {price.ends_on ? ` to ${day(price.ends_on)}` : ', open-ended'}.
         </p>
         <p style={{ margin: 0, fontWeight: 600 }}>{endSentence(price, today)}</p>
@@ -68,7 +69,7 @@ export function EndPriceDialog({ price, productName, today, onClose, onEnded }: 
           Requisitions already raised at this price keep it.
         </p>
         <FormField label="Why it is ending" required>
-          <TextArea rows={3} value={reason} maxLength={400}
+          <TextArea rows={3} value={reason}
             aria-invalid={(tried && !!problem) || undefined}
             aria-describedby={tried && problem ? `${ids}-err` : undefined}
             onChange={e => setReason(e.target.value)} />

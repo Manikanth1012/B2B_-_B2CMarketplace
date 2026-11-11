@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react'
 import { Modal, Btn, FormField, TextInput, TextArea, Select } from '../operator/shared'
 import { Callout } from '../OnboardingJourney'
 import { useMarket } from '../../lib/MarketContext'
+import { priceText } from '../../lib/priceText'
 import { loadProductPrices } from '../../lib/moneyRepo'
 import { setAccountPrice, promoteQuoteLine } from '../../lib/priceBookRepo'
 import { priceDraftProblems, replacedBy, standingOf } from '../../lib/accountPrices'
@@ -37,7 +38,10 @@ export function replacementSentences(
     if (!old) return `${r.id} ends on ${day(r.ends_on)}.`
     const what = `${r.id} (${fmt(old.unit_price, old.currency)}, ${standingOf(old, today) === 'scheduled' ? 'due to start' : 'from'} ${day(old.starts_on)})`
     if (r.withdrawn) {
-      return `${what} has not started by then, so it will be withdrawn: it never applies.`
+      /* ends_on = starts_on - 1 either way; what that means depends on whether it had begun. */
+      return old.starts_on <= today
+        ? `${what} started today, so replacing it today withdraws it: it will read as never having applied, though requisitions already raised at it keep it.`
+        : `${what} has not started by then, so it will be withdrawn: it never applies.`
     }
     const outlives = d.ends_on !== null && (old.ends_on === null || old.ends_on > d.ends_on)
     const base = `${what} ends on ${day(r.ends_on)}.`
@@ -47,7 +51,7 @@ export function replacementSentences(
 }
 
 export function SetPriceDialog({
-  open, onClose, onSaved, account, currencies, listings, prices, today, quote,
+  open, onClose, onSaved, account, currencies, listings, prices, today, quote, names,
 }: {
   open: boolean
   onClose: () => void
@@ -62,9 +66,12 @@ export function SetPriceDialog({
   today: string
   /** Promoting a quote line: listing, currency and price come from it and are locked. */
   quote?: QuoteLineForPromotion | null
+  /** products.name by id, the name the database's sentences use. */
+  names?: Readonly<Record<string, string>>
 }) {
-  const { fmtIn } = useMarket()
-  const fmt = (n: number, c: string) => fmtIn(n, c, { decimals: true })
+  const { book } = useMarket()
+  /* The agreed figure in its own money; never converted. */
+  const fmt = (n: number, c: string) => priceText(n, c, book?.currencies ?? [], true)
   const ids = useId()
 
   const [productId, setProductId] = useState('')
@@ -100,7 +107,7 @@ export function SetPriceDialog({
 
   const locked = !!quote
   const listing = listings.find(l => l.id === productId)
-  const productName = listing?.name ?? quote?.name ?? productId
+  const productName = names?.[productId] ?? listing?.name ?? quote?.name ?? productId
   const priced = rows?.find(r => r.currency === currency) ?? null
   const unit = price.trim() === '' ? NaN : Number(price)
 
@@ -120,6 +127,10 @@ export function SetPriceDialog({
       company: account.company, market: account.market, productName,
     })
     if (rows === null) { delete p.product_id; if (p.unit_price && Number.isFinite(unit) && unit > 0) delete p.unit_price }
+    /* No price-book row: guard_account_price falls back to the listing's own
+       price when that is in this currency, which this screen cannot see, so
+       the database decides rather than the screen refusing for it. */
+    else if (!priced && (listing || locked)) delete p.product_id
     return p
   })()
 
@@ -199,7 +210,7 @@ export function SetPriceDialog({
             : rows === null ? 'Reading today\'s published price and floor…'
             : priced
               ? `Published today ${fmt(priced.price, currency)} · floor ${priced.floor_price === null ? 'none set' : fmt(priced.floor_price, currency)}. An account price sits between them.`
-              : `No published price in ${currency} today.`}
+              : `No price-book row in ${currency} today. The database checks the listing's own price, if it is in ${currency}, when you set it.`}
         </div>
         {errorLine('unit_price')}
 

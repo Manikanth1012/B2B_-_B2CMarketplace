@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BookMarked } from 'lucide-react'
 import { SectionCard, Btn, Table, Td, EmptyState, StatusPill, FormField, TextInput, Select, toast } from './shared'
 import { Callout } from '../OnboardingJourney'
@@ -7,7 +7,8 @@ import { loadAccountBook } from '../../lib/accountsRepo'
 import { loadPriceBook } from '../../lib/moneyRepo'
 import type { PriceRow } from '../../lib/moneyRepo'
 import { loadEnterpriseCatalogue } from '../../lib/enterpriseRepo'
-import { loadAccountPrices, loadPromotable } from '../../lib/priceBookRepo'
+import { loadAccountPrices, loadPromotable, loadProductsByIds } from '../../lib/priceBookRepo'
+import { priceText } from '../../lib/priceText'
 import { standingOf, shelfPrice, promotable } from '../../lib/accountPrices'
 import type { AccountPrice, PriceStanding, QuoteLineForPromotion } from '../../lib/accountPrices'
 import { priceStandingStatus } from '../../lib/consoleTone'
@@ -17,7 +18,7 @@ import type { Account } from '../../lib/accounts'
 import { SetPriceDialog } from '../pricebooks/SetPriceDialog'
 import type { SetPriceListing } from '../pricebooks/SetPriceDialog'
 import { EndPriceDialog } from '../pricebooks/EndPriceDialog'
-import { PromoteQuoteDialog } from '../pricebooks/PromoteQuoteDialog'
+import { PromoteQuoteDialog, promoteProblem } from '../pricebooks/PromoteQuoteDialog'
 
 /* The desk's view of each business account's own prices.
  *
@@ -41,23 +42,31 @@ const FILTERS: { id: StandingFilter; label: string }[] = [
 const todayIso = () => new Date().toISOString().slice(0, 10)
 
 interface Loaded {
+  /** The account these rows belong to: nothing is shown or acted on under another. */
+  accountId: string
   prices: AccountPrice[]
-  listings: SetPriceListing[]
   quotes: QuoteLineForPromotion[]
+  /** products.name by id, read by id so paused and delisted listings keep their names. */
+  names: Record<string, string>
   books: Record<string, Map<string, PriceRow>>
   error: string | null
 }
 
 export function OperatorPriceBooks() {
-  const { book, fmtIn } = useMarket()
-  const fmt = (n: number, c: string) => fmtIn(n, c, { decimals: true })
+  const { book } = useMarket()
+  /* The agreed figure in its own money; never converted. */
+  const fmt = (n: number, c: string) => priceText(n, c, book?.currencies ?? [], true)
   const today = todayIso()
 
   const [accounts, setAccounts] = useState<Account[] | null>(null)
   const [accountsError, setAccountsError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [accountId, setAccountId] = useState('')
-  const [data, setData] = useState<Loaded | null>(null)
+  const [loaded, setData] = useState<Loaded | null>(null)
+  /* Business listings for the Set picker, read once per account. */
+  const [shelf, setShelf] = useState<{ accountId: string; listings: SetPriceListing[] } | null>(null)
+  /* The account picked now. A read that answers after the pick has moved on is dropped. */
+  const picked = useRef('')
   const [standing, setStanding] = useState<StandingFilter>('current')
   const [currency, setCurrency] = useState('all')
   const [setting, setSetting] = useState(false)
@@ -76,49 +85,75 @@ export function OperatorPriceBooks() {
   }, [])
 
   const account = accounts?.find(a => a.id === accountId) ?? null
+  picked.current = accountId
   const marketCurrencies = useMemo(
     () => (account ? currenciesOf(account.market, book.accepted) : []),
     [account, book.accepted],
   )
+  /* Held, so the Set dialog's reset (which depends on it) does not fire on every render. */
+  const takes = useMemo(
+    () => (account ? (marketCurrencies.length ? marketCurrencies : [account.currency]) : []),
+    [account, marketCurrencies],
+  )
 
   const reload = useCallback(async (a: Account, takes: readonly string[]) => {
-    const [ap, cat, pq] = await Promise.all([
-      loadAccountPrices(a.id),
-      loadEnterpriseCatalogue(a.currency, a.id).catch(() => []),
-      loadPromotable(a.id),
-    ])
-    const prices = ap.ok ? ap.value : []
-    const quotes = pq.ok ? pq.value : []
+    const [ap, pq] = await Promise.all([loadAccountPrices(a.id), loadPromotable(a.id)])
+    if (picked.current !== a.id) return
+    const prices = (ap.ok ? ap.value : []).filter(p => p.account_id === a.id)
+    const quotes = (pq.ok ? pq.value : []).filter(q => q.account_id === a.id)
     const wanted = new Set<string>([...takes, a.currency, ...prices.map(p => p.currency), ...quotes.map(q => q.currency)])
     const books: Record<string, Map<string, PriceRow>> = {}
-    await Promise.all([...wanted].map(async c => { books[c] = await loadPriceBook(c).catch(() => new Map()) }))
+    const [named] = await Promise.all([
+      loadProductsByIds([...prices.map(p => p.product_id), ...quotes.map(q => q.product_id)]),
+      ...[...wanted].map(async c => { books[c] = await loadPriceBook(c).catch(() => new Map()) }),
+    ])
+    if (picked.current !== a.id) return
+    const names: Record<string, string> = {}
+    if (named.ok) for (const n of named.value) names[n.id] = n.name
     setData({
-      prices, quotes, books,
-      listings: cat.map(l => ({ id: l.id, name: l.name, seller: l.seller })),
-      error: !ap.ok ? ap.error : !pq.ok ? pq.error : null,
+      accountId: a.id, prices, quotes, books, names,
+      error: !ap.ok ? ap.error : !pq.ok ? pq.error : !named.ok ? `Listing names did not load (${named.error}).` : null,
     })
   }, [])
 
   useEffect(() => {
-    setData(null)
-    if (account) void reload(account, marketCurrencies)
-  }, [account, marketCurrencies, reload])
+    if (account) void reload(account, takes)
+  }, [account, takes, reload])
+
+  useEffect(() => {
+    if (!account) return
+    let live = true
+    loadEnterpriseCatalogue(account.currency, account.id).then(
+      cat => { if (live) setShelf({ accountId: account.id, listings: cat.map(l => ({ id: l.id, name: l.name, seller: l.seller })) }) },
+      () => { if (live) setShelf({ accountId: account.id, listings: [] }) },
+    )
+    return () => { live = false }
+  }, [account])
+
+  /* Only ever the picked account's answer. */
+  const data = loaded && account && loaded.accountId === account.id ? loaded : null
+  const listings = shelf && account && shelf.accountId === account.id ? shelf.listings : []
 
   const matches = (accounts ?? []).filter(a =>
     !search.trim() || a.company.toLowerCase().includes(search.trim().toLowerCase()) || a.id.toLowerCase().includes(search.trim().toLowerCase()))
 
-  const nameOf = (id: string) => data?.listings.find(l => l.id === id)
+  const nameOf = (id: string): string => data?.names[id] ?? listings.find(l => l.id === id)?.name ?? id
+  const sellerOf = (id: string) => listings.find(l => l.id === id)?.seller
   const waiting = data ? promotable(data.quotes, data.prices, today) : []
+  /* The count on the button is what can actually be promoted today. */
+  const pickable = data
+    ? waiting.filter(l => !promoteProblem(l, data.books[l.currency]?.get(l.product_id) ?? null, nameOf(l.product_id)))
+    : []
   const currenciesOnBook = data ? [...new Set(data.prices.map(p => p.currency))].sort() : []
   const rows = (data?.prices ?? []).filter(p => {
     const s = standingOf(p, today)
     if (standing === 'current' ? !(s === 'in force' || s === 'scheduled') : standing !== 'all' && s !== standing) return false
     return currency === 'all' || p.currency === currency
-  }).sort((a, b) => a.currency.localeCompare(b.currency) || (nameOf(a.product_id)?.name ?? a.product_id).localeCompare(nameOf(b.product_id)?.name ?? b.product_id) || b.starts_on.localeCompare(a.starts_on))
+  }).sort((a, b) => a.currency.localeCompare(b.currency) || nameOf(a.product_id).localeCompare(nameOf(b.product_id)) || b.starts_on.localeCompare(a.starts_on))
 
   const afterWrite = (said: string) => {
     toast(said)
-    if (account) void reload(account, marketCurrencies)
+    if (account) void reload(account, takes)
   }
 
   return (
@@ -140,7 +175,10 @@ export function OperatorPriceBooks() {
             <TextInput type="search" value={search} onChange={e => setSearch(e.target.value)} />
           </FormField>
           <FormField label="Account">
-            <Select value={accountId} onChange={e => { setAccountId(e.target.value); setStanding('current'); setCurrency('all') }}>
+            <Select value={accountId} onChange={e => {
+              setAccountId(e.target.value); setStanding('current'); setCurrency('all')
+              setSetting(false); setPromoting(false); setEnding(null); setQuote(null)
+            }}>
               <option value="">{accounts === null ? 'Loading accounts…' : `Choose an account (${matches.length})`}</option>
               {matches.map(a => <option key={a.id} value={a.id}>{a.company} — {a.id}</option>)}
               {account && !matches.includes(account) && <option value={account.id}>{account.company} — {account.id}</option>}
@@ -164,7 +202,7 @@ export function OperatorPriceBooks() {
           action={
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <Btn variant="secondary" className="pb-target" onClick={() => setPromoting(true)}>
-                Promote from a quote{waiting.length ? ` (${waiting.length})` : ''}
+                Promote from a quote{pickable.length ? ` (${pickable.length})` : ''}
               </Btn>
               <Btn className="pb-target" onClick={() => { setQuote(null); setSetting(true) }}>Set a price</Btn>
             </div>
@@ -196,16 +234,17 @@ export function OperatorPriceBooks() {
             <Table headers={['Listing', 'Currency', 'Account price', 'Published · floor today', 'Charged today', 'Window', 'Source', 'Standing', '']}>
               {rows.map(p => {
                 const s = standingOf(p, today)
-                const listing = nameOf(p.product_id)
+                const name = nameOf(p.product_id)
+                const seller = sellerOf(p.product_id)
                 const today_ = data.books[p.currency]?.get(p.product_id) ?? null
                 const live = s === 'in force' || s === 'scheduled'
                 const charged = today_ ? shelfPrice(today_.price, today_.floor_price, p) : null
                 return (
                   <tr key={p.id}>
                     <Td style={{ maxWidth: '26ch' }}>
-                      <strong style={{ fontSize: 'var(--text-sm)' }}>{listing?.name ?? p.product_id}</strong>
+                      <strong style={{ fontSize: 'var(--text-sm)' }}>{name}</strong>
                       <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
-                        {listing ? listing.seller : 'Not on the business shelf today'} · {p.id}
+                        {seller ?? 'Not on the business shelf today'} · {p.id}
                       </div>
                     </Td>
                     <Td>{p.currency}</Td>
@@ -244,9 +283,9 @@ export function OperatorPriceBooks() {
                     </Td>
                     <Td><StatusPill status={priceStandingStatus(s)} label={s} /></Td>
                     <Td>
-                      {live && (
+                      {live && p.account_id === account.id && (
                         <Btn size="sm" variant="secondary" className="pb-target" onClick={() => setEnding(p)}
-                          aria-label={`End ${p.id}, ${listing?.name ?? p.product_id} in ${p.currency}`}>End</Btn>
+                          aria-label={`End ${p.id}, ${name} in ${p.currency}`}>End</Btn>
                       )}
                     </Td>
                   </tr>
@@ -261,12 +300,13 @@ export function OperatorPriceBooks() {
         <>
           <SetPriceDialog open={setting} onClose={() => { setSetting(false); setQuote(null) }}
             onSaved={id => { setSetting(false); setQuote(null); afterWrite(`${id} is on ${account.company}'s price book.`) }}
-            account={account} currencies={marketCurrencies.length ? marketCurrencies : [account.currency]}
-            listings={data.listings} prices={data.prices} today={today} quote={quote} />
+            account={account} currencies={takes}
+            listings={listings} prices={data.prices} today={today} quote={quote} names={data.names} />
           <PromoteQuoteDialog open={promoting} onClose={() => setPromoting(false)}
-            company={account.company} lines={waiting} books={data.books}
+            company={account.company} lines={waiting} books={data.books} names={data.names}
             onPick={l => { setPromoting(false); setQuote(l); setSetting(true) }} />
-          <EndPriceDialog price={ending} productName={ending ? (nameOf(ending.product_id)?.name ?? ending.product_id) : ''}
+          <EndPriceDialog price={ending && ending.account_id === account.id ? ending : null}
+            productName={ending ? nameOf(ending.product_id) : ''}
             today={today} onClose={() => setEnding(null)}
             onEnded={() => { const id = ending?.id; setEnding(null); afterWrite(`${id} has been ended.`) }} />
         </>
