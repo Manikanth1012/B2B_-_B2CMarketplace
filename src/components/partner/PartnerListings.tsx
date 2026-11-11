@@ -27,6 +27,7 @@ import type { Submission } from '../../lib/catalogue'
 import type { ListingQuery } from '../../lib/catalogueRepo'
 import { fmtDate, Modal } from '../operator/shared'
 import { PriceBookEditor } from '../PriceBookEditor'
+import { SellerAccountPrices } from '../pricebooks/SellerAccountPrices'
 import { listingState, listingBreakdown, rateAt } from '../../lib/partnerCommerce'
 import type { ListingRow } from '../../lib/partnerCommerce'
 
@@ -475,11 +476,14 @@ export function PartnerListings({ partnerId, onNewListing }: {
         footer={<Btn variant="secondary" size="sm" onClick={() => setPricing(null)}>Close</Btn>}
       >
         {pricing && (
-          <PriceBookEditor
-            product={pricing}
-            who={{ persona: 'partner', partnerId }}
-            onChanged={() => { void loadSellerRecord(partnerId).then(setRec) }}
-          />
+          <>
+            <PriceBookEditor
+              product={pricing}
+              who={{ persona: 'partner', partnerId }}
+              onChanged={() => { void loadSellerRecord(partnerId).then(setRec) }}
+            />
+            <SellerAccountPrices productId={pricing.id} />
+          </>
         )}
       </Modal>
 
