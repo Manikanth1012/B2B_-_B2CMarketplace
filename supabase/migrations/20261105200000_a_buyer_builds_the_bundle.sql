@@ -112,7 +112,7 @@ create table if not exists bundle_selections (
   /* A business or a person, never both and never neither. */
   constraint bundle_selections_owner_check check ((account_id is null) <> (user_id is null)),
   constraint bundle_selections_valid_until_check check (valid_until > priced_at),
-  constraint bundle_selections_total_check check (total <= parts_total)
+  constraint bundle_selections_total_within_parts check (total <= parts_total)
 );
 
 create index if not exists bundle_selections_account_idx on bundle_selections(account_id) where account_id is not null;

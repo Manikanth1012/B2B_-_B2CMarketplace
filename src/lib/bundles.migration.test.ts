@@ -422,6 +422,23 @@ describe('the bundles migration', () => {
     expect(lower).toContain("x.b ->> 'heading' is distinct from 'configurable bundles'")
   })
 
+  /* Postgres names a column's own CHECK "<table>_<column>_check". A named
+     constraint with that same name in the same CREATE TABLE fails on apply
+     ("constraint ... already exists") — the first apply of this file did. */
+  it('names no constraint the way Postgres names a column check in the same table', () => {
+    const clashes: string[] = []
+    for (const m of sql.matchAll(/create table if not exists (\w+) \(([\s\S]*?)\n\);/gi)) {
+      const [, table, body] = m
+      const auto = new Set<string>()
+      for (const line of body.split('\n')) {
+        const col = /^\s*(\w+)\s+[^\n]*?\bcheck\s*\(/i.exec(line)
+        if (col && col[1].toLowerCase() !== 'constraint') auto.add(`${table}_${col[1]}_check`.toLowerCase())
+      }
+      for (const n of body.matchAll(/constraint (\w+)/gi)) if (auto.has(n[1].toLowerCase())) clashes.push(n[1])
+    }
+    expect(clashes).toEqual([])
+  })
+
   it('lets each part of a selection be ordered once, counted under a lock on the selection', () => {
     expect(lower).toContain('perform 1 from bundle_selections where id = v_s.id for update')
     expect(lower).toContain('has already been ordered')
