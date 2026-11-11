@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { statusTone } from './consoleTone'
+import { statusTone, priceStandingStatus } from './consoleTone'
 
 /* Every key the console's StatusPill and PriorityPill have ever coloured, with
    the tone it carried before the restyle (green = success, amber = warning,
@@ -40,7 +40,7 @@ const enquiries: Record<string, string> = {
   scheduled: 'success', done: 'success', answered: 'warning', withdrawn: 'neutral',
 }
 
-const prices: Record<string, string> = { 'in force': 'success', ended: 'neutral', withdrawn: 'neutral' }
+const prices: Record<string, string> = { 'in force': 'success', ended: 'neutral', 'starts later': 'info' }
 
 describe('statusTone', () => {
   for (const [status, tone] of Object.entries(prices)) {
@@ -61,5 +61,19 @@ describe('statusTone', () => {
   })
   it('does not trip over object prototype keys', () => {
     expect(statusTone('constructor')).toBe('neutral')
+  })
+})
+
+describe('priceStandingStatus', () => {
+  it('renames only a scheduled price, and its tone is info', () => {
+    expect(priceStandingStatus('scheduled')).toBe('starts later')
+    expect(statusTone(priceStandingStatus('scheduled'))).toBe('info')
+    expect(priceStandingStatus('in force')).toBe('in force')
+    expect(statusTone(priceStandingStatus('in force'))).toBe('success')
+    expect(statusTone(priceStandingStatus('ended'))).toBe('neutral')
+    expect(statusTone(priceStandingStatus('withdrawn'))).toBe('neutral')
+  })
+  it('leaves the enquiry reading of scheduled alone', () => {
+    expect(statusTone('scheduled')).toBe('success')
   })
 })

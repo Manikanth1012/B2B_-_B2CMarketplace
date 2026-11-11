@@ -1,37 +1,31 @@
-/* The tag has only a code to go on, so the symbol and grouping come from the
-   platform: ₹21,999 for INR (lakh grouping), whole amounts without decimals. */
-function money(n: number, currency: string): string {
-  const whole = Number.isInteger(n)
-  try {
-    return new Intl.NumberFormat(currency === 'INR' ? 'en-IN' : 'en-US', {
-      style: 'currency', currency, currencyDisplay: 'narrowSymbol',
-      minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2,
-    }).format(n)
-  } catch {
-    return `${currency} ${n.toLocaleString('en-US')}`
-  }
-}
+import { useMarket } from '../../lib/MarketContext'
+import { priceText, needsDecimals } from '../../lib/priceText'
 
 /* What an account pays against what everybody sees. When the account's price is
    lower than the published one, both are shown and the published one is struck;
    otherwise there is one figure. The sentence a screen reader gets carries both
-   in words, because strike-through alone says nothing to it. */
+   in words, because strike-through alone says nothing to it. `compact` only
+   tightens the type; figures are never abbreviated. */
 export function PriceTag({ price, published, currency, compact }: {
   price: number
   published: number
   currency: string
   compact?: boolean
 }) {
+  const { book } = useMarket()
+  const dec = needsDecimals(price, published)
+  const fmt = (n: number) => priceText(n, currency, book?.currencies ?? [], dec)
   const lower = price < published
-  const label = lower
-    ? `Your price ${money(price, currency)}, published price ${money(published, currency)}`
-    : money(price, currency)
+  const sentence = lower
+    ? `Your price ${fmt(price)}, published price ${fmt(published)}`
+    : fmt(price)
   return (
-    <span className={`pb-tag${compact ? ' pb-tag--compact' : ''}`} role="group" aria-label={label}>
+    <span className={`pb-tag${compact ? ' pb-tag--compact' : ''}`}>
+      <span className="sr-only">{sentence}</span>
       <span aria-hidden="true" className="pb-tag__visual">
         {lower && <span className="pb-tag__label">Your price</span>}
-        <span className="pb-tag__price">{money(price, currency)}</span>
-        {lower && <s className="pb-tag__was">{money(published, currency)}</s>}
+        <span className="pb-tag__price">{fmt(price)}</span>
+        {lower && <s className="pb-tag__was">{fmt(published)}</s>}
       </span>
     </span>
   )
