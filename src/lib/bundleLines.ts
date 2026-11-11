@@ -8,7 +8,6 @@
  */
 import { bundleStanding, type Choices } from './bundles'
 import type { Selection, SelectionLine } from './bundlePayload'
-import { round2 } from './money'
 import type { Basket, BasketLine } from './requisitionBasket'
 
 /** One selection with its lines and its template's name, as a basket shows it. */
@@ -64,11 +63,6 @@ export function priceCartBundles<T extends { product_id: string; bundle_selectio
   })
 }
 
-/** What a group of lines comes to at the prices on them. */
-export function groupTotal(lines: readonly { quantity: number }[], priceOf: (l: { quantity: number }) => number): number {
-  return round2(lines.reduce((n, l) => n + round2(priceOf(l) * l.quantity), 0))
-}
-
 export type BundleBlock =
   | { kind: 'ok' }
   | { kind: 'unloaded'; says: string }
@@ -82,14 +76,14 @@ export type BundleBlock =
  * last read it; the database decides finally.
  */
 export function bundleBlock(
-  info: BundleInfo | null | undefined, currency: string, today: string,
+  info: BundleInfo | null | undefined, currency: string, now: string,
   available: (productId: string) => boolean,
 ): BundleBlock {
   if (!info) return { kind: 'unloaded', says: 'This bundle’s price did not load, so it cannot be bought yet. Reload, or remove it.' }
   if (info.selection.currency !== currency) {
     return { kind: 'currency', says: `${info.name} is priced in ${info.selection.currency}, and this basket is being paid in ${currency}.` }
   }
-  const s = bundleStanding(info.selection, info.lines, today, available)
+  const s = bundleStanding(info.selection, info.lines, now, available)
   if (s.kind === 'expired') {
     return { kind: 'expired', says: `The price of ${info.name} was held for seven days and that has passed. Re-price it to continue.` }
   }
@@ -195,6 +189,24 @@ export function heldCurrencyNote(basket: Basket, shelf: string): string | null {
   return `Your requisition holds ${what} in ${basket.currency}, so it stays in ${basket.currency}. Raise it, or remove ${which}, before adding from the ${shelf} shelf.`
 }
 
+/** Whether a requisition bundle can still be raised, from what its basket
+    lines remember: the same standing as the basket's, by the instant its hold
+    ends. Parts on sale are the database's check when the requisition is
+    written (the basket does not carry product status). */
+export function requisitionBundleBlock(
+  meta: BundleMeta | undefined, lines: readonly { product_id: string; name: string }[], currency: string, now: string,
+): BundleBlock {
+  if (!meta) return { kind: 'ok' }
+  if (meta.currency !== currency) {
+    return { kind: 'currency', says: `${meta.name} is priced in ${meta.currency}, and this requisition is in ${currency}.` }
+  }
+  const s = bundleStanding({ valid_until: meta.validUntil }, lines, now, () => true)
+  if (s.kind === 'expired') {
+    return { kind: 'expired', says: `The price of ${meta.name} was held for seven days and that has passed. Re-price it to raise it.` }
+  }
+  return { kind: 'ok' }
+}
+
 /** Whether a basket line's product is still on sale as the screen read it:
     live and not out of stock. A line whose product did not load is not. */
 export function partOnSale(product: { status?: string | null; stock?: string | null } | null | undefined): boolean {
@@ -205,13 +217,13 @@ export function partOnSale(product: { status?: string | null; stock?: string | n
 
 /** The bundles in a basket that stop it being bought, with their sentences. */
 export function basketBundleBlocks<T extends { product_id: string; bundle_selection_id?: string | null; bundle?: BundleInfo | null; product?: { status?: string | null; stock?: string | null } | null }>(
-  lines: readonly T[], currency: string, today: string,
+  lines: readonly T[], currency: string, now: string,
 ): { selectionId: string; block: Exclude<BundleBlock, { kind: 'ok' }> }[] {
   const out: { selectionId: string; block: Exclude<BundleBlock, { kind: 'ok' }> }[] = []
   for (const id of bundleIdsOf(lines)) {
     const mine = lines.filter(l => l.bundle_selection_id === id)
     const onSale = new Map(mine.map(l => [l.product_id, partOnSale(l.product)]))
-    const b = bundleBlock(mine[0]?.bundle ?? null, currency, today, pid => onSale.get(pid) ?? true)
+    const b = bundleBlock(mine[0]?.bundle ?? null, currency, now, pid => onSale.get(pid) ?? true)
     if (b.kind !== 'ok') out.push({ selectionId: id, block: b })
   }
   return out

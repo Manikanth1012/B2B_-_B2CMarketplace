@@ -11,6 +11,11 @@ import { BUNDLE_FALLBACK_NAME, type BundleInfo } from './bundleLines'
 
 type Result<T = void> = { ok: true; value: T } | { ok: false; error: string }
 
+/** A put that may have changed the basket even though it failed: `changed`
+    says the rows are different now, so the screen must reload whatever the
+    outcome — a stale list is one checkout could order from. */
+export type PutResult = { ok: true } | { ok: false; error: string; changed: boolean }
+
 /** Selections by id with their lines and template names. A template the
     caller can no longer see (paused, say) is named generically. */
 export async function loadBundleInfo(ids: string[]): Promise<Result<Map<string, BundleInfo>>> {
@@ -42,28 +47,46 @@ export async function loadBundleInfo(ids: string[]): Promise<Result<Map<string, 
  * taken out after the new one is in — removing one of its lines removes the
  * rest — so a failed add never leaves the shopper with neither.
  */
-export async function putBundleInCart(selectionId: string, replaceSelectionId?: string): Promise<Result> {
+export async function putBundleInCart(selectionId: string, replaceSelectionId?: string): Promise<PutResult> {
   const got = await loadSelections([selectionId])
-  if (!got.ok) return got
+  if (!got.ok) return { ok: false, error: got.error, changed: false }
   const lines = got.value.lines.filter(l => l.selection_id === selectionId)
   if (!got.value.selections.length || !lines.length) {
-    return { ok: false, error: 'That bundle could not be read back, so nothing was added.' }
+    return { ok: false, error: 'That bundle could not be read back, so nothing was added.', changed: false }
   }
   try {
     const ins = await supabase.from('cart_items')
       .insert(lines.map(l => ({ product_id: l.product_id, quantity: l.quantity, bundle_selection_id: selectionId })))
       .select('id')
     if (ins.error) {
-      return { ok: false, error: /duplicate key/i.test(ins.error.message) ? 'That bundle is already in your basket.' : friendly(ins.error.message) }
+      /* Refused whole: the commit-time check rolls the insert back, so the
+         basket is as it was. */
+      return {
+        ok: false, changed: false,
+        error: /duplicate key/i.test(ins.error.message) ? 'That bundle is already in your basket.' : friendly(ins.error.message),
+      }
     }
-    if ((ins.data?.length ?? 0) !== lines.length) return { ok: false, error: 'The bundle did not go into the basket whole, so nothing was added.' }
+    if ((ins.data?.length ?? 0) !== lines.length) {
+      /* Written without a refusal, but fewer rows came back than were sent.
+         The basket did change, so it is reloaded rather than described. */
+      return {
+        ok: false, changed: true,
+        error: 'The bundle went into your basket, but not every part could be read back. Your basket has been reloaded; check it before you pay.',
+      }
+    }
     if (replaceSelectionId && replaceSelectionId !== selectionId) {
       const del = await removeCartBundle(replaceSelectionId)
-      if (!del.ok) return { ok: false, error: `The new bundle is in your basket, but the old one could not be taken out: ${del.error}` }
+      if (!del.ok) {
+        return {
+          ok: false, changed: true,
+          error: `Both bundles are now in your basket: the new one went in, but the old one could not be taken out (${del.error}). Remove the old one before you check out.`,
+        }
+      }
     }
-    return { ok: true, value: undefined }
+    return { ok: true }
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) }
+    /* The request may or may not have reached the database; reload to find out. */
+    return { ok: false, changed: true, error: err instanceof Error ? err.message : String(err) }
   }
 }
 

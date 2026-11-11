@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import {
   bundleIdsOf, priceCartBundles, bundleBlock, bundleBasketLines, addBundleToBasket,
   removeBundleFromBasket, holdsBundle, heldCurrencyNote, bundleColumns, partOnSale,
-  basketBundleBlocks, type BundleInfo,
+  basketBundleBlocks, requisitionBundleBlock, type BundleInfo,
 } from './bundleLines'
 import {
   addToBasket, setQuantity, removeLine, repriceTo, EMPTY_BASKET, quoteHoldsCurrency,
@@ -51,24 +51,24 @@ describe('cart lines', () => {
     const out = priceCartBundles([{ product_id: 'A', bundle_selection_id: 'BS-9', product: { price: 300 } }], new Map())
     expect(out[0].bundle_unit_price).toBeNull()
     expect(out[0].product?.price).toBe(0)
-    expect(bundleBlock(out[0].bundle, 'INR', '2026-11-05', () => true).kind).toBe('unloaded')
+    expect(bundleBlock(out[0].bundle, 'INR', '2026-11-05T12:00:00Z', () => true).kind).toBe('unloaded')
   })
 })
 
 describe('what stops a bundle being bought', () => {
   it('is fine inside its seven days with every part on sale', () => {
-    expect(bundleBlock(info(), 'INR', '2026-11-08', () => true)).toEqual({ kind: 'ok' })
+    expect(bundleBlock(info(), 'INR', '2026-11-07T23:59:00Z', () => true)).toEqual({ kind: 'ok' })
   })
   it('asks for a re-price once the hold has passed', () => {
-    expect(bundleBlock(info(), 'INR', '2026-11-09', () => true).kind).toBe('expired')
+    expect(bundleBlock(info(), 'INR', '2026-11-08T00:00:01Z', () => true).kind).toBe('expired')
   })
   it('names the part that is no longer on sale', () => {
-    const b = bundleBlock(info(), 'INR', '2026-11-05', id => id !== 'B')
+    const b = bundleBlock(info(), 'INR', '2026-11-05T12:00:00Z', id => id !== 'B')
     expect(b.kind).toBe('part-unavailable')
     if (b.kind === 'part-unavailable') expect(b.says).toContain('Gateway')
   })
   it('refuses a bundle priced in another currency', () => {
-    expect(bundleBlock(info(), 'AED', '2026-11-05', () => true).kind).toBe('currency')
+    expect(bundleBlock(info(), 'AED', '2026-11-05T12:00:00Z', () => true).kind).toBe('currency')
   })
   it('reads availability from the basket line products', () => {
     expect(partOnSale({ status: 'live', stock: 'in' })).toBe(true)
@@ -81,10 +81,10 @@ describe('what stops a bundle being bought', () => {
       { product_id: 'B', bundle_selection_id: 'BS-1', bundle: i, product: { status: 'live', stock: 'out' } },
       { product_id: 'C', product: { status: 'paused', stock: 'out' } },
     ]
-    const blocks = basketBundleBlocks(lines, 'INR', '2026-11-05')
+    const blocks = basketBundleBlocks(lines, 'INR', '2026-11-05T12:00:00Z')
     expect(blocks).toHaveLength(1)
     expect(blocks[0].block.kind).toBe('part-unavailable')
-    expect(basketBundleBlocks([lines[2]], 'INR', '2026-11-05')).toEqual([])
+    expect(basketBundleBlocks([lines[2]], 'INR', '2026-11-05T12:00:00Z')).toEqual([])
   })
 })
 
@@ -175,6 +175,14 @@ describe('a bundle on a requisition', () => {
     expect(bundleColumns({})).toEqual({})
     expect(bundleColumns({ bundle_selection_id: null })).toEqual({})
     expect(bundleColumns({ bundle_selection_id: 'BS-1' })).toEqual({ bundle_selection_id: 'BS-1' })
+  })
+
+  it('judges a requisition bundle by the instant its hold ends', () => {
+    const meta = bundleBasketLines(info(), facts).lines[0].bundle
+    expect(requisitionBundleBlock(meta, [], 'INR', '2026-11-07T23:00:00Z')).toEqual({ kind: 'ok' })
+    expect(requisitionBundleBlock(meta, [], 'INR', '2026-11-08T00:00:01Z').kind).toBe('expired')
+    expect(requisitionBundleBlock(meta, [], 'AED', '2026-11-07T23:00:00Z').kind).toBe('currency')
+    expect(requisitionBundleBlock(undefined, [], 'INR', '2026-11-09T00:00:00Z')).toEqual({ kind: 'ok' })
   })
 
   it('is pure', () => {

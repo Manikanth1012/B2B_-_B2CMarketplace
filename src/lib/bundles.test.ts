@@ -105,15 +105,25 @@ describe('priceBundle', () => {
 
 describe('bundleStanding', () => {
   const lines = [{ product_id: 'A', name: 'Alpha' }, { product_id: 'B', name: 'Beta' }, { product_id: 'C', name: 'Gamma' }]
-  it('is expired when valid_until is before today', () => {
-    expect(bundleStanding({ valid_until: '2026-11-04' }, lines, '2026-11-05', () => true)).toEqual({ kind: 'expired' })
+  const now = '2026-11-05T12:00:00Z'
+  it('is expired when valid_until is before now, as the database judges it', () => {
+    expect(bundleStanding({ valid_until: '2026-11-04T23:59:00Z' }, lines, now, () => true)).toEqual({ kind: 'expired' })
   })
-  it('is ok on the day itself, also for a timestamp', () => {
-    expect(bundleStanding({ valid_until: '2026-11-05' }, lines, '2026-11-05', () => true)).toEqual({ kind: 'ok' })
-    expect(bundleStanding({ valid_until: '2026-11-05T23:59:00Z' }, lines, '2026-11-05', () => true)).toEqual({ kind: 'ok' })
+  it('is expired when the hold ended earlier today', () => {
+    expect(bundleStanding({ valid_until: '2026-11-05T09:30:00Z' }, lines, now, () => true)).toEqual({ kind: 'expired' })
+    expect(bundleStanding({ valid_until: '2026-11-05T11:59:59.999Z' }, lines, now, () => true)).toEqual({ kind: 'expired' })
+  })
+  it('is ok at the very instant and later the same day, in any offset', () => {
+    expect(bundleStanding({ valid_until: now }, lines, now, () => true)).toEqual({ kind: 'ok' })
+    expect(bundleStanding({ valid_until: '2026-11-05T23:59:00Z' }, lines, now, () => true)).toEqual({ kind: 'ok' })
+    expect(bundleStanding({ valid_until: '2026-11-05T18:00:00+05:30' }, lines, now, () => true)).toEqual({ kind: 'ok' })
+    expect(bundleStanding({ valid_until: '2026-11-05T17:00:00+05:30' }, lines, now, () => true)).toEqual({ kind: 'expired' })
+  })
+  it('treats an unreadable instant as ended rather than held', () => {
+    expect(bundleStanding({ valid_until: 'soon' }, lines, now, () => true)).toEqual({ kind: 'expired' })
   })
   it('names the first unavailable part', () => {
-    expect(bundleStanding({ valid_until: '2026-11-12' }, lines, '2026-11-05', id => id === 'A'))
+    expect(bundleStanding({ valid_until: '2026-11-12T00:00:00Z' }, lines, now, id => id === 'A'))
       .toEqual({ kind: 'part-unavailable', product_id: 'B', name: 'Beta' })
   })
 })

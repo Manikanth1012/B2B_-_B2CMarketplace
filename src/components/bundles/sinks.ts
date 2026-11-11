@@ -22,9 +22,10 @@ export type Sink = (selectionId: string, replaceSelectionId?: string) => Promise
 /** Into the shopper's basket (cart_items), in one insert. */
 export const basketSink: Sink = async (selectionId, replaceSelectionId) => {
   const r = await putBundleInCart(selectionId, replaceSelectionId)
-  if (!r.ok) return { ok: false, error: r.error }
-  bundlesChanged()
-  return { ok: true }
+  /* Reload whenever the basket changed, including a replace that put the new
+     bundle in but could not take the old one out: the screen must show both. */
+  if (r.ok || r.changed) bundlesChanged()
+  return r.ok ? { ok: true } : { ok: false, error: r.error }
 }
 
 /** Into the requisition being built, at the selection's fixed unit prices. */

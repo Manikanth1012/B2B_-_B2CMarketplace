@@ -33,7 +33,7 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
      is India's GST charged to a shopper in Nairobi where it is sixteen. */
   const { market, currency, fmt } = useMarket()
   const shopCurrency = currency?.code ?? market?.currency ?? ''
-  const today = new Date().toISOString().slice(0, 10)
+  const now = new Date().toISOString()
 
   /* A configured bundle: one grouped line. Ordinary lines are drawn exactly as
      before — each is its own group. */
@@ -41,7 +41,7 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
     const info = lines[0].bundle ?? null
     const name = info?.name ?? BUNDLE_FALLBACK_NAME
     const onSale = new Map(lines.map(l => [l.product_id, partOnSale(l.product)]))
-    const block = savedGroup ? { kind: 'ok' as const } : bundleBlock(info, shopCurrency, today, pid => onSale.get(pid) ?? true)
+    const block = savedGroup ? { kind: 'ok' as const } : bundleBlock(info, shopCurrency, now, pid => onSale.get(pid) ?? true)
     const total = lines.reduce((n, l) => n + (l.product?.price ?? 0) * l.quantity, 0)
     return (
       <div key={lines[0].bundle_selection_id} className={savedGroup ? 'cart-line--saved' : undefined}>
@@ -56,7 +56,7 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
           partsTotal={info?.selection.parts_total ?? null}
           fmt={fmt}
           block={block}
-          editable={info ? {
+          editable={info && !savedGroup ? {
             selectionId: info.selection.id, templateId: info.selection.template_id,
             choices: info.selection.choices, quantity: info.selection.quantity, currency: info.selection.currency,
           } : null}
@@ -65,8 +65,9 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
           onRemove={() => onRemove(lines[0].id)}
           actions={
             <button type="button" className="bundle-group__btn"
+              disabled={savedGroup && !lines.every(canMoveToBasket)}
               onClick={() => onSetSaved(lines[0].id, !savedGroup)}>
-              {savedGroup ? 'Move to basket' : 'Save for later'}
+              {savedGroup ? (lines.every(canMoveToBasket) ? 'Move to basket' : 'Out of stock') : 'Save for later'}
             </button>
           }
         />

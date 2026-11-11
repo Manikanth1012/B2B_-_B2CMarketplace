@@ -25,7 +25,7 @@ import { round2 } from '../../lib/money'
 import { RaiseQuoteDialog } from '../enquiries/RaiseQuoteDialog'
 import { enquiriesChanged } from '../enquiries/events'
 import { groupBySelection } from '../../lib/bundles'
-import { BUNDLE_FALLBACK_NAME, type BundleBlock } from '../../lib/bundleLines'
+import { BUNDLE_FALLBACK_NAME, requisitionBundleBlock } from '../../lib/bundleLines'
 import { BundleGroup } from '../bundles/BundleGroup'
 import { requisitionSink } from '../bundles/sinks'
 
@@ -131,12 +131,14 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
   /* A configured bundle holds its price for seven days; after that it has to
      be priced again before it can be raised. The database decides the rest
      (parts still on sale) when the requisition is written. */
-  const bundleBlockOf = (meta: { name: string; validUntil: string } | undefined): BundleBlock =>
-    meta && meta.validUntil.slice(0, 10) < today
-      ? { kind: 'expired', says: `The price of ${meta.name} was held for seven days and that has passed. Re-price it to raise it.` }
-      : { kind: 'ok' }
-  const expiredBundle = basket.lines.find(l => l.bundle_selection_id && bundleBlockOf(l.bundle).kind !== 'ok')
-  const blocked = !!(v?.blocked) || !!(me && !me.can_raise) || !account || !policy || !!expiredBundle
+  const now = new Date().toISOString()
+  const bundleBlockOf = (id: string) => {
+    const mine = basket.lines.filter(l => l.bundle_selection_id === id)
+    return requisitionBundleBlock(mine[0]?.bundle, mine, basket.currency, now)
+  }
+  const stuckBundle = [...new Set(basket.lines.map(l => l.bundle_selection_id).filter((x): x is string => !!x))]
+    .map(bundleBlockOf).find(b => b.kind !== 'ok')
+  const blocked = !!(v?.blocked) || !!(me && !me.can_raise) || !account || !policy || !!stuckBundle
 
   const raise = async () => {
     if (!account || !me || !policy) return
@@ -236,7 +238,7 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
                         parts={g.lines.map(l => ({ key: l.product_id, name: l.name, seller: l.seller, quantity: l.quantity, lineTotal: round2(l.quantity * l.unit_price) }))}
                         total={round2(g.lines.reduce((n, l) => n + round2(l.quantity * l.unit_price), 0))}
                         fmt={n => money(n, basket.currency)}
-                        block={bundleBlockOf(meta)}
+                        block={bundleBlockOf(g.selectionId!)}
                         editable={meta ? {
                           selectionId: g.selectionId!, templateId: meta.templateId, choices: meta.choices,
                           quantity: meta.quantity, currency: meta.currency,
@@ -358,9 +360,9 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--warning)' }}>
                 Your role on this account cannot raise a requisition. Ask a colleague who can, or an administrator to move you to a role that raises.
               </div>
-            ) : expiredBundle ? (
+            ) : stuckBundle ? (
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', fontWeight: 600 }}>
-                {bundleBlockOf(expiredBundle.bundle).kind === 'expired' && (bundleBlockOf(expiredBundle.bundle) as { says: string }).says}
+                {stuckBundle.says}
               </div>
             ) : stopper && (
               <div style={{ fontSize: 'var(--text-xs)', color: attempted ? 'var(--danger)' : 'var(--text-tertiary)', fontWeight: attempted ? 600 : 400 }}>

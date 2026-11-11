@@ -131,8 +131,7 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
   /* A configured bundle is bought at its selection's prices, inside its seven
      days, with every part still on sale. One that is not stops the order here,
      named, before anything is written. Ordinary baskets have none. */
-  const today = new Date().toISOString().slice(0, 10)
-  const bundleBlocks = basketBundleBlocks(cartItems, shopCurrency, today)
+  const bundleBlocks = basketBundleBlocks(cartItems, shopCurrency, new Date().toISOString())
   const blockOf = (id: string): BundleBlock => bundleBlocks.find(b => b.selectionId === id)?.block ?? { kind: 'ok' }
   /* The price an order line is written at: a bundle part's is the selection's. */
   const unitPrice = (item: CartItem) => item.bundle_selection_id ? (item.bundle_unit_price ?? 0) : (item.product?.price || 0)
