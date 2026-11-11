@@ -329,7 +329,7 @@ export function verdict(
   const rule = rules?.rule ?? 'allow'
   const off = basket.lines.filter(isOffContract).length
   const need = needWithRules(baseNeed, off > 0, rule)
-  const note = joinNote(policyNoteFor(baseNeed, at.amount, policy, account.currency, at, fmt), offContractNote(rule, off))
+  const note = joinNote(policyNoteFor(baseNeed, at.amount, policy, account.currency, at, fmt, need !== baseNeed), offContractNote(rule, off))
   return { ...base, need, note, blocked: null }
 }
 

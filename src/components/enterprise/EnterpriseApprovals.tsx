@@ -17,10 +17,12 @@ import {
   summariseApprovals, byRequester, centreUse, centresAtRisk, policyImpact,
   spentThisYear, day, NEED_LABEL, policyMoneyFor, conversionNote,
 } from '../../lib/enterprise'
-import type { Requisition, Policy, Member, PolicyMoney } from '../../lib/enterprise'
+import type { Requisition, Policy, Member, PolicyMoney, ReqLine } from '../../lib/enterprise'
 import { useMarket } from '../../lib/MarketContext'
 import { may, roleName } from '../../lib/enterpriseAdmin'
 import { wouldBreach } from '../../lib/credit'
+import { showsOffContract } from '../../lib/accountPrices'
+import { OffContractMarker } from '../pricebooks/PriceTag'
 
 /* Approvals, from the seat of the person who signs them.
  *
@@ -252,6 +254,16 @@ export function EnterpriseApprovals() {
   )
 }
 
+/* Whether a stored line was charged at the account's own price, bought off
+   it, or neither said (a quoted or bundled line, or a database without price
+   books). The off marker follows decision 20 like the drawer did, except that
+   a line carrying a reason is always shown: the buyer was asked for it. */
+function lineStanding(l: ReqLine, shows: boolean): 'on' | 'off' | null {
+  if (l.off_contract === true) return shows || !!l.off_contract_reason ? 'off' : null
+  if (l.account_price_id) return 'on'
+  return null
+}
+
 function nameOf(members: Member[], id: string | null): string {
   if (!id) return '—'
   return members.find(m => m.id === id)?.name ?? id
@@ -282,6 +294,12 @@ function RequisitionCard({ book, req, at, onDecide }: {
   const dupes = policy?.duplicate_flag ? duplicatesOf(lines, book.subscriptions) : []
   const centre = book.centres.find(c => c.id === req.cost_centre)
   const Icon = VICON[req.vertical] ?? Cpu
+  /* What the buyer saw on each line: their account's price, or off it with
+     their reason. Read from what the database stored on the line, so a rule
+     changed since does not rewrite it. Before price books exist the lines
+     carry neither, and nothing is said. */
+  const shows = showsOffContract(book.rules, book.prices, new Date().toISOString().slice(0, 10))
+  const offCount = lines.filter(l => lineStanding(l, shows) === 'off').length
 
   return (
     <SectionCard title={req.title} subtitle={`${req.id} · ${nameOf(book.members, req.raised_by)} · raised ${req.raised_at}`}>
@@ -303,6 +321,11 @@ function RequisitionCard({ book, req, at, onDecide }: {
               )}
               {req.po_ref && (
                 <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{req.po_ref}</span>
+              )}
+              {offCount > 0 && (
+                <span className="pb-off__label">
+                  {offCount} {offCount === 1 ? 'line' : 'lines'} off your price book
+                </span>
               )}
             </div>
             <div style={{ fontSize: 'var(--text-sm)', fontStyle: 'italic', color: 'var(--text-secondary)', marginTop: '10px', lineHeight: 1.5 }}>
@@ -335,15 +358,26 @@ function RequisitionCard({ book, req, at, onDecide }: {
         {lines.length > 0 && (
           <div style={{ marginTop: '14px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
             <Table headers={['Line', 'Seller', 'Qty', 'Unit', 'Total']}>
-              {lines.map(l => (
+              {lines.map(l => {
+                const standing = lineStanding(l, shows)
+                return (
                 <tr key={l.id}>
-                  <Td>{l.name}</Td>
+                  <Td>
+                    <div>{l.name}</div>
+                    {standing === 'on' && (
+                      <span className="pb-badge pb-badge--contract" style={{ marginTop: '4px' }}>Your price</span>
+                    )}
+                    {standing === 'off' && (
+                      <div style={{ marginTop: '4px' }}><OffContractMarker reason={l.off_contract_reason ?? undefined} /></div>
+                    )}
+                  </Td>
                   <Td right style={{ fontSize: 'var(--text-xs)' }}>{l.seller}</Td>
                   <Td right>{fmtInt(l.quantity)}</Td>
                   <Td right>{money(l.unit_price)}</Td>
                   <Td right style={{ fontWeight: 600 }}>{money(l.line_total)}</Td>
                 </tr>
-              ))}
+                )
+              })}
             </Table>
           </div>
         )}
