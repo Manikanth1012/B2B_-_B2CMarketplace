@@ -32,7 +32,9 @@ import type { EnterpriseListing } from '../../lib/enterpriseRepo'
 import { useAccountMoney } from './money'
 import { useMarket } from '../../lib/MarketContext'
 import type { Policy, Subscription } from '../../lib/enterprise'
-import { EnterpriseListingModal } from './EnterpriseListingModal'
+import { orderShelf } from '../../lib/accountPrices'
+import type { Preference } from '../../lib/accountPrices'
+import { EnterpriseListingModal, ShelfBadges, shelfPriceTag } from './EnterpriseListingModal'
 import { CompareTray, CompareTable } from '../CompareTray'
 import { toggleCompare, COMPARE_CAP } from '../../lib/compare'
 import type { Comparable } from '../../lib/compare'
@@ -86,6 +88,9 @@ export function EnterpriseBrowse() {
   /* What the account already holds, so the detail can say "you are paying for
      twelve of these and four are idle" before somebody orders more. */
   const [subs, setSubs] = useState<Subscription[]>([])
+  const [prefs, setPrefs] = useState<Preference[]>([])
+  /* The "Show" chips: preferred listings, or those on the account's price book. */
+  const [show, setShow] = useState<string | null>(null)
   useEffect(() => {
     void (async () => {
       const book = await loadAccount()
@@ -93,6 +98,7 @@ export function EnterpriseBrowse() {
       setPrimary(book.account?.currency ?? 'USD')
       setOffered(book.currencies)
       setSubs(book.subscriptions)
+      setPrefs(book.preferences)
     })()
   }, [])
 
@@ -156,6 +162,8 @@ export function EnterpriseBrowse() {
       stock: l.stock ?? 'in', fulfil: l.fulfil, model: l.model, unit: l.unit,
       category_id: l.category_id, specs: l.specs,
       price_includes_tax: l.price_includes_tax,
+      /* The tray shows what the account is charged, the published price beside it. */
+      was_price: l.on_contract && l.price < l.published_price ? l.published_price : null,
     }))
 
   const pick = (id: string) => {
@@ -170,18 +178,25 @@ export function EnterpriseBrowse() {
      currency, so without this a buyer in rupees would see a dollar figure on a
      shelf they cannot buy from. */
   const priced = pricedFor(listings ?? [], currency ?? '')
+  const matchesQuery = (p: EnterpriseListing) =>
+    !query || (p.name + ' ' + p.description + ' ' + p.seller + ' ' + (p.sub_category ?? '')).toLowerCase().includes(query.toLowerCase())
+  const searched = priced.filter(matchesQuery)
+  const nPreferred = searched.filter(p => p.preferred).length
+  const nContract = searched.filter(p => p.on_contract).length
   let results = priced
+  if (show === 'preferred') results = results.filter(p => p.preferred)
+  if (show === 'contract') results = results.filter(p => p.on_contract)
   if (vertical) results = results.filter(p => p.category_id === vertical)
   if (category) results = results.filter(p => p.sub_category === category)
-  if (query) {
-    const q = query.toLowerCase()
-    results = results.filter(p => (p.name + ' ' + p.description + ' ' + p.seller + ' ' + (p.sub_category ?? '')).toLowerCase().includes(q))
-  }
+  results = results.filter(matchesQuery)
   results = results.slice().sort((a, b) =>
     sort === 'priceup' ? a.price - b.price
     : sort === 'pricedown' ? b.price - a.price
     : sort === 'rating' ? (b.rating || 0) - (a.rating || 0)
     : (b.reviews || 0) - (a.reviews || 0))
+  /* Preferred products, then preferred sellers' listings, then the rest; the
+     chosen sort holds within each group. No preferences: order unchanged. */
+  results = orderShelf(results, prefs)
 
   const all = priced
   const cats = Array.from(new Set((vertical ? all.filter(p => p.category_id === vertical) : all)
@@ -189,7 +204,7 @@ export function EnterpriseBrowse() {
   /* One tile per shelf that has something priced for this account. */
   const shelves = Array.from(new Set(all.map(p => p.category_id)))
 
-  const reset = () => { setVertical(null); setCategory(null); setQuery('') }
+  const reset = () => { setVertical(null); setCategory(null); setQuery(''); setShow(null) }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
@@ -217,6 +232,14 @@ export function EnterpriseBrowse() {
               value: v, label: VERTICAL_NAMES[v]?.replace(' Marketplace', '') ?? v,
               count: all.filter(p => p.category_id === v).length,
             })),
+          },
+          {
+            id: 'show', title: 'Show', selected: show, onSelect: setShow,
+            /* Nothing to offer until the account has preferences or prices. */
+            options: [
+              { value: 'preferred', label: 'Preferred', count: nPreferred },
+              { value: 'contract', label: 'On your price book', count: nContract },
+            ].filter(o => (o.count ?? 0) > 0 || o.value === show),
           },
           {
             id: 'category', title: 'Category', selected: category, onSelect: setCategory,
@@ -285,6 +308,8 @@ export function EnterpriseBrowse() {
                     onToggle: () => pick(p.id),
                   }}
                   showStock
+                  badges={<ShelfBadges l={p} />}
+                  priceSlot={shelfPriceTag(p, true)}
                   priceNote={p.model === 'monthly' ? (p.unit ? ` ${p.unit}/mo` : '/mo') : undefined}
                 />
               )

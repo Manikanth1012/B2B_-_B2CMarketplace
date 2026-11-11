@@ -15,6 +15,8 @@ import { getProductImage } from '../../lib/images'
 import { useRequisition } from '../../lib/RequisitionContext'
 import { lineFor } from './EnterpriseBrowse'
 import { pricedFor } from '../../lib/storefront'
+import { orderShelf } from '../../lib/accountPrices'
+import { ShelfBadges, shelfPriceTag } from './EnterpriseListingModal'
 import { heldCurrencyNote } from '../../lib/bundleLines'
 import { EnterpriseListingModal } from './EnterpriseListingModal'
 import { useMarket } from '../../lib/MarketContext'
@@ -243,6 +245,7 @@ export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
   const [book, setBook] = useState<AccountBook | null>(null)
   const [listings, setListings] = useState<EnterpriseListing[] | null>(null)
   const [viewing, setViewing] = useState<EnterpriseListing | null>(null)
+  const [show, setShow] = useState<'preferred' | 'contract' | null>(null)
   const req = useRequisition()
 
   useEffect(() => {
@@ -299,7 +302,10 @@ export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
 
   /* Only what this currency prices, as Browse shows it (`pricedFor`): a listing
      the book does not price here carries its base figure in another money. */
-  const filtered = pricedFor(listings, currency ?? '').filter(l => l.category_id === vertical)
+  const onShelf = orderShelf(pricedFor(listings, currency ?? '').filter(l => l.category_id === vertical), book.preferences)
+  const nPreferred = onShelf.filter(l => l.preferred).length
+  const nContract = onShelf.filter(l => l.on_contract).length
+  const filtered = onShelf.filter(l => show === 'preferred' ? l.preferred : show === 'contract' ? l.on_contract : true)
   const byCat: Record<string, EnterpriseListing[]> = {}
   filtered.forEach(l => { (byCat[l.sub_category ?? 'Other'] = byCat[l.sub_category ?? 'Other'] || []).push(l) })
 
@@ -321,6 +327,18 @@ export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
           {policy ? ` · anything at or above ${money0(Number(policy.threshold))} needs finance approval` : ''}
         </p>
       </div>
+
+      {/* Only when the account has preferences or prices of its own. */}
+      {(nPreferred > 0 || nContract > 0 || show !== null) && (
+        <div role="group" aria-label="Show" style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+          {([['preferred', 'Preferred', nPreferred], ['contract', 'On your price book', nContract]] as const)
+            .filter(([k, , n]) => n > 0 || show === k)
+            .map(([k, label, n]) => (
+              <Btn key={k} size="sm" variant={show === k ? 'primary' : 'secondary'} aria-pressed={show === k}
+                   onClick={() => setShow(show === k ? null : k)}>{label} ({n})</Btn>
+            ))}
+        </div>
+      )}
 
       {/* Read from the policy rather than asserted about one vertical: an
           account that turns security sign-off off would otherwise still be told
@@ -378,10 +396,11 @@ export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
                 <div style={{ padding: '12px', flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 'var(--text-sm)' }}>{p.name}</div>
                   <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{p.seller}</div>
+                  <ShelfBadges l={p} />
                   <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>{p.description}</div>
                 </div>
                 <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border-light)', background: 'var(--bg-alt)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontWeight: 700 }}>{money(p.price)}{p.model === 'monthly' ? (p.unit ? ` ${p.unit}/mo` : '/mo') : ''}</span>
+                  <span style={{ fontWeight: 700 }}>{shelfPriceTag(p, true) ?? money(p.price)}{p.model === 'monthly' ? (p.unit ? ` ${p.unit}/mo` : '/mo') : ''}</span>
                   <Btn variant="primary" size="sm" onClick={e => { e.stopPropagation(); addOne(p) }}>Add</Btn>
                 </div>
               </div>
