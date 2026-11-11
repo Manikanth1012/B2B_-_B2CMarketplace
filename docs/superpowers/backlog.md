@@ -19,7 +19,7 @@ closed by spec 5, except the two noted below.
 
 Done — merged 2026-11-05 (`8fd5759`): quote, demo, Contact Sales and enquiry tracking are spec 6
 (`2026-11-05-enterprise-enquiries-design.md`), migration applied 2026-11-05.
-Done — merged 2026-11-11: buyer-built bundles are spec 7
+Done — merged 2026-11-11 (`5a13e47`): buyer-built bundles are spec 7
 (`2026-11-05-buyer-built-bundles-design.md`), migration applied 2026-11-11.
 Today's bundles are fixed and composed by the operator (Catalogue Review →
 Compose a bundle); spec 7 is the buyer-built kind.
