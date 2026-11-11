@@ -186,9 +186,10 @@ function Live({ contract, amendments, today, fmtIn, onDownload }: {
           `channel_rule`. An account that thinks it has negotiated pricing and
           has not is a conversation nobody wants to have at invoice time. */}
       <Callout tone="info" title="What this agreement does not set">
-        Prices. You are charged what is published for your market on the day you order, and any
-        promotion is available to you on the same terms as to any other buyer there. The expected
-        spend above is your own planning figure — it buys nothing and discounts nothing.
+        Prices. You are charged what is published for your market on the day you order, unless your
+        account has a price of its own on Price book, and any promotion is available to you on the
+        same terms as to any other buyer there. The expected spend above is your own planning
+        figure — it buys nothing and discounts nothing.
       </Callout>
     </>
   )
