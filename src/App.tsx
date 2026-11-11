@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import type { View, OperatorView, PartnerView, EnterpriseView, Persona, Session, Surface, PublicPage } from './types/view'
 import { supabase } from './lib/supabase'
 import { activeLines, basketCount } from './lib/basket'
@@ -15,106 +15,45 @@ import { restoreSession, signOut } from './lib/authRepo'
 import type { CartItem, Product } from './types'
 import { MarketProvider, useMarket } from './lib/MarketContext'
 import { loadPriceBook, loadCopyBook, reprice } from './lib/moneyRepo'
-import { LoginScreen } from './components/LoginScreen'
 import { PublicShell } from './components/public/PublicShell'
-import { LandingPage } from './components/public/LandingPage'
-import { AudiencePage } from './components/public/AudiencePage'
-import { ApplyToSell } from './components/public/ApplyToSell'
-import { RegisterShopper } from './components/public/RegisterShopper'
-import { ContinueWithAventaId } from './components/public/ContinueWithAventaId'
 import { Header } from './components/Header'
-import { Hero } from './components/Hero'
-import { CategoryStrip } from './components/CategoryStrip'
-import { ProductGrid } from './components/ProductGrid'
-import { ProductDetail } from './components/ProductDetail'
-import { CartDrawer } from './components/CartDrawer'
-import { Checkout } from './components/Checkout'
 import { Footer } from './components/Footer'
-import { OrdersView } from './components/OrdersView'
-import { SubscriptionsView } from './components/SubscriptionsView'
-import { RewardsView } from './components/RewardsView'
-import { AccountView } from './components/AccountView'
-import { OperatorShell } from './components/operator/OperatorShell'
-import { OperatorDashboard } from './components/operator/OperatorDashboard'
-import { OperatorAccounts } from './components/operator/OperatorAccounts'
-import { OperatorRenewals } from './components/operator/OperatorRenewals'
-import { OperatorOnboarding } from './components/operator/OperatorOnboarding'
-import { OperatorPartners } from './components/operator/OperatorPartners'
-import { OperatorCatalogue } from './components/operator/OperatorCatalogue'
-import { OperatorSettlement } from './components/operator/OperatorSettlement'
-import { OperatorInventory } from './components/operator/OperatorInventory'
-import { OperatorNumbers } from './components/operator/OperatorNumbers'
-import { EnterpriseNumbers } from './components/enterprise/EnterpriseNumbers'
-import { OperatorTickets } from './components/operator/OperatorTickets'
-import { OperatorDunning } from './components/operator/OperatorDunning'
-import { OperatorDeveloper } from './components/operator/OperatorDeveloper'
-import { OperatorPromotions } from './components/operator/OperatorPromotions'
-import { OperatorBanners } from './components/operator/OperatorBanners'
-import { OperatorBillTemplates } from './components/operator/OperatorBillTemplates'
-import { OperatorMarkets } from './components/operator/OperatorMarkets'
-import { OperatorKnowledge } from './components/operator/OperatorKnowledge'
-import { OperatorChannels } from './components/operator/OperatorChannels'
-import { OperatorRoles } from './components/operator/OperatorRoles'
-import { OperatorAudit } from './components/operator/OperatorAudit'
-import { OperatorShelves } from './components/operator/OperatorShelves'
-import { OperatorNotes } from './components/operator/OperatorNotes'
-import { OperatorOrders } from './components/operator/OperatorOrders'
-import { OperatorDisputes } from './components/operator/OperatorDisputes'
-import { OperatorCredit } from './components/operator/OperatorCredit'
-import { OperatorContracts } from './components/operator/OperatorContracts'
-import { OperatorEnquiries } from './components/operator/OperatorEnquiries'
-import { OperatorReviews } from './components/operator/OperatorReviews'
-import { OperatorWallets } from './components/operator/OperatorWallets'
-import { OperatorContentFeedback } from './components/operator/OperatorContentFeedback'
 import { ToastHost, toast } from './components/operator/shared'
+import { OperatorShell } from './components/operator/OperatorShell'
 import { PartnerShell } from './components/partner/PartnerShell'
-import { PartnerDashboard } from './components/partner/PartnerDashboard'
-import { PartnerOnboarding } from './components/partner/PartnerOnboarding'
-import { PartnerListings } from './components/partner/PartnerListings'
-import { PartnerNewListing } from './components/partner/PartnerNewListing'
-import { PartnerOrders } from './components/partner/PartnerOrders'
-import { PartnerEnquiries } from './components/partner/PartnerEnquiries'
-import { PartnerWholesale } from './components/partner/PartnerWholesale'
-import { PartnerRenewals } from './components/partner/PartnerRenewals'
-import { PartnerSettlement } from './components/partner/PartnerSettlement'
-import { PartnerSettlementPlan } from './components/partner/PartnerSettlementPlan'
-import { PartnerPerformance } from './components/partner/PartnerPerformance'
-import { PartnerIntegrations } from './components/partner/PartnerIntegrations'
-import { PartnerDeveloper } from './components/partner/PartnerDeveloper'
-import { PartnerSupport } from './components/partner/PartnerSupport'
-import { PartnerTeam, PartnerAudit } from './components/partner/PartnerMisc'
-import { PartnerDetails } from './components/partner/PartnerDetails'
-import { PartnerNotifications } from './components/partner/PartnerNotifications'
-import { PartnerRefunds } from './components/partner/PartnerRefunds'
-import { OperatorRefunds } from './components/operator/OperatorRefunds'
-import { OperatorRewards } from './components/operator/OperatorRewards'
-import { OperatorRevenueShare } from './components/operator/OperatorRevenueShare'
-import { OperatorLedger } from './components/operator/OperatorLedger'
-import { OperatorNotifications } from './components/operator/OperatorNotifications'
-import { PartnerRewards } from './components/partner/PartnerRewards'
-import { PartnerReviews } from './components/partner/PartnerReviews'
 import { EnterpriseShell } from './components/enterprise/EnterpriseShell'
 import { RequisitionProvider } from './lib/RequisitionContext'
-import { RequisitionPanel } from './components/enterprise/RequisitionPanel'
-import { EnterpriseDashboard } from './components/enterprise/EnterpriseDashboard'
-import { EnterpriseBrowse } from './components/enterprise/EnterpriseBrowse'
-import { EnterpriseSubs, EnterpriseMarketplace } from './components/enterprise/EnterpriseViews'
-import { EnterpriseOrders } from './components/enterprise/EnterpriseOrders'
-import { EnterpriseEnquiries } from './components/enterprise/EnterpriseEnquiries'
-import { EnterpriseAudit } from './components/enterprise/EnterpriseMisc'
-import { EnterpriseTeam } from './components/enterprise/EnterpriseTeam'
-import { EnterpriseProfile } from './components/enterprise/EnterpriseProfile'
-import { EnterpriseWallet } from './components/enterprise/EnterpriseWallet'
-import { OperatorProfile } from './components/operator/OperatorProfile'
-import { EnterpriseNotifications } from './components/enterprise/EnterpriseNotifications'
-import { EnterpriseApprovals } from './components/enterprise/EnterpriseApprovals'
-import { EnterpriseRefunds } from './components/enterprise/EnterpriseRefunds'
-import { EnterpriseBilling } from './components/enterprise/EnterpriseBilling'
-import { EnterpriseAgreement } from './components/enterprise/EnterpriseAgreement'
-import { EnterpriseRewards } from './components/enterprise/EnterpriseRewards'
-import { EnterpriseSupport } from './components/enterprise/EnterpriseSupport'
-import { KnowledgeBase } from './components/KnowledgeBase'
 import { BundleConfiguratorHost } from './components/bundles/BundleConfigurator'
+import { PageLoading } from './components/ui/PageLoading'
+
+/* Loaded on demand, so each visitor downloads only the surface they are on.
+ *
+ * The shells (public chrome, the shop header and footer, each console's side
+ * bar) stay in the main bundle and are drawn at once; what goes inside them
+ * arrives as its own chunk behind a Suspense boundary. A visitor never fetches
+ * a console, an operator never fetches the seller's or the buyer's, and the
+ * shop's pages come down only once somebody is shopping. The modules export by
+ * name, so each import picks its component out as the default `lazy` wants. */
+const LoginScreen = lazy(() => import('./components/LoginScreen').then(m => ({ default: m.LoginScreen })))
+const LandingPage = lazy(() => import('./components/public/LandingPage').then(m => ({ default: m.LandingPage })))
+const AudiencePage = lazy(() => import('./components/public/AudiencePage').then(m => ({ default: m.AudiencePage })))
+const ApplyToSell = lazy(() => import('./components/public/ApplyToSell').then(m => ({ default: m.ApplyToSell })))
+const RegisterShopper = lazy(() => import('./components/public/RegisterShopper').then(m => ({ default: m.RegisterShopper })))
+const ContinueWithAventaId = lazy(() => import('./components/public/ContinueWithAventaId').then(m => ({ default: m.ContinueWithAventaId })))
+const OperatorScreens = lazy(() => import('./components/operator/OperatorScreens').then(m => ({ default: m.OperatorScreens })))
+const PartnerScreens = lazy(() => import('./components/partner/PartnerScreens').then(m => ({ default: m.PartnerScreens })))
+const EnterpriseScreens = lazy(() => import('./components/enterprise/EnterpriseScreens').then(m => ({ default: m.EnterpriseScreens })))
+const Hero = lazy(() => import('./components/Hero').then(m => ({ default: m.Hero })))
+const CategoryStrip = lazy(() => import('./components/CategoryStrip').then(m => ({ default: m.CategoryStrip })))
+const ProductGrid = lazy(() => import('./components/ProductGrid').then(m => ({ default: m.ProductGrid })))
+const ProductDetail = lazy(() => import('./components/ProductDetail').then(m => ({ default: m.ProductDetail })))
+const CartDrawer = lazy(() => import('./components/CartDrawer').then(m => ({ default: m.CartDrawer })))
+const Checkout = lazy(() => import('./components/Checkout').then(m => ({ default: m.Checkout })))
+const OrdersView = lazy(() => import('./components/OrdersView').then(m => ({ default: m.OrdersView })))
+const SubscriptionsView = lazy(() => import('./components/SubscriptionsView').then(m => ({ default: m.SubscriptionsView })))
+const RewardsView = lazy(() => import('./components/RewardsView').then(m => ({ default: m.RewardsView })))
+const AccountView = lazy(() => import('./components/AccountView').then(m => ({ default: m.AccountView })))
+const KnowledgeBase = lazy(() => import('./components/KnowledgeBase').then(m => ({ default: m.KnowledgeBase })))
 
 /* The market — and so the currency and the tax — is chosen once and read
    everywhere, so the provider wraps the app rather than sitting inside it.
@@ -364,8 +303,11 @@ function AppInner() {
   }
 
   // ---------- Public surface ----------
+  /* The sign-in, application and registration screens are whole pages with no
+     shell around them, so their placeholder fills the window. */
   if (surface.kind === 'login') {
     return (
+      <Suspense fallback={<PageLoading fill />}>
       <LoginScreen
         prefill={surface.prefill}
         demo={surface.demo}
@@ -397,6 +339,7 @@ function AppInner() {
             : undefined
         }
       />
+      </Suspense>
     )
   }
 
@@ -406,6 +349,7 @@ function AppInner() {
      seller and so has no credentials to get into it. */
   if (surface.kind === 'apply') {
     return (
+      <Suspense fallback={<PageLoading fill />}>
       <ApplyToSell
         /* Somebody arriving from "Continue an application" opens straight on
            the reference-and-code form. Landing them on the start form and
@@ -419,6 +363,7 @@ function AppInner() {
         }}
         onSignIn={() => setSurface({ kind: 'login', prefill: surface.kindOf === 'business' ? 'enterprise' : 'partner' })}
       />
+      </Suspense>
     )
   }
 
@@ -427,12 +372,14 @@ function AppInner() {
      profile are loaded for them on the way. */
   if (surface.kind === 'register') {
     return (
+      <Suspense fallback={<PageLoading fill />}>
       <RegisterShopper
         onLeave={() => { setSurface({ kind: 'public', page: 'retail' }); window.scrollTo({ top: 0 }) }}
         onSignIn={() => setSurface({ kind: 'login', prefill: 'consumer' })}
         onSso={() => { setSurface({ kind: 'sso' }); window.scrollTo({ top: 0 }) }}
         onRegistered={(session) => handleLogin(session)}
       />
+      </Suspense>
     )
   }
 
@@ -442,11 +389,13 @@ function AppInner() {
      watches and profile loaded on the way. */
   if (surface.kind === 'sso') {
     return (
+      <Suspense fallback={<PageLoading fill />}>
       <ContinueWithAventaId
         onLeave={() => { setSurface({ kind: 'public', page: 'retail' }); window.scrollTo({ top: 0 }) }}
         onRegisterInstead={() => { setSurface({ kind: 'register' }); window.scrollTo({ top: 0 }) }}
         onDone={(session) => handleLogin(session)}
       />
+      </Suspense>
     )
   }
 
@@ -461,6 +410,7 @@ function AppInner() {
         onDemoSignIn={() => setSurface({ kind: 'login', demo: true })}
         onSearch={(q) => { setSurface({ kind: 'public', page: 'retail', q }); window.scrollTo({ top: 0 }) }}
       >
+        <Suspense fallback={<PageLoading />}>
         {surface.page === 'landing' && (
           <LandingPage
             onNavigate={(page) => { setSurface({ kind: 'public', page }); window.scrollTo({ top: 0 }) }}
@@ -496,6 +446,7 @@ function AppInner() {
             onNotifyMe={signInToWatch}
           />
         )}
+        </Suspense>
         {/* Visitors can configure and see the price; adding needs a sign-in. */}
         <BundleConfiguratorHost shop="consumer" signedIn={false}
           onSignIn={() => setSurface({ kind: 'login', prefill: 'consumer' })} />
@@ -508,43 +459,9 @@ function AppInner() {
     return (
       <>
       <OperatorShell view={opView} onNavigate={(v, anchor) => goOperator(v, anchor ? { focus: anchor } : undefined)} onSignOut={handleSignOut}>
-        {opView === 'op-dashboard' && <OperatorDashboard onNavigate={goOperator} />}
-        {opView === 'op-onboarding' && <OperatorOnboarding />}
-        {opView === 'op-accounts' && <OperatorAccounts onNavigate={setOpView} />}
-        {opView === 'op-partners' && <OperatorPartners focus={opFocus} />}
-        {opView === 'op-catalogue' && <OperatorCatalogue focus={opFocus} />}
-        {opView === 'op-settlement' && <OperatorSettlement focus={opFocus} />}
-        {opView === 'op-inventory' && <OperatorInventory />}
-        {opView === 'op-renewals' && <OperatorRenewals />}
-        {opView === 'op-numbers' && <OperatorNumbers />}
-        {opView === 'op-tickets' && <OperatorTickets focus={opFocus} />}
-        {opView === 'op-dunning' && <OperatorDunning />}
-        {opView === 'op-developer' && <OperatorDeveloper />}
-        {opView === 'op-promotions' && <OperatorPromotions />}
-        {opView === 'op-banners' && <OperatorBanners />}
-        {opView === 'op-billtemplates' && <OperatorBillTemplates />}
-        {opView === 'op-profile' && <OperatorProfile anchor={opFocus ?? undefined} />}
-        {opView === 'op-markets' && <OperatorMarkets />}
-        {opView === 'op-notifications' && <OperatorNotifications />}
-        {opView === 'op-channels' && <OperatorChannels />}
-        {opView === 'op-roles' && <OperatorRoles />}
-        {opView === 'op-shelves' && <OperatorShelves />}
-        {opView === 'op-reviews' && <OperatorReviews />}
-        {opView === 'op-wallets' && <OperatorWallets />}
-        {opView === 'op-refunds' && <OperatorRefunds />}
-        {opView === 'op-rewards' && <OperatorRewards />}
-        {opView === 'op-revshare' && <OperatorRevenueShare />}
-        {opView === 'op-notes' && <OperatorNotes />}
-        {opView === 'op-orders' && <OperatorOrders />}
-        {opView === 'op-disputes' && <OperatorDisputes />}
-        {opView === 'op-credit' && <OperatorCredit />}
-        {opView === 'op-contracts' && <OperatorContracts />}
-        {opView === 'op-enquiries' && <OperatorEnquiries />}
-        {opView === 'op-ledger' && <OperatorLedger />}
-        {opView === 'op-feedback' && <OperatorContentFeedback />}
-        {opView === 'op-audit' && <OperatorAudit />}
-        {opView === 'op-kb' && <OperatorKnowledge />}
-        {/* No feedbackAs: the operator is the queue. */}
+        <Suspense fallback={<PageLoading />}>
+          <OperatorScreens view={opView} focus={opFocus} onNavigate={goOperator} onSetView={setOpView} />
+        </Suspense>
       </OperatorShell>
       {/* Mounted in every persona, not only the shopper's.
 
@@ -563,28 +480,9 @@ function AppInner() {
     return (
       <>
       <PartnerShell view={ptView} onNavigate={goPartner} onSignOut={handleSignOut}>
-        {ptView === 'pt-dashboard' && <PartnerDashboard partnerId={session!.partnerId!} onNavigate={setPtView} />}
-        {ptView === 'pt-onboarding' && <PartnerOnboarding partnerId={session!.partnerId!} />}
-        {ptView === 'pt-listings' && <PartnerListings partnerId={session!.partnerId!} onNewListing={() => setPtView('pt-newlisting')} />}
-        {ptView === 'pt-newlisting' && <PartnerNewListing partnerId={session!.partnerId!} />}
-        {ptView === 'pt-orders' && <PartnerOrders partnerId={session!.partnerId!} />}
-        {ptView === 'pt-enquiries' && <PartnerEnquiries partnerId={session!.partnerId!} />}
-        {ptView === 'pt-wholesale' && <PartnerWholesale partnerId={session!.partnerId!} />}
-        {ptView === 'pt-renewals' && <PartnerRenewals partnerId={session!.partnerId!} />}
-        {ptView === 'pt-settlement' && <PartnerSettlement partnerId={session!.partnerId!} />}
-        {ptView === 'pt-plan' && <PartnerSettlementPlan partnerId={session!.partnerId!} />}
-        {ptView === 'pt-performance' && <PartnerPerformance />}
-        {ptView === 'pt-integrations' && <PartnerIntegrations partnerId={session!.partnerId!} />}
-        {ptView === 'pt-developer' && <PartnerDeveloper partnerId={session!.partnerId!} />}
-        {ptView === 'pt-reviews' && <PartnerReviews partnerId={session?.partnerId ?? ''} />}
-        {ptView === 'pt-support' && <PartnerSupport partnerId={session!.partnerId!} />}
-        {ptView === 'pt-refunds' && <PartnerRefunds partnerId={session!.partnerId!} />}
-        {ptView === 'pt-rewards' && <PartnerRewards partnerId={session!.partnerId!} />}
-        {ptView === 'pt-notifications' && <PartnerNotifications partnerId={session!.partnerId!} />}
-        {ptView === 'pt-team' && <PartnerTeam partnerId={session!.partnerId!} />}
-        {ptView === 'pt-audit' && <PartnerAudit />}
-        {ptView === 'pt-profile' && <PartnerDetails partnerId={session!.partnerId!} anchor={ptAnchor} />}
-        {ptView === 'pt-kb' && <KnowledgeBase persona="partner" title="Knowledge base" feedbackAs={{ actor: 'Rajesh Kumar', org: 'Nimbus Sensors' }} />}
+        <Suspense fallback={<PageLoading />}>
+          <PartnerScreens view={ptView} partnerId={session?.partnerId} anchor={ptAnchor} onSetView={setPtView} />
+        </Suspense>
       </PartnerShell>
       {/* Mounted in every persona, not only the shopper's.
 
@@ -606,31 +504,9 @@ function AppInner() {
          it from wherever they happen to be. */
       <RequisitionProvider>
       <EnterpriseShell view={enView} onNavigate={goEnterprise} onSignOut={handleSignOut}>
-        {/* Raising sends them to the queue their requisition just joined —
-            within policy or not, it is waiting for a decision there and that is
-            where the order gets placed. */}
-        <RequisitionPanel onRaised={() => setEnView('en-approvals')} onQuoteRequested={() => setEnView('en-enquiries')} />
-        {enView === 'en-dashboard' && <EnterpriseDashboard onNavigate={setEnView} />}
-        {enView === 'en-browse' && <EnterpriseBrowse />}
-        {enView === 'en-iot' && <EnterpriseMarketplace vertical="iot" />}
-        {enView === 'en-security' && <EnterpriseMarketplace vertical="security" />}
-        {enView === 'en-devices' && <EnterpriseMarketplace vertical="device" />}
-        {enView === 'en-approvals' && <EnterpriseApprovals />}
-        {enView === 'en-orders' && <EnterpriseOrders />}
-        {enView === 'en-enquiries' && <EnterpriseEnquiries />}
-        {enView === 'en-subs' && <EnterpriseSubs />}
-        {enView === 'en-numbers' && <EnterpriseNumbers />}
-        {enView === 'en-refunds' && <EnterpriseRefunds />}
-        {enView === 'en-billing' && <EnterpriseBilling />}
-        {enView === 'en-agreement' && <EnterpriseAgreement />}
-        {enView === 'en-rewards' && <EnterpriseRewards />}
-        {enView === 'en-support' && <EnterpriseSupport />}
-        {enView === 'en-notifications' && <EnterpriseNotifications />}
-        {enView === 'en-team' && <EnterpriseTeam />}
-        {enView === 'en-audit' && <EnterpriseAudit />}
-        {enView === 'en-profile' && <EnterpriseProfile anchor={enAnchor} />}
-        {enView === 'en-wallet' && <EnterpriseWallet />}
-        {enView === 'en-kb' && <KnowledgeBase persona="enterprise" title="Knowledge base" feedbackAs={{ actor: 'Vikram Shah', org: 'SmartBuild Ltd' }} />}
+        <Suspense fallback={<PageLoading />}>
+          <EnterpriseScreens view={enView} anchor={enAnchor} onSetView={setEnView} />
+        </Suspense>
         {/* One configurator for the whole console, opened by any bundle card. */}
         <BundleConfiguratorHost shop="enterprise" onOpenEnquiries={() => setEnView('en-enquiries')} />
       </EnterpriseShell>
@@ -658,6 +534,7 @@ function AppInner() {
       />
       <main>
         {loading && <div style={{ textAlign: 'center', padding: '60px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>}
+        <Suspense fallback={<PageLoading />}>
         {!loading && view === 'home' && (
           <>
             <Hero onNavigate={navigate} />
@@ -699,6 +576,7 @@ function AppInner() {
         {!loading && view === 'rewards' && <RewardsView />}
         {!loading && view === 'account' && <AccountView initialTab={accountTab} onWatchesChanged={loadWatches} />}
         {!loading && view === 'kb' && <div className="container" style={{ paddingTop: '32px', paddingBottom: '32px' }}><KnowledgeBase persona="consumer" title="How things work" feedbackAs={{ actor: 'Priya Raman', org: 'Consumer' }} /></div>}
+        </Suspense>
       </main>
       <Footer onNavigate={navigate} />
 
@@ -715,6 +593,9 @@ function AppInner() {
         />
       )}
 
+      {/* No placeholder: the drawer is closed until asked for, and its code has
+          long arrived by the time anybody reaches for the basket. */}
+      <Suspense fallback={null}>
       <CartDrawer
         open={cartOpen}
         items={cartItems}
@@ -727,6 +608,7 @@ function AppInner() {
           navigate('checkout')
         }}
       />
+      </Suspense>
       {/* One configurator for the shop, opened by bundle cards and Edit bundle. */}
       <BundleConfiguratorHost shop="consumer" />
       <ToastHost />
