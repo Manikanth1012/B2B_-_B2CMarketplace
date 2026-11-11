@@ -421,4 +421,9 @@ describe('the bundles migration', () => {
     expect(lower).toContain("where a.view = 'op-catalogue'")
     expect(lower).toContain("x.b ->> 'heading' is distinct from 'configurable bundles'")
   })
+
+  it('lets each part of a selection be ordered once, counted under a lock on the selection', () => {
+    expect(lower).toContain('perform 1 from bundle_selections where id = v_s.id for update')
+    expect(lower).toContain('has already been ordered')
+  })
 })

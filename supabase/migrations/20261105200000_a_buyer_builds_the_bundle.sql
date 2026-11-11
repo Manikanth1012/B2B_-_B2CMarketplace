@@ -960,6 +960,19 @@ begin
   if new.price is distinct from v_l.unit_price then
     raise exception '% is priced at % in that bundle, not %.', v_l.name, v_l.unit_price, new.price;
   end if;
+  /* Each part of a selection is bought once. Without this, a request written
+     by hand could order the discounted part again and again, at the bundle's
+     price, for as long as the selection's price is held. The selection row is
+     locked first so two orders placed at the same moment are counted one after
+     the other. An order undone after a failed payment takes its items with it,
+     so a retry is not refused. */
+  perform 1 from bundle_selections where id = v_s.id for update;
+  if exists (select 1 from order_items oi
+              where oi.bundle_selection_id = v_s.id
+                and oi.product_id = new.product_id
+                and oi.id is distinct from new.id) then
+    raise exception '% from that bundle has already been ordered. Configure the bundle again to buy it again.', v_l.name;
+  end if;
   if v_o.account_id is null then
     if v_s.valid_until < now() then
       raise exception 'The price of that bundle was held until %. Re-price it before checking out.',
