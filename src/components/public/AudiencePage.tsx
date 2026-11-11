@@ -56,7 +56,7 @@ const CONFIG: Record<Aud, {
   },
 }
 
-export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onRegister, onApplyBusiness, onResumeBusiness, onAddToBasket, initialQuery }: {
+export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onRegister, onApplyBusiness, onResumeBusiness, onAddToBasket, onNotifyMe, initialQuery }: {
   page: Aud
   /* A search from the header lands here with its words already applied. */
   initialQuery?: string
@@ -74,6 +74,7 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
   onApplyBusiness: () => void
   onResumeBusiness: () => void
   onAddToBasket: (p: Product) => void
+  onNotifyMe?: (p: Product) => void
 }) {
   const { market, currency } = useMarket()
   /* The chosen currency, not the market's default. Reading the default here
@@ -334,6 +335,7 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
         product={viewing}
         onClose={() => setViewing(null)}
         onAddToBasket={onAddToBasket}
+        onNotifyMe={onNotifyMe}
       />
     </>
   )

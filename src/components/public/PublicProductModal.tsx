@@ -20,10 +20,14 @@ import { X } from 'lucide-react'
 import { ProductDetail } from '../ProductDetail'
 import type { Product } from '../../types'
 
-export function PublicProductModal({ product, onClose, onAddToBasket }: {
+export function PublicProductModal({ product, onClose, onAddToBasket, onNotifyMe }: {
   product: Product | null
   onClose: () => void
   onAddToBasket: (p: Product) => void
+  /* Watching a product needs an owner (the watch row is keyed to the signed-in
+     user), so on the public surface this is the sign-in prompt. Unlike the basket
+     it does not carry the product through: the visitor reopens it once signed in. */
+  onNotifyMe?: (p: Product) => void
 }) {
   const panel = useRef<HTMLDivElement>(null)
 
@@ -85,6 +89,7 @@ export function PublicProductModal({ product, onClose, onAddToBasket }: {
           compact
           product={product}
           onAddToCart={p => { onAddToBasket(p); onClose() }}
+          onNotifyMe={onNotifyMe && (p => { onNotifyMe(p); onClose() })}
         />
       </div>
     </div>
