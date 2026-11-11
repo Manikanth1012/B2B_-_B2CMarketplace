@@ -6,6 +6,7 @@ import { loadCategories, loadCatalogue } from '../../lib/storefrontRepo'
 import { categoryDestination } from '../../lib/storefront'
 import { tileCount } from '../../lib/home'
 import { categoryIcon } from '../ui/categoryIcons'
+import { hasOpenTrap } from '../ui/useFocusTrap'
 
 /* The header's category panel. Read on first open rather than on every page,
    because most visitors never open it. Empty categories hide the panel's
@@ -30,7 +31,7 @@ export function DiscoverMenu({ onNavigate, onDone }: {
   useEffect(() => {
     if (!open) return
     const onDoc = (e: MouseEvent) => { if (!root.current?.contains(e.target as Node)) setOpen(false) }
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); trigger.current?.focus() } }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !hasOpenTrap()) { e.stopPropagation(); setOpen(false); trigger.current?.focus() } }
     document.addEventListener('mousedown', onDoc)
     document.addEventListener('keydown', onKey)
     return () => { document.removeEventListener('mousedown', onDoc); document.removeEventListener('keydown', onKey) }

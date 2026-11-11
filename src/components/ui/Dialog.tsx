@@ -45,6 +45,14 @@ export function Dialog({ open, onClose, title, children, footer, wide, labelId, 
     const handler = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented || !isTopmostTrap(panel.current)) return
       closeRef.current()
+      /* Spent here: a listener beneath this dialog (the account menu on
+         window, a drawer on document) must not also close on the same press.
+         stopPropagation keeps it from window; stopImmediatePropagation from a
+         document listener added after this one; preventDefault marks it for
+         any listener that ran earlier or checks defaultPrevented. */
+      e.stopPropagation()
+      e.stopImmediatePropagation()
+      e.preventDefault()
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)

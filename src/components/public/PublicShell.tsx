@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Menu, Search, X } from 'lucide-react'
 import type { PublicPage } from '../../types/view'
 import { DiscoverMenu } from './DiscoverMenu'
+import { hasOpenTrap } from '../ui/useFocusTrap'
 import { AventaWordmark } from '../ui/AventaWordmark'
 import { MarketPicker } from '../MarketPicker'
 import { useMarket } from '../../lib/MarketContext'
@@ -86,7 +87,8 @@ export function PublicShell({ page, onNavigate, onDemoSignIn, onSearch, children
     if (!menuOpen) return
     navRef.current?.querySelector<HTMLElement>('button, a[href]')?.focus()
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
+      /* A dialog open over the menu takes its own Escape. */
+      if (e.key !== 'Escape' || hasOpenTrap()) return
       /* One layer at a time: while the Discover panel is open, its own Escape
          handler closes it and the menu stays. */
       if (navRef.current?.querySelector('.discover__panel')) return
