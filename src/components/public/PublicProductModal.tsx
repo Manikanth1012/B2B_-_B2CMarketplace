@@ -25,8 +25,8 @@ export function PublicProductModal({ product, onClose, onAddToBasket, onNotifyMe
   onClose: () => void
   onAddToBasket: (p: Product) => void
   /* Watching a product needs an owner (the watch row is keyed to the signed-in
-     user), so on the public surface this is the sign-in prompt, the same one the
-     basket uses, which carries the product through. */
+     user), so on the public surface this is the sign-in prompt. Unlike the basket
+     it does not carry the product through: the visitor reopens it once signed in. */
   onNotifyMe?: (p: Product) => void
 }) {
   const panel = useRef<HTMLDivElement>(null)

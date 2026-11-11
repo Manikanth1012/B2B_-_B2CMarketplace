@@ -10,8 +10,12 @@ describe('orderLineImage', () => {
     const r = orderLineImage('SKU-9', 'iot', photos)
     expect(r.kind).toBe('category')
   })
-  it('is none when neither is known', () => {
-    expect(orderLineImage('SKU-9', 'unknown-shelf', photos)).toEqual({ kind: 'none' })
+  it('uses the shelf icon when the shelf is known but has no artwork', () => {
+    expect(orderLineImage('SKU-9', 'unknown-shelf', photos)).toEqual({ kind: 'shelf', categoryId: 'unknown-shelf' })
+    expect(orderLineImage(null, 'unknown-shelf', photos)).toEqual({ kind: 'shelf', categoryId: 'unknown-shelf' })
+  })
+  it('is none when the shelf is unknown', () => {
+    expect(orderLineImage('SKU-9', undefined, photos)).toEqual({ kind: 'none' })
     expect(orderLineImage(null, undefined, photos)).toEqual({ kind: 'none' })
   })
 })

@@ -22,6 +22,7 @@ import type { Push } from '../lib/com'
 import { groupBySelection } from '../lib/bundles'
 import { useBundleNames } from './bundles/useBundleNames'
 import { loadProductShelves } from '../lib/storefrontRepo'
+import { categoryIcon } from './ui'
 import { orderLineImage } from '../lib/orderLineImage'
 
 /* An order is read in the money it was placed in, not in whatever market the
@@ -507,6 +508,10 @@ function OrderDetailModal({ order, items, methods, onClose, bundleName }: {
    else the plain icon. Decorative, since the name sits right next to it. */
 function LineThumb({ productId, shelf }: { productId: string; shelf?: string }) {
   const img = orderLineImage(productId, shelf)
+  if (img.kind === 'shelf') {
+    const Icon = categoryIcon(img.categoryId)
+    return <span className="ord-item__thumb" aria-hidden="true"><Icon size={18} /></span>
+  }
   if (img.kind === 'none') {
     return <span className="ord-item__thumb" aria-hidden="true"><Package size={18} /></span>
   }
