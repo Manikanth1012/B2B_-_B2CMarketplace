@@ -162,7 +162,7 @@ alter table enterprise_requisition_lines add column if not exists off_contract_r
 
 alter table enterprise_requisition_lines drop constraint if exists enterprise_requisition_lines_off_contract_shape;
 alter table enterprise_requisition_lines add constraint enterprise_requisition_lines_off_contract_shape check (
-     (off_contract and off_contract_rule in ('allow', 'reason', 'approval'))
+     (off_contract and off_contract_rule is not null and off_contract_rule in ('allow', 'reason', 'approval'))
   or (not off_contract and off_contract_rule is null));
 alter table enterprise_requisition_lines drop constraint if exists enterprise_requisition_lines_off_contract_why;
 alter table enterprise_requisition_lines add constraint enterprise_requisition_lines_off_contract_why check (
@@ -195,10 +195,23 @@ declare
   v_floor   numeric;
 begin
   if tg_op = 'UPDATE' then
-    /* The foreign key letting go of a deleted quote line is not an edit. */
+    /* The foreign key letting go of a deleted quote line is not an edit —
+       provided that is all that changed. */
     if new.quote_line_id is null and old.quote_line_id is not null
+       and new.account_id is not distinct from old.account_id
+       and new.product_id is not distinct from old.product_id
+       and new.currency is not distinct from old.currency
+       and new.unit_price is not distinct from old.unit_price
+       and new.starts_on is not distinct from old.starts_on
        and new.ends_on is not distinct from old.ends_on
-       and new.unit_price = old.unit_price then
+       and new.source is not distinct from old.source
+       and new.quote_ref is not distinct from old.quote_ref
+       and new.note is not distinct from old.note
+       and new.set_by is not distinct from old.set_by
+       and new.set_at is not distinct from old.set_at
+       and new.ended_by is not distinct from old.ended_by
+       and new.ended_at is not distinct from old.ended_at
+       and new.end_reason is not distinct from old.end_reason then
       return new;
     end if;
   end if;
@@ -228,6 +241,13 @@ begin
       if new.ends_on is not null and new.ends_on < current_date - 1 then
         raise exception 'A price can end yesterday at the earliest — requisitions already raised were checked against it.';
       end if;
+      /* An end is only ever brought forward (spec decisions 10 and 11). Moving
+         it later, or reviving a withdrawn price, would be an edit, and would
+         leave "ended by X because Y" on a price in force. */
+      if old.ends_on is not null and (new.ends_on is null or new.ends_on > old.ends_on) then
+        raise exception 'An account price''s end is only brought forward. To keep the account on this figure for longer, set a new price from %.',
+          to_char(greatest(old.ends_on + 1, current_date), 'DD Mon YYYY');
+      end if;
       /* Brought forward is an ending, and an ending says why. */
       if new.ends_on is not null and (old.ends_on is null or new.ends_on < old.ends_on) then
         if coalesce(btrim(new.end_reason), '') = '' then
@@ -236,6 +256,12 @@ begin
         new.ended_by := enquiry_actor_name();
         new.ended_at := now();
       end if;
+    elsif old.ends_on is not null and (new.ends_on is null or new.ends_on > old.ends_on) then
+      /* The service role may correct a date; the end it moved past is no
+         longer the end, so nothing says it was. */
+      new.ended_by := null;
+      new.ended_at := null;
+      new.end_reason := null;
     end if;
   else
     if v_persona is not null and new.starts_on < current_date then
@@ -359,6 +385,9 @@ begin
   if p_ends_on is not null and p_ends_on < p_starts_on then
     raise exception 'A new price has to run for at least one day: it ends before it starts.';
   end if;
+  if p_unit_price is null or round(p_unit_price, 2) <= 0 then
+    raise exception 'An account price is more than nothing: give the price per unit.';
+  end if;
 
   perform pg_advisory_xact_lock(hashtext('account_price|' || p_account || '|' || p_product || '|' || p_currency));
 
@@ -423,6 +452,10 @@ begin
   end if;
   if v_q.status <> 'accepted' or v_q.quoted_unit_price is null then
     raise exception '% has not been accepted, so its prices cannot become the account''s.', v_q.enquiry_id;
+  end if;
+  if v_q.quoted_unit_price <= 0 then
+    raise exception '% quoted that line at %, and an account price is more than nothing. Agree a price with the account and set it on Price books instead.',
+      v_q.enquiry_id, v_q.quoted_unit_price;
   end if;
   return set_account_price(v_q.account_id, v_q.product_id, v_q.currency, v_q.quoted_unit_price,
                            p_starts_on, p_ends_on,
@@ -622,8 +655,10 @@ create trigger enterprise_requisition_lines_price_guard
 
 /* What the buying rules ask of a line bought off the price book. Named to run
    after every other line guard, so it judges the line they have finished
-   with. A business buyer only; on an update that changes nothing the price
-   guard looks at, the stored verdict stays as it was. */
+   with. A business buyer only; on an update that changes neither what the
+   price guard looks at nor the line's quote or bundle link, the stored
+   verdict stays as it was. (A link cannot be let go of — the quoted and
+   bundle guards refuse that — and a line that gains one is on contract.) */
 create or replace function guard_requisition_line_contract() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare
@@ -822,6 +857,11 @@ begin
           greatest(v_pick.floor, round(v_pick.book * 0.92, 0)), current_date, null,
           'negotiated', 'Agreed at SmartBuild''s 2026 commercial review.', 'Anika Sharma')
   on conflict (id) do nothing;
+  /* Said for the check at the end, in this transaction only: the seed's band
+     and SmartBuild's rule are this run's to vouch for only when it wrote them. */
+  if found then
+    perform set_config('aventa.account_price_seeded', 'yes', true);
+  end if;
 
   insert into account_preferences (id, account_id, kind, product_id, note, added_by)
   values ('PREF-SEED-2007-P', 'ENT-2007', 'product', v_pick.id, 'On our price book.', 'Vikram Shah')
@@ -840,24 +880,27 @@ end $$;
 
 /* The agreement articles said prices are never negotiated. They still say what
    the agreement settles; the price section now says where an account's own
-   prices are. Both keep "published for … market", which 20260809150000 checks. */
+   prices are. Both keep "published for … market", which 20260809150000 checks.
+   Their blocks are `{kind, heading, text}` objects since 20260809900000, and
+   `z_guard_kb_body` refuses anything else, so a block is matched by its
+   heading and replaced with a prose object. */
 update kb_articles k
    set body = (
      select jsonb_agg(
-              (case when jsonb_typeof(e) = 'array' and e ->> 0 = 'It does not set prices'
-                    then jsonb_build_array('Prices',
-                      'You are charged the price published for your market on the day you order, unless your account has a price of its own for that listing on that day. Those are agreed with Aventa and listed on Price book, each with the dates it applies; they are not part of this agreement and do not change when it is amended. The expected spend on the agreement is your own planning figure — it is not a commitment to buy and it carries no price advantage.')
+              (case when jsonb_typeof(e) = 'object' and e ->> 'heading' = 'It does not set prices'
+                    then jsonb_build_object('kind', 'prose', 'heading', 'Prices',
+                      'text', 'You are charged the price published for your market on the day you order, unless your account has a price of its own for that listing on that day. Those are agreed with Aventa and listed on Price book, each with the dates it applies; they are not part of this agreement and do not change when it is amended. The expected spend on the agreement is your own planning figure — it is not a commitment to buy and it carries no price advantage.')
                     else e end)
               order by ord)
        from jsonb_array_elements(k.body) with ordinality t(e, ord))
- where k.view = 'en-agreement' and k.body::text like '%It does not set prices%';
+ where k.view = 'en-agreement' and k.body::text like '%No rate card forms part of this agreement%';
 
 update kb_articles k
    set body = (
      select jsonb_agg(
-              (case when jsonb_typeof(e) = 'array' and e ->> 0 = 'What an agreement settles, and what it does not'
-                    then jsonb_build_array(e ->> 0,
-                      'The term, the payment terms, the currency, who signed on each side, and what happens when it runs out. Not the price. An account is charged what is published for its market, or its own price on Price books where one is in force for that listing on that day. The two are kept apart on purpose: an agreement is a signed document, and a price book changes at every commercial review. A stated expected spend buys nothing.')
+              (case when jsonb_typeof(e) = 'object' and e ->> 'heading' = 'What an agreement settles, and what it does not'
+                    then jsonb_build_object('kind', 'prose', 'heading', e -> 'heading',
+                      'text', 'The term, the payment terms, the currency, who signed on each side, and what happens when it runs out. Not the price. An account is charged what is published for its market, or its own price on Price books where one is in force for that listing on that day. The two are kept apart on purpose: an agreement is a signed document, and a price book changes at every commercial review. A stated expected spend buys nothing.')
                     else e end)
               order by ord)
        from jsonb_array_elements(k.body) with ordinality t(e, ord))
@@ -923,8 +966,10 @@ declare
   v_def  text;
   v_n    integer;
   v_type integer;
-  v_cols text;
-  v_bad  text;
+  v_cols   text;
+  v_bad    text;
+  v_rule   text;
+  v_seeded boolean;
 begin
   /* Still standing on what it needs. */
   select pg_get_functiondef(p.oid) into v_def
@@ -1022,22 +1067,35 @@ begin
     raise exception 'account prices that overlap: %', v_bad;
   end if;
 
-  /* The seed is there and inside its band. */
+  /* The seed is there. Inside its band, and SmartBuild's rule `allow`, are
+     this run's to vouch for only when this run wrote the seed: afterwards a
+     seller may raise its floor (the guard then charges the floor) and the
+     account's policy-setter may change its rule, and a re-run must not roll
+     back over either. */
+  v_seeded := coalesce(current_setting('aventa.account_price_seeded', true), '') = 'yes';
+  if not exists (select 1 from account_prices where id = 'AP-SEED-2007-1') then
+    raise exception 'SmartBuild''s seeded account price is missing';
+  end if;
   select count(*) into v_n
     from account_prices ap
     join product_prices pp on pp.product_id = ap.product_id and pp.currency = ap.currency
    where ap.id = 'AP-SEED-2007-1'
      and ap.unit_price <= round(pp.price, 2)
      and ap.unit_price >= round(coalesce(pp.floor_price, 0), 2);
-  if v_n <> 1 then
-    raise exception 'SmartBuild''s seeded account price is missing or outside its floor and published price';
+  if v_n <> 1 and v_seeded then
+    raise exception 'SmartBuild''s seeded account price is outside its floor and published price';
+  elsif v_n <> 1 then
+    raise notice 'SmartBuild''s seeded account price is outside today''s floor and published price, and is charged at the nearer bound.';
   end if;
   if exists (select 1 from enterprise_accounts a
               where not exists (select 1 from enterprise_buying_rules b where b.account_id = a.id)) then
     raise exception 'an account has no buying rules row';
   end if;
-  if (select off_contract from enterprise_buying_rules where account_id = 'ENT-2007') is distinct from 'allow' then
+  v_rule := (select off_contract from enterprise_buying_rules where account_id = 'ENT-2007');
+  if v_rule is distinct from 'allow' and v_seeded then
     raise exception 'SmartBuild''s seeded rule is not allow, which existing requisition tests rely on';
+  elsif v_rule is distinct from 'allow' then
+    raise notice 'SmartBuild''s buying rule is %, as its policy-setter chose; requisition tests that raise off-contract lines expect allow.', v_rule;
   end if;
 
   /* Read only: prices in force that today's floor or published price has moved
@@ -1066,6 +1124,14 @@ begin
      and body::text not ilike '%published for your market%';
   if v_bad is not null then
     raise exception 'agreement help no longer says what the published price is: %', v_bad;
+  end if;
+  /* And neither still says there is no rate card: the price sections were
+     rewritten, not left beside the account's own prices. */
+  select string_agg(id, ', ') into v_bad from kb_articles
+   where view in ('op-contracts', 'en-agreement')
+     and (body::text ilike '%rate card%' or body::text ilike '%It does not set prices%');
+  if v_bad is not null then
+    raise exception 'agreement help still says prices are never negotiated: %', v_bad;
   end if;
 end $$;
 

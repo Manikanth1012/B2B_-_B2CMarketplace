@@ -270,6 +270,62 @@ describe('an account buys at its own price — the migration', () => {
     const contracts = lower.match(/update kb_articles k[\s\S]*?where k\.view = 'op-contracts'[^;]*;/)![0]
     expect(agreement).toContain('published for your market')
     expect(contracts).toContain('published for its market')
+    // blocks are {kind, heading, text} objects since 20260809900000, and z_guard_kb_body refuses arrays
+    for (const u of [agreement, contracts]) {
+      expect(u).toContain("jsonb_typeof(e) = 'object' and e ->> 'heading' = ")
+      expect(u).toContain("jsonb_build_object('kind', 'prose', 'heading', ")
+      expect(u).not.toMatch(/jsonb_typeof\(e\) = 'array'|e ->> 0|jsonb_build_array\(/)
+    }
+    expect(agreement).toContain("'it does not set prices'")
+    expect(agreement).toContain("like '%no rate card forms part of this agreement%'")
+    expect(contracts).toContain("'what an agreement settles, and what it does not'")
+    expect(contracts).toContain("like '%no rate card hanging off any of this%'")
+    for (const u of [agreement, contracts]) {
+      const replacement = u.match(/\bthen ([\s\S]*?)\belse e end/)![1]
+      expect(replacement).not.toMatch(/rate card/)
+    }
+  })
+
+  it('checks at the end that neither agreement article still says there is no rate card', () => {
+    expect(selfCheck).toContain("and (body::text ilike '%rate card%' or body::text ilike '%it does not set prices%');")
+    expect(raises(selfCheck).map(r => r.message)).toContain('agreement help still says prices are never negotiated: %')
+  })
+
+  it('vouches for the seed band and the seeded rule only on the run that wrote the seed', () => {
+    expect(lower).toContain("perform set_config('aventa.account_price_seeded', 'yes', true);")
+    expect(selfCheck).toContain("current_setting('aventa.account_price_seeded', true)")
+    expect(selfCheck).toContain('if v_n <> 1 and v_seeded then')
+    expect(selfCheck).toContain("if v_rule is distinct from 'allow' and v_seeded then")
+  })
+
+  it('holds the off-contract shape against a null rule', () => {
+    expect(lower).toContain("(off_contract and off_contract_rule is not null and off_contract_rule in ('allow', 'reason', 'approval'))")
+  })
+
+  it('lets the foreign key let go of a quote line only when nothing else changed', () => {
+    const g = fn('guard_account_price')
+    const shortcut = g.slice(g.indexOf('if new.quote_line_id is null and old.quote_line_id is not null'), g.indexOf('return new;'))
+    for (const c of ['account_id', 'product_id', 'currency', 'unit_price', 'starts_on', 'ends_on', 'source',
+      'quote_ref', 'note', 'set_by', 'set_at', 'ended_by', 'ended_at', 'end_reason']) {
+      expect(shortcut, c).toContain(`new.${c} is not distinct from old.${c}`)
+    }
+  })
+
+  it('only ever brings an end forward, and clears stale stamps when the service role moves one later', () => {
+    const g = fn('guard_account_price')
+    expect(g).toContain('if old.ends_on is not null and (new.ends_on is null or new.ends_on > old.ends_on) then')
+    expect(raises(code).map(r => r.message)).toContain(
+      "An account price's end is only brought forward. To keep the account on this figure for longer, set a new price from %.")
+    expect(g).toMatch(/elsif old\.ends_on is not null and \(new\.ends_on is null or new\.ends_on > old\.ends_on\) then\s+[\s\S]*?new\.ended_by := null;\s+new\.ended_at := null;\s+new\.end_reason := null;/)
+  })
+
+  it('refuses a price of nothing in a sentence, before anything is written', () => {
+    const promote = fn('promote_quote_line')
+    expect(promote.indexOf('if v_q.quoted_unit_price <= 0 then')).toBeGreaterThan(-1)
+    expect(promote.indexOf('if v_q.quoted_unit_price <= 0 then')).toBeLessThan(promote.indexOf('return set_account_price('))
+    const set = fn('set_account_price')
+    expect(set.indexOf('if p_unit_price is null or round(p_unit_price, 2) <= 0 then')).toBeLessThan(set.indexOf('insert into account_prices'))
+    expect(set.indexOf('if p_unit_price is null or round(p_unit_price, 2) <= 0 then')).toBeGreaterThan(-1)
   })
 
   it('seeds by id, re-runnably, and never on a listing another test buys', () => {
