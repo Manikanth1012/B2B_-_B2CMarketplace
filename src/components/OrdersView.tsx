@@ -21,6 +21,8 @@ import { STATE_LABEL, STATE_MEANING } from '../lib/com'
 import type { Push } from '../lib/com'
 import { groupBySelection } from '../lib/bundles'
 import { useBundleNames } from './bundles/useBundleNames'
+import { loadProductShelves } from '../lib/storefrontRepo'
+import { orderLineImage } from '../lib/orderLineImage'
 
 /* An order is read in the money it was placed in, not in whatever market the
    shopper has the storefront set to now. Switching to Kenya does not restate
@@ -51,6 +53,15 @@ export function OrdersView() {
   const [plans, setPlans] = useState<Record<string, PaymentAttempt>>({})
   /* Configured bundles show as one group; an order with none reads as before. */
   const bundleName = useBundleNames(Object.values(orderItems).flat())
+  /* Which shelf each bought product is on, for the picture beside its line. */
+  const [shelves, setShelves] = useState<Record<string, string>>({})
+  useEffect(() => {
+    const ids = Object.values(orderItems).flat().map(i => i.product_id).filter(Boolean)
+    if (ids.length === 0) return
+    let live = true
+    loadProductShelves(ids).then(m => { if (live) setShelves(m) })
+    return () => { live = false }
+  }, [orderItems])
   /* Order cards are tall. Five of them is a screenful; twenty is a scroll with
      no sense of how far down it goes. */
   const ordersPage = usePaging(orders, { initialSize: 5 })
@@ -183,7 +194,7 @@ export function OrdersView() {
                   ] : []),
                   ...g.lines.map((item) => (
                   <li key={item.id} className={`ord-item${g.selectionId ? ' ord-item--in-bundle' : ''}`}>
-                    <span className="ord-item__thumb" aria-hidden="true"><Package size={18} /></span>
+                    <LineThumb productId={item.product_id} shelf={shelves[item.product_id]} />
                     <span className="ord-item__name">{item.product_name} × {item.quantity}</span>
                     <span className="ord-item__price">{fmtIn(item.price * item.quantity, order.currency)}</span>
                   </li>
@@ -489,5 +500,21 @@ function OrderDetailModal({ order, items, methods, onClose, bundleName }: {
         </div>
       </div>
     </Dialog>
+  )
+}
+
+/* The picture beside an order line: the product's own, else its shelf's artwork,
+   else the plain icon. Decorative, since the name sits right next to it. */
+function LineThumb({ productId, shelf }: { productId: string; shelf?: string }) {
+  const img = orderLineImage(productId, shelf)
+  if (img.kind === 'none') {
+    return <span className="ord-item__thumb" aria-hidden="true"><Package size={18} /></span>
+  }
+  const src = img.kind === 'product' ? img.src : img.visual.src
+  const position = img.kind === 'category' ? img.visual.position : undefined
+  return (
+    <span className="ord-item__thumb" aria-hidden="true" style={{ overflow: 'hidden' }}>
+      <img src={src} alt="" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: position }} />
+    </span>
   )
 }

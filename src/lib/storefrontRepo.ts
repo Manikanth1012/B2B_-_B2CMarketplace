@@ -52,3 +52,19 @@ export function countByCategory(
   }
   return out
 }
+
+/* Which shelf each product sits on, for the pictures on order lines. The answer
+   for a product does not change while the page is open, so each id is asked once
+   and remembered; ids already known are not sent again. */
+const shelfOf = new Map<string, string>()
+
+export async function loadProductShelves(ids: readonly string[]): Promise<Record<string, string>> {
+  const wanted = [...new Set(ids)].filter(id => id && !shelfOf.has(id))
+  if (wanted.length > 0) {
+    const { data, error } = await supabase.from('products').select('id,category_id').in('id', wanted)
+    if (!error) {
+      for (const r of (data ?? []) as { id: string; category_id: string }[]) shelfOf.set(r.id, r.category_id)
+    }
+  }
+  return Object.fromEntries(ids.filter(id => shelfOf.has(id)).map(id => [id, shelfOf.get(id)!]))
+}

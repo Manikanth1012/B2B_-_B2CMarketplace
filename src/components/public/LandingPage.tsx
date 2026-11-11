@@ -16,9 +16,10 @@ import type { Category, Product } from '../../types'
 import type { PublicPage } from '../../types/view'
 import { marketProse } from '../../lib/money'
 
-export function LandingPage({ onNavigate, onAddToBasket }: {
+export function LandingPage({ onNavigate, onAddToBasket, onNotifyMe }: {
   onNavigate: (p: PublicPage) => void
   onAddToBasket: (p: Product) => void
+  onNotifyMe?: (p: Product) => void
 }) {
   const { book, market, currency } = useMarket()
   const markets = marketProse(book.markets)
@@ -58,7 +59,7 @@ export function LandingPage({ onNavigate, onAddToBasket }: {
       <FeaturedSection products={featuredProducts(catalogue, categories, 4, currencyCode)} onOpen={setOpen} onNavigate={onNavigate} />
       <WhyAventa />
       <EcosystemStrip sellers={ecosystemSellers(catalogue, 8)} />
-      <PublicProductModal product={open} onClose={close} onAddToBasket={onAddToBasket} />
+      <PublicProductModal product={open} onClose={close} onAddToBasket={onAddToBasket} onNotifyMe={onNotifyMe} />
     </>
   )
 }

@@ -468,6 +468,9 @@ function AppInner() {
               setSurface({ kind: 'login', prefill: 'consumer' })
               window.scrollTo({ top: 0 })
             }}
+            /* A stock watch belongs to a signed-in shopper, so a visitor is sent to
+               sign in, as the basket does. */
+            onNotifyMe={() => { setSurface({ kind: 'login', prefill: 'consumer' }); window.scrollTo({ top: 0 }) }}
           />
         )}
         {surface.page !== 'landing' && (
@@ -489,6 +492,9 @@ function AppInner() {
               setSurface({ kind: 'login', prefill: 'consumer' })
               window.scrollTo({ top: 0 })
             }}
+            /* A stock watch belongs to a signed-in shopper, so a visitor is sent to
+               sign in, as the basket does. */
+            onNotifyMe={() => { setSurface({ kind: 'login', prefill: 'consumer' }); window.scrollTo({ top: 0 }) }}
           />
         )}
         {/* Visitors can configure and see the price; adding needs a sign-in. */}

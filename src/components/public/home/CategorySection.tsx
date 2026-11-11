@@ -22,6 +22,7 @@ export function CategorySection({ categories, catalogue, onNavigate }: {
           <CategoryTile
             key={c.id}
             name={c.name}
+            description={c.blurb}
             count={catalogue.length ? tileCount(c, catalogue) : undefined}
             visual={categoryVisual(c.id)}
             icon={categoryIcon(c.id)}
