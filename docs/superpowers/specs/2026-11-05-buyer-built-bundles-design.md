@@ -159,7 +159,7 @@ own parts.
 | Price book changes | Selection holds its price 7 days; then re-price |
 | Part paused, delisted, unpriced, out of stock | Whole bundle blocked at checkout/raise with the part named; edit to continue |
 | Template paused | No new selections; valid existing selections can still be bought |
-| Currency | One per selection; must match the basket/requisition currency |
+| Currency | One per selection, always the buyer's own currency (consumer home currency, or the business account's currency) — never the header currency. A requisition raised in a secondary currency cannot hold a bundle; the screen says so before Add (decided 2026-11-11) |
 | Bundle quantity | Re-priced on the server; slot quantity limits apply per bundle |
 | Refund / dispute | Per part at its allocated price (existing per-line flow) |
 | Quote | Spec 6 quote with the configured parts as lines, routed by the usual rule |
