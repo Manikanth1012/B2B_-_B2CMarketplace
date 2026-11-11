@@ -1,15 +1,42 @@
-import { useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type React from 'react'
 import { tabKeyTarget } from '../../lib/tabKeys'
 
 export interface AccountTab { id: string; label: string; icon: React.ReactNode }
 
+/** The breakpoint at which src/styles/account.css turns the tab row into a column. */
+export const ACCOUNT_TABS_VERTICAL_QUERY = '(min-width: 1024px)'
+
+/* 'vertical' while the column layout applies, else 'horizontal'. Where there
+   is no matchMedia (a test or server environment) the list is a row. */
+function useOrientation(): 'vertical' | 'horizontal' {
+  const query = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia(ACCOUNT_TABS_VERTICAL_QUERY) : null
+  const [vertical, setVertical] = useState(() => query()?.matches ?? false)
+  useEffect(() => {
+    const mql = query()
+    if (!mql) return
+    const update = () => setVertical(mql.matches)
+    update()
+    if (typeof mql.addEventListener === 'function') {
+      mql.addEventListener('change', update)
+      return () => mql.removeEventListener('change', update)
+    }
+    /* Safari before 14 has only the older pair. */
+    mql.addListener(update)
+    return () => mql.removeListener(update)
+  }, [])
+  return vertical ? 'vertical' : 'horizontal'
+}
+
 /**
  * The account screen's sections as a tablist.
  *
  * At 1024px and wider it is a sticky column on the left; below that it is a
- * row of chips that scrolls sideways. Which way it runs is CSS only, so the
- * arrow keys accept both pairs (tabKeyTarget) and Home/End jump to the ends.
+ * row of chips that scrolls sideways. The layout is CSS; aria-orientation
+ * follows the same 1024px breakpoint through matchMedia so a screen reader
+ * is told which way it runs. The arrow keys accept both pairs either way
+ * (tabKeyTarget) and Home/End jump to the ends.
  * Only the selected tab is in the Tab order (roving tabIndex): Tab moves from
  * the list into the panel rather than through nine tabs first.
  *
@@ -27,6 +54,7 @@ export function AccountTabs({ tabs, active, onChange, idPrefix, children }: {
   const panelId = `${idPrefix}-panel`
   const tabId = (id: string) => `${idPrefix}-tab-${id}`
   const activeIndex = Math.max(0, tabs.findIndex(t => t.id === active))
+  const orientation = useOrientation()
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
     const target = tabKeyTarget(e.key, index, tabs.length)
@@ -38,7 +66,8 @@ export function AccountTabs({ tabs, active, onChange, idPrefix, children }: {
 
   return (
     <div className="acct-tabs">
-      <div className="acct-tabs__list" role="tablist" aria-label="Account sections">
+      <div className="acct-tabs__list" role="tablist" aria-label="Account sections"
+        aria-orientation={orientation}>
         {tabs.map((tab, i) => {
           const selected = i === activeIndex
           return (

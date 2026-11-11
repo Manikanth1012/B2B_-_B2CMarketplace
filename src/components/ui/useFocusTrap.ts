@@ -24,6 +24,14 @@ function focusables(root: HTMLElement): HTMLElement[] {
       && root.querySelector(`input[type="radio"][name="${CSS.escape(el.name)}"]:checked`)))
 }
 
+/** True while any trap is active: a dialog is open somewhere. A drawer or
+ *  menu that listens for Escape on the document asks this first, so the
+ *  Escape that closes a dialog over it does not close it as well -- its
+ *  listener may have been added first and run before the dialog's. */
+export function hasOpenTrap(): boolean {
+  return stack.length > 0
+}
+
 /** True when `el` is the innermost active trap: the one that should answer
  *  Tab and Escape while dialogs are stacked. */
 export function isTopmostTrap(el: HTMLElement | null): boolean {

@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Zap, Star, Award, Gift, Wallet, FileText, Tag, RefreshCw, Send, Minus, Plus, Check, CircleAlert as AlertCircle, Info } from 'lucide-react'
+import { Zap, Star, TrendingUp, Clock, Award, Gift, Wallet, FileText, Tag, RefreshCw, Send, Minus, Plus, Check, CircleAlert as AlertCircle, Info } from 'lucide-react'
 import { BentoCard, KpiCard, StatusBadge, Dialog } from './ui'
 import { AccountPage } from './account/AccountPage'
 import { creditWalletFromRewards, loadMyWallet } from '../lib/walletRepo'
@@ -246,16 +246,16 @@ export function RewardsView() {
 
       {/* Figures: 4 / 2 / 1 columns */}
       <div className="rw-kpis">
-        <KpiCard label="Balance" value={fmtPts(member.balance)}>
+        <KpiCard icon={<Zap size={20} />} label="Balance" value={fmtPts(member.balance)}>
           <div className="rw-kpi-foot">Worth {money(worthIn(member.balance, BASE, rate))} as wallet credit</div>
         </KpiCard>
-        <KpiCard label="Tier" value={progress.cur.name}>
+        <KpiCard icon={<Star size={20} />} label="Tier" value={progress.cur.name}>
           <div className="rw-kpi-foot">{progress.cur.multiplier}× on everything you buy</div>
         </KpiCard>
-        <KpiCard label="Qualifying spend" value={money0(member.qualify_12m)}>
+        <KpiCard icon={<TrendingUp size={20} />} label="Qualifying spend" value={money0(member.qualify_12m)}>
           <div className="rw-kpi-foot">Rolling 12 months</div>
         </KpiCard>
-        <KpiCard label="Expiring soon" value={member.expiring_soon ? fmtPts(member.expiring_soon) : 'None'}>
+        <KpiCard icon={<Clock size={20} />} label="Expiring soon" value={member.expiring_soon ? fmtPts(member.expiring_soon) : 'None'}>
           <div className="rw-kpi-foot">{member.expiring_on ? `On ${member.expiring_on}` : 'Nothing within 90 days'}</div>
         </KpiCard>
       </div>

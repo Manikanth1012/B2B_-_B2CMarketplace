@@ -451,6 +451,9 @@ function AppInner() {
   }
 
   if (surface.kind === 'public') {
+    /* A stock watch belongs to a signed-in shopper, so a visitor is sent to sign
+       in. Unlike the basket, the product is not carried through; they reopen it. */
+    const signInToWatch = () => { setSurface({ kind: 'login', prefill: 'consumer' }); window.scrollTo({ top: 0 }) }
     return (
       <PublicShell
         page={surface.page}
@@ -468,6 +471,7 @@ function AppInner() {
               setSurface({ kind: 'login', prefill: 'consumer' })
               window.scrollTo({ top: 0 })
             }}
+            onNotifyMe={signInToWatch}
           />
         )}
         {surface.page !== 'landing' && (
@@ -489,6 +493,7 @@ function AppInner() {
               setSurface({ kind: 'login', prefill: 'consumer' })
               window.scrollTo({ top: 0 })
             }}
+            onNotifyMe={signInToWatch}
           />
         )}
         {/* Visitors can configure and see the price; adding needs a sign-in. */}
