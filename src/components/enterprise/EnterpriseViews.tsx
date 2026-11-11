@@ -334,7 +334,7 @@ export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
           {([['preferred', 'Preferred', nPreferred], ['contract', 'On your price book', nContract]] as const)
             .filter(([k, , n]) => n > 0 || show === k)
             .map(([k, label, n]) => (
-              <Btn key={k} size="sm" variant={show === k ? 'primary' : 'secondary'} aria-pressed={show === k}
+              <Btn key={k} size="sm" className="pb-target" variant={show === k ? 'primary' : 'secondary'} aria-pressed={show === k}
                    onClick={() => setShow(show === k ? null : k)}>{label} ({n})</Btn>
             ))}
         </div>
