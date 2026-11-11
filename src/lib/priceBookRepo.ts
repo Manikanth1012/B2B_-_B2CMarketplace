@@ -161,6 +161,38 @@ export async function addPreference(p: {
   }
 }
 
+/** A product the account has a price on: its name, and its published price per
+    currency. Read by id, independent of the live shelf, so a paused or delisted
+    product still has a name beside its earlier prices. A product the account
+    may not read is simply absent; the caller says so. */
+export interface PricedProduct { id: string; name: string; published: Record<string, number> }
+
+export async function loadProductsByIds(ids: readonly string[]): Promise<Result<PricedProduct[]>> {
+  const want = Array.from(new Set(ids))
+  if (want.length === 0) return { ok: true, value: [] }
+  try {
+    const [p, pp] = await Promise.all([
+      supabase.from('products').select('id, name').in('id', want),
+      supabase.from('product_prices').select('product_id, currency, price').in('product_id', want),
+    ])
+    if (p.error) return { ok: false, error: p.error.message }
+    if (pp.error) return { ok: false, error: pp.error.message }
+    const published = new Map<string, Record<string, number>>()
+    for (const r of (pp.data ?? []) as Row[]) {
+      const id = String(r.product_id)
+      published.set(id, { ...(published.get(id) ?? {}), [String(r.currency)]: Number(r.price) })
+    }
+    return {
+      ok: true,
+      value: ((p.data ?? []) as Row[]).map(r => ({
+        id: String(r.id), name: String(r.name), published: published.get(String(r.id)) ?? {},
+      })),
+    }
+  } catch (e) {
+    return { ok: false, error: errorText(e) }
+  }
+}
+
 export async function removePreference(id: string): Promise<Result> {
   try {
     const { data, error, status } = await supabase.from('account_preferences').delete().eq('id', id).select('id')

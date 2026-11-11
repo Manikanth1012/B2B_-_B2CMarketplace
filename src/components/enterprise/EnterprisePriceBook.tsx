@@ -3,10 +3,12 @@ import { SectionCard, Table, Td, StatusPill, Btn, toast, fmtDate, FormField, Tex
 import { Callout } from '../OnboardingJourney'
 import { PriceTag } from '../pricebooks/PriceTag'
 import { RuleCards } from '../pricebooks/RuleCards'
-import { useAccountMoney } from './money'
+import { useMarket } from '../../lib/MarketContext'
+import { priceText, needsDecimals } from '../../lib/priceText'
 import { loadAccount, loadEnterpriseCatalogue } from '../../lib/enterpriseRepo'
 import type { AccountBook, EnterpriseListing } from '../../lib/enterpriseRepo'
-import { saveBuyingRules, addPreference, removePreference } from '../../lib/priceBookRepo'
+import { saveBuyingRules, addPreference, removePreference, loadProductsByIds } from '../../lib/priceBookRepo'
+import type { PricedProduct } from '../../lib/priceBookRepo'
 import { standingOf } from '../../lib/accountPrices'
 import type { AccountPrice, OffContractRule, PriceStanding } from '../../lib/accountPrices'
 import { may } from '../../lib/enterpriseAdmin'
@@ -31,6 +33,8 @@ const ORDER: Record<PriceStanding, number> = { 'in force': 0, scheduled: 1, ende
 export function EnterprisePriceBook() {
   const [book, setBook] = useState<AccountBook | null>(null)
   const [listings, setListings] = useState<EnterpriseListing[]>([])
+  const [named, setNamed] = useState<Map<string, PricedProduct> | null>(null)
+  const [namesFailed, setNamesFailed] = useState(false)
   const [rule, setRule] = useState<OffContractRule>('allow')
   const [note, setNote] = useState('')
   const [saving, setSaving] = useState(false)
@@ -38,28 +42,32 @@ export function EnterprisePriceBook() {
   const [pickSeller, setPickSeller] = useState('')
   const [pickProduct, setPickProduct] = useState('')
 
-  const reload = useCallback(async () => {
+  /* `resetDraft` is true on first load and after Save only: adding or removing
+     a preference must not throw away a rule or note that has not been saved. */
+  const reload = useCallback(async (resetDraft: boolean) => {
     const b = await loadAccount()
     setBook(b)
-    setRule(b.rules.off_contract)
-    setNote(b.rules.note ?? '')
-    /* The pickers and the product names come from the shelf, one read per
-       currency the account has a price in, plus its own. */
-    const codes = Array.from(new Set([b.account?.currency, ...b.prices.map(p => p.currency)].filter(Boolean))) as string[]
-    const shelves = await Promise.all(codes.map(c => loadEnterpriseCatalogue(c, b.account?.id).catch(() => [] as EnterpriseListing[])))
-    setListings(shelves.flat())
+    if (resetDraft) { setRule(b.rules.off_contract); setNote(b.rules.note ?? '') }
+    /* Names and published prices are read by product id, so a product that is
+       no longer on the shelf still has a name; the shelf is read only for the
+       pickers. */
+    const [named, shelf] = await Promise.all([
+      loadProductsByIds(b.prices.map(p => p.product_id)),
+      b.account?.currency
+        ? loadEnterpriseCatalogue(b.account.currency, b.account.id).catch(() => [] as EnterpriseListing[])
+        : Promise.resolve([] as EnterpriseListing[]),
+    ])
+    setNamesFailed(!named.ok)
+    setNamed(named.ok ? new Map(named.value.map(x => [x.id, x])) : new Map())
+    setListings(shelf)
   }, [])
-  useEffect(() => { void reload() }, [reload])
+  useEffect(() => { void reload(true) }, [reload])
 
-  const cur = book?.account?.currency ?? 'USD'
-  const { money } = useAccountMoney(cur)
+  const { book: market } = useMarket()
+  const fmtRow = (n: number, currency: string, ...also: number[]) =>
+    priceText(n, currency, market?.currencies ?? [], needsDecimals(n, ...also))
   const today = new Date().toISOString().slice(0, 10)
 
-  const byKey = useMemo(() => {
-    const m = new Map<string, EnterpriseListing>()
-    for (const l of listings) m.set(`${l.currency}:${l.id}`, l)
-    return m
-  }, [listings])
   const shelf = useMemo(() => {
     const m = new Map<string, EnterpriseListing>()
     for (const l of listings) if (!m.has(l.id)) m.set(l.id, l)
@@ -76,25 +84,28 @@ export function EnterprisePriceBook() {
   const editable = may(book.me, book.roles, 'can_set_policy')
   const accountId = book.account?.id ?? book.rules.account_id
 
+  const nameOf = (p: AccountPrice) => named?.get(p.product_id)?.name
+    ?? (namesFailed ? 'Name not loaded' : 'A product that is no longer sold')
+  const publishedOf = (p: AccountPrice): number | null => named?.get(p.product_id)?.published[p.currency] ?? null
+
   const rows = book.prices
     .map(p => ({ p, standing: standingOf(p, today) }))
-    .sort((a, b) => ORDER[a.standing] - ORDER[b.standing] || a.p.starts_on.localeCompare(b.p.starts_on))
+    .sort((a, b) => ORDER[a.standing] - ORDER[b.standing] || a.p.starts_on.localeCompare(b.p.starts_on)
+      || nameOf(a.p).localeCompare(nameOf(b.p)))
   const current = rows.filter(r => r.standing === 'in force' || r.standing === 'scheduled')
   const earlier = rows.filter(r => r.standing === 'ended' || r.standing === 'withdrawn')
 
-  const nameOf = (p: AccountPrice) => byKey.get(`${p.currency}:${p.product_id}`)?.name
-    ?? shelf.find(l => l.id === p.product_id)?.name ?? p.product_id
-  const publishedOf = (p: AccountPrice): number | null => byKey.get(`${p.currency}:${p.product_id}`)?.published_price ?? null
-
   const priceRow = ({ p, standing }: { p: AccountPrice; standing: PriceStanding }) => {
-    const pub = publishedOf(p)
+    /* Today's published price says nothing about a price that is over. */
+    const live = standing === 'in force' || standing === 'scheduled'
+    const pub = live ? publishedOf(p) : null
     const saved = pub !== null && pub > p.unit_price ? pub - p.unit_price : 0
     return (
       <tr key={p.id}>
         <Td>{nameOf(p)}</Td>
         <Td>{pub !== null ? <PriceTag price={p.unit_price} published={pub} currency={p.currency} /> : <PriceTag price={p.unit_price} published={p.unit_price} currency={p.currency} />}</Td>
         <Td right>{pub !== null ? <PriceTag price={pub} published={pub} currency={p.currency} /> : '—'}</Td>
-        <Td right>{saved > 0 ? money(saved) : '—'}</Td>
+        <Td right>{saved > 0 ? fmtRow(saved, p.currency, p.unit_price, pub ?? 0) : '—'}</Td>
         <Td>{p.currency}</Td>
         <Td>{fmtDate(p.starts_on)} – {p.ends_on ? fmtDate(p.ends_on) : 'open-ended'}</Td>
         <Td><StatusPill status={priceStandingStatus(standing)} label={standing} /></Td>
@@ -109,7 +120,7 @@ export function EnterprisePriceBook() {
     setSaving(false)
     if (!r.ok) { setProblem(r.error); return }
     toast('Your buying rules are saved.')
-    await reload()
+    await reload(true)
   }
 
   const add = async (kind: 'seller' | 'product', id: string) => {
@@ -120,13 +131,13 @@ export function EnterprisePriceBook() {
       : { account_id: accountId, kind, product_id: id })
     if (!r.ok) { setProblem(r.error); return }
     if (kind === 'seller') setPickSeller(''); else setPickProduct('')
-    await reload()
+    await reload(false)
   }
   const remove = async (id: string) => {
     setProblem(null)
     const r = await removePreference(id)
     if (!r.ok) { setProblem(r.error); return }
-    await reload()
+    await reload(false)
   }
 
   const sellerPrefs = book.preferences.filter(x => x.kind === 'seller')
@@ -134,8 +145,8 @@ export function EnterprisePriceBook() {
   const sellers = Array.from(new Map(shelf.filter(l => l.partner_id).map(l => [l.partner_id as string, l.seller])).entries())
     .filter(([id]) => !sellerPrefs.some(x => x.partner_id === id))
   const products = shelf.filter(l => !productPrefs.some(x => x.product_id === l.id))
-  const sellerName = (id: string | null) => shelf.find(l => l.partner_id === id)?.seller ?? 'A seller'
-  const productName = (id: string | null) => shelf.find(l => l.id === id)?.name ?? 'A product'
+  const sellerName = (id: string | null) => shelf.find(l => l.partner_id === id)?.seller ?? 'A seller no longer on the shelf'
+  const productName = (id: string | null) => shelf.find(l => l.id === id)?.name ?? 'A product no longer on the shelf'
 
   const prefList = (title: string, kind: 'seller' | 'product', items: typeof sellerPrefs,
     label: (id: string | null) => string, options: [string, string][], pick: string, setPick: (v: string) => void) => (
@@ -183,7 +194,10 @@ export function EnterprisePriceBook() {
         </p>
       </div>
 
+      <div role="alert">{problem && <Callout tone="danger">{problem}</Callout>}</div>
+
       <SectionCard title="Your prices">
+        {namesFailed && <div style={{ marginBottom: '12px' }}><Callout tone="warning">The names of your listings couldn't be loaded, so the prices below are shown without them.</Callout></div>}
         {current.length === 0 && earlier.length === 0 ? (
           <EmptyState message="Your account has no prices of its own yet. They are agreed with Aventa; until then every listing is charged at its published price." />
         ) : (
@@ -216,7 +230,6 @@ export function EnterprisePriceBook() {
             <Btn style={{ minHeight: '44px' }} disabled={saving} onClick={() => void save()}>{saving ? 'Saving…' : 'Save buying rules'}</Btn>
           </div>
         )}
-        {problem && <div role="alert" style={{ marginTop: '12px' }}><Callout tone="danger">{problem}</Callout></div>}
       </SectionCard>
 
       <SectionCard title="Preferred sellers and products" subtitle="Shown first on your shelf. Nothing else is hidden or blocked.">
