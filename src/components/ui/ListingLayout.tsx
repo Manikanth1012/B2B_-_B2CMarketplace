@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import { Search, SlidersHorizontal, X, ChevronRight } from 'lucide-react'
+import { hasOpenTrap } from './useFocusTrap'
 
 export interface FilterOption { value: string; label: string; count?: number }
 export interface FilterGroupDef {
@@ -79,7 +80,7 @@ export function ListingLayout({
     const prevOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setSheet(false); restoreFocus(); return }
+      if (e.key === 'Escape') { if (!hasOpenTrap()) { setSheet(false); restoreFocus() } return }
       if (e.key !== 'Tab' || !panel.current) return
       // aria-modal alone does not trap focus, so Tab wraps inside the sheet.
       const items = Array.from(panel.current.querySelectorAll<HTMLElement>(

@@ -1,17 +1,21 @@
-import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 import { useRef, useState } from 'react'
 import type React from 'react'
 import { cleanup, render, screen, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { Dialog } from './Dialog'
-import { useFocusTrap } from './useFocusTrap'
+import { useFocusTrap, hasOpenTrap } from './useFocusTrap'
 
 /* jsdom lays nothing out, so every element has no client rects and the trap
    would treat all of them as hidden. Give each one a box. */
+const realGetClientRects = HTMLElement.prototype.getClientRects
 beforeAll(() => {
   HTMLElement.prototype.getClientRects = function () {
     return [{ width: 1, height: 1 }] as unknown as DOMRectList
   }
+})
+afterAll(() => {
+  HTMLElement.prototype.getClientRects = realGetClientRects
 })
 
 afterEach(cleanup)
@@ -151,6 +155,38 @@ describe('Dialog', () => {
       expect(onWindow).toHaveBeenCalledTimes(1)
     } finally {
       window.removeEventListener('keydown', onWindow)
+    }
+  })
+
+  it('closes on Escape when focus has fallen to <body>', async () => {
+    const user = userEvent.setup()
+    render(<Opener />)
+    await user.click(screen.getByRole('button', { name: 'Open' }))
+    ;(document.activeElement as HTMLElement).blur()
+    expect(document.activeElement).toBe(document.body)
+    fireEvent.keyDown(document.body, { key: 'Escape' })
+    expect(screen.queryByRole('dialog')).toBeNull()
+  })
+
+  it('a document listener added before it opened, guarded by hasOpenTrap, stays open', async () => {
+    /* Mirrors the cart drawer: its Escape listener is registered first, so it
+       runs before the dialog's and only its own guard can hold it back. */
+    const closeBeneath = vi.fn()
+    const beneath = (e: KeyboardEvent) => { if (e.key === 'Escape' && !hasOpenTrap()) closeBeneath() }
+    document.addEventListener('keydown', beneath)
+    try {
+      const user = userEvent.setup()
+      render(<Opener />)
+      await user.click(screen.getByRole('button', { name: 'Open' }))
+      await user.keyboard('{Escape}')
+      expect(screen.queryByRole('dialog')).toBeNull()
+      expect(closeBeneath).not.toHaveBeenCalled()
+
+      /* With the dialog gone, the next Escape is the listener's. */
+      await user.keyboard('{Escape}')
+      expect(closeBeneath).toHaveBeenCalledTimes(1)
+    } finally {
+      document.removeEventListener('keydown', beneath)
     }
   })
 

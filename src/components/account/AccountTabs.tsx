@@ -4,21 +4,7 @@ import { tabKeyTarget } from '../../lib/tabKeys'
 
 export interface AccountTab { id: string; label: string; icon: React.ReactNode }
 
-/**
- * The account screen's sections as a tablist.
- *
- * At 1024px and wider it is a sticky column on the left; below that it is a
- * row of chips that scrolls sideways. The layout is CSS; aria-orientation
- * follows the same 1024px breakpoint through matchMedia so a screen reader
- * is told which way it runs. The arrow keys accept both pairs either way
- * (tabKeyTarget) and Home/End jump to the ends.
- * Only the selected tab is in the Tab order (roving tabIndex): Tab moves from
- * the list into the panel rather than through nine tabs first.
- *
- * `children` is the active panel; there is one panel element, labelled by
- * whichever tab is selected.
- */
-/** The breakpoint at which account-screens.css turns the tab row into a column. */
+/** The breakpoint at which src/styles/account.css turns the tab row into a column. */
 export const ACCOUNT_TABS_VERTICAL_QUERY = '(min-width: 1024px)'
 
 /* 'vertical' while the column layout applies, else 'horizontal'. Where there
@@ -43,6 +29,20 @@ function useOrientation(): 'vertical' | 'horizontal' {
   return vertical ? 'vertical' : 'horizontal'
 }
 
+/**
+ * The account screen's sections as a tablist.
+ *
+ * At 1024px and wider it is a sticky column on the left; below that it is a
+ * row of chips that scrolls sideways. The layout is CSS; aria-orientation
+ * follows the same 1024px breakpoint through matchMedia so a screen reader
+ * is told which way it runs. The arrow keys accept both pairs either way
+ * (tabKeyTarget) and Home/End jump to the ends.
+ * Only the selected tab is in the Tab order (roving tabIndex): Tab moves from
+ * the list into the panel rather than through nine tabs first.
+ *
+ * `children` is the active panel; there is one panel element, labelled by
+ * whichever tab is selected.
+ */
 export function AccountTabs({ tabs, active, onChange, idPrefix, children }: {
   tabs: readonly AccountTab[]
   active: string

@@ -11,6 +11,7 @@ import { groupBySelection } from '../lib/bundles'
 import { bundleBlock, partOnSale, BUNDLE_FALLBACK_NAME } from '../lib/bundleLines'
 import { BundleGroup } from './bundles/BundleGroup'
 import { basketSink } from './bundles/sinks'
+import { hasOpenTrap } from './ui/useFocusTrap'
 
 interface CartDrawerProps {
   open: boolean
@@ -77,10 +78,12 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
   const money = basketMoney(items, Number(market?.tax_rate ?? 0))
   const taxLabel = market?.tax_label ?? 'Tax'
 
-  /* Escape closes the drawer — listened for only while it is open. */
+  /* Escape closes the drawer — listened for only while it is open, and not
+     while a dialog is open over it ("Edit bundle"): that Escape is the
+     dialog's, and this listener, added first, would otherwise run first. */
   useEffect(() => {
     if (!open) return
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !hasOpenTrap()) onClose() }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [open, onClose])
