@@ -190,6 +190,23 @@ describe('moving it to another currency', () => {
     expect(basket).toEqual(EMPTY_BASKET)
   })
 
+  it('drops and names a line the new currency does not price, rather than carrying a figure in another money', () => {
+    /* loadEnterpriseCatalogue's fallback: no book row in AED, so the base row,
+       labelled USD. It is not an AED price. */
+    const b = build({ line: item() }, { line: firewall })
+    const mixed = [...shelf, { id: 'SKU-6001', price: 289, model: 'oneoff', unit: null, currency: 'USD' }]
+    const { basket, dropped } = repriceTo(b, 'AED', mixed)
+    expect(dropped).toEqual(['Sentinel Managed Firewall — Standard'])
+    expect(basket.lines.map(l => l.product_id)).toEqual(['SKU-5003'])
+  })
+
+  it('takes a shelf row labelled in the new currency', () => {
+    const b = build({ line: item(), q: 2 })
+    const { basket, dropped } = repriceTo(b, 'AED', [{ id: 'SKU-5003', price: 372, model: 'oneoff', unit: null, currency: 'AED' }])
+    expect(dropped).toEqual([])
+    expect(basket.lines[0].unit_price).toBe(372)
+  })
+
   it('is a no-op when the currency has not moved', () => {
     const b = build({ line: item() })
     expect(repriceTo(b, 'INR', []).basket).toBe(b)
