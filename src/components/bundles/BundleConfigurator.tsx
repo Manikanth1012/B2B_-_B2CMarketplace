@@ -12,7 +12,7 @@ import { enquiriesChanged } from '../enquiries/events'
 import { onOpenBundle, bundlesChanged, type OpenBundleDetail } from './events'
 import { useRequisition } from '../../lib/RequisitionContext'
 import { sendBundleTo, hasBundleSink, notAvailable } from './handoff'
-import { requisitionBillingBlock } from '../../lib/bundleLines'
+import { heldBilling, requisitionBillingBlock } from '../../lib/bundleLines'
 import { useBundleShelf, useBundleCurrency } from './useBundleShelf'
 import {
   slotsOf, optionsOf, partsFor, estimate, unavailable, slotHint, togglePick, clearSlot, setPickQty,
@@ -66,12 +66,19 @@ type Props = {
 function WithRequisition(props: Props) {
   const req = useRequisition()
   const held = req.basket.lines.length > 0 ? req.basket.currency : null
-  return <BundleConfigurator {...props} requisitionCurrency={held} />
+  /* And how it is committed to (one-off or monthly), leaving out a bundle this
+     opening replaces, so a bundle billed the other way is named up front. */
+  const billing = heldBilling(req.basket, props.detail.replaceSelectionId)
+  return <BundleConfigurator {...props} requisitionCurrency={held} requisitionBilling={billing} />
 }
 
-function BundleConfigurator({ shop, detail, signedIn, onSignIn, onOpenEnquiries, onClose, requisitionCurrency = null }: Props & {
+function BundleConfigurator({
+  shop, detail, signedIn, onSignIn, onOpenEnquiries, onClose, requisitionCurrency = null, requisitionBilling = null,
+}: Props & {
   /** The currency of a requisition that already has lines, if any. */
   requisitionCurrency?: string | null
+  /** How the open requisition's other lines are committed to, if it has any. */
+  requisitionBilling?: 'oneoff' | 'monthly' | null
 }) {
   const { fmtIn } = useMarket()
   /* Always the buyer's own currency (consumer home, business account): the
@@ -111,12 +118,14 @@ function BundleConfigurator({ shop, detail, signedIn, onSignIn, onOpenEnquiries,
   /* Said before anything is written, rather than after a selection is saved
      and then refused: nothing takes bundles yet, the open requisition is in
      another currency (the database refuses a bundle there anyway), or the
-     chosen parts are billed two ways (the requisition basket refuses those). */
+     chosen parts are billed two ways, or the other way from the open
+     requisition (the requisition basket refuses both). */
   const addBlocked = !hasBundleSink(kind) ? notAvailable(kind)
     : shop === 'enterprise' && requisitionCurrency && requisitionCurrency !== currency
       ? `Your open requisition is in ${requisitionCurrency}, and bundles are priced in ${currency}, your account's currency. Raise or clear that requisition first, or request a quote for this bundle.`
       : shop === 'enterprise'
-        ? requisitionBillingBlock(template?.name ?? 'This bundle', Object.values(picks).flat(), id => shelf.parts.get(id)?.model, nameOf)
+        ? requisitionBillingBlock(template?.name ?? 'This bundle', Object.values(picks).flat(), id => shelf.parts.get(id)?.model, nameOf,
+          requisitionBilling)
         : null
   const canAct = canChoose && !addBlocked
   const actionLabel = shop === 'consumer' ? 'Add bundle to basket' : 'Add bundle to requisition'

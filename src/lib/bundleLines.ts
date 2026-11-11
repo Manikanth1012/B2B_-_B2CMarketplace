@@ -128,22 +128,43 @@ export function bundleBasketLines(
 export const billingOf = (model: string | null | undefined): 'oneoff' | 'monthly' =>
   (model === 'monthly' ? 'monthly' : 'oneoff')
 
+/** Why a bundle cannot join a requisition already committed the other way. */
+function otherCommitment(held: 'oneoff' | 'monthly', name: string): string {
+  return `This requisition is ${held === 'monthly' ? 'a monthly subscription' : 'a one-off purchase'} and ${name} is not. They are committed to and approved differently, so raise them separately.`
+}
+
+/** How the lines a requisition basket already holds are committed to,
+    leaving out the bundle being replaced (Edit bundle), or null when nothing
+    else is held — what `addBundleToBasket` compares a new bundle against. */
+export function heldBilling(basket: Basket, replaceSelectionId?: string): 'oneoff' | 'monthly' | null {
+  const rest = replaceSelectionId ? basket.lines.filter(l => l.bundle_selection_id !== replaceSelectionId) : basket.lines
+  return rest.length ? rest[0].model : null
+}
+
 /**
- * Whether the chosen parts of a business bundle are billed more than one way,
- * as the sentence to show, or null when they are not. The same rule
+ * Whether the chosen parts of a business bundle cannot go on the requisition
+ * for how they are billed, as the sentence to show, or null when they can:
+ * the parts mix one-off and monthly, or `held` (the open requisition's
+ * commitment, `heldBilling`) is the other one. The same rules
  * `addBundleToBasket` refuses by, said before `configure_bundle` writes a
- * selection nobody could put on a requisition. A part whose model is not
+ * selection nobody could put on the requisition. A part whose model is not
  * known (`modelOf` gives nothing) is left to the basket.
  */
 export function requisitionBillingBlock(
   name: string, picks: readonly { product_id: string }[],
   modelOf: (productId: string) => string | null | undefined, nameOf: (productId: string) => string,
+  held: 'oneoff' | 'monthly' | null = null,
 ): string | null {
   const known = picks.flatMap(p => {
     const m = modelOf(p.product_id)
     return m == null ? [] : [{ id: p.product_id, billing: billingOf(m) }]
   })
-  if (new Set(known.map(k => k.billing)).size < 2) return null
+  const billings = new Set(known.map(k => k.billing))
+  if (billings.size === 0) return null
+  if (billings.size === 1) {
+    const [mine] = billings
+    return held && held !== mine ? `${otherCommitment(held, name)} Request a quote for this bundle, or raise the requisition first.` : null
+  }
   const parts = known
     .slice().sort((a, b) => (a.billing === b.billing ? 0 : a.billing === 'oneoff' ? -1 : 1))
     .map(k => `${nameOf(k.id)} (${k.billing === 'oneoff' ? 'one-off' : 'monthly'})`)
@@ -183,10 +204,7 @@ export function addBundleToBasket(
     return { ok: false, reason: `${name} mixes one-off and monthly parts, which are approved differently, so it cannot go on one requisition.` }
   }
   if (rest.length && rest[0].model !== model) {
-    return {
-      ok: false,
-      reason: `This requisition is ${rest[0].model === 'monthly' ? 'a monthly subscription' : 'a one-off purchase'} and ${name} is not. They are committed to and approved differently, so raise them separately.`,
-    }
+    return { ok: false, reason: otherCommitment(rest[0].model, name) }
   }
   const next = rest.slice()
   if (at >= 0) next.splice(Math.min(at, next.length), 0, ...lines)

@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import {
   bundleIdsOf, priceCartBundles, bundleBlock, bundleBasketLines, addBundleToBasket,
   removeBundleFromBasket, holdsBundle, heldCurrencyNote, bundleColumns, partOnSale,
-  basketBundleBlocks, requisitionBundleBlock, requisitionBillingBlock, billingOf, type BundleInfo,
+  basketBundleBlocks, requisitionBundleBlock, requisitionBillingBlock, billingOf, heldBilling, type BundleInfo,
 } from './bundleLines'
 import {
   addToBasket, setQuantity, removeLine, repriceTo, EMPTY_BASKET, quoteHoldsCurrency,
@@ -215,6 +215,39 @@ describe('a business bundle is billed one way', () => {
   it('leaves a part whose model did not load to the basket, and is silent on nothing picked', () => {
     expect(requisitionBillingBlock('Kit', [{ product_id: 'A' }, { product_id: 'Z' }], modelOf, nameOf)).toBeNull()
     expect(requisitionBillingBlock('Kit', [], modelOf, nameOf)).toBeNull()
+  })
+
+  it('names a requisition committed the other way, and lets the same way through', () => {
+    const one = [{ product_id: 'A' }, { product_id: 'B' }]
+    expect(requisitionBillingBlock('Kit', one, modelOf, nameOf, 'oneoff')).toBeNull()
+    expect(requisitionBillingBlock('Kit', one, modelOf, nameOf, null)).toBeNull()
+    expect(requisitionBillingBlock('Kit', one, modelOf, nameOf, 'monthly')).toMatch(/^This requisition is a monthly subscription and Kit is not\./)
+    expect(requisitionBillingBlock('Kit', [{ product_id: 'M' }], modelOf, nameOf, 'oneoff')).toMatch(/^This requisition is a one-off purchase/)
+    // the parts' own mix is said first
+    expect(requisitionBillingBlock('Kit', [{ product_id: 'A' }, { product_id: 'M' }], modelOf, nameOf, 'oneoff')).toMatch(/^Kit mixes/)
+  })
+
+  it('reads the commitment the basket holds, leaving out the bundle being replaced', () => {
+    expect(heldBilling(EMPTY_BASKET)).toBeNull()
+    const monthly = addToBasket(EMPTY_BASKET, plain({ product_id: 'M', model: 'monthly' }), 'INR')
+    if (!monthly.ok) throw new Error(monthly.reason)
+    expect(heldBilling(monthly.basket)).toBe('monthly')
+    const r = addBundleToBasket(EMPTY_BASKET, bundleBasketLines(info(), facts).lines, 'INR')
+    if (!r.ok) throw new Error(r.reason)
+    expect(heldBilling(r.basket)).toBe('oneoff')
+    expect(heldBilling(r.basket, 'BS-1')).toBeNull()
+  })
+
+  it('agrees with the basket on a bundle billed the other way from the requisition', () => {
+    const monthly = addToBasket(EMPTY_BASKET, plain({ product_id: 'M', model: 'monthly' }), 'INR')
+    if (!monthly.ok) throw new Error(monthly.reason)
+    const lines = bundleBasketLines(info(), facts).lines
+    const refused = addBundleToBasket(monthly.basket, lines, 'INR')
+    expect(refused.ok).toBe(false)
+    const m = new Map(lines.map(l => [l.product_id, l.model]))
+    const says = requisitionBillingBlock('Smart office starter kit', lines, id => m.get(id), nameOf, heldBilling(monthly.basket))
+    expect(says).not.toBeNull()
+    if (!refused.ok) expect(says!.startsWith(refused.reason)).toBe(true)
   })
 
   it('refuses exactly what the requisition basket refuses', () => {

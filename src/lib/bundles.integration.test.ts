@@ -25,14 +25,13 @@
  *     buyer, whose policy covers it (lines cascade).
  * BT-SEED-* templates are only ever read.
  *
- * Why the business order is placed from a test template and not the seed: the
- * seeded office kit's Connectivity part offers only IoT Connect SIMs, which are
- * fulfilled by the network (`fulfilment_route = 'telco-com'`). Ordering one
- * queues a `com_order`, and `guard_order_delete` then refuses to remove the
- * order ("a network fulfilment record refers to it"). An order this file cannot
- * remove is one it must not place, so the seed is raised on requisitions (never
- * approved) and the approve → order path runs on a test template of a sensor
- * and a gateway, both fulfilled by their sellers.
+ * The seeded office kit is, since 20261111100000, one-off only: sensors and
+ * trackers, and the gateway they report through (a business bundle is billed
+ * one way, because a requisition is approved as one commitment). It is raised
+ * on requisitions here but never approved — the seed is only ever read and
+ * priced, never ordered. The approve → order path runs on a test template of a
+ * sensor and a gateway, both fulfilled by their sellers, which this file
+ * builds and removes itself.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { supabase } from './supabase'
@@ -252,7 +251,8 @@ describe('who can see which bundle', () => {
     const ids = book.templates.map(t => t.id)
     expect(ids).toContain(HOME)
     expect(ids).toContain(OFFICE)
-    expect(book.slots.filter(s => s.template_id === OFFICE).length).toBe(3)
+    const office = book.slots.filter(s => s.template_id === OFFICE).sort((a, b) => a.sort_order - b.sort_order)
+    expect(office.map(s => s.label)).toEqual(['Sensors and trackers', 'Gateway'])
     expect(book.slots.filter(s => s.template_id === HOME).length).toBe(3)
   }, 60000)
 })
@@ -317,18 +317,26 @@ describe('the server and the screen price a bundle the same', () => {
   }
 
   it('a floor is respected: a part whose discount would go under it is held at it', async () => {
-    /* IoT Connect 500 MB in AED is listed at its floor, so any discount meets it. */
-    const office = book.slots.filter(s => s.template_id === OFFICE)
-    const conn = office.find(s => s.label === 'Connectivity')!
-    const sensors = office.find(s => s.label === 'Sensors and trackers')!
+    /* Device Protect (SKU-2004) in AED: the home bundle's 10% off 24.99 is
+       22.49, under its floor of 22.99. Checked from the price book first, so a
+       repriced listing fails here rather than in the assertion below. */
+    const PROTECT = 'SKU-2004'
+    const t = book.templates.find(x => x.id === HOME)!
+    const row = prices.find(r => r.product_id === PROTECT && r.currency === 'AED')
+    expect(row, `${PROTECT} has no AED price`).toBeTruthy()
+    expect(cents(Number(row!.price) * (1 - t.discount_pct / 100)), `${PROTECT} is no longer discounted under its floor`)
+      .toBeLessThan(cents(row!.floor_price))
+    const home = book.slots.filter(s => s.template_id === HOME)
+    const tracker = home.find(s => s.label === 'Tracker')!
+    const cover = home.find(s => s.label === 'Device protection')!
     const choices: Choices = {
-      [sensors.id]: [{ product_id: SENSOR, quantity: 5 }],
-      [conn.id]: [{ product_id: 'SKU-5001', quantity: 5 }],
+      [tracker.id]: [{ product_id: 'SKU-5005', quantity: 1 }],
+      [cover.id]: [{ product_id: PROTECT, quantity: 1 }],
     }
-    const s = await rawPrice(OFFICE, choices, 'AED', 1)
-    const sim = s.lines.find(l => l.product_id === 'SKU-5001')! as SelectionLine & { at_floor?: boolean }
-    expect(cents(sim.unit_price)).toBe(cents(sim.floor_unit_price))
-    expect(sim.at_floor).toBe(true)
+    const s = await rawPrice(HOME, choices, 'AED', 1)
+    const held = s.lines.find(l => l.product_id === PROTECT)! as SelectionLine & { at_floor?: boolean }
+    expect(cents(held.unit_price)).toBe(cents(held.floor_unit_price))
+    expect(held.at_floor).toBe(true)
   })
 })
 
@@ -622,7 +630,7 @@ describe('a business buyer raises bundles on requisitions', () => {
     const b = await loadBundleBook()
     expect(b.templates.map(t => t.id)).toContain(OFFICE)
     expect(b.templates.map(t => t.id)).not.toContain(HOME)
-    expect(b.slots.filter(s => s.template_id === OFFICE).length).toBe(3)
+    expect(b.slots.filter(s => s.template_id === OFFICE).length).toBe(2)
   })
 
   /* 20261111100000: a business bundle is billed one way. Writes nothing: the
