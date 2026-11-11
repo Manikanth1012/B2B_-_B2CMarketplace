@@ -42,8 +42,10 @@
  * because it no longer means only "a bundle is on it"; the bundle behaviour is
  * identical. 20261105200000 is applied and is not edited. Re-runnable: the
  * function is replaced, and the check at the end reads back what was
- * installed.
+ * installed. One transaction: if the check fails, the old function stays.
  */
+
+begin;
 
 /* ============================================ the order a requisition becomes === */
 
@@ -199,3 +201,5 @@ begin
     raise exception 'place_requisition_order is still the version that orders only bundles line by line';
   end if;
 end $$;
+
+commit;
