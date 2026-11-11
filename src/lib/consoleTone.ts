@@ -36,8 +36,20 @@ const TONES: Record<string, Tone> = {
   /* Enquiries: a quote or answer sitting with the buyer is amber. */
   submitted: 'info', quoted: 'warning', accepted: 'success',
   scheduled: 'success', done: 'success', answered: 'warning', withdrawn: 'neutral',
+  /* Account prices. `scheduled` is already green for a confirmed demo, and a
+     price that has not started must not read like one in force, so a
+     scheduled price goes through priceStandingStatus and is shown as
+     "scheduled" with this key's tone. */
+  'in force': 'success', ended: 'neutral', 'starts later': 'info',
 }
 
 export function statusTone(status: string): Tone {
   return Object.prototype.hasOwnProperty.call(TONES, status) ? TONES[status] : 'neutral'
+}
+
+/* The status key for a price's standing: only `scheduled` is renamed, so the
+   enquiry reading of `scheduled` stays untouched. Pair it with
+   label={standing} so the word on screen is still the standing. */
+export function priceStandingStatus(standing: 'scheduled' | 'in force' | 'ended' | 'withdrawn'): string {
+  return standing === 'scheduled' ? 'starts later' : standing
 }
