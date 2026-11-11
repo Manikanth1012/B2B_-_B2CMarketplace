@@ -32,3 +32,36 @@ describe('draftProblems', () => {
     expect(draftProblems(draft({ slots: [slot('a', { options: [] })] }), 10).slots.a.options).toMatch(/at least one/)
   })
 })
+
+describe('a business bundle is billed one way', () => {
+  const products = new Map([
+    ['s', { name: 'Nimbus Cold-chain sensor', model: 'oneoff' }],
+    ['g', { name: 'Volta IoT Gateway LTE-M', model: 'oneoff' }],
+    ['m', { name: 'IoT Connect 2 GB', model: 'monthly' }],
+  ])
+  const opt = (product_id: string, is_default = true) => ({ product_id, is_default })
+  const mixed = (audiences: string[]) => draft({
+    audiences,
+    slots: [slot('a', { options: [opt('s')] }), slot('b', { options: [opt('g'), opt('m', false)] })],
+  })
+
+  it('refuses a business draft whose options mix models, naming them', () => {
+    const p = draftProblems(mixed(['enterprise']), 10, products).bundle.billing
+    expect(p).toMatch(/billed one way/)
+    expect(p).toContain('IoT Connect 2 GB (monthly)')
+    expect(p).toContain('Nimbus Cold-chain sensor (one-off)')
+    expect(draftProblems(mixed(['consumer', 'enterprise']), 10, products).bundle.billing).toBeTruthy()
+  })
+
+  it('lets a shoppers-only draft mix, and a business draft of one model through', () => {
+    expect(hasProblems(draftProblems(mixed(['consumer']), 10, products))).toBe(false)
+    const oneWay = draft({ slots: [slot('a', { options: [opt('s')] }), slot('b', { options: [opt('g')] })] })
+    expect(hasProblems(draftProblems(oneWay, 10, products))).toBe(false)
+  })
+
+  it('says nothing without product models, and ignores options it cannot read', () => {
+    expect(draftProblems(mixed(['enterprise']), 10).bundle.billing).toBeUndefined()
+    const unread = draft({ slots: [slot('a', { options: [opt('s')] }), slot('b', { options: [opt('zz')] })] })
+    expect(draftProblems(unread, 10, products).bundle.billing).toBeUndefined()
+  })
+})

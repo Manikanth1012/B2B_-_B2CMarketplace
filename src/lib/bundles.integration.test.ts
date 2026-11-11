@@ -51,6 +51,9 @@ import {
   type BundleSlot, type BundleOption, type Choices, type PricedPart,
 } from './bundles'
 import type { SelectionLine } from './bundlePayload'
+import { loadQuotedProducts } from './enquiryRepo'
+import { bundleBasketLines, addBundleToBasket, requisitionBillingBlock, type BundleInfo, type PartFacts } from './bundleLines'
+import { EMPTY_BASKET } from './requisitionBasket'
 
 const OPERATOR = { email: 'anika.sharma@aventa.com', password: 'operator123' }
 const SHOPPER = { email: 'priya.raman@example.com', password: 'demo1234' }      // INR, market IN
@@ -620,6 +623,51 @@ describe('a business buyer raises bundles on requisitions', () => {
     expect(b.templates.map(t => t.id)).toContain(OFFICE)
     expect(b.templates.map(t => t.id)).not.toContain(HOME)
     expect(b.slots.filter(s => s.template_id === OFFICE).length).toBe(3)
+  })
+
+  /* 20261111100000: a business bundle is billed one way. Writes nothing: the
+     default configuration is priced (price_bundle is pure), its products read
+     the way requisitionSink reads them, and the lines put through the pure
+     basket rule the sink's requisition basket applies. Skipped, saying why,
+     until that migration is applied — before it, the office kit offers
+     monthly SIMs beside one-off sensors and is refused by design. */
+  it('can put the office kit\'s default configuration on a requisition (after 20261111100000)', async (ctx) => {
+    const b = await loadBundleBook()
+    expect(b.loadError).toBeNull()
+    const optionIds = b.options
+      .filter(o => b.slots.some(s => s.template_id === OFFICE && s.id === o.slot_id))
+      .map(o => o.product_id)
+    const all = await loadQuotedProducts(optionIds)
+    expect(all.ok, all.ok ? '' : all.error).toBe(true)
+    if (!all.ok) return
+    if ([...all.products.values()].some(p => p.model === 'monthly')) {
+      console.warn('Skipped: BT-SEED-OFFICE still offers a monthly part, so 20261111100000_a_business_bundle_is_billed_one_way.sql has not been applied yet.')
+      ctx.skip()
+      return
+    }
+
+    const d = await defaultChoicesOnServer(OFFICE)
+    expect(d.ok, d.ok ? '' : d.error).toBe(true)
+    if (!d.ok) return
+    const currency = book.account!.currency
+    const priced = await priceOnServer(OFFICE, d.value, currency, 1)
+    expect(priced.ok, priced.ok ? '' : priced.error).toBe(true)
+    if (!priced.ok) return
+    const info: BundleInfo = {
+      name: 'Smart office starter kit',
+      selection: {
+        id: 'itest-preview', template_id: OFFICE, currency, quantity: 1, choices: d.value,
+        total: priced.value.total, parts_total: priced.value.parts_total,
+        priced_at: new Date().toISOString(), valid_until: new Date(Date.now() + 7 * 864e5).toISOString(),
+      },
+      lines: priced.value.lines.map((l, i) => ({ ...l, id: `itest-${i}`, selection_id: 'itest-preview' })),
+    }
+    const { lines, unread } = bundleBasketLines(info, all.products as ReadonlyMap<string, PartFacts>)
+    expect(unread).toEqual([])
+    expect(lines.length).toBeGreaterThanOrEqual(2)
+    expect(requisitionBillingBlock(info.name, lines, id => all.products.get(id)?.model, id => id)).toBeNull()
+    const r = addBundleToBasket(EMPTY_BASKET, lines, currency)
+    expect(r.ok, r.ok ? '' : r.reason).toBe(true)
   })
 
   it('cannot read the shopper\'s selection', async () => {

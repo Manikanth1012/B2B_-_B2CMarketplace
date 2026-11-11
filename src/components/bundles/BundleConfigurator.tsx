@@ -12,6 +12,7 @@ import { enquiriesChanged } from '../enquiries/events'
 import { onOpenBundle, bundlesChanged, type OpenBundleDetail } from './events'
 import { useRequisition } from '../../lib/RequisitionContext'
 import { sendBundleTo, hasBundleSink, notAvailable } from './handoff'
+import { requisitionBillingBlock } from '../../lib/bundleLines'
 import { useBundleShelf, useBundleCurrency } from './useBundleShelf'
 import {
   slotsOf, optionsOf, partsFor, estimate, unavailable, slotHint, togglePick, clearSlot, setPickQty,
@@ -108,12 +109,15 @@ function BundleConfigurator({ shop, detail, signedIn, onSignIn, onOpenEnquiries,
   const nameOf = (id: string) => shelf.parts.get(id)?.name ?? id
   const kind = shop === 'consumer' ? 'basket' as const : 'requisition' as const
   /* Said before anything is written, rather than after a selection is saved
-     and then refused: nothing takes bundles yet, or the open requisition is
-     in another currency (the database refuses a bundle there anyway). */
+     and then refused: nothing takes bundles yet, the open requisition is in
+     another currency (the database refuses a bundle there anyway), or the
+     chosen parts are billed two ways (the requisition basket refuses those). */
   const addBlocked = !hasBundleSink(kind) ? notAvailable(kind)
     : shop === 'enterprise' && requisitionCurrency && requisitionCurrency !== currency
       ? `Your open requisition is in ${requisitionCurrency}, and bundles are priced in ${currency}, your account's currency. Raise or clear that requisition first, or request a quote for this bundle.`
-      : null
+      : shop === 'enterprise'
+        ? requisitionBillingBlock(template?.name ?? 'This bundle', Object.values(picks).flat(), id => shelf.parts.get(id)?.model, nameOf)
+        : null
   const canAct = canChoose && !addBlocked
   const actionLabel = shop === 'consumer' ? 'Add bundle to basket' : 'Add bundle to requisition'
 

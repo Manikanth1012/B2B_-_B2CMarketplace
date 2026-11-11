@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import {
   bundleIdsOf, priceCartBundles, bundleBlock, bundleBasketLines, addBundleToBasket,
   removeBundleFromBasket, holdsBundle, heldCurrencyNote, bundleColumns, partOnSale,
-  basketBundleBlocks, requisitionBundleBlock, type BundleInfo,
+  basketBundleBlocks, requisitionBundleBlock, requisitionBillingBlock, billingOf, type BundleInfo,
 } from './bundleLines'
 import {
   addToBasket, setQuantity, removeLine, repriceTo, EMPTY_BASKET, quoteHoldsCurrency,
@@ -187,5 +187,44 @@ describe('a bundle on a requisition', () => {
 
   it('is pure', () => {
     expect(readFileSync(new URL('./bundleLines.ts', import.meta.url), 'utf8')).not.toMatch(/from ['"].*supabase['"]/)
+  })
+})
+
+describe('a business bundle is billed one way', () => {
+  const models = new Map([['A', 'oneoff'], ['B', 'oneoff'], ['M', 'monthly'], ['U', 'usage']])
+  const names = new Map([['A', 'Sensor'], ['B', 'Gateway'], ['M', 'IoT Connect 2 GB']])
+  const modelOf = (id: string) => models.get(id)
+  const nameOf = (id: string) => names.get(id) ?? id
+
+  it('reads a product model the way a requisition line takes it', () => {
+    expect(billingOf('monthly')).toBe('monthly')
+    expect(billingOf('oneoff')).toBe('oneoff')
+    expect(billingOf('usage')).toBe('oneoff')
+    expect(billingOf(undefined)).toBe('oneoff')
+  })
+
+  it('lets parts of one model through, and says so before anything is written when they mix', () => {
+    expect(requisitionBillingBlock('Kit', [{ product_id: 'A' }, { product_id: 'B' }], modelOf, nameOf)).toBeNull()
+    expect(requisitionBillingBlock('Kit', [{ product_id: 'A' }, { product_id: 'U' }], modelOf, nameOf)).toBeNull()
+    const says = requisitionBillingBlock('Kit', [{ product_id: 'A' }, { product_id: 'M' }], modelOf, nameOf)
+    expect(says).toMatch(/^Kit mixes one-off and monthly parts/)
+    expect(says).toContain('IoT Connect 2 GB (monthly)')
+    expect(says).toContain('Sensor (one-off)')
+  })
+
+  it('leaves a part whose model did not load to the basket, and is silent on nothing picked', () => {
+    expect(requisitionBillingBlock('Kit', [{ product_id: 'A' }, { product_id: 'Z' }], modelOf, nameOf)).toBeNull()
+    expect(requisitionBillingBlock('Kit', [], modelOf, nameOf)).toBeNull()
+  })
+
+  it('refuses exactly what the requisition basket refuses', () => {
+    const mixed = bundleBasketLines(info(), new Map([...facts, ['B', { ...facts.get('B')!, model: 'monthly' }]]))
+    expect(addBundleToBasket(EMPTY_BASKET, mixed.lines, 'INR').ok).toBe(false)
+    const m = new Map(mixed.lines.map(l => [l.product_id, l.model]))
+    expect(requisitionBillingBlock('Kit', mixed.lines, id => m.get(id), nameOf)).not.toBeNull()
+    const same = bundleBasketLines(info(), facts)
+    expect(addBundleToBasket(EMPTY_BASKET, same.lines, 'INR').ok).toBe(true)
+    const m2 = new Map(same.lines.map(l => [l.product_id, l.model]))
+    expect(requisitionBillingBlock('Kit', same.lines, id => m2.get(id), nameOf)).toBeNull()
   })
 })

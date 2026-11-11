@@ -69,7 +69,8 @@ export function TemplateBuilder({ initial, products, rule, onClose, onSave }: {
   const [tried, setTried] = useState(false)
   const body = useRef<HTMLDivElement>(null)
   const frozen = d.status === 'live'
-  const problems = useMemo(() => draftProblems(d, rule.max_discount), [d, rule.max_discount])
+  const models = useMemo(() => new Map(products.map(p => [p.id, { name: p.name, model: p.model }])), [products])
+  const problems = useMemo(() => draftProblems(d, rule.max_discount, models), [d, rule.max_discount, models])
   const bad = hasProblems(problems)
   const bp = (k: string) => (tried ? problems.bundle[k] : undefined)
   const sp = (key: string, k: string) => (tried ? problems.slots[key]?.[k] : undefined)
@@ -147,7 +148,8 @@ export function TemplateBuilder({ initial, products, rule, onClose, onSave }: {
           <TextInput value={d.image} onChange={e => set({ image: e.target.value })} />
         </FormField>
 
-        <fieldset className="tb-aud" aria-describedby={bp('audiences') ? 'tb-e-aud' : undefined}>
+        <fieldset className="tb-aud"
+          aria-describedby={[bp('audiences') && 'tb-e-aud', bp('billing') && 'tb-e-billing'].filter(Boolean).join(' ') || undefined}>
           <legend className="c-field__label">Sold to</legend>
           {AUDIENCES.map(a => (
             <label key={a.id} className="tb-check">
@@ -157,6 +159,7 @@ export function TemplateBuilder({ initial, products, rule, onClose, onSave }: {
             </label>
           ))}
           <Err id="tb-e-aud" msg={bp('audiences')} />
+          <Err id="tb-e-billing" msg={bp('billing')} />
         </fieldset>
 
         <h3 className="tb-h">What the buyer chooses</h3>

@@ -116,11 +116,38 @@ export function bundleBasketLines(
     lines.push({
       product_id: l.product_id, name: l.name, seller: l.seller || p.seller, partner_id: l.partner_id,
       quantity: l.quantity, unit_price: l.unit_price,
-      model: p.model === 'monthly' ? 'monthly' : 'oneoff', vertical: p.category_id, unit: p.unit,
+      model: billingOf(p.model), vertical: p.category_id, unit: p.unit,
       bundle_selection_id: info.selection.id, bundle: meta,
     })
   }
   return { lines, unread }
+}
+
+/** How a requisition line is committed to for a product model: monthly, or
+    one-off for anything else. */
+export const billingOf = (model: string | null | undefined): 'oneoff' | 'monthly' =>
+  (model === 'monthly' ? 'monthly' : 'oneoff')
+
+/**
+ * Whether the chosen parts of a business bundle are billed more than one way,
+ * as the sentence to show, or null when they are not. The same rule
+ * `addBundleToBasket` refuses by, said before `configure_bundle` writes a
+ * selection nobody could put on a requisition. A part whose model is not
+ * known (`modelOf` gives nothing) is left to the basket.
+ */
+export function requisitionBillingBlock(
+  name: string, picks: readonly { product_id: string }[],
+  modelOf: (productId: string) => string | null | undefined, nameOf: (productId: string) => string,
+): string | null {
+  const known = picks.flatMap(p => {
+    const m = modelOf(p.product_id)
+    return m == null ? [] : [{ id: p.product_id, billing: billingOf(m) }]
+  })
+  if (new Set(known.map(k => k.billing)).size < 2) return null
+  const parts = known
+    .slice().sort((a, b) => (a.billing === b.billing ? 0 : a.billing === 'oneoff' ? -1 : 1))
+    .map(k => `${nameOf(k.id)} (${k.billing === 'oneoff' ? 'one-off' : 'monthly'})`)
+  return `${name} mixes one-off and monthly parts (${parts.join(', ')}), which are approved differently, so it cannot go on one requisition. Choose parts billed the same way, or request a quote.`
 }
 
 export type BundleBasketResult = { ok: true; basket: Basket; note: string } | { ok: false; reason: string }

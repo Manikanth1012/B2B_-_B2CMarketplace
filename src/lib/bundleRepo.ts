@@ -91,6 +91,8 @@ export interface BundlePart {
   status: string
   unit: string | null
   audiences: string[]
+  /** products.model ('oneoff' or 'monthly'): how a requisition commits to it. */
+  model?: string
   /** product_prices.price in the currency, or null when it is not priced there. */
   list: number | null
   floor: number | null
@@ -104,7 +106,7 @@ export async function loadBundleParts(productIds: string[], currency: string): P
   if (ids.length === 0) return { ok: true, value: [] }
   try {
     const [p, pr] = await Promise.all([
-      supabase.from('products').select('id, name, seller, category_id, stock, status, unit, audiences').in('id', ids),
+      supabase.from('products').select('id, name, seller, category_id, stock, status, unit, audiences, model').in('id', ids),
       supabase.from('product_prices').select('product_id, price, floor_price').eq('currency', currency).in('product_id', ids),
     ])
     if (p.error) return { ok: false, error: p.error.message }
@@ -119,6 +121,7 @@ export async function loadBundleParts(productIds: string[], currency: string): P
         stock: String(r.stock ?? 'in'), status: String(r.status ?? ''),
         unit: r.unit == null ? null : String(r.unit),
         audiences: Array.isArray(r.audiences) ? (r.audiences as unknown[]).map(String) : [],
+        ...(r.model == null ? {} : { model: String(r.model) }),
         list: row ? Number(row.price) : null,
         floor: row && row.floor_price != null ? Number(row.floor_price) : null,
       }

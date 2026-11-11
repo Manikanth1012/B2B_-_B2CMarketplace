@@ -14,20 +14,42 @@ export interface ProblemSlot {
 }
 export interface ProblemDraft { name: string; discount_pct: number; audiences: string[]; slots: ProblemSlot[] }
 
+/** What the builder knows of an option's product: enough to name it and say how it is billed. */
+export interface ProblemProduct { name: string; model: string }
+
 export interface DraftProblems {
-  /** Field id (`name`, `discount`, `audiences`) to sentence. */
+  /** Field id (`name`, `discount`, `audiences`, `billing`) to sentence. */
   bundle: Record<string, string>
   /** Slot key to field to sentence. Fields: label, min_pick, max_pick, qty_min, qty_max, qty_default, options. */
   slots: Record<string, Record<string, string>>
 }
 
-export function draftProblems(d: ProblemDraft, maxDiscount: number): DraftProblems {
+/**
+ * `products`, when given, lets the draft be held to the publish check's
+ * billing rule (`bundle_template_problem`): a bundle sold to business buyers
+ * offers options of one `products.model` only. An option whose product is not
+ * in it is left to the database.
+ */
+export function draftProblems(
+  d: ProblemDraft, maxDiscount: number, products?: ReadonlyMap<string, ProblemProduct>,
+): DraftProblems {
   const bundle: Record<string, string> = {}
   const slots: Record<string, Record<string, string>> = {}
   if (d.name.trim() === '') bundle.name = 'Give the bundle a name'
   if (!(d.discount_pct > 0)) bundle.discount = 'The discount must be above 0%'
   else if (d.discount_pct > maxDiscount) bundle.discount = `The published rule allows at most ${maxDiscount}%`
   if (d.audiences.length === 0) bundle.audiences = 'Choose who this is sold to'
+  if (products && d.audiences.includes('enterprise')) {
+    const label = (m: string) => (m === 'oneoff' ? 'one-off' : m)
+    const known = [...new Set(d.slots.flatMap(s => s.options.map(o => o.product_id)))]
+      .flatMap(id => { const p = products.get(id); return p ? [p] : [] })
+    const models = [...new Set(known.map(p => p.model))].sort()
+    if (models.length > 1) {
+      const names = known.slice().sort((a, b) => a.model.localeCompare(b.model) || a.name.localeCompare(b.name))
+        .map(p => `${p.name} (${label(p.model)})`)
+      bundle.billing = `A bundle for business buyers is billed one way, and this one mixes ${models.map(label).join(' and ')} parts: ${names.join(', ')}. Offer parts of one kind, or sell it to shoppers only.`
+    }
+  }
 
   const seen = new Map<string, number>()
   d.slots.forEach(s => s.options.forEach(o => seen.set(o.product_id, (seen.get(o.product_id) ?? 0) + 1)))
