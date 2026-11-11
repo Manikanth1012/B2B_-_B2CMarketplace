@@ -313,7 +313,7 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
             ) : (
               <ListingGrid>
                 {/* Configurable bundles, retail only and only without a product facet. */}
-                {page === 'retail' && !sub && !stock && <BundleCards audience="consumer" currency={currencyCode} search={search} />}
+                {page === 'retail' && !sub && !stock && <BundleCards audience="consumer" search={search} />}
                 {shown.map(p => (
                   <ProductCard
                     key={p.id}

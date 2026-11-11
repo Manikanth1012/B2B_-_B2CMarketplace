@@ -10,11 +10,12 @@ import { Dialog } from '../ui/Dialog'
 import { toast } from '../operator/shared'
 import { enquiriesChanged } from '../enquiries/events'
 import { onOpenBundle, bundlesChanged, type OpenBundleDetail } from './events'
-import { sendBundleTo } from './handoff'
-import { useBundleShelf } from './useBundleShelf'
+import { useRequisition } from '../../lib/RequisitionContext'
+import { sendBundleTo, hasBundleSink, notAvailable } from './handoff'
+import { useBundleShelf, useBundleCurrency } from './useBundleShelf'
 import {
   slotsOf, optionsOf, partsFor, estimate, unavailable, slotHint, togglePick, clearSlot, setPickQty,
-  totalsDiffer, BUNDLE_QTY_MAX,
+  totalsDiffer, pickedTwice, BUNDLE_QTY_MAX,
 } from './shelf'
 
 type Phase =
@@ -45,24 +46,40 @@ export function BundleConfiguratorHost({ shop, signedIn = true, onSignIn, onOpen
   const [opening, setOpening] = useState(0)
   useEffect(() => onOpenBundle(d => { setDetail(d); setOpening(n => n + 1) }), [])
   if (!detail) return null
-  return (
-    <BundleConfigurator key={opening} shop={shop} detail={detail} signedIn={signedIn}
-      onSignIn={onSignIn} onOpenEnquiries={onOpenEnquiries} onClose={() => setDetail(null)} />
-  )
+  const props = { key: opening, shop, detail, signedIn, onSignIn, onOpenEnquiries, onClose: () => setDetail(null) }
+  return shop === 'enterprise' ? <WithRequisition {...props} /> : <BundleConfigurator {...props} />
 }
 
-function BundleConfigurator({ shop, detail, signedIn, onSignIn, onOpenEnquiries, onClose }: {
+type Props = {
   shop: 'consumer' | 'enterprise'
   detail: OpenBundleDetail
   signedIn: boolean
   onSignIn?: () => void
   onOpenEnquiries?: () => void
   onClose: () => void
+}
+
+/* The enterprise shell's configurator sits inside the RequisitionProvider; it
+   needs the open requisition's currency to say up front when a bundle cannot
+   join it. */
+function WithRequisition(props: Props) {
+  const req = useRequisition()
+  const held = req.basket.lines.length > 0 ? req.basket.currency : null
+  return <BundleConfigurator {...props} requisitionCurrency={held} />
+}
+
+function BundleConfigurator({ shop, detail, signedIn, onSignIn, onOpenEnquiries, onClose, requisitionCurrency = null }: Props & {
+  /** The currency of a requisition that already has lines, if any. */
+  requisitionCurrency?: string | null
 }) {
-  const { currency: chosen, market, fmtIn } = useMarket()
-  const currency = chosen?.code ?? market?.currency ?? 'USD'
+  const { fmtIn } = useMarket()
+  /* Always the buyer's own currency (consumer home, business account): the
+     only one configure_bundle prices in. A visitor has none and sees the shop's. */
+  const { currency: own, header, own: isOwn } = useBundleCurrency()
+  const currency = own ?? ''
   const money = (n: number) => fmtIn(n, currency)
-  const { shelf, loading, loadError } = useBundleShelf(currency)
+  const { shelf, loading: shelfLoading, loadError } = useBundleShelf(own)
+  const loading = shelfLoading || !own
 
   const template = shelf.templates.find(t => t.id === detail.templateId) ?? null
   const slots = useMemo(() => slotsOf(shelf, detail.templateId), [shelf, detail.templateId])
@@ -81,14 +98,23 @@ function BundleConfigurator({ shop, detail, signedIn, onSignIn, onOpenEnquiries,
   const picks = choices ?? {}
   const problems = choices ? validateChoices(slots, options, picks) : {}
   const unpicked = Object.values(picks).flat()
-    .map(p => ({ p, why: unavailable(shelf.parts.get(p.product_id), currency) }))
+    .map(p => ({ p, why: unavailable(shelf.parts.get(p.product_id), currency, shop) }))
     .find(x => x.why !== null)
+  const twice = pickedTwice(picks)
   const priced = template ? estimate(partsFor(slots, picks, shelf.parts), template.discount_pct, qty) : null
-  const canAct = !!template && template.status === 'live' && !!choices
-    && Object.keys(problems).length === 0 && !unpicked && !!priced && phase.kind === 'choose'
+  const canChoose = !!template && template.status === 'live' && !!choices
+    && Object.keys(problems).length === 0 && !unpicked && !twice && !!priced && phase.kind === 'choose'
 
   const nameOf = (id: string) => shelf.parts.get(id)?.name ?? id
   const kind = shop === 'consumer' ? 'basket' as const : 'requisition' as const
+  /* Said before anything is written, rather than after a selection is saved
+     and then refused: nothing takes bundles yet, or the open requisition is
+     in another currency (the database refuses a bundle there anyway). */
+  const addBlocked = !hasBundleSink(kind) ? notAvailable(kind)
+    : shop === 'enterprise' && requisitionCurrency && requisitionCurrency !== currency
+      ? `Your open requisition is in ${requisitionCurrency}, and bundles are priced in ${currency}, your account's currency. Raise or clear that requisition first, or request a quote for this bundle.`
+      : null
+  const canAct = canChoose && !addBlocked
   const actionLabel = shop === 'consumer' ? 'Add bundle to basket' : 'Add bundle to requisition'
 
   const handOn = async (selection: Selection) => {
@@ -199,7 +225,7 @@ function BundleConfigurator({ shop, detail, signedIn, onSignIn, onOpenEnquiries,
                 )}
                 {slotOptions.map(o => {
                   const part = shelf.parts.get(o.product_id)
-                  const why = unavailable(part, currency)
+                  const why = unavailable(part, currency, shop)
                   const pick = mine.find(p => p.product_id === o.product_id)
                   const on = !!pick
                   return (
@@ -230,17 +256,19 @@ function BundleConfigurator({ shop, detail, signedIn, onSignIn, onOpenEnquiries,
 
         <aside className="pd__buy bcfg__panel" aria-label="Your bundle">
           <h3 className="bcfg__panel-title">Your bundle</h3>
-          <div aria-live="polite">
-            {priced ? (
-              <Breakdown
-                rows={priced.lines.map(l => ({ key: l.product_id, name: nameOf(l.product_id), quantity: l.quantity, total: l.line_total }))}
-                partsTotal={priced.parts_total} total={priced.total} money={money} />
-            ) : (
-              <p className="bcfg__calm">
-                {unpicked ? `${nameOf(unpicked.p.product_id)}: ${unpicked.why}. Choose another.` : 'Choose the parts to see the price.'}
-              </p>
-            )}
-          </div>
+          <p className="bcfg__note">
+            Prices in {currency}{isOwn ? ", your account's currency" : ''}.
+            {header && header !== currency && ` The shop is showing ${header}; a bundle is always priced in ${currency}.`}
+          </p>
+          {priced ? (
+            <Breakdown
+              rows={priced.lines.map(l => ({ key: l.product_id, name: nameOf(l.product_id), quantity: l.quantity, total: l.line_total }))}
+              partsTotal={priced.parts_total} total={priced.total} money={money} />
+          ) : !unpicked && !twice && (
+            <p className="bcfg__calm">Choose the parts to see the price.</p>
+          )}
+          {unpicked && <p className="bcfg__problem">{nameOf(unpicked.p.product_id)}: {unpicked.why}. Choose another.</p>}
+          {twice && <p className="bcfg__problem">{nameOf(twice)} is chosen in two parts of this bundle. Choose it once.</p>}
 
           <div className="bcfg__qty">
             <span id="bcfg-qty-label">How many bundles</span>
@@ -254,11 +282,13 @@ function BundleConfigurator({ shop, detail, signedIn, onSignIn, onOpenEnquiries,
 
           {signedIn ? (
             <>
-              <button type="button" className="btn btn-primary bcfg__btn" disabled={!canAct} onClick={() => void add()}>
+              {addBlocked && <p className="bcfg__problem" id="bcfg-add-blocked">{addBlocked}</p>}
+              <button type="button" className="btn btn-primary bcfg__btn" disabled={!canAct} onClick={() => void add()}
+                aria-describedby={addBlocked ? 'bcfg-add-blocked' : undefined}>
                 {phase.kind === 'working' && phase.what === 'add' ? 'Pricing…' : actionLabel}
               </button>
               {shop === 'enterprise' && (
-                <button type="button" className="btn btn-secondary bcfg__btn" disabled={!canAct} onClick={() => void quote()}>
+                <button type="button" className="btn btn-secondary bcfg__btn" disabled={!canChoose} onClick={() => void quote()}>
                   {phase.kind === 'working' && phase.what === 'quote' ? 'Sending…' : 'Request a quote for this bundle'}
                 </button>
               )}
@@ -270,7 +300,7 @@ function BundleConfigurator({ shop, detail, signedIn, onSignIn, onOpenEnquiries,
           )}
 
           <p className="bcfg__note">
-            Priced in {currency}. This is an estimate; the price is fixed when you add the bundle and held for 7 days.
+            This is an estimate; the price is fixed when you add the bundle and held for 7 days.
             {shop === 'enterprise' && ' Nothing is ordered until the requisition is approved.'}
           </p>
         </aside>
@@ -303,8 +333,11 @@ function Breakdown({ rows, partsTotal, total, money }: {
         ))}
       </ul>
       {saving > 0 && <div className="bcfg__sum"><span>Bought separately</span><span>{money(partsTotal)}</span></div>}
-      <div className="bcfg__sum bcfg__sum--total"><span>Bundle price</span><span className="pd__price">{money(total)}</span></div>
-      {saving > 0 && <div className="bcfg__save">You save {money(saving)}</div>}
+      {/* Only the price and the saving are announced as they change, not every line. */}
+      <div aria-live="polite">
+        <div className="bcfg__sum bcfg__sum--total"><span>Bundle price</span><span className="pd__price">{money(total)}</span></div>
+        {saving > 0 && <div className="bcfg__save">You save {money(saving)}</div>}
+      </div>
     </div>
   )
 }

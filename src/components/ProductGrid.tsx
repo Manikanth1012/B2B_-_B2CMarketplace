@@ -184,7 +184,7 @@ export function ProductGrid({ categoryFilter, onNavigate, onAddToCart, onNotifyM
      so a Type or Availability filter (product facets) leaves them out; with no
      templates, or before the bundle tables exist, this renders nothing. */
   const bundles = !subFilter && !stockFilter
-    ? <BundleCards audience="consumer" currency={currencyCode} category={categoryFilter} search={search} />
+    ? <BundleCards audience="consumer" category={categoryFilter} search={search} />
     : null
 
   const title = activeCategory ? activeCategory.name : 'All products'

@@ -267,7 +267,7 @@ export function EnterpriseBrowse() {
         ) : results.length > 0 ? (
           <ListingGrid>
             {/* Configurable bundles first; a Category filter is a product facet, so it leaves them out. */}
-            {!category && <BundleCards audience="enterprise" currency={currency} category={vertical} search={query} />}
+            {!category && <BundleCards audience="enterprise" category={vertical} search={query} />}
             {results.map(p => {
               const a = cardAction('enterprise', p)
               return (
