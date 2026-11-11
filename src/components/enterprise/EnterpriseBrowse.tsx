@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { BundleCards } from '../bundles/BundleCard'
 import type { CSSProperties } from 'react'
 import { toast } from '../operator/shared'
 /* The card resolves its photo with the same resolver the storefront and the
@@ -265,6 +266,8 @@ export function EnterpriseBrowse() {
           <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
         ) : results.length > 0 ? (
           <ListingGrid>
+            {/* Configurable bundles first; a Category filter is a product facet, so it leaves them out. */}
+            {!category && <BundleCards audience="enterprise" category={vertical} search={query} />}
             {results.map(p => {
               const a = cardAction('enterprise', p)
               return (

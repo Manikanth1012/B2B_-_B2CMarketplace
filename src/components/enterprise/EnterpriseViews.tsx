@@ -17,6 +17,8 @@ import { lineFor } from './EnterpriseBrowse'
 import { holdsQuote, quoteHoldsCurrency } from '../../lib/requisitionBasket'
 import { EnterpriseListingModal } from './EnterpriseListingModal'
 import { useMarket } from '../../lib/MarketContext'
+import { BundleCards, useHasBundles } from '../bundles/BundleCard'
+import { ListingGrid } from '../ui'
 
 /* EnterpriseApprovals moved to EnterpriseApprovals.tsx when requisitions
    became rows rather than a constant. Deciding one here filtered a React array,
@@ -286,6 +288,7 @@ export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
   /* The shelf's currency for prices; the account's own for the threshold, which
      is a chosen figure and does not move when the shelf does. */
   const { money } = useAccountMoney(currency)
+  const hasBundles = useHasBundles('enterprise', vertical)
   const { money0 } = useAccountMoney(primary)
 
   if (!book || !listings) {
@@ -343,6 +346,16 @@ export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
               </tr>
             ))}
           </Table>
+        </SectionCard>
+      )}
+
+      {/* Configurable bundles with a part on this marketplace; nothing at all
+          when there are none or bundles did not load. */}
+      {hasBundles && (
+        <SectionCard title="Configurable bundles" subtitle="Choose the parts; one price for the whole bundle">
+          <div style={{ padding: '20px' }}>
+            <ListingGrid><BundleCards audience="enterprise" category={vertical} /></ListingGrid>
+          </div>
         </SectionCard>
       )}
 

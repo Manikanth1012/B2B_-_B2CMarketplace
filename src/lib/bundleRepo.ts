@@ -81,6 +81,54 @@ export async function loadSelections(ids: string[]): Promise<Result<{ selections
   }
 }
 
+/** One product a bundle may contain, as a shop sees it in one currency. */
+export interface BundlePart {
+  id: string
+  name: string
+  seller: string
+  category_id: string | null
+  stock: string
+  status: string
+  unit: string | null
+  audiences: string[]
+  /** product_prices.price in the currency, or null when it is not priced there. */
+  list: number | null
+  floor: number | null
+}
+
+/** The products a set of bundle options name, with their price-book row in
+    one currency — what the shop needs to show an estimate. No ids is a
+    successful, empty answer. */
+export async function loadBundleParts(productIds: string[], currency: string): Promise<Result<BundlePart[]>> {
+  const ids = [...new Set(productIds)]
+  if (ids.length === 0) return { ok: true, value: [] }
+  try {
+    const [p, pr] = await Promise.all([
+      supabase.from('products').select('id, name, seller, category_id, stock, status, unit, audiences').in('id', ids),
+      supabase.from('product_prices').select('product_id, price, floor_price').eq('currency', currency).in('product_id', ids),
+    ])
+    if (p.error) return { ok: false, error: p.error.message }
+    if (pr.error) return { ok: false, error: pr.error.message }
+    const prices = new Map(((pr.data ?? []) as { product_id: string; price: unknown; floor_price: unknown }[])
+      .map(r => [String(r.product_id), r]))
+    const value = ((p.data ?? []) as Record<string, unknown>[]).map(r => {
+      const row = prices.get(String(r.id))
+      return {
+        id: String(r.id), name: String(r.name), seller: String(r.seller ?? ''),
+        category_id: r.category_id == null ? null : String(r.category_id),
+        stock: String(r.stock ?? 'in'), status: String(r.status ?? ''),
+        unit: r.unit == null ? null : String(r.unit),
+        audiences: Array.isArray(r.audiences) ? (r.audiences as unknown[]).map(String) : [],
+        list: row ? Number(row.price) : null,
+        floor: row && row.floor_price != null ? Number(row.floor_price) : null,
+      }
+    })
+    return { ok: true, value }
+  } catch (err) {
+    return { ok: false, error: errorText(err) }
+  }
+}
+
 /* --------------------------------------------------------------- pricing -- */
 
 /** What the database would charge. Writes nothing. The lines carry no id and
