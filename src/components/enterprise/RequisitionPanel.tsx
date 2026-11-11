@@ -38,6 +38,9 @@ const BLANK = { title: '', reason: '', cost_centre: null as string | null, po_re
 const FIELD_ID: Record<MissingField, string> = {
   lines: 'req-title', title: 'req-title', reason: 'req-reason',
   cost_centre: 'req-cc', po_ref: 'req-po',
+  /* The panel does not ask for reasons yet (missingFields only adds this when
+     given the rules); the screen that does names its first reason field. */
+  off_contract_reason: 'req-reason-0',
 }
 
 export function RequisitionPanel({ onRaised, onQuoteRequested }: {

@@ -19,6 +19,9 @@ import { requisitionTotal, needFor, policyNoteFor, inPolicyMoney, money } from '
 import type { Policy, Account, Need, Check, Fmt } from './enterprise'
 import type { Rate } from './money'
 import type { BundleMeta } from './bundleLines'
+import { needWithRules, offContractNote, offContractReasonProblem } from './accountPrices'
+import type { OffContractRule } from './accountPrices'
+import { joinNote } from './priceBookPayload'
 
 export interface BasketLine {
   product_id: string
@@ -47,7 +50,18 @@ export interface BasketLine {
      shelf, and moves only with the rest of its bundle. */
   bundle_selection_id?: string | null
   bundle?: BundleMeta
+  /* Whether the shelf priced this line from the account's own price book.
+     The database decides it again when the line is written; this is the
+     preview of that decision. */
+  on_contract?: boolean
+  /* Why it is bought off the price book, when the buying rules ask. */
+  off_contract_reason?: string
 }
+
+/** An ordinary line the account has no price for: what the buying rules judge.
+ *  Quoted and bundled lines are held by their own guards and never off contract. */
+export const isOffContract = (l: Pick<BasketLine, 'on_contract' | 'quote_line_id' | 'bundle_selection_id'>): boolean =>
+  !l.quote_line_id && !l.bundle_selection_id && l.on_contract !== true
 
 /** Whether a line came from an accepted quote. */
 export const isQuoted = (l: Pick<BasketLine, 'quote_line_id'>): boolean => !!l.quote_line_id
@@ -169,6 +183,15 @@ export function setQuantity(basket: Basket, product_id: string, quantity: number
   return { ok: true, basket: { ...basket, lines } }
 }
 
+/** Say why an ordinary line is bought off the price book. Kept as typed; trimmed when raised. */
+export function setReason(basket: Basket, product_id: string, reason: string): BasketResult {
+  const at = basket.lines.findIndex(l => l.product_id === product_id && !l.bundle_selection_id && !isQuoted(l))
+  if (at < 0) return { ok: false, reason: 'That line is not in your requisition.' }
+  const lines = basket.lines.slice()
+  lines[at] = { ...lines[at], off_contract_reason: reason }
+  return { ok: true, basket: { ...basket, lines } }
+}
+
 export function removeLine(basket: Basket, product_id: string): BasketResult {
   /* A bundle's parts leave only with their bundle (removeBundleFromBasket). */
   const lines = basket.lines.filter(l => l.product_id !== product_id || !!l.bundle_selection_id)
@@ -220,7 +243,7 @@ export function modelOf(lines: readonly BasketLine[]): 'oneoff' | 'monthly' {
  */
 export function repriceTo(
   basket: Basket, currency: string,
-  shelf: readonly { id: string; price: number; model: string; unit: string | null; currency?: string }[],
+  shelf: readonly { id: string; price: number; model: string; unit: string | null; currency?: string; on_contract?: boolean }[],
 ): { basket: Basket; dropped: string[] } {
   if (!basket.lines.length) return { basket: EMPTY_BASKET, dropped: [] }
   if (basket.currency === currency) return { basket, dropped: [] }
@@ -240,7 +263,14 @@ export function repriceTo(
        figure as rupees. */
     const now = shelf.find(s => s.id === l.product_id && (!s.currency || s.currency === currency))
     if (!now || now.price <= 0) { dropped.push(l.name); continue }
-    lines.push({ ...l, unit_price: now.price, unit: now.unit })
+    const next: BasketLine = { ...l, unit_price: now.price, unit: now.unit }
+    /* The new shelf says whether the account has a price there; a line that
+       is now on contract no longer needs a reason for being off it. */
+    if (now.on_contract !== undefined) {
+      next.on_contract = now.on_contract
+      if (now.on_contract) delete next.off_contract_reason
+    }
+    lines.push(next)
   }
   return { basket: lines.length ? { currency, lines } : EMPTY_BASKET, dropped }
 }
@@ -274,6 +304,9 @@ export function verdict(
      rest of the screen is written in. `policy_note` on the raised requisition
      keeps the ISO default — that one is a record other markets read back. */
   fmt: Fmt = money,
+  /* The account's buying rules. Under 'approval' a line off the price book
+     lifts the need to finance, as guard_requisition_line_contract insists. */
+  rules?: { rule: OffContractRule },
 ): BasketVerdict {
   const total = basketTotal(basket)
   const vertical = verticalOf(basket.lines)
@@ -292,8 +325,12 @@ export function verdict(
     }
   }
 
-  const need = needFor({ amount: at.amount, vertical }, policy)
-  return { ...base, need, note: policyNoteFor(need, at.amount, policy, account.currency, at, fmt), blocked: null }
+  const baseNeed = needFor({ amount: at.amount, vertical }, policy)
+  const rule = rules?.rule ?? 'allow'
+  const off = basket.lines.filter(isOffContract).length
+  const need = needWithRules(baseNeed, off > 0, rule)
+  const note = joinNote(policyNoteFor(baseNeed, at.amount, policy, account.currency, at, fmt), offContractNote(rule, off))
+  return { ...base, need, note, blocked: null }
 }
 
 /**
@@ -304,7 +341,7 @@ export function verdict(
  * covers the basket's own conditions too — the ones a draft form knows nothing
  * about.
  */
-export type MissingField = 'lines' | 'title' | 'reason' | 'cost_centre' | 'po_ref'
+export type MissingField = 'lines' | 'title' | 'reason' | 'cost_centre' | 'po_ref' | 'off_contract_reason'
 
 /**
  * The same answer, but addressable.
@@ -319,6 +356,9 @@ export function missingFields(
   basket: Basket,
   draft: { title: string; reason: string; cost_centre: string | null; po_ref: string },
   account: Account,
+  /* The buying rules, and whether the screen shows off-contract lines at all
+     (showsOffContract). A reason is only asked for where it is shown. */
+  rules?: { rule: OffContractRule; shows: boolean },
 ): { field: MissingField; says: string }[] {
   const missing: { field: MissingField; says: string }[] = []
   if (!basket.lines.length) missing.push({ field: 'lines', says: 'at least one line' })
@@ -330,6 +370,10 @@ export function missingFields(
       field: 'po_ref',
       says: 'a purchase order reference, which this account requires on every invoice',
     })
+  }
+  if (rules?.rule === 'reason' && rules.shows
+      && basket.lines.some(l => isOffContract(l) && offContractReasonProblem(l.off_contract_reason) !== null)) {
+    missing.push({ field: 'off_contract_reason', says: 'a reason for each line off your price book' })
   }
   return missing
 }
