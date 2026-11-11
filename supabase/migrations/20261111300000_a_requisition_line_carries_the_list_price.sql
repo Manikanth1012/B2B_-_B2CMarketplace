@@ -33,9 +33,19 @@
  *
  * A basket is built minutes before it is raised and is not kept across a
  * reload (RequisitionContext). If a seller changes the price in between, the
- * line is refused with a sentence that says the price changed and to refresh
- * the requisition — `raiseRequisition` then removes the header it wrote, so
- * nothing is left half-raised.
+ * line is refused with a sentence that says the price changed and what to do
+ * on the requisition panel: remove the line (its × button) and add it again
+ * from the catalogue, which reads the current price. `raiseRequisition` then
+ * removes the header it wrote, so nothing is left half-raised, and the basket
+ * is kept for the buyer to correct.
+ *
+ * Two edges, accepted for now. A product the seller has withdrawn from its
+ * home currency still passes on its base row in that currency, where the
+ * shelf hides it (the shelf labels the base row USD); every seeded product's
+ * base is USD, so the two agree today. And a bundle part whose selection is
+ * deleted (the foreign key sets `bundle_selection_id` null) becomes an
+ * ordinary line at the bundle's price; it is not re-checked, because watching
+ * that column would refuse the cascade — the count at the end includes it.
  *
  * Who it applies to is the house rule (`guard_requisition_line`): the business
  * buyer. A null persona is a migration or the service role; the operator has
@@ -105,12 +115,12 @@ begin
   end if;
 
   if v_book is null then
-    raise exception '% has no price in %, so it cannot go on a requisition in %. Refresh the requisition to see what is on sale in %.',
-      v_name, v_req.currency, v_req.currency, v_req.currency;
+    raise exception '% has no price in %, so it cannot go on a requisition in %. Remove it from the requisition to raise the rest.',
+      v_name, v_req.currency, v_req.currency;
   end if;
 
   if round(new.unit_price, 2) is distinct from v_book then
-    raise exception 'The price of % has changed: it is now % %, and this requisition has it at %. Refresh the requisition to pick up the current price, then raise it again.',
+    raise exception 'The price of % has changed: it is now % %, and this requisition has it at %. Remove it from the requisition and add it again from the catalogue to take the current price.',
       v_name, v_req.currency, v_book, round(new.unit_price, 2);
   end if;
 
@@ -154,7 +164,7 @@ begin
 
   /* The function says what it exists to say, and stays out of the lines it
      does not price. */
-  select prosrc like '%has changed%Refresh the requisition%'
+  select prosrc like '%has changed%add it again from the catalogue%'
          and prosrc like '%quote_line_id is not null or new.bundle_selection_id is not null%'
          and prosecdef
     into v_ok

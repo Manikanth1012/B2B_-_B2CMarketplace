@@ -9,7 +9,8 @@
  * Skipped, saying why, until that migration is applied. Whether it is applied
  * is asked the only way a client can: a line at the wrong price is written
  * onto this file's own pending requisition, and if it lands the guard is not
- * there (the line is then removed again).
+ * there (the line is then removed again). Refused for any other reason, the
+ * probe fails loudly rather than skipping or running against the wrong guard.
  *
  * Clean-up, in afterAll and again at the start in case a run died: every
  * requisition whose title carries the marker is deleted by the business buyer,
@@ -98,6 +99,11 @@ beforeAll(async () => {
   const probe = wrongLine(0, item.price + 1)
   const { error } = await supabase.from('enterprise_requisition_lines').insert(probe)
   if (error) {
+    /* Only the guard's own refusal says it is there. Anything else (RLS, the
+       line guard, a constraint) is a broken probe, not an applied migration. */
+    if (!/The price of .* has changed/.test(error.message)) {
+      throw new Error(`the probe line was refused, but not by the price guard: ${error.message}`)
+    }
     applied = true
   } else {
     const { error: e } = await supabase.from('enterprise_requisition_lines').delete().eq('id', probe.id)
@@ -136,7 +142,7 @@ describe('a requisition line carries the list price', () => {
     const line = wrongLine(1, Math.max(1, want - 100))
     const { error } = await supabase.from('enterprise_requisition_lines').insert(line)
     expect(error, 'a line went on at a price the book does not show').not.toBeNull()
-    expect(error!.message).toMatch(/has changed.*Refresh the requisition/)
+    expect(error!.message).toMatch(/has changed.*add it again from the catalogue/)
 
     const { data } = await supabase.from('enterprise_requisition_lines').select('id').like('id', `${LINE_PREFIX}%`)
     expect(data ?? []).toEqual([])

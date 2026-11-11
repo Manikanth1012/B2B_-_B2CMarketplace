@@ -198,12 +198,14 @@ describe('a requisition line carries the list price', () => {
     expect(guard).toContain('if new.product_id is null then')
     const msgs = raises(code).filter(r => r.level === 'exception').map(r => r.message)
     expect(msgs).toContain('% names no listing, so there is no price to hold it to. Add it from the catalogue and raise the requisition again.')
-    expect(msgs).toContain('% has no price in %, so it cannot go on a requisition in %. Refresh the requisition to see what is on sale in %.')
+    expect(msgs).toContain('% has no price in %, so it cannot go on a requisition in %. Remove it from the requisition to raise the rest.')
   })
 
-  it('tells the buyer the price changed and to refresh the requisition', () => {
+  it('tells the buyer the price changed and what to do on the requisition panel', () => {
     const msgs = raises(code).map(r => r.message)
-    expect(msgs).toContain('The price of % has changed: it is now % %, and this requisition has it at %. Refresh the requisition to pick up the current price, then raise it again.')
+    expect(msgs).toContain('The price of % has changed: it is now % %, and this requisition has it at %. Remove it from the requisition and add it again from the catalogue to take the current price.')
+    // the panel has no refresh; a reload empties the basket
+    expect(msgs.join(' ')).not.toMatch(/refresh/i)
   })
 
   it('checks itself: attached on the right events and columns, the existing guards still there', () => {
