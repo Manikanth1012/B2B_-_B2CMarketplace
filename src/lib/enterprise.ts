@@ -143,6 +143,14 @@ export interface ReqLine {
   unit_price: number
   line_total: number
   sort_order: number
+  /* Set by the database when the line is written (spec 9): whether it was
+     bought off the account's price book, the buyer's reason when the buying
+     rules asked for one, and the account price it was charged at. Optional
+     because a database without price books returns none of them; read through
+     `select('*')`, never named, so today's query keeps working. */
+  off_contract?: boolean
+  off_contract_reason?: string | null
+  account_price_id?: string | null
 }
 
 export interface Subscription {
@@ -326,6 +334,11 @@ export function needFor(
 export function policyNoteFor(
   need: Need, amount: number, policy: Policy, currency: string, at?: PolicyMoney | null,
   fmt: Fmt = money,
+  /* True when the account's buying rules lift the need above what the
+     threshold asked (accountPrices.needWithRules). The threshold sentence then
+     says only what the value is, because "no approval needed" beside the
+     buying rules' "finance approval required" contradicts itself. */
+  liftedByRules = false,
 ): string {
   const t = fmt(policy.threshold, currency)
   const from = at && !at.native
@@ -341,7 +354,9 @@ export function policyNoteFor(
         ? 'A security purchase — IT sign-off required'
         : `Below the ${t} threshold, but a security purchase — IT sign-off required whatever it costs${from}`
     default:
-      return `Below the ${t} threshold and not a security purchase — no approval needed, recorded for the audit trail${from}`
+      return liftedByRules
+        ? `Below the ${t} threshold and not a security purchase${from}`
+        : `Below the ${t} threshold and not a security purchase — no approval needed, recorded for the audit trail${from}`
   }
 }
 

@@ -401,7 +401,7 @@ export async function raiseRequisition(
   /* The threshold sentence says what the threshold asked; the off-contract
      sentence says what the buying rules added on top. */
   const policyNote = joinNote(
-    policyNoteFor(baseNeed, at.amount, policy, account.currency, at),
+    policyNoteFor(baseNeed, at.amount, policy, account.currency, at, money, need !== baseNeed),
     offContractNote(rule, off.length),
   )
   const id = `REQ-${Math.floor(Date.now() / 1000).toString().slice(-4)}`
