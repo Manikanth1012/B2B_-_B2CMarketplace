@@ -220,7 +220,7 @@ export function modelOf(lines: readonly BasketLine[]): 'oneoff' | 'monthly' {
  */
 export function repriceTo(
   basket: Basket, currency: string,
-  shelf: readonly { id: string; price: number; model: string; unit: string | null }[],
+  shelf: readonly { id: string; price: number; model: string; unit: string | null; currency?: string }[],
 ): { basket: Basket; dropped: string[] } {
   if (!basket.lines.length) return { basket: EMPTY_BASKET, dropped: [] }
   if (basket.currency === currency) return { basket, dropped: [] }
@@ -234,7 +234,11 @@ export function repriceTo(
   const dropped: string[] = []
   const lines: BasketLine[] = []
   for (const l of basket.lines) {
-    const now = shelf.find(s => s.id === l.product_id)
+    /* A shelf row in another currency is the shelf's fallback (the base row,
+       labelled in its own money), not a price in this one — so it counts as
+       absent, and the line is dropped and named rather than carrying a dollar
+       figure as rupees. */
+    const now = shelf.find(s => s.id === l.product_id && (!s.currency || s.currency === currency))
     if (!now || now.price <= 0) { dropped.push(l.name); continue }
     lines.push({ ...l, unit_price: now.price, unit: now.unit })
   }

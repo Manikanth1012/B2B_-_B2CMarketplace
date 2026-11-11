@@ -14,6 +14,7 @@ import { useAccountMoney } from './money'
 import { getProductImage } from '../../lib/images'
 import { useRequisition } from '../../lib/RequisitionContext'
 import { lineFor } from './EnterpriseBrowse'
+import { pricedFor } from '../../lib/storefront'
 import { heldCurrencyNote } from '../../lib/bundleLines'
 import { EnterpriseListingModal } from './EnterpriseListingModal'
 import { useMarket } from '../../lib/MarketContext'
@@ -296,7 +297,9 @@ export function EnterpriseMarketplace({ vertical }: { vertical: string }) {
     return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
   }
 
-  const filtered = listings.filter(l => l.category_id === vertical)
+  /* Only what this currency prices, as Browse shows it (`pricedFor`): a listing
+     the book does not price here carries its base figure in another money. */
+  const filtered = pricedFor(listings, currency ?? '').filter(l => l.category_id === vertical)
   const byCat: Record<string, EnterpriseListing[]> = {}
   filtered.forEach(l => { (byCat[l.sub_category ?? 'Other'] = byCat[l.sub_category ?? 'Other'] || []).push(l) })
 

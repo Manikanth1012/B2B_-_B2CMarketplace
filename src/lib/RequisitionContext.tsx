@@ -55,7 +55,7 @@ export interface RequisitionState {
   removeBundle: (selectionId: string) => void
   empty: () => void
   /** Move the whole basket onto another currency's shelf. Returns what fell off. */
-  reprice: (currency: string, shelf: readonly { id: string; price: number; model: string; unit: string | null }[]) => string[]
+  reprice: (currency: string, shelf: readonly { id: string; price: number; model: string; unit: string | null; currency?: string }[]) => string[]
 }
 
 const Ctx = createContext<RequisitionState | null>(null)
