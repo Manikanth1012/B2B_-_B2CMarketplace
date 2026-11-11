@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { PartOfBundle } from '../bundles/BundleGroup'
 import { TriangleAlert as AlertTriangle, Download, Upload, TriangleAlert } from 'lucide-react'
 import {
   StatCard, SectionCard, Table, Td, StatusPill, fmtInt, Btn, toast, Modal,
@@ -178,6 +179,7 @@ export function PartnerOrders({ partnerId }: { partnerId: string }) {
                       {mine.filter(l => book.mine.has(l.product_id)).map(l => (
                         <div key={l.product_id} style={{ fontSize: 'var(--text-sm)' }}>
                           {l.quantity}× {l.product_name}
+                          {l.bundle_selection_id && <> · <PartOfBundle /></>}
                         </div>
                       ))}
                       <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
@@ -291,6 +293,7 @@ export function PartnerOrders({ partnerId }: { partnerId: string }) {
                   <tr key={l.product_id}>
                     <Td>
                       {l.product_name}
+                      {l.bundle_selection_id && <> · <PartOfBundle /></>}
                       {!book.mine.has(l.product_id) && (
                         <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}> · another seller's</span>
                       )}

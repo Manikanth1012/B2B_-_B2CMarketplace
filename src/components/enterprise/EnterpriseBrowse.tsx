@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { BundleCards } from '../bundles/BundleCard'
 import type { CSSProperties } from 'react'
 import { toast } from '../operator/shared'
 /* The card resolves its photo with the same resolver the storefront and the
@@ -10,7 +11,7 @@ import { ProductCard, ListingLayout, ListingGrid, EmptyListing, CategoryTile, ca
 import { pricedFor, cardAction } from '../../lib/storefront'
 import { categoryVisual } from '../../lib/home'
 import { useRequisition } from '../../lib/RequisitionContext'
-import { holdsQuote, quoteHoldsCurrency } from '../../lib/requisitionBasket'
+import { heldCurrencyNote } from '../../lib/bundleLines'
 import type { EnterpriseListing as Listing } from '../../lib/enterpriseRepo'
 
 /* One shape of line from one shape of row, used by both catalogue screens, so
@@ -125,8 +126,9 @@ export function EnterpriseBrowse() {
     if (req.basket.currency === currency) return
     /* A quoted price is in the quote's currency and is not on any shelf, so a
        basket holding one stays where it is (repriceTo leaves it alone too). */
-    if (holdsQuote(req.basket)) {
-      toast(quoteHoldsCurrency(req.basket.currency, currency), 'info')
+    const held = heldCurrencyNote(req.basket, currency)
+    if (held) {
+      toast(held, 'info')
       return
     }
     const dropped = req.reprice(currency, listings)
@@ -265,6 +267,8 @@ export function EnterpriseBrowse() {
           <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
         ) : results.length > 0 ? (
           <ListingGrid>
+            {/* Configurable bundles first; a Category filter is a product facet, so it leaves them out. */}
+            {!category && <BundleCards audience="enterprise" category={vertical} search={query} />}
             {results.map(p => {
               const a = cardAction('enterprise', p)
               return (

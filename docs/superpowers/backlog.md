@@ -19,7 +19,8 @@ closed by spec 5, except the two noted below.
 
 Done — merged 2026-11-05 (`8fd5759`): quote, demo, Contact Sales and enquiry tracking are spec 6
 (`2026-11-05-enterprise-enquiries-design.md`), migration applied 2026-11-05.
-Bundles follow as spec 7.
+Done — merged 2026-11-11: buyer-built bundles are spec 7
+(`2026-11-05-buyer-built-bundles-design.md`), migration applied 2026-11-11.
 Today's bundles are fixed and composed by the operator (Catalogue Review →
 Compose a bundle); spec 7 is the buyer-built kind.
 
@@ -32,7 +33,7 @@ restyle, and get their own spec after the revamp.
 - [x] **Request a demo** — buyer books a demo of a product or service.
 - [x] **Contact Sales** — a tracked enquiry rather than a mailto link.
 - [x] **Enterprise enquiry tracking** — the buyer's list of quotes, demos and enquiries with status.
-- [ ] **Configurable product bundles** — buyer assembles a bundle with options and gets one price.
+- [x] **Configurable product bundles** — buyer assembles a bundle with options and gets one price.
 
 ## Still open after spec 5 (small, non-blocking)
 
@@ -58,6 +59,51 @@ Found by the spec 5 reviews and sweep, judged not worth holding the merge.
 - `--text-tertiary` is now `#556479` and rating stars use `--star` `#8F5A06` (both for contrast on tinted rows).
 - The public header's nav collapses into the menu below 1024px (was 900px).
 - A signed-in shopper is pinned to their home market (the picker ignores a switch), so a basket is never carried across markets; only signed-out visitors switch market.
+
+## Candidate features from competitive research (2026-11-05)
+
+From `docs/superpowers/research/2026-11-05-competitive-features.md` (web research with
+sources; "lacks" judged from the README and backlog — confirm against the code before
+scoping). Nothing here is scheduled; the user chooses. S < 1 week, M 1–3 weeks, L a month+.
+
+Recommended first:
+- [ ] **Account price books and guided buying** (M) — standing negotiated prices per account, preferred sellers, off-contract flags; builds on spec 6 quotes; closes the unchecked requisition `unit_price` gap.
+- [ ] **Reorder lists + buyer spend analytics** (S–M) — repeat purchases and spend by category/cost centre/seller vs budget; also fixes the basket not surviving a reload.
+- [ ] **Net terms and credit line at checkout** (M) — expose the existing credit & collections limits as a payment option with an invoice due date.
+- [ ] **Punch-out (cXML) + invoice-to-PO matching** (L) — reach large accounts from Coupa/Ariba/SAP; behind a flag, one reference system first.
+- [ ] **Self-serve eSIM activation + number-port tracking** (M) — QR/reissue on the existing eSIM pipeline; port requests with a spec-6-style status timeline.
+
+Also worth considering:
+- [ ] Business-unit hierarchy with inherited roles and per-unit approval rules (M)
+- [ ] Device financing / instalment plans with credit check (L)
+- [ ] Trade-in with instant valuation, credit at checkout (M)
+- [ ] IoT self-serve console: activate/suspend SIMs, usage (L)
+- [ ] Usage-based and tiered billing for subscriptions (L)
+- [ ] RFQ broadcast: one need, several sellers bid (M)
+- [ ] Escrow-style order protection (M)
+- [ ] Automated KYB and sanctions screening in onboarding (M, needs a vendor)
+- [ ] Fraud and risk scoring on orders and accounts (M)
+- [ ] TM Forum standard APIs (TMF620 catalogue, TMF648 quote, TMF650 partnership) (M)
+- [ ] Channel / reseller sales with reseller commissions (L)
+- [ ] Buyer-facing AI shopping assistant (M–L)
+- [ ] Procurement AI: renewal alerts, spend classification (S–M)
+- [ ] Delivery scheduling and consolidation (S)
+
+## Still open after spec 7 (small, non-blocking)
+
+- [ ] **Decision needed — existing bug:** an ordinary (non-bundle) business requisition raised from the basket fails at approval: `raiseRequisition` never sets the requisition's `product_id` and `place_requisition_order` orders from that single header product, ignoring the lines. Spec 7 orders bundle requisitions line by line; ordinary multi-line requisitions still fail. Fixing it changes a live flow.
+- [ ] Accepted risk: a shopper who removes the rest of a bundle mid-checkout buys one part at its bundle price. No seller goes below its floor; only the marketplace's discount is exposed. Each part can be ordered only once.
+- [ ] A requisition raised in a secondary currency cannot hold a bundle (bundles are priced in the account's currency).
+- [ ] Refund picker and operator order views do not group bundle lines yet (refunds work per part at its price).
+- [ ] "A paused part blocks the bundle" is enforced by the database but not covered by a live test (it would pause a real product).
+- [ ] The shared dialog's Close button is 36px tall (24px AA minimum met; 44px target not).
+- [ ] Business templates are billed one way (all one-off or all monthly; migration `20261111100000`, 2026-11-11). A monthly business kit (SIMs, managed firewall) could be a second template.
+- [ ] The bundle shelf cache is keyed by currency only, so after switching accounts it can be stale for up to 60 s.
+- [ ] Monthly parts of a bundle renew at the bundle price indefinitely; decide whether renewals revert to list price.
+- [ ] Unused selections (configured, never added) are never cleaned up; only the operator can delete them.
+- [ ] An abandoned checkout can leave a bundle half-ordered (parts already ordered can't be ordered again); re-configure to buy it.
+- [ ] The same selection can go on two requisitions; the second approval then cannot be ordered.
+- [ ] Seller-authored templates and a free-form build-your-own are out of scope.
 
 ## Still open after spec 6 (small, non-blocking)
 

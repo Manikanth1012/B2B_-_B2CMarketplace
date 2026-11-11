@@ -14,6 +14,7 @@ import './styles/account.css'
 import './styles/account-screens.css'
 import './styles/account-view.css'
 import './styles/enquiries.css'
+import './styles/bundles.css'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

@@ -19,6 +19,8 @@ import type { PaymentMethod, PaymentAttempt } from '../lib/gateway'
 import { loadPushesFor } from '../lib/comRepo'
 import { STATE_LABEL, STATE_MEANING } from '../lib/com'
 import type { Push } from '../lib/com'
+import { groupBySelection } from '../lib/bundles'
+import { useBundleNames } from './bundles/useBundleNames'
 
 /* An order is read in the money it was placed in, not in whatever market the
    shopper has the storefront set to now. Switching to Kenya does not restate
@@ -47,6 +49,8 @@ export function OrdersView() {
      nobody can check against their bank statement, which is why the plan is
      required on the payment in the first place. */
   const [plans, setPlans] = useState<Record<string, PaymentAttempt>>({})
+  /* Configured bundles show as one group; an order with none reads as before. */
+  const bundleName = useBundleNames(Object.values(orderItems).flat())
   /* Order cards are tall. Five of them is a screenful; twenty is a scroll with
      no sense of how far down it goes. */
   const ordersPage = usePaging(orders, { initialSize: 5 })
@@ -167,13 +171,24 @@ export function OrdersView() {
               {/* Items. The order item rows carry no image, so the thumbnail is
                   a neutral tile rather than a picture invented for it. */}
               <ul className="ord-items">
-                {items.map((item) => (
-                  <li key={item.id} className="ord-item">
+                {groupBySelection(items).flatMap((g) => [
+                  ...(g.selectionId ? [
+                    <li key={`b-${g.selectionId}`} className="ord-item ord-item--bundle-head">
+                      <span className="ord-item__thumb" aria-hidden="true"><Package size={18} /></span>
+                      <span className="ord-item__name">Bundle: {bundleName(g.selectionId)}</span>
+                      <span className="ord-item__price">
+                        {fmtIn(g.lines.reduce((n, l) => n + l.price * l.quantity, 0), order.currency)}
+                      </span>
+                    </li>,
+                  ] : []),
+                  ...g.lines.map((item) => (
+                  <li key={item.id} className={`ord-item${g.selectionId ? ' ord-item--in-bundle' : ''}`}>
                     <span className="ord-item__thumb" aria-hidden="true"><Package size={18} /></span>
                     <span className="ord-item__name">{item.product_name} × {item.quantity}</span>
                     <span className="ord-item__price">{fmtIn(item.price * item.quantity, order.currency)}</span>
                   </li>
-                ))}
+                  )),
+                ])}
               </ul>
 
               {/* One rail per part, not one for the order.
@@ -307,6 +322,7 @@ export function OrdersView() {
       {/* Detail modal */}
       {detailOrder && (
         <OrderDetailModal
+          bundleName={bundleName}
           order={detailOrder}
           items={orderItems[detailOrder.id] || []}
           methods={methods}
@@ -363,8 +379,9 @@ function NetworkFulfilment({ orderRef }: { orderRef: string }) {
   )
 }
 
-function OrderDetailModal({ order, items, methods, onClose }: {
+function OrderDetailModal({ order, items, methods, onClose, bundleName }: {
   order: Order; items: OrderItem[]; methods: readonly PaymentMethod[]; onClose: () => void
+  bundleName: (selectionId: string) => string
 }) {
   const { fmtIn } = useMarket()
   const mny = (n: number) => fmtIn(n, order.currency, { asOf: order.created_at?.slice(0, 10) })
@@ -421,15 +438,26 @@ function OrderDetailModal({ order, items, methods, onClose }: {
           {/* Items */}
           <section className="ord-detail__section">
             <h3 className="ord-detail__h">Items</h3>
-            {items.map((item) => (
-              <div key={item.id} className="ord-detail__line">
+            {groupBySelection(items).flatMap((g) => [
+              ...(g.selectionId ? [
+                <div key={`b-${g.selectionId}`} className="ord-detail__line ord-detail__line--bundle">
+                  <div>
+                    <div style={{ fontWeight: 600 }}>Bundle: {bundleName(g.selectionId)}</div>
+                    <div className="ord-card__meta">Bought as one, at the bundle price; each part is sent and settled by its seller</div>
+                  </div>
+                  <div style={{ fontWeight: 600 }}>{mny(g.lines.reduce((n, l) => n + l.price * l.quantity, 0))}</div>
+                </div>,
+              ] : []),
+              ...g.lines.map((item) => (
+              <div key={item.id} className={`ord-detail__line${g.selectionId ? ' ord-detail__line--in-bundle' : ''}`}>
                 <div>
                   <div style={{ fontWeight: 500 }}>{item.product_name}</div>
                   <div className="ord-card__meta">Qty {item.quantity} · {mny(item.price)} each</div>
                 </div>
                 <div style={{ fontWeight: 600 }}>{mny(item.price * item.quantity)}</div>
               </div>
-            ))}
+              )),
+            ])}
           </section>
         </div>
 

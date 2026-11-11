@@ -37,6 +37,9 @@ export interface SellerLine {
   price: number
   quantity: number
   fulfil: string | null
+  /* Set when the line is a part of a configured bundle; the seller sees and
+     settles only its own parts. */
+  bundle_selection_id?: string | null
 }
 
 export type Check = { ok: true; note?: string } | { ok: false; reason: string }

@@ -74,6 +74,13 @@ export interface CartItem {
      count, the totals and checkout. */
   saved: boolean
   product?: Product
+  /* Set when the line is a part of a configured bundle (absent before the
+     bundles migration). Its price is the selection's, never the shelf's. */
+  bundle_selection_id?: string | null
+  /* Filled by the basket loader for bundle lines: the selection, and the unit
+     price it holds for this product (null when it did not load). */
+  bundle?: import('../lib/bundleLines').BundleInfo | null
+  bundle_unit_price?: number | null
 }
 
 export interface Order {
@@ -118,6 +125,8 @@ export interface OrderItem {
   quantity: number
   fulfil: string
   status: string
+  /* The configured bundle this line is a part of, at its share of its price. */
+  bundle_selection_id?: string | null
 }
 
 export interface Subscription {

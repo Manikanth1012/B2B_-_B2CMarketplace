@@ -10,6 +10,7 @@ import { filterProducts, SORT_OPTIONS } from '../../lib/listing'
 import type { SortKey } from '../../lib/listing'
 import { stockLabel } from '../../lib/compare'
 import { ProductCard, ListingLayout, ListingGrid, EmptyListing } from '../ui'
+import { BundleCards } from '../bundles/BundleCard'
 import type { Category, Product } from '../../types'
 import type { PublicPage, Persona } from '../../types/view'
 
@@ -311,6 +312,8 @@ export function AudiencePage({ page, onSignIn, onApply, onResumeApplication, onR
               <EmptyListing title="No products match" text="Try a different search or clear the filters." onClear={clearFilters} />
             ) : (
               <ListingGrid>
+                {/* Configurable bundles, retail only and only without a product facet. */}
+                {page === 'retail' && !sub && !stock && <BundleCards audience="consumer" search={search} />}
                 {shown.map(p => (
                   <ProductCard
                     key={p.id}
