@@ -58,6 +58,8 @@
 @media (prefers-reduced-motion: reduce) {
   .bcfg *, .bundle-card * { transition: none !important; animation: none !important; }
   .bcfg__btn:hover { transform: none; }
+}
+
 /* Buyer-built bundles (spec 7). */
 
 /* ---- basket and orders ---- */

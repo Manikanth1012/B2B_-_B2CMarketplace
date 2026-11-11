@@ -5,6 +5,8 @@ import { activeLines, basketCount } from './lib/basket'
 import { bundleIdsOf, priceCartBundles, type BundleInfo } from './lib/bundleLines'
 import { loadBundleInfo } from './lib/bundleBasketRepo'
 import { BUNDLES_CHANGED } from './components/bundles/events'
+import { registerBundleSink } from './components/bundles/handoff'
+import { basketSink, requisitionSink } from './components/bundles/sinks'
 import { NotifyMeModal } from './components/NotifyMeModal'
 import { StockWatchCard } from './components/StockWatchCard'
 import { isOpen as watchIsOpen, type Watch } from './lib/stockWatch'
@@ -233,6 +235,16 @@ function AppInner() {
     window.addEventListener(BUNDLES_CHANGED, reload)
     return () => window.removeEventListener(BUNDLES_CHANGED, reload)
   }, [loadCart])
+
+  /* Where the configurator's "Add bundle" goes: a shopper's basket, or a
+     business buyer's requisition. Registered only for the persona that has
+     one, so a visitor or an operator is told it is not available rather than
+     writing a selection nothing will take. */
+  useEffect(() => {
+    if (persona === 'consumer') return registerBundleSink('basket', basketSink)
+    if (persona === 'enterprise') return registerBundleSink('requisition', requisitionSink)
+    return undefined
+  }, [persona])
 
 
   const navigate = (v: View, opts?: { category?: string; product?: Product; tab?: string }) => {
