@@ -14,18 +14,69 @@
         expression that evaluates to the result object, so the tool returns it.
 
    Result: { checked, failures: [{ text, ratio, fg, bg, selector }],
-           unverified: [{ text, selector }] }  (text on a gradient or image: check by eye)
+           unverified: [{ text, selector, colour? }] }  (text on a gradient or image, or in a
+           colour this file cannot parse -- `colour` then holds that colour's text: check by eye)
 
-   Limits: it sees solid colours only. Text over an image or gradient has no
+   Limits: it reads rgb(), color(srgb …) and oklch() colours; any other colour
+   syntax is reported as `unverified`. It sees solid colours only. Text over an image or gradient has no
    single background; the nearest solid ancestor colour is used and a gradient
    headline (transparent text) is skipped, so those need an eye. Run it in each
    theme / viewport you care about. */
 (() => {
+  /* Colour parsing. Returns {r, g, b, a} (channels 0-255) or null when the
+     text is a colour this file cannot read; callers list those as `unverified`
+     and never skip them. Understood: rgb()/rgba(), color(srgb …), oklch(…).
+     Anything else (lab, hsl, color-mix, display-p3 …) returns null. */
+  const num = (t, pctScale) => {
+    if (t === 'none') return 0
+    const v = parseFloat(t)
+    if (isNaN(v)) return NaN
+    return t.endsWith('%') ? v / 100 * pctScale : v
+  }
+  const alphaOf = (t) => (t === undefined ? 1 : num(t, 1))
+  const hueDeg = (t) => {
+    if (t === 'none') return 0
+    const v = parseFloat(t)
+    if (/turn$/.test(t)) return v * 360
+    if (/grad$/.test(t)) return v * 0.9
+    if (/rad$/.test(t)) return v * 180 / Math.PI
+    return v
+  }
+  const clamp01 = (v) => Math.min(1, Math.max(0, v))
+  const encode = (v) => { v = clamp01(v); return 255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * Math.pow(v, 1 / 2.4) - 0.055) }
+  /* OKLCH -> OKLab -> linear sRGB -> gamma sRGB, clamped to the gamut. */
+  const oklchToRgb = (L, C, H) => {
+    const h = H * Math.PI / 180
+    const a = C * Math.cos(h), b = C * Math.sin(h)
+    const l = Math.pow(L + 0.3963377774 * a + 0.2158037573 * b, 3)
+    const m = Math.pow(L - 0.1055613458 * a - 0.0638541728 * b, 3)
+    const s = Math.pow(L - 0.0894841775 * a - 1.2914855480 * b, 3)
+    return {
+      r: encode(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s),
+      g: encode(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s),
+      b: encode(-0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s),
+    }
+  }
   const parse = (s) => {
-    const m = s.match(/rgba?\(([^)]+)\)/)
+    const m = String(s).trim().toLowerCase().match(/^([a-z-]+)\((.*)\)$/)
     if (!m) return null
-    const p = m[1].split(/[ ,/]+/).filter(Boolean).map(Number)
-    return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }
+    const fn = m[1]
+    const [body, alpha] = m[2].split('/').map((x) => x.trim())
+    const p = body.split(/[\s,]+/).filter(Boolean)
+    let c = null
+    if (fn === 'rgb' || fn === 'rgba') {
+      /* Legacy comma syntax carries alpha as a fourth value. */
+      const al = alpha !== undefined ? alpha : p[3]
+      if (p.length < 3) return null
+      c = { r: num(p[0], 255), g: num(p[1], 255), b: num(p[2], 255), a: alphaOf(al) }
+    } else if (fn === 'color' && p[0] === 'srgb' && p.length === 4) {
+      c = { r: num(p[1], 1) * 255, g: num(p[2], 1) * 255, b: num(p[3], 1) * 255, a: alphaOf(alpha) }
+    } else if (fn === 'oklch' && p.length === 3) {
+      const rgb = oklchToRgb(num(p[0], 1), num(p[1], 0.4), hueDeg(p[2]))
+      c = { ...rgb, a: alphaOf(alpha) }
+    }
+    if (!c || [c.r, c.g, c.b, c.a].some((v) => isNaN(v))) return null
+    return { r: Math.min(255, Math.max(0, c.r)), g: Math.min(255, Math.max(0, c.g)), b: Math.min(255, Math.max(0, c.b)), a: clamp01(c.a) }
   }
   /* Lay `top` over opaque `under`. */
   const over = (top, under) => ({
@@ -54,11 +105,15 @@
      top, onto white (the canvas) once an opaque one is reached or we run out.
      Returns null when a gradient or image is painted before any opaque colour:
      the text then has no single background, and is listed as `unverified`. */
+  let unparsed = null
   const backgroundOf = (el) => {
+    unparsed = null
     const layers = []
     for (let e = el; e; e = e.parentElement) {
       const ecs = getComputedStyle(e)
-      const c = parse(ecs.backgroundColor)
+      const raw = ecs.backgroundColor
+      const c = parse(raw)
+      if (!c && raw && raw !== 'transparent') { unparsed = raw; return null }
       if (c && c.a > 0) { layers.push(c); if (c.a === 1) break }
       if (ecs.backgroundImage && ecs.backgroundImage !== 'none') return null
     }
@@ -92,10 +147,15 @@
     if (!text || !el || /^(SCRIPT|STYLE|NOSCRIPT)$/.test(el.tagName) || !visible(el)) continue
     const cs = getComputedStyle(el)
     const fgRaw = parse(cs.color)
+    /* A text colour this file cannot read is listed, never skipped. */
+    if (!fgRaw) { unverified.push({ text: text.slice(0, 60), selector: selectorOf(el), colour: cs.color }); continue }
     /* Transparent text is a gradient headline or a hidden label: not scorable. */
-    if (!fgRaw || fgRaw.a === 0 || cs.webkitTextFillColor === 'rgba(0, 0, 0, 0)') continue
+    if (fgRaw.a === 0 || cs.webkitTextFillColor === 'rgba(0, 0, 0, 0)') continue
     const bg = backgroundOf(el)
-    if (!bg) { unverified.push({ text: text.slice(0, 60), selector: selectorOf(el) }); continue }
+    if (!bg) {
+      unverified.push({ text: text.slice(0, 60), selector: selectorOf(el), ...(unparsed ? { colour: unparsed } : {}) })
+      continue
+    }
     const fg = over({ ...fgRaw, a: fgRaw.a * opacityOf(el) }, bg)
     const size = parseFloat(cs.fontSize)
     const bold = parseInt(cs.fontWeight, 10) >= 700

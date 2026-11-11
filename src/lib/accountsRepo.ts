@@ -7,7 +7,7 @@
  * locked; nothing was joined up. This is the join.
  */
 import { supabase } from './supabase'
-import type { Account, Step, CreditFile, Shopper } from './accounts'
+import type { Account, Step, CreditFile, Shopper, WaitingApplication } from './accounts'
 
 const num = (v: unknown) => Number(v ?? 0)
 
@@ -21,6 +21,8 @@ export interface AccountBook {
      decision lives on Onboarding, with the seller applications it shares a desk
      with. */
   waiting: number
+  /* The same applications, with the text a desk searches them by. */
+  waitingApps: WaitingApplication[]
   loadError?: string
 }
 
@@ -34,7 +36,7 @@ export async function loadAccountBook(): Promise<AccountBook> {
     supabase.from('consumer_profile')
       .select('id, user_id, name, email, market, currency, since'),
     supabase.from('loyalty_members').select('user_id, tier, balance, joined').eq('kind', 'consumer'),
-    supabase.from('applications').select('id, state, kind_of').eq('kind_of', 'business'),
+    supabase.from('applications').select('id, state, kind_of, company, contact_name, email, country').eq('kind_of', 'business'),
   ])
 
   const failed = [acc.error, steps.error].find(Boolean)
@@ -48,6 +50,12 @@ export async function loadAccountBook(): Promise<AccountBook> {
       })
     }
   }
+
+  const waitingApps: WaitingApplication[] =
+    ((apps.data ?? []) as Record<string, unknown>[]).filter(a => a.state === 'submitted').map(a => ({
+      id: String(a.id), company: String(a.company ?? ''), contact_name: String(a.contact_name ?? ''),
+      email: String(a.email ?? ''), country: String(a.country ?? ''),
+    }))
 
   return {
     accounts: ((acc.data ?? []) as Record<string, unknown>[]).map(a => ({
@@ -80,7 +88,8 @@ export async function loadAccountBook(): Promise<AccountBook> {
     }),
     /* Submitted and not yet decided. A draft is somebody still typing and is
        not work for the desk. */
-    waiting: ((apps.data ?? []) as { state: string }[]).filter(a => a.state === 'submitted').length,
+    waiting: waitingApps.length,
+    waitingApps,
     ...(failed ? { loadError: failed.message } : {}),
   }
 }
