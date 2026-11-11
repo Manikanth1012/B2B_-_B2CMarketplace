@@ -7,7 +7,7 @@
    with the spin stopped for anyone who has asked for less motion. */
 export function PageLoading({ label = 'Loading…', fill = false }: { label?: string; fill?: boolean }) {
   return (
-    <div className={fill ? 'page-loading page-loading--fill' : 'page-loading'} role="status" aria-busy="true" aria-live="polite">
+    <div className={fill ? 'page-loading page-loading--fill' : 'page-loading'} role="status">
       <div className="spinner" aria-hidden="true" />
       <span className="sr-only">{label}</span>
     </div>

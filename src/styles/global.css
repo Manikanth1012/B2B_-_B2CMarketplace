@@ -359,6 +359,11 @@ input, select, textarea {
   padding: 60px 16px;
 }
 .page-loading--fill { min-height: 100vh; }
+/* The same area when the screen's code never arrived (LazyArea). */
+.load-failed { max-width: 420px; text-align: center; }
+.load-failed__title { font-weight: 600; color: var(--text); margin-bottom: var(--space-2); }
+.load-failed__body { color: var(--text-secondary); font-size: var(--text-sm); margin-bottom: var(--space-4); }
+.load-failed__btn { min-height: 44px; min-width: 44px; }
 @media (prefers-reduced-motion: reduce) {
   .page-loading .spinner { animation: none; }
 }

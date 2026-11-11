@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, lazy, startTransition } from 'react'
 import type { View, OperatorView, PartnerView, EnterpriseView, Persona, Session, Surface, PublicPage } from './types/view'
 import { supabase } from './lib/supabase'
 import { activeLines, basketCount } from './lib/basket'
@@ -16,6 +16,11 @@ import type { CartItem, Product } from './types'
 import { MarketProvider, useMarket } from './lib/MarketContext'
 import { loadPriceBook, loadCopyBook, reprice } from './lib/moneyRepo'
 import { PublicShell } from './components/public/PublicShell'
+/* Eager, unlike the other pages: it is what most visitors see first, and
+   lazy it would hold the first paint behind a second request. */
+import { LandingPage } from './components/public/LandingPage'
+/* Eager too: the landing page's product preview already brings it in. */
+import { ProductDetail } from './components/ProductDetail'
 import { Header } from './components/Header'
 import { Footer } from './components/Footer'
 import { ToastHost, toast } from './components/operator/shared'
@@ -24,18 +29,18 @@ import { PartnerShell } from './components/partner/PartnerShell'
 import { EnterpriseShell } from './components/enterprise/EnterpriseShell'
 import { RequisitionProvider } from './lib/RequisitionContext'
 import { BundleConfiguratorHost } from './components/bundles/BundleConfigurator'
-import { PageLoading } from './components/ui/PageLoading'
+import { LazyArea } from './components/ui/LazyArea'
 
 /* Loaded on demand, so each visitor downloads only the surface they are on.
  *
  * The shells (public chrome, the shop header and footer, each console's side
  * bar) stay in the main bundle and are drawn at once; what goes inside them
- * arrives as its own chunk behind a Suspense boundary. A visitor never fetches
+ * arrives as its own chunk inside a LazyArea: a Suspense boundary for the
+ * wait, inside an error boundary for a chunk that never arrives. A visitor never fetches
  * a console, an operator never fetches the seller's or the buyer's, and the
  * shop's pages come down only once somebody is shopping. The modules export by
  * name, so each import picks its component out as the default `lazy` wants. */
 const LoginScreen = lazy(() => import('./components/LoginScreen').then(m => ({ default: m.LoginScreen })))
-const LandingPage = lazy(() => import('./components/public/LandingPage').then(m => ({ default: m.LandingPage })))
 const AudiencePage = lazy(() => import('./components/public/AudiencePage').then(m => ({ default: m.AudiencePage })))
 const ApplyToSell = lazy(() => import('./components/public/ApplyToSell').then(m => ({ default: m.ApplyToSell })))
 const RegisterShopper = lazy(() => import('./components/public/RegisterShopper').then(m => ({ default: m.RegisterShopper })))
@@ -46,7 +51,6 @@ const EnterpriseScreens = lazy(() => import('./components/enterprise/EnterpriseS
 const Hero = lazy(() => import('./components/Hero').then(m => ({ default: m.Hero })))
 const CategoryStrip = lazy(() => import('./components/CategoryStrip').then(m => ({ default: m.CategoryStrip })))
 const ProductGrid = lazy(() => import('./components/ProductGrid').then(m => ({ default: m.ProductGrid })))
-const ProductDetail = lazy(() => import('./components/ProductDetail').then(m => ({ default: m.ProductDetail })))
 const CartDrawer = lazy(() => import('./components/CartDrawer').then(m => ({ default: m.CartDrawer })))
 const Checkout = lazy(() => import('./components/Checkout').then(m => ({ default: m.Checkout })))
 const OrdersView = lazy(() => import('./components/OrdersView').then(m => ({ default: m.OrdersView })))
@@ -87,10 +91,17 @@ function AppInner() {
      screen that can act on it, so every drill-down meant finding the
      row again by eye on the other side. */
   const [opFocus, setOpFocus] = useState<string | null>(null)
+  /* In a transition: each operator screen is its own chunk, and without one
+     the first visit to a screen swaps the one on show for a spinner. With it
+     the current screen stays until the next one is ready to draw. */
   const goOperator = (v: OperatorView, opts?: { focus?: string }) => {
-    setOpFocus(opts?.focus ?? null)
-    setOpView(v)
+    startTransition(() => {
+      setOpFocus(opts?.focus ?? null)
+      setOpView(v)
+    })
   }
+  /* A screen changing view without touching the focus, as setOpView did. */
+  const showOperator = (v: OperatorView) => startTransition(() => setOpView(v))
   const [ptView, setPtView] = useState<PartnerView>('pt-dashboard')
   const [enView, setEnView] = useState<EnterpriseView>('en-dashboard')
   /* Which card on the destination screen to open at. The account menus offer
@@ -99,8 +110,8 @@ function AppInner() {
      the section name, those items had nowhere to go and did nothing. */
   const [ptAnchor, setPtAnchor] = useState<string | undefined>()
   const [enAnchor, setEnAnchor] = useState<string | undefined>()
-  const goPartner = (v: PartnerView, anchor?: string) => { setPtAnchor(anchor); setPtView(v) }
-  const goEnterprise = (v: EnterpriseView, anchor?: string) => { setEnAnchor(anchor); setEnView(v) }
+  const goPartner = (v: PartnerView, anchor?: string) => startTransition(() => { setPtAnchor(anchor); setPtView(v) })
+  const goEnterprise = (v: EnterpriseView, anchor?: string) => startTransition(() => { setEnAnchor(anchor); setEnView(v) })
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null)
   const [cartItems, setCartItems] = useState<CartItem[]>([])
@@ -307,7 +318,7 @@ function AppInner() {
      shell around them, so their placeholder fills the window. */
   if (surface.kind === 'login') {
     return (
-      <Suspense fallback={<PageLoading fill />}>
+      <LazyArea fill>
       <LoginScreen
         prefill={surface.prefill}
         demo={surface.demo}
@@ -339,7 +350,7 @@ function AppInner() {
             : undefined
         }
       />
-      </Suspense>
+      </LazyArea>
     )
   }
 
@@ -349,7 +360,7 @@ function AppInner() {
      seller and so has no credentials to get into it. */
   if (surface.kind === 'apply') {
     return (
-      <Suspense fallback={<PageLoading fill />}>
+      <LazyArea fill>
       <ApplyToSell
         /* Somebody arriving from "Continue an application" opens straight on
            the reference-and-code form. Landing them on the start form and
@@ -363,7 +374,7 @@ function AppInner() {
         }}
         onSignIn={() => setSurface({ kind: 'login', prefill: surface.kindOf === 'business' ? 'enterprise' : 'partner' })}
       />
-      </Suspense>
+      </LazyArea>
     )
   }
 
@@ -372,14 +383,14 @@ function AppInner() {
      profile are loaded for them on the way. */
   if (surface.kind === 'register') {
     return (
-      <Suspense fallback={<PageLoading fill />}>
+      <LazyArea fill>
       <RegisterShopper
         onLeave={() => { setSurface({ kind: 'public', page: 'retail' }); window.scrollTo({ top: 0 }) }}
         onSignIn={() => setSurface({ kind: 'login', prefill: 'consumer' })}
         onSso={() => { setSurface({ kind: 'sso' }); window.scrollTo({ top: 0 }) }}
         onRegistered={(session) => handleLogin(session)}
       />
-      </Suspense>
+      </LazyArea>
     )
   }
 
@@ -389,13 +400,13 @@ function AppInner() {
      watches and profile loaded on the way. */
   if (surface.kind === 'sso') {
     return (
-      <Suspense fallback={<PageLoading fill />}>
+      <LazyArea fill>
       <ContinueWithAventaId
         onLeave={() => { setSurface({ kind: 'public', page: 'retail' }); window.scrollTo({ top: 0 }) }}
         onRegisterInstead={() => { setSurface({ kind: 'register' }); window.scrollTo({ top: 0 }) }}
         onDone={(session) => handleLogin(session)}
       />
-      </Suspense>
+      </LazyArea>
     )
   }
 
@@ -410,7 +421,7 @@ function AppInner() {
         onDemoSignIn={() => setSurface({ kind: 'login', demo: true })}
         onSearch={(q) => { setSurface({ kind: 'public', page: 'retail', q }); window.scrollTo({ top: 0 }) }}
       >
-        <Suspense fallback={<PageLoading />}>
+        <LazyArea resetKey={surface.page}>
         {surface.page === 'landing' && (
           <LandingPage
             onNavigate={(page) => { setSurface({ kind: 'public', page }); window.scrollTo({ top: 0 }) }}
@@ -446,7 +457,7 @@ function AppInner() {
             onNotifyMe={signInToWatch}
           />
         )}
-        </Suspense>
+        </LazyArea>
         {/* Visitors can configure and see the price; adding needs a sign-in. */}
         <BundleConfiguratorHost shop="consumer" signedIn={false}
           onSignIn={() => setSurface({ kind: 'login', prefill: 'consumer' })} />
@@ -459,9 +470,9 @@ function AppInner() {
     return (
       <>
       <OperatorShell view={opView} onNavigate={(v, anchor) => goOperator(v, anchor ? { focus: anchor } : undefined)} onSignOut={handleSignOut}>
-        <Suspense fallback={<PageLoading />}>
-          <OperatorScreens view={opView} focus={opFocus} onNavigate={goOperator} onSetView={setOpView} />
-        </Suspense>
+        <LazyArea resetKey={opView}>
+          <OperatorScreens view={opView} focus={opFocus} onNavigate={goOperator} onSetView={showOperator} />
+        </LazyArea>
       </OperatorShell>
       {/* Mounted in every persona, not only the shopper's.
 
@@ -480,9 +491,9 @@ function AppInner() {
     return (
       <>
       <PartnerShell view={ptView} onNavigate={goPartner} onSignOut={handleSignOut}>
-        <Suspense fallback={<PageLoading />}>
-          <PartnerScreens view={ptView} partnerId={session?.partnerId} anchor={ptAnchor} onSetView={setPtView} />
-        </Suspense>
+        <LazyArea resetKey={ptView}>
+          <PartnerScreens view={ptView} partnerId={session!.partnerId} anchor={ptAnchor} onSetView={setPtView} />
+        </LazyArea>
       </PartnerShell>
       {/* Mounted in every persona, not only the shopper's.
 
@@ -504,9 +515,9 @@ function AppInner() {
          it from wherever they happen to be. */
       <RequisitionProvider>
       <EnterpriseShell view={enView} onNavigate={goEnterprise} onSignOut={handleSignOut}>
-        <Suspense fallback={<PageLoading />}>
+        <LazyArea resetKey={enView}>
           <EnterpriseScreens view={enView} anchor={enAnchor} onSetView={setEnView} />
-        </Suspense>
+        </LazyArea>
         {/* One configurator for the whole console, opened by any bundle card. */}
         <BundleConfiguratorHost shop="enterprise" onOpenEnquiries={() => setEnView('en-enquiries')} />
       </EnterpriseShell>
@@ -534,7 +545,7 @@ function AppInner() {
       />
       <main>
         {loading && <div style={{ textAlign: 'center', padding: '60px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>}
-        <Suspense fallback={<PageLoading />}>
+        <LazyArea resetKey={view}>
         {!loading && view === 'home' && (
           <>
             <Hero onNavigate={navigate} />
@@ -576,7 +587,7 @@ function AppInner() {
         {!loading && view === 'rewards' && <RewardsView />}
         {!loading && view === 'account' && <AccountView initialTab={accountTab} onWatchesChanged={loadWatches} />}
         {!loading && view === 'kb' && <div className="container" style={{ paddingTop: '32px', paddingBottom: '32px' }}><KnowledgeBase persona="consumer" title="How things work" feedbackAs={{ actor: 'Priya Raman', org: 'Consumer' }} /></div>}
-        </Suspense>
+        </LazyArea>
       </main>
       <Footer onNavigate={navigate} />
 
@@ -595,7 +606,7 @@ function AppInner() {
 
       {/* No placeholder: the drawer is closed until asked for, and its code has
           long arrived by the time anybody reaches for the basket. */}
-      <Suspense fallback={null}>
+      <LazyArea fallback={null} failed={null}>
       <CartDrawer
         open={cartOpen}
         items={cartItems}
@@ -608,7 +619,7 @@ function AppInner() {
           navigate('checkout')
         }}
       />
-      </Suspense>
+      </LazyArea>
       {/* One configurator for the shop, opened by bundle cards and Edit bundle. */}
       <BundleConfiguratorHost shop="consumer" />
       <ToastHost />
