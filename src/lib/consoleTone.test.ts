@@ -40,7 +40,12 @@ const enquiries: Record<string, string> = {
   scheduled: 'success', done: 'success', answered: 'warning', withdrawn: 'neutral',
 }
 
+const prices: Record<string, string> = { 'in force': 'success', ended: 'neutral', withdrawn: 'neutral' }
+
 describe('statusTone', () => {
+  for (const [status, tone] of Object.entries(prices)) {
+    it(`price: ${status} -> ${tone}`, () => expect(statusTone(status)).toBe(tone))
+  }
   for (const [status, tone] of Object.entries(enquiries)) {
     it(`enquiry: ${status} -> ${tone}`, () => expect(statusTone(status)).toBe(tone))
   }

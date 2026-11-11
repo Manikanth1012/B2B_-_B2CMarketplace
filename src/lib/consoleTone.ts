@@ -36,6 +36,8 @@ const TONES: Record<string, Tone> = {
   /* Enquiries: a quote or answer sitting with the buyer is amber. */
   submitted: 'info', quoted: 'warning', accepted: 'success',
   scheduled: 'success', done: 'success', answered: 'warning', withdrawn: 'neutral',
+  /* Account prices: `scheduled` keeps the enquiry reading above. */
+  'in force': 'success', ended: 'neutral',
 }
 
 export function statusTone(status: string): Tone {

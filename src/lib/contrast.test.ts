@@ -54,6 +54,7 @@ const PAIRS: [fg: string, bg: string, min: number][] = [
   ['electric', 'bg-card', 3],           // focus ring: a UI glyph, not text
   ['border-strong', 'bg-card', 3],      // form-control boundary (WCAG 1.4.11)
   ['border-strong', 'bg-alt', 3],
+  ['text-secondary', 'bg-card', 4.5],   // price book: struck published price, off-contract reason
   ['brand-accent-dark', 'bg-alt', 3],   // Rewards bar: the fill's light end on its track (WCAG 1.4.11)
 ]
 

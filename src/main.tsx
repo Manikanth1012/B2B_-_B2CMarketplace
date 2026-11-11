@@ -16,6 +16,7 @@ import './styles/account-screens.css'
 import './styles/account-view.css'
 import './styles/enquiries.css'
 import './styles/bundles.css'
+import './styles/pricebooks.css'
 
 /* A screen's code that fails to load is most often a deploy that renamed the
    files under an open tab; one reload picks up the new names. Guarded so a
