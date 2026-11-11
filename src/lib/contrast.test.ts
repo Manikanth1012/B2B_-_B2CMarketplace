@@ -146,3 +146,90 @@ describe('the light teal never reaches text or sits under white', () => {
     expect(offenders).toEqual([])
   })
 })
+
+/* ---- Task D: two shapes the scans above could not see -------------------------
+   (a) a colour map written as an assignment, `catColors = { … }`, whose entries
+       carry the light teal under keys that do not themselves say "colour";
+   (b) a template-string colour value in a style object, whether the teal is the
+       whole string or sits in a `${ … }` hole. Both are scanned on the text of
+       a file, so they are tested here against synthetic samples first. */
+const TEXT_KEY = String.raw`(?<![\w-])(?!(?:border|background|outline|fill|stroke|shadow|caret)\w*)[A-Za-z]*(?:[cC]olou?rs?|Fg|Text)`
+const LIGHT_TEAL_RE = new RegExp(LIGHT_TEAL, 'i')
+
+/** Line numbers where a `…Colors = { … }` / `[ … ]` assignment holds the light teal. */
+function tealInColourAssignments(text: string): number[] {
+  const found: number[] = []
+  const head = new RegExp(TEXT_KEY + String.raw`['"]?\s*(?::[^=\n;]+)?(?<![=!<>])=(?![=>])\s*[\[{(]`, 'g')
+  for (const m of text.matchAll(head)) {
+    const open = m.index! + m[0].length - 1
+    const closer = { '{': '}', '[': ']', '(': ')' }[text[open] as '{' | '[' | '(']
+    let depth = 0, end = text.length
+    for (let i = open; i < text.length; i++) {
+      if (text[i] === text[open]) depth++
+      else if (text[i] === closer && --depth === 0) { end = i; break }
+    }
+    const body = text.slice(open, end)
+    const hit = LIGHT_TEAL_RE.exec(body)
+    if (hit) found.push(lineOf(text, open + hit.index))
+  }
+  return found
+}
+
+/** Line numbers where a text-colour key takes a template string that holds the light teal. */
+function tealInTemplateColours(text: string): number[] {
+  const found: number[] = []
+  const re = new RegExp('(' + TEXT_KEY + String.raw`)['"]?\s*:\s*` + '`([^`]*)`', 'g')
+  for (const m of text.matchAll(re)) {
+    const hit = LIGHT_TEAL_RE.exec(m[2])
+    if (hit) found.push(lineOf(text, m.index! + m[0].indexOf('`') + 1 + hit.index))
+  }
+  return found
+}
+
+describe('the teal guard sees assignments and template strings (synthetic)', () => {
+  it('catches a catColors assignment, declared or not', () => {
+    expect(tealInColourAssignments("const catColors = {\n  a: 'var(--brand-accent)',\n}")).toEqual([2])
+    expect(tealInColourAssignments("catColors = { a: '#00C6B5' }")).toEqual([1])
+    expect(tealInColourAssignments("let catColors: Record<string, string> = {\n a: 'var(--teal)' }")).toEqual([2])
+    expect(tealInColourAssignments("this.accentColors = [\n 'var(--brand-accent)',\n]")).toEqual([2])
+  })
+  it('lets a colour map without the light teal, or a fill map, through', () => {
+    expect(tealInColourAssignments("const catColors = { a: 'var(--brand-accent-dark)' }")).toEqual([])
+    expect(tealInColourAssignments("const catColors = { a: 'red' }\nconst x = 'var(--brand-accent)'")).toEqual([])
+    expect(tealInColourAssignments("const fillColors = { a: 'var(--brand-accent)' }")).toEqual([])
+    expect(tealInColourAssignments("if (catColors == { a: 1 }) {}")).toEqual([])
+  })
+  it('catches template-string colour values', () => {
+    expect(tealInTemplateColours("const s = { color: `${'var(--brand-accent)'}` }")).toEqual([1])
+    expect(tealInTemplateColours('const s = { color: `var(--brand-accent)` }')).toEqual([1])
+    expect(tealInTemplateColours("const s = { accentColor: `${on ? 'var(--brand-accent)' : 'var(--text)'}` }")).toEqual([1])
+    expect(tealInTemplateColours('const s = {\n  color:\n `x ${\n\'#00C6B5\'}` }')).toEqual([4])
+  })
+  it('lets template borders, fills and darker teals through', () => {
+    expect(tealInTemplateColours("{ border: `1px solid ${on ? 'var(--brand-accent)' : 'x'}` }")).toEqual([])
+    expect(tealInTemplateColours('{ borderColor: `var(--brand-accent)` }')).toEqual([])
+    expect(tealInTemplateColours('{ color: `var(--brand-accent-dark)` }')).toEqual([])
+    expect(tealInTemplateColours('{ color: `var(--text)` }')).toEqual([])
+  })
+})
+
+describe('no assignment or template string hands the light teal to text', () => {
+  it('no …Colors = { … } assignment in src/lib or src/components holds it', () => {
+    const offenders: string[] = []
+    for (const file of scanned) {
+      for (const n of tealInColourAssignments(readFileSync(file, 'utf8'))) {
+        offenders.push(`${relative(process.cwd(), file)}:${n}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+  it('no template-string text colour in src/lib or src/components holds it', () => {
+    const offenders: string[] = []
+    for (const file of scanned) {
+      for (const n of tealInTemplateColours(readFileSync(file, 'utf8'))) {
+        offenders.push(`${relative(process.cwd(), file)}:${n}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+})

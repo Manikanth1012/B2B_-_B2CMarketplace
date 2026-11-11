@@ -81,8 +81,9 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
   /* The chips count the list the search leaves, not the whole book, so "Overdue
      3" never sits above a list of one. The summary cards above stay on the
      whole book — they describe the book, not the search. */
+  const waitingShown = waitingFor(book.waitingApps, q)
   const bandCount = bandCounts(
-    accounts.filter(a => matches(a, q)), steps, TODAY, waitingFor(book.waiting, q))
+    accounts.filter(a => matches(a, q)), steps, TODAY, waitingShown.length)
   /* Arrow keys move between the chips, as a radio group does; only the
      selected chip is in the tab order. */
   const onChipKey = (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -151,7 +152,7 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
         <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 0 }}>
           <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
           <input className="input" value={q} onChange={e => setQ(e.target.value)}
-            placeholder={tab === 'business' ? 'Company, market, industry…' : 'Name, email, market…'}
+            placeholder={tab === 'business' ? 'Company, market, industry, applicant…' : 'Name, email, market…'}
             style={{ paddingLeft: '30px', width: '100%' }} />
         </div>
       </div>
@@ -173,13 +174,24 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
           subtitle="Whoever needs something doing about them, first.">
           {band === 'waiting' ? (
             <>
-              <EmptyState message={totals.waiting && q.trim()
-                ? 'Applications are not accounts, so a search does not reach them. Clear the search to see how many are waiting.'
-                : totals.waiting
-                ? 'Companies who are waiting have applied but are not accounts yet, so they are not in this list.'
-                : 'Nobody is waiting to be decided.'} />
+              {waitingShown.length === 0 ? (
+                <EmptyState message={totals.waiting && q.trim()
+                  ? 'No waiting application matches that.'
+                  : 'Nobody is waiting to be decided.'} />
+              ) : (
+                <Table headers={['Company', 'Contact', 'Email', 'Country']}>
+                  {waitingShown.map(w => (
+                    <tr key={w.id}>
+                      <Td><div style={{ fontWeight: 600 }}>{w.company || '—'}</div></Td>
+                      <Td>{w.contact_name || '—'}</Td>
+                      <Td>{w.email || '—'}</Td>
+                      <Td>{w.country || '—'}</Td>
+                    </tr>
+                  ))}
+                </Table>
+              )}
               {onNavigate && totals.waiting > 0 && (
-                <div style={{ padding: '0 20px 16px', textAlign: 'center' }}>
+                <div style={{ padding: '16px 20px', textAlign: 'center' }}>
                   <Btn variant="secondary" onClick={() => onNavigate('op-onboarding')}>
                     <Inbox size={14} /> Open the queue
                   </Btn>

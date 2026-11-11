@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
-  stepsOf, progressOf, isLate, whereTheyAre, rollup, matches, deskOrder, shopperLine, inBand, bandCounts, waitingFor,
+  stepsOf, progressOf, isLate, whereTheyAre, rollup, matches, deskOrder, shopperLine, inBand, bandCounts, waitingFor, matchesApplication,
 } from './accounts'
-import type { Account, Step, StepState, Shopper } from './accounts'
+import type { Account, Step, StepState, Shopper, WaitingApplication } from './accounts'
 
 const step = (over: Partial<Step> = {}): Step => ({
   id: 'BO-2007-1', account_id: 'ENT-2007', name: 'Company verification',
@@ -306,13 +306,28 @@ describe('narrowing the book by where it stands', () => {
 })
 
 describe('the waiting chip while somebody is searching', () => {
+  const apps: WaitingApplication[] = [
+    { id: 'a1', company: 'Northwind Traders', contact_name: 'Ada Lovelace', email: 'ada@northwind.example', country: 'Germany' },
+    { id: 'a2', company: 'Globex', contact_name: 'Hank Scorpio', email: 'hank@globex.example', country: 'India' },
+    { id: 'a3', company: '', contact_name: '', email: '', country: '' },
+  ]
   it('shows the whole queue when nothing is typed', () => {
-    expect(waitingFor(4, '')).toBe(4)
-    expect(waitingFor(4, '   ')).toBe(4)
+    expect(waitingFor(apps, '')).toHaveLength(3)
+    expect(waitingFor(apps, '   ')).toHaveLength(3)
   })
-  /* Applications are not accounts and carry none of the text a search reads,
-     so none of them can match one. */
-  it('shows none of it once there is search text', () => {
-    expect(waitingFor(4, 'charlie')).toBe(0)
+  it.each([
+    ['northwind', 'a1'], ['LOVELACE', 'a1'], ['hank@globex', 'a2'], ['india', 'a2'], ['germ', 'a1'],
+  ])('finds an application by %s', (q, id) => {
+    expect(waitingFor(apps, q).map(a => a.id)).toEqual([id])
+  })
+  it('leaves none when nothing matches', () => {
+    expect(waitingFor(apps, 'zzz')).toEqual([])
+  })
+  it('does not match on fields the row lacks', () => {
+    expect(matchesApplication(apps[2], 'x')).toBe(false)
+  })
+  it('feeds the chip count the same list', () => {
+    const left = waitingFor(apps, 'globex')
+    expect(bandCounts([], [], '2026-01-01', left.length).waiting).toBe(1)
   })
 })

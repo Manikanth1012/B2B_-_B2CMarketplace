@@ -176,13 +176,26 @@ export function bandCounts(
   }
 }
 
-/**
- * How many waiting applications a search leaves. They are not accounts and have
- * no company, market or industry here to match, so any search text excludes
- * them — the chip then agrees with the (empty) list a search would give.
- */
-export function waitingFor(waiting: number, q: string): number {
-  return q.trim() ? 0 : waiting
+/** A company's application that has been submitted and not yet decided. */
+export interface WaitingApplication {
+  id: string
+  company: string
+  contact_name: string
+  email: string
+  country: string
+}
+
+/** Whether an application carries the text somebody typed, in any field it has. */
+export function matchesApplication(a: WaitingApplication, q: string): boolean {
+  const t = q.trim().toLowerCase()
+  if (!t) return true
+  return [a.company, a.contact_name, a.email, a.country, a.id]
+    .some(v => (v ?? '').toLowerCase().includes(t))
+}
+
+/** The waiting applications a search leaves; the chip counts this list. */
+export function waitingFor(apps: readonly WaitingApplication[], q: string): WaitingApplication[] {
+  return apps.filter(a => matchesApplication(a, q))
 }
 
 export function rollup(
