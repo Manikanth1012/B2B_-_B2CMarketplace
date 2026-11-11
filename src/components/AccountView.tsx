@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useId, Children, cloneElement, isValidElement } from 'react'
 import { User, Bell, History, Users, RotateCcw, Check, Plus, CircleAlert as AlertCircle, Info, Shield, Wallet, Star, Phone, Mail, MapPin, CreditCard, Clock, ChevronRight, Lock, Trash2, FileText, LifeBuoy, MessageSquare, Send, Download, Globe, Eye, FolderOpen, KeyRound, ShieldCheck, Cake } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { changePassword, currentEmail, SignInError } from '../lib/authRepo'
@@ -2088,16 +2088,27 @@ function CardTitle({ icon, children }: { icon: React.ReactNode; children: React.
 }
 
 function Field({ label, icon, children }: { label: string; icon: React.ReactNode; children: React.ReactNode }) {
+  const id = useId()
+  /* The first form control among the children takes the id the label points at. */
+  let tied = false
+  const controls = Children.map(children, (child) => {
+    if (!tied && isValidElement<{ id?: string }>(child) && typeof child.type === 'string' && /^(input|select|textarea)$/.test(child.type)) {
+      tied = true
+      return cloneElement(child, { id: child.props.id ?? id })
+    }
+    return child
+  })
+  const controlId = Children.toArray(children).map((c) => (isValidElement<{ id?: string }>(c) ? c.props.id : undefined)).find(Boolean) ?? id
   return (
     <div>
-      <label style={{
+      <label htmlFor={controlId} style={{
         display: 'flex', alignItems: 'center', gap: '6px',
         fontSize: 'var(--text-sm)', fontWeight: 600, marginBottom: '6px',
         color: 'var(--text-secondary)',
       }}>
-        {icon} {label}
+        <span aria-hidden="true" style={{ display: 'inline-flex' }}>{icon}</span> {label}
       </label>
-      {children}
+      {controls}
     </div>
   )
 }

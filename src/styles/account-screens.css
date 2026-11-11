@@ -148,7 +148,7 @@
 
 .rw-progress { display: flex; flex-direction: column; gap: 6px; }
 .rw-bar { height: 10px; border-radius: 5px; background: var(--bg-alt); border: 1px solid var(--border-light); overflow: hidden; }
-.rw-bar__fill { height: 100%; border-radius: 5px; background: linear-gradient(90deg, var(--brand-navy), var(--cyan)); }
+.rw-bar__fill { height: 100%; border-radius: 5px; background: linear-gradient(90deg, var(--brand-navy), var(--brand-accent-dark)); }
 .rw-progress__label { font-size: var(--text-sm); font-weight: 600; color: var(--text); }
 .rw-progress__need { font-size: var(--text-sm); color: var(--text-secondary); }
 @media (prefers-reduced-motion: no-preference) {
