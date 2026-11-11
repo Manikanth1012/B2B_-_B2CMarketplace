@@ -28,6 +28,29 @@ import { getProductImage } from '../../lib/images'
 import { day } from '../../lib/enterprise'
 import type { EnterpriseListing } from '../../lib/enterpriseRepo'
 import type { Subscription } from '../../lib/enterprise'
+import { PriceTag, ContractBadge, PreferredBadge } from '../pricebooks/PriceTag'
+
+type Shelved = Pick<EnterpriseListing, 'preferred' | 'on_contract'>
+
+/* "Preferred seller / product" and "On your price book", only where they are
+   true. With no price book and no preferences this renders nothing. */
+export function ShelfBadges({ l }: { l: Shelved }) {
+  if (!l.preferred && !l.on_contract) return null
+  return (
+    <div className="pb-badges">
+      {l.preferred && <PreferredBadge kind={l.preferred} />}
+      {l.on_contract && <ContractBadge />}
+    </div>
+  )
+}
+
+/* The account's own price beside the published one, or nothing (the caller's
+   plain figure stays) when the account pays the published price. */
+export function shelfPriceTag(l: Pick<EnterpriseListing, 'price' | 'published_price' | 'currency' | 'on_contract'>, compact?: boolean) {
+  return l.on_contract && l.price < l.published_price
+    ? <PriceTag price={l.price} published={l.published_price} currency={l.currency} compact={compact} />
+    : undefined
+}
 
 interface Extra {
   media: { url: string; alt: string | null; role: string }[]
@@ -132,10 +155,11 @@ export function EnterpriseListingModal(
 
           <aside className="pd__buy" aria-label="Buy this listing">
             <div className="pd__price">
-              {money(listing.price)}
+              {shelfPriceTag(listing) ?? money(listing.price)}
               {monthly && <span className="cpe-per">{listing.unit ? ` ${listing.unit}` : ''}/mo</span>}
               {!monthly && listing.unit && <span className="cpe-per"> {listing.unit}</span>}
             </div>
+            <ShelfBadges l={listing} />
             <div><StatusBadge tone={stockTone(listing.stock)}>{stockLabel(listing.stock)}</StatusBadge></div>
 
             {/* Already held — first, because it changes whether to add it at all. */}

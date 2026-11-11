@@ -21,3 +21,4 @@
 @media (prefers-reduced-motion: reduce) {
   .pb-tag, .pb-badge, .pb-off, .pb-target { transition: none; animation: none; }
 }
+.pb-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
