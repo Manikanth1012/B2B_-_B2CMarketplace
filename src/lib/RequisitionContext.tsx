@@ -14,7 +14,7 @@ import { createContext, useContext, useMemo, useState, useRef, useCallback, useE
 import type { ReactNode } from 'react'
 import {
   EMPTY_BASKET, addToBasket, setQuantity as setQty, removeLine as dropLine, repriceTo,
-  basketCount, basketTotal,
+  basketCount, basketTotal, setReason as setLineReason,
 } from './requisitionBasket'
 import type { Basket, BasketLine } from './requisitionBasket'
 import { addBundleToBasket, removeBundleFromBasket } from './bundleLines'
@@ -49,13 +49,16 @@ export interface RequisitionState {
   setQuantity: (product_id: string, quantity: number) =>
     { ok: true } | { ok: false; reason: string }
   remove: (product_id: string) => void
+  /** Why an ordinary line is bought off the account's price book. */
+  setReason: (product_id: string, reason: string) =>
+    { ok: true } | { ok: false; reason: string }
   /** A configured bundle, whole; in place of `replaceSelectionId` when given. */
   addBundle: AddBundle
   /** Every line of one bundle. */
   removeBundle: (selectionId: string) => void
   empty: () => void
   /** Move the whole basket onto another currency's shelf. Returns what fell off. */
-  reprice: (currency: string, shelf: readonly { id: string; price: number; model: string; unit: string | null; currency?: string }[]) => string[]
+  reprice: (currency: string, shelf: readonly { id: string; price: number; model: string; unit: string | null; currency?: string; on_contract?: boolean }[]) => string[]
 }
 
 const Ctx = createContext<RequisitionState | null>(null)
@@ -107,6 +110,13 @@ export function RequisitionProvider({ children }: { children: ReactNode }) {
     if (r.ok) commit(r.basket)
   }, [commit])
 
+  const setReason: RequisitionState['setReason'] = useCallback((product_id, reason) => {
+    const r = setLineReason(live.current, product_id, reason)
+    if (!r.ok) return { ok: false, reason: r.reason }
+    commit(r.basket)
+    return { ok: true }
+  }, [commit])
+
   const empty = useCallback(() => commit(EMPTY_BASKET), [commit])
 
   const addBundle: AddBundle = useCallback((lines, currency, replaceSelectionId) => {
@@ -137,8 +147,8 @@ export function RequisitionProvider({ children }: { children: ReactNode }) {
     basket,
     count: basketCount(basket),
     total: basketTotal(basket),
-    open, setOpen, add, setQuantity, remove, addBundle, removeBundle, empty, reprice,
-  }), [basket, open, add, setQuantity, remove, addBundle, removeBundle, empty, reprice])
+    open, setOpen, add, setQuantity, remove, setReason, addBundle, removeBundle, empty, reprice,
+  }), [basket, open, add, setQuantity, remove, setReason, addBundle, removeBundle, empty, reprice])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

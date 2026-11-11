@@ -22,6 +22,8 @@ export function lineFor(p: Listing) {
     product_id: p.id, name: p.name, seller: p.seller, partner_id: p.partner_id,
     unit_price: p.price, model: p.model === 'monthly' ? 'monthly' as const : 'oneoff' as const,
     vertical: p.category_id, unit: p.unit,
+    /* Whether the shelf priced it from the account's own price book. */
+    on_contract: p.on_contract,
   }
 }
 import { VERTICAL_NAMES } from './data'
