@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import {
-  fromPrice, templatesFor, partsFor, unavailable, togglePick, setPickQty, slotHint, totalsDiffer,
+  fromPrice, templatesFor, pickedTwice, bundleCurrency, partsFor, unavailable, togglePick, setPickQty, slotHint, totalsDiffer,
   type Shelf, type ShelfPart,
 } from './shelf'
 import type { BundleTemplate, BundleSlot, BundleOption } from '../../lib/bundles'
 
 const part = (id: string, list: number | null, extra: Partial<ShelfPart> = {}): ShelfPart => ({
   id, name: id.toUpperCase(), seller: 'S', category_id: 'device', stock: 'in', status: 'live', unit: null,
-  list, floor: null, ...extra,
+  audiences: ['consumer', 'enterprise'], list, floor: null, ...extra,
 })
 const tpl: BundleTemplate = { id: 't1', name: 'Starter', description: 'Phone and plan', image: null, status: 'live', audiences: ['consumer'], discount_pct: 10 }
 const phone: BundleSlot = { id: 's1', template_id: 't1', label: 'phone', min_pick: 1, max_pick: 1, qty_min: 1, qty_max: 3, qty_default: 1, sort_order: 0 }
@@ -80,5 +80,21 @@ describe('bundle shelf', () => {
     expect(slotHint(extras)).toBe('Optional — choose up to 2')
     expect(totalsDiffer(10, 10.004)).toBe(false)
     expect(totalsDiffer(10, 10.01)).toBe(true)
+  })
+
+  it('leaves out a part not sold to the audience', () => {
+    expect(unavailable(part('a', 1, { audiences: ['enterprise'] }), 'INR', 'consumer')).toBe('Not sold to shoppers')
+    expect(fromPrice(tpl, shelf([part('a', 100, { audiences: ['enterprise'] })]), 'USD', 'consumer')).toBeNull()
+  })
+
+  it('finds a product picked in two slots', () => {
+    expect(pickedTwice({ s1: [{ product_id: 'a', quantity: 1 }], s2: [{ product_id: 'a', quantity: 1 }] })).toBe('a')
+    expect(pickedTwice({ s1: [{ product_id: 'a', quantity: 1 }], s2: [{ product_id: 'c', quantity: 1 }] })).toBeNull()
+  })
+
+  it("prices in the buyer's own currency, the shop's only for a visitor", () => {
+    expect(bundleCurrency('KES', 'USD')).toBe('KES')
+    expect(bundleCurrency(null, 'USD')).toBe('USD')
+    expect(bundleCurrency(null, null)).toBeNull()
   })
 })

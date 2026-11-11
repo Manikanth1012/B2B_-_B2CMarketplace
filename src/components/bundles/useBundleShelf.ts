@@ -1,16 +1,17 @@
-/* Reads what a shop needs to show and price bundles in one currency: the
- * templates the persona can see (RLS), and the name, stock and price-book row
- * of every product a template offers.
+/* What a shop needs to show and price bundles in one currency: the templates
+ * the persona can see (RLS) and every product a template offers, with its
+ * price-book row. Both reads go through bundleRepo; this keeps only a short
+ * cache and the hook, shared by the bundle cards and the configurator.
  *
- * Shared by the shop's bundle cards and the configurator, so one read serves
- * both. A failed read — including the bundle tables not existing yet, before
- * the migration is applied — is an empty shelf: the shop renders as it does
- * without bundles, and the reason is kept for whoever asks (`loadError`).
+ * A failed read — including the bundle tables not existing yet, before the
+ * migration is applied — leaves the shelf empty, so the shop renders as it
+ * does without bundles. The reason is reported in `loadError` (and once to
+ * the console), never swallowed.
  */
 import { useEffect, useState } from 'react'
-import { supabase } from '../../lib/supabase'
-import { loadBundleBook } from '../../lib/bundleRepo'
-import { EMPTY_SHELF, type Shelf, type ShelfPart } from './shelf'
+import { loadBundleBook, loadBundleParts } from '../../lib/bundleRepo'
+import { useMarket } from '../../lib/MarketContext'
+import { EMPTY_SHELF, bundleCurrency, type Shelf } from './shelf'
 import { BUNDLES_CHANGED } from './events'
 
 interface Loaded { shelf: Shelf; loadError: string | null }
@@ -20,49 +21,34 @@ const FRESH_MS = 60_000
 
 async function read(currency: string): Promise<Loaded> {
   const book = await loadBundleBook()
-  if (book.loadError || book.templates.length === 0) {
-    return { shelf: EMPTY_SHELF, loadError: book.loadError }
+  if (book.loadError) return { shelf: EMPTY_SHELF, loadError: book.loadError }
+  if (book.templates.length === 0) return { shelf: EMPTY_SHELF, loadError: null }
+  const parts = await loadBundleParts(book.options.map(o => o.product_id), currency)
+  if (!parts.ok) return { shelf: EMPTY_SHELF, loadError: `The bundle parts did not load (${parts.error}).` }
+  return {
+    shelf: { templates: book.templates, slots: book.slots, options: book.options, parts: new Map(parts.value.map(p => [p.id, p])) },
+    loadError: null,
   }
-  const ids = [...new Set(book.options.map(o => o.product_id))]
-  const parts = new Map<string, ShelfPart>()
-  if (ids.length) {
-    try {
-      const [p, pr] = await Promise.all([
-        supabase.from('products').select('id, name, seller, category_id, stock, status, unit').in('id', ids),
-        supabase.from('product_prices').select('product_id, price, floor_price').eq('currency', currency).in('product_id', ids),
-      ])
-      if (p.error) return { shelf: EMPTY_SHELF, loadError: p.error.message }
-      if (pr.error) return { shelf: EMPTY_SHELF, loadError: pr.error.message }
-      const prices = new Map(((pr.data ?? []) as { product_id: string; price: number; floor_price: number | null }[])
-        .map(r => [r.product_id, r]))
-      for (const r of (p.data ?? []) as Record<string, unknown>[]) {
-        const row = prices.get(String(r.id))
-        parts.set(String(r.id), {
-          id: String(r.id), name: String(r.name), seller: String(r.seller ?? ''),
-          category_id: r.category_id == null ? null : String(r.category_id),
-          stock: String(r.stock ?? 'in'), status: String(r.status ?? ''), unit: r.unit == null ? null : String(r.unit),
-          list: row ? Number(row.price) : null,
-          floor: row && row.floor_price != null ? Number(row.floor_price) : null,
-        })
-      }
-    } catch (err) {
-      return { shelf: EMPTY_SHELF, loadError: err instanceof Error ? err.message : String(err) }
-    }
-  }
-  return { shelf: { templates: book.templates, slots: book.slots, options: book.options, parts }, loadError: null }
 }
 
 function load(currency: string): Promise<Loaded> {
   const hit = cache.get(currency)
   if (hit && Date.now() - hit.at < FRESH_MS) return hit.promise
-  const promise = read(currency).catch(err => ({ shelf: EMPTY_SHELF, loadError: err instanceof Error ? err.message : String(err) }))
+  const promise = read(currency)
+    .catch(err => ({ shelf: EMPTY_SHELF, loadError: err instanceof Error ? err.message : String(err) }))
+    .then(r => {
+      if (r.loadError) console.warn(`Bundles are not shown: ${r.loadError}`)
+      return r
+    })
   cache.set(currency, { at: Date.now(), promise })
   return promise
 }
 
-/** The bundle shelf for a currency; `null` currency (not known yet) is empty. */
+/** The bundle shelf for a currency; `null` currency (not known yet) is empty.
+    A shelf read for another currency is never returned, so figures are never
+    formatted in the wrong money while the new one loads. */
 export function useBundleShelf(currency: string | null): Loaded & { loading: boolean } {
-  const [state, setState] = useState<Loaded & { loading: boolean }>({ shelf: EMPTY_SHELF, loadError: null, loading: !!currency })
+  const [state, setState] = useState<Loaded & { currency: string | null }>({ shelf: EMPTY_SHELF, loadError: null, currency: null })
   const [tick, setTick] = useState(0)
 
   useEffect(() => {
@@ -72,12 +58,22 @@ export function useBundleShelf(currency: string | null): Loaded & { loading: boo
   }, [])
 
   useEffect(() => {
-    if (!currency) { setState({ shelf: EMPTY_SHELF, loadError: null, loading: false }); return }
+    if (!currency) return
     let live = true
-    setState(s => ({ ...s, loading: true }))
-    void load(currency).then(r => { if (live) setState({ ...r, loading: false }) })
+    void load(currency).then(r => { if (live) setState({ ...r, currency }) })
     return () => { live = false }
   }, [currency, tick])
 
-  return state
+  if (!currency) return { shelf: EMPTY_SHELF, loadError: null, loading: false }
+  if (state.currency !== currency) return { shelf: EMPTY_SHELF, loadError: null, loading: true }
+  return { shelf: state.shelf, loadError: state.loadError, loading: false }
+}
+
+/** The currency bundles are priced in for this viewer, and the shop's. A
+    bundle is always priced in the buyer's own currency — consumer home or
+    business account — because that is the only one configure_bundle takes. */
+export function useBundleCurrency(): { currency: string | null; header: string | null; own: boolean } {
+  const { currency, market, account, ready } = useMarket()
+  const header = currency?.code ?? market?.currency ?? null
+  return { currency: ready ? bundleCurrency(account, header) : null, header, own: !!account }
 }

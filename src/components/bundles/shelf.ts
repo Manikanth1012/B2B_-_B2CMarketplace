@@ -7,20 +7,10 @@ import {
   defaultChoices, priceBundle,
   type BundleTemplate, type BundleSlot, type BundleOption, type Choices, type PricedPart, type BundlePrice,
 } from '../../lib/bundles'
+import type { BundlePart } from '../../lib/bundleRepo'
 
 /** One product a bundle may contain, as the shop sees it in one currency. */
-export interface ShelfPart {
-  id: string
-  name: string
-  seller: string
-  category_id: string | null
-  stock: string
-  status: string
-  unit: string | null
-  /** product_prices.price for the currency, or null when it is not priced there. */
-  list: number | null
-  floor: number | null
-}
+export type ShelfPart = BundlePart
 
 export interface Shelf {
   templates: BundleTemplate[]
@@ -40,9 +30,10 @@ export const optionsOf = (shelf: Shelf, slotIds: readonly string[]): BundleOptio
 }
 
 /** Why a part cannot be chosen right now, in the database's terms, or null. */
-export function unavailable(part: ShelfPart | undefined, currency: string): string | null {
+export function unavailable(part: ShelfPart | undefined, currency: string, audience?: 'consumer' | 'enterprise'): string | null {
   if (!part) return 'Not on sale'
   if (part.status !== 'live') return 'Not on sale'
+  if (audience && !part.audiences.includes(audience)) return audience === 'consumer' ? 'Not sold to shoppers' : 'Not sold to business accounts'
   if (part.stock === 'out') return 'Out of stock'
   if (part.list === null) return `Not sold in ${currency}`
   return null
@@ -69,13 +60,13 @@ export function estimate(parts: readonly PricedPart[] | null, discountPct: numbe
 
 /** The "from" price of a template: its default configuration, one bundle.
     Null when the default cannot be bought here (a part unpriced or unavailable). */
-export function fromPrice(template: BundleTemplate, shelf: Shelf, currency: string): BundlePrice | null {
+export function fromPrice(template: BundleTemplate, shelf: Shelf, currency: string, audience?: 'consumer' | 'enterprise'): BundlePrice | null {
   const slots = slotsOf(shelf, template.id)
   if (slots.length === 0) return null
   const options = optionsOf(shelf, slots.map(s => s.id))
   const choices = defaultChoices(slots, options)
   const picked = Object.values(choices).flat()
-  if (picked.some(p => unavailable(shelf.parts.get(p.product_id), currency) !== null)) return null
+  if (picked.some(p => unavailable(shelf.parts.get(p.product_id), currency, audience) !== null)) return null
   return estimate(partsFor(slots, choices, shelf.parts), template.discount_pct, 1)
 }
 
@@ -95,7 +86,7 @@ export function templatesFor(
       const inShelf = optionsOf(shelf, slotIds).some(o => shelf.parts.get(o.product_id)?.category_id === opts.category)
       if (!inShelf) continue
     }
-    const from = fromPrice(t, shelf, currency)
+    const from = fromPrice(t, shelf, currency, audience)
     if (from) out.push({ template: t, from })
   }
   return out
@@ -134,3 +125,22 @@ export function setPickQty(choices: Choices, slot: BundleSlot, productId: string
 export const totalsDiffer = (shown: number, server: number): boolean => Math.abs(shown - server) >= 0.005
 
 export const BUNDLE_QTY_MAX = 999
+
+/** A product picked in more than one slot (the database refuses it), or null. */
+export function pickedTwice(choices: Choices): string | null {
+  const seen = new Set<string>()
+  for (const picks of Object.values(choices)) {
+    for (const p of new Set(picks.map(x => x.product_id))) {
+      if (seen.has(p)) return p
+      seen.add(p)
+    }
+  }
+  return null
+}
+
+/** The currency a bundle is priced in: the buyer's own (consumer home or
+    business account currency), which is the only one configure_bundle takes.
+    A visitor has none, and sees the shop's. */
+export function bundleCurrency(account: string | null, header: string | null): string | null {
+  return account ?? header
+}

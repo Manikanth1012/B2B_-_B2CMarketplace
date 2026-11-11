@@ -19,11 +19,16 @@ export function registerBundleSink(kind: BundleSinkKind, fn: BundleSink): () => 
   return () => { if (sinks.get(kind) === fn) sinks.delete(kind) }
 }
 
+/** Whether anything takes bundles of this kind yet — asked before a selection is written. */
+export const hasBundleSink = (kind: BundleSinkKind): boolean => sinks.has(kind)
+
 const WHERE: Record<BundleSinkKind, string> = { basket: 'basket', requisition: 'requisition' }
+
+export const notAvailable = (kind: BundleSinkKind): string => `Adding a bundle to your ${WHERE[kind]} is not available yet.`
 
 export async function sendBundleTo(kind: BundleSinkKind, selectionId: string, replaceSelectionId?: string): Promise<BundleSinkResult> {
   const fn = sinks.get(kind)
-  if (!fn) return { ok: false, error: `Adding a bundle to your ${WHERE[kind]} is not available yet.` }
+  if (!fn) return { ok: false, error: notAvailable(kind) }
   try {
     return await fn(selectionId, replaceSelectionId)
   } catch (err) {
