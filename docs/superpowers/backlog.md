@@ -97,6 +97,12 @@ Also worth considering:
 - [ ] Refund picker and operator order views do not group bundle lines yet (refunds work per part at its price).
 - [ ] "A paused part blocks the bundle" is enforced by the database but not covered by a live test (it would pause a real product).
 - [ ] The shared dialog's Close button is 36px tall (24px AA minimum met; 44px target not).
+- [ ] Business templates are billed one way (all one-off or all monthly; migration `20261111100000`, 2026-11-11). A monthly business kit (SIMs, managed firewall) could be a second template.
+- [ ] The bundle shelf cache is keyed by currency only, so after switching accounts it can be stale for up to 60 s.
+- [ ] Monthly parts of a bundle renew at the bundle price indefinitely; decide whether renewals revert to list price.
+- [ ] Unused selections (configured, never added) are never cleaned up; only the operator can delete them.
+- [ ] An abandoned checkout can leave a bundle half-ordered (parts already ordered can't be ordered again); re-configure to buy it.
+- [ ] The same selection can go on two requisitions; the second approval then cannot be ordered.
 - [ ] Seller-authored templates and a free-form build-your-own are out of scope.
 
 ## Still open after spec 6 (small, non-blocking)
