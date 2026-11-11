@@ -185,14 +185,18 @@ export function offContractNote(rule: OffContractRule, offCount: number): string
   if (rule === 'allow' || offCount <= 0) return null
   const lines = offCount === 1 ? '1 line is' : `${offCount} lines are`
   return rule === 'reason'
-    ? `${lines} off the account's price book - a reason is recorded for each`
-    : `${lines} off the account's price book - finance approval required`
+    ? `${lines} off the account's price book — a reason is recorded for each`
+    : `${lines} off the account's price book — finance approval required`
 }
 
 /** guard_requisition_line_contract: btrim, then at least 5; the column holds at most 300. */
-export function offContractReasonProblem(reason: string | null | undefined): string | null {
+export function offContractReasonProblem(reason: string | null | undefined, name?: string): string | null {
   const n = (reason ?? '').trim().length
-  if (n < 5) return 'Say why on the line (at least 5 characters).'
+  if (n < 5) {
+    return name
+      ? `${name} is not on your account's price book, and your buying rules ask for a reason when you buy off it. Say why on the line (at least 5 characters).`
+      : 'Say why on the line (at least 5 characters).'
+  }
   if (n > 300) return 'Keep the reason to 300 characters or fewer.'
   return null
 }

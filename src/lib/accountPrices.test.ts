@@ -203,6 +203,33 @@ describe('ruleSummary / promotable', () => {
   })
 })
 
+describe('exact sentences and fallbacks', () => {
+  it('offContractNote', () => {
+    expect(offContractNote('reason', 1)).toBe("1 line is off the account's price book — a reason is recorded for each")
+    expect(offContractNote('approval', 3)).toBe("3 lines are off the account's price book — finance approval required")
+  })
+  it('ruleSummary', () => {
+    expect(ruleSummary('allow').title).toBe('Buying off the price book is allowed')
+    expect(ruleSummary('reason').title).toBe('Buying off the price book needs a reason')
+    expect(ruleSummary('approval').title).toBe('Buying off the price book needs approval')
+  })
+  it('reason sentence, with and without the listing', () => {
+    expect(offContractReasonProblem('abc', 'Gateway X')).toBe(
+      "Gateway X is not on your account's price book, and your buying rules ask for a reason when you buy off it. Say why on the line (at least 5 characters).")
+    expect(offContractReasonProblem('abc')).toBe('Say why on the line (at least 5 characters).')
+  })
+  it('priceDraftProblems falls back when the context names nothing', () => {
+    const d: PriceDraft = { account_id: 'A', product_id: 'P', currency: 'USD', unit_price: 80, starts_on: T, ends_on: null, note: '' }
+    const c = { today: T, published: 100, floor: null, currencies: ['INR'], businessListing: false }
+    expect(priceDraftProblems(d, c).currency).toBe('This account buys in its market, which does not trade in USD.')
+    expect(priceDraftProblems(d, c).product_id).toBe('This listing is not sold to business accounts, so it has no account price.')
+  })
+  it('rounds to 2 dp as the database does', () => {
+    expect(effectivePrice(1.005, null, null)).toBe(1.01)
+    expect(effectivePrice(100, null, 1.005)).toBe(1.01)
+  })
+})
+
 describe('purity', () => {
   it('imports no supabase', () => {
     expect(readFileSync(resolve(__dirname, 'accountPrices.ts'), 'utf8')).not.toMatch(/from\s+['"][^'"]*supabase/i)
