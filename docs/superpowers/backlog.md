@@ -113,8 +113,9 @@ Done — merged to main (`7de0841`), migration `20261112200000` applied 2026-11-
 enquiries tests pass. Plan `docs/superpowers/plans/2026-11-12-loose-ends.md`. Calendar invites (.ics) for demos and
 quotes; quote expiry judged on the database's (UTC) day; a seller proposes its price on its lines of a desk quote
 (private from the buyer); the requisition drawer re-checks prices on Raise; Approvals tests; 44px dialog Close.
-Still open: real email needs a provider (none chosen); the seller of a desk quote can still read the desk's quoted
-unit price on its own lines through the spec 6 read policy (the buyer cannot see the seller's proposal).
+Still open: real email needs a provider (none chosen). Follow-up migration `20261112300000` (applied 2026-11-12):
+a seller no longer reads the desk's quoted price on its lines of a desk quote (it reads them only through
+`my_desk_quote_lines`).
 
 ## Still open after spec 7 (small, non-blocking)
 
