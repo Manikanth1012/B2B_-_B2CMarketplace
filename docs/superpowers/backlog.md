@@ -48,8 +48,8 @@ the screens were checked in the browser (SmartBuild's seeded price on the book, 
 plan `docs/superpowers/plans/2026-11-12-account-price-books.md`. Never re-run `20261111300000` now: it would put back the
 published-price-only check. Reverses CR-008 ("negotiated pricing not operated here" → "sold here") — confirm the policy.
 Deferred minors: extra reads in the enterprise Price book reload; preference errors shown at the top;
-the drawer's off-book flag can lag a price change made while it is open; Approvals' off-book marker
-follows the account's current rule; no tests for the Approvals change or the note-lift wording.
+Approvals' off-book marker follows the account's current rule. (Fixed in spec 10: the drawer re-checks prices on
+Raise; Approvals and the note lift have tests.)
 
 ## Still open after spec 5 (small, non-blocking)
 
@@ -107,6 +107,15 @@ Also worth considering:
 - [ ] Procurement AI: renewal alerts, spend classification (S–M)
 - [ ] Delivery scheduling and consolidation (S)
 
+## Spec 10 — loose ends (2026-11-12)
+
+Done — merged to main (`7de0841`), migration `20261112200000` applied 2026-11-12; its 7 integration tests and the 32
+enquiries tests pass. Plan `docs/superpowers/plans/2026-11-12-loose-ends.md`. Calendar invites (.ics) for demos and
+quotes; quote expiry judged on the database's (UTC) day; a seller proposes its price on its lines of a desk quote
+(private from the buyer); the requisition drawer re-checks prices on Raise; Approvals tests; 44px dialog Close.
+Still open: real email needs a provider (none chosen); the seller of a desk quote can still read the desk's quoted
+unit price on its own lines through the spec 6 read policy (the buyer cannot see the seller's proposal).
+
 ## Still open after spec 7 (small, non-blocking)
 
 - [x] **Fixed — migration `20261111200000` applied 2026-11-12, integration test passes — existing bug:** an ordinary (non-bundle) business requisition raised from the basket fails at approval: `raiseRequisition` never sets the requisition's `product_id` and `place_requisition_order` orders from that single header product, ignoring the lines. Spec 7 orders bundle requisitions line by line; ordinary multi-line requisitions still fail. Fixing it changes a live flow.
@@ -114,7 +123,7 @@ Also worth considering:
 - [ ] A requisition raised in a secondary currency cannot hold a bundle (bundles are priced in the account's currency).
 - [ ] Refund picker and operator order views do not group bundle lines yet (refunds work per part at its price).
 - [ ] "A paused part blocks the bundle" is enforced by the database but not covered by a live test (it would pause a real product).
-- [ ] The shared dialog's Close button is 36px tall (24px AA minimum met; 44px target not).
+- [x] **Fixed in spec 10 (44×44):** The shared dialog's Close button is 36px tall (24px AA minimum met; 44px target not).
 - [ ] Business templates are billed one way (all one-off or all monthly; migration `20261111100000`, 2026-11-11). A monthly business kit (SIMs, managed firewall) could be a second template.
 - [ ] The bundle shelf cache is keyed by currency only, so after switching accounts it can be stale for up to 60 s.
 - [ ] Monthly parts of a bundle renew at the bundle price indefinitely; decide whether renewals revert to list price.
@@ -125,10 +134,10 @@ Also worth considering:
 
 ## Still open after spec 6 (small, non-blocking)
 
-- [ ] No calendar invites or email for demos and quotes — in-app notifications only (no gateway).
-- [ ] The seller of a multi-seller desk quote can read its own lines but has no screen to tell the desk its price, and cannot read a desk-routed conversation; the desk has to reach the seller outside the enquiry, or reassign it to them.
+- [x] **Calendar invites done in spec 10** (.ics download); email still needs a provider. No calendar invites or email for demos and quotes — in-app notifications only (no gateway).
+- [x] **Fixed in spec 10 (seller proposes; desk can use it):** The seller of a multi-seller desk quote can read its own lines but has no screen to tell the desk its price, and cannot read a desk-routed conversation; the desk has to reach the seller outside the enquiry, or reassign it to them.
 - [ ] The requisition basket is not saved across a reload; an accepted quote offers "Add to requisition" again until it is on a live requisition.
-- [ ] Expiry is checked against the browser's date on screen and the database's date on accept; around midnight they can differ by a day.
+- [x] **Fixed in spec 10 (UTC day everywhere):** Expiry is checked against the browser's date on screen and the database's date on accept; around midnight they can differ by a day.
 - [ ] Seed enquiries name SKU-5004, which is paused on the live shelf. An accepted quote on it still reaches the requisition (its product facts are read by id, whatever the status); only raising a new enquiry from the shelf needs a live listing.
 
 ## Data to check (not code)
