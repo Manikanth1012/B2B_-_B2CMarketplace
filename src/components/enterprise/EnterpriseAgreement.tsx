@@ -58,7 +58,8 @@ export function EnterpriseAgreement() {
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px', maxWidth: '84ch' }}>
           The master services agreement your account buys under — the term, the payment terms,
           who signed it, and every amendment since. You are charged the price published for your
-          market; no rate card forms part of this and nothing here changes what anything costs.
+          market unless your Price book holds a price of its own for a listing; the agreement
+          itself is not a rate card and changes nothing about what anything costs.
         </p>
       </div>
 

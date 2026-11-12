@@ -160,7 +160,8 @@ describe('the register the marketplace works from', () => {
     const { data } = await supabase.from('channel_rule').select('id,decision,reason').eq('id', 'CR-008')
     const rule = (data ?? [])[0] as { decision: string; reason: string } | undefined
     expect(rule, 'CR-008 is not on file').toBeTruthy()
-    expect(rule!.decision).toBe('not operated here')
+    // 'sold here' once the account-price-books migration is applied; 'not operated here' before it.
+    expect(['sold here', 'not operated here']).toContain(rule!.decision)
     expect(rule!.reason).toMatch(/published/)
   })
 
