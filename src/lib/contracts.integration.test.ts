@@ -92,13 +92,27 @@ describe('the register the marketplace works from', () => {
   /* An assertion that passes because nothing is near its end is an assertion
      about an empty set. The renewal column exists; something has to be in it. */
   it('has at least one agreement inside its notice period', () => {
-    const expiring = book.contracts.filter(c => c.standing === 'expiring')
-    expect(expiring.length, 'nothing is expiring, so the renewal queue is unexercised')
-      .toBeGreaterThan(0)
-    for (const c of expiring) {
-      expect(daysLeft(c, TODAY)).toBeLessThanOrEqual(c.notice_days)
-      expect(inForce(c, TODAY), `${c.id} is expiring and should still bind`).toBe(true)
-      expect(noticeBy(c)).toBeTruthy()
+    /* Which one is expiring today depends on the calendar, and on some days none
+       is. So it is judged on a real agreement's notice period: the running term
+       that ends soonest, on the first day of its notice (or today, if that has
+       begun). */
+    const running = book.contracts
+      .filter(c => c.state === 'active' && c.superseded_by === null && c.ends_on >= TODAY)
+      .sort((x, y) => x.ends_on.localeCompare(y.ends_on))
+    expect(running.length, 'no running agreement to judge a notice period on').toBeGreaterThan(0)
+    const c = running[0]
+    const noticeStarts = new Date(Date.parse(`${c.ends_on}T00:00:00Z`) - c.notice_days * 86400000)
+      .toISOString().slice(0, 10)
+    const on = noticeStarts > TODAY ? noticeStarts : TODAY
+    expect(standingOf(c, on), `${c.id} on ${on}`).toBe('expiring')
+    expect(daysLeft(c, on)).toBeLessThanOrEqual(c.notice_days)
+    expect(inForce(c, on), `${c.id} is expiring and should still bind`).toBe(true)
+    expect(noticeBy(c)).toBeTruthy()
+
+    /* And whatever the database calls expiring today means the same thing. */
+    for (const e of book.contracts.filter(x => x.standing === 'expiring')) {
+      expect(daysLeft(e, TODAY)).toBeLessThanOrEqual(e.notice_days)
+      expect(inForce(e, TODAY), `${e.id} is expiring and should still bind`).toBe(true)
     }
   })
 
@@ -403,28 +417,49 @@ describe('what happens with nothing in force', () => {
 /* --------------------------------------------------- renewing, for real -- */
 
 describe('a renewal, made and put back', () => {
-  const FROM = 'CTR-2012-01'
-  const NEW = 'CTR-2012-02'
+  /* Whatever Meridian Foods holds in force today, renewed into a term that
+     starts the day after it ends. Read from the register rather than written
+     down: the seed agreements have real dates, and a test pinned to one of them
+     stops working the day it runs out (as this one did on 1 Sep 2026). The new
+     ids are ones no real agreement takes, and afterAll removes both. */
+  const ACCOUNT = 'ENT-2012'
+  const NEW = 'CTR-2012-T1'
+  const AGAIN = 'CTR-2012-T2'
+  let FROM = ''
 
-  beforeAll(async () => { await signIn(OPERATOR.email, OPERATOR.password) })
+  const plusDays = (iso: string, n: number) =>
+    new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10)
+  const current = async () => {
+    const book = await loadContractBook()
+    return book.contracts.find(c => c.id === FROM)!
+  }
+
+  beforeAll(async () => {
+    await signIn(OPERATOR.email, OPERATOR.password)
+    const { data, error } = await supabase.rpc('contract_in_force', { p_account: ACCOUNT })
+    if (error) throw new Error(`could not read ${ACCOUNT}'s agreement: ${error.message}`)
+    if (!data) throw new Error(`${ACCOUNT} has no agreement in force; renew it in the operator console first`)
+    FROM = data as string
+  })
 
   afterAll(async () => {
-    /* Put the register back: remove the new term and un-supersede the old one.
-       In that order — the FK on `superseded_by` points at the row being
+    /* Put the register back: un-supersede the old term, then remove the new
+       ones. In that order — the FK on `superseded_by` points at the row being
        deleted, and clearing the pointer first is what stops the delete failing
        silently and leaving a second agreement on the account for ever. */
-    await supabase.from('enterprise_contract')
-      .update({ state: 'active', superseded_by: null }).eq('id', FROM)
-    await supabase.from('enterprise_contract').delete().eq('id', NEW)
+    if (FROM) {
+      await supabase.from('enterprise_contract')
+        .update({ state: 'active', superseded_by: null }).eq('id', FROM)
+    }
+    for (const id of [NEW, AGAIN]) await supabase.from('enterprise_contract').delete().eq('id', id)
     await signOut()
   })
 
   it('refuses a term that overlaps the one it replaces', async () => {
-    const book = await loadContractBook()
-    const from = book.contracts.find(c => c.id === FROM)!
+    const from = await current()
     const res = await renewContract(from, {
-      id: NEW, title: 'Master services agreement 2026–2027',
-      signed_on: TODAY, starts_on: from.starts_on, ends_on: '2027-08-31',
+      id: NEW, title: 'Integration test renewal',
+      signed_on: TODAY, starts_on: from.starts_on, ends_on: plusDays(from.ends_on, 365),
       terms: from.terms, auto_renew: false, notice_days: 30, term_value: 800000,
       signed_by: from.signed_by, signed_title: from.signed_title,
       countersigned_by: 'Anika Sharma',
@@ -434,14 +469,12 @@ describe('a renewal, made and put back', () => {
   })
 
   it('creates the new term and supersedes the old one in one act', async () => {
-    const book = await loadContractBook()
-    const from = book.contracts.find(c => c.id === FROM)!
-    const starts = new Date(Date.parse(`${from.ends_on}T00:00:00Z`) + 86400000)
-      .toISOString().slice(0, 10)
+    const from = await current()
+    const starts = plusDays(from.ends_on, 1)
 
     const res = await renewContract(from, {
-      id: NEW, title: 'Master services agreement 2026–2027',
-      signed_on: TODAY, starts_on: starts, ends_on: '2027-08-31',
+      id: NEW, title: 'Integration test renewal',
+      signed_on: TODAY, starts_on: starts, ends_on: plusDays(starts, 364),
       terms: 'Net 30', auto_renew: true, notice_days: 60, term_value: 800000,
       signed_by: from.signed_by, signed_title: from.signed_title,
       countersigned_by: 'Anika Sharma',
@@ -475,18 +508,19 @@ describe('a renewal, made and put back', () => {
   })
 
   it('leaves the account able to buy across the changeover', async () => {
-    const { data } = await supabase.rpc('contract_in_force', { p_account: 'ENT-2012' })
-    expect(data, 'the renewal left ENT-2012 with nothing in force').toBeTruthy()
+    const { data } = await supabase.rpc('contract_in_force', { p_account: ACCOUNT })
+    expect(data, `the renewal left ${ACCOUNT} with nothing in force`).toBe(FROM)
   })
 
   it('will not renew what it has already superseded', async () => {
-    const book = await loadContractBook()
-    const from = book.contracts.find(c => c.id === FROM)!
-    const res = await renewContract({ ...from, ends_on: '2026-08-31' }, {
-      id: 'CTR-2012-03', title: 'Another', signed_on: TODAY,
-      starts_on: '2027-09-01', ends_on: '2028-08-31', terms: 'Net 30',
+    const from = await current()
+    /* Past the client's own overlap check, so it is the database that refuses. */
+    const starts = plusDays(from.ends_on, 400)
+    const res = await renewContract(from, {
+      id: AGAIN, title: 'Integration test renewal, again', signed_on: TODAY,
+      starts_on: starts, ends_on: plusDays(starts, 364), terms: 'Net 30',
       auto_renew: false, notice_days: 30, term_value: null,
-      signed_by: 'x', signed_title: 'y', countersigned_by: 'Anika Sharma',
+      signed_by: from.signed_by, signed_title: from.signed_title, countersigned_by: 'Anika Sharma',
     })
     expect(res.ok).toBe(false)
     expect(res.why).toMatch(/already been renewed into/i)
