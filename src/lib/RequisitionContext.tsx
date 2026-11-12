@@ -14,9 +14,9 @@ import { createContext, useContext, useMemo, useState, useRef, useCallback, useE
 import type { ReactNode } from 'react'
 import {
   EMPTY_BASKET, addToBasket, setQuantity as setQty, removeLine as dropLine, repriceTo,
-  basketCount, basketTotal, setReason as setLineReason,
+  basketCount, basketTotal, setReason as setLineReason, applyContractChanges,
 } from './requisitionBasket'
-import type { Basket, BasketLine } from './requisitionBasket'
+import type { Basket, BasketLine, ContractChange } from './requisitionBasket'
 import { addBundleToBasket, removeBundleFromBasket } from './bundleLines'
 
 type AddBundle = (lines: BasketLine[], currency: string, replaceSelectionId?: string) =>
@@ -59,6 +59,8 @@ export interface RequisitionState {
   empty: () => void
   /** Move the whole basket onto another currency's shelf. Returns what fell off. */
   reprice: (currency: string, shelf: readonly { id: string; price: number; model: string; unit: string | null; currency?: string; on_contract?: boolean }[]) => string[]
+  /** Put today's prices on the lines that moved (contractChanges), before anything is raised. */
+  applyChanges: (changes: readonly ContractChange[]) => void
 }
 
 const Ctx = createContext<RequisitionState | null>(null)
@@ -143,12 +145,16 @@ export function RequisitionProvider({ children }: { children: ReactNode }) {
     return r.dropped
   }, [commit])
 
+  const applyChanges = useCallback((changes: readonly ContractChange[]) => {
+    commit(applyContractChanges(live.current, changes))
+  }, [commit])
+
   const value = useMemo<RequisitionState>(() => ({
     basket,
     count: basketCount(basket),
     total: basketTotal(basket),
-    open, setOpen, add, setQuantity, remove, setReason, addBundle, removeBundle, empty, reprice,
-  }), [basket, open, add, setQuantity, remove, setReason, addBundle, removeBundle, empty, reprice])
+    open, setOpen, add, setQuantity, remove, setReason, addBundle, removeBundle, empty, reprice, applyChanges,
+  }), [basket, open, add, setQuantity, remove, setReason, addBundle, removeBundle, empty, reprice, applyChanges])
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
 }

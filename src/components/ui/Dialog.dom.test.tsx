@@ -3,6 +3,8 @@ import { useRef, useState } from 'react'
 import type React from 'react'
 import { cleanup, render, screen, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { Dialog } from './Dialog'
 import { useFocusTrap, hasOpenTrap } from './useFocusTrap'
 
@@ -264,5 +266,42 @@ describe('useFocusTrap', () => {
       </>,
     )
     expect(document.activeElement).toBe(elsewhere)
+  })
+})
+
+/* The Close button's hit target. jsdom lays nothing out, so the dialog's own
+   stylesheet is put in the document and the cascade read back. */
+describe('Dialog Close button', () => {
+  /* By path from the project root: under jsdom import.meta.url is not a file URL. */
+  const css = readFileSync(resolve(process.cwd(), 'src/styles/account.css'), 'utf8')
+
+  it('is 44×44 with the 20px icon, and gives the extra 8px back in margin so the header does not grow', () => {
+    const style = document.createElement('style')
+    style.textContent = css
+    document.head.appendChild(style)
+    try {
+      render(<Dialog open onClose={() => {}} title="Rename the list"><p>Body</p></Dialog>)
+      const close = screen.getByRole('button', { name: 'Close' })
+      expect(close.className).toBe('ui-dialog__close')
+      const cs = getComputedStyle(close)
+      expect(cs.width).toBe('44px')
+      expect(cs.height).toBe('44px')
+      expect(cs.minWidth).toBe('44px')
+      expect(cs.minHeight).toBe('44px')
+      /* 44 - 8 = 36: the footprint it had before. */
+      expect(cs.marginTop).toBe('-4px')
+      expect(cs.marginBottom).toBe('-4px')
+      const icon = close.querySelector('svg')!
+      expect(icon.getAttribute('width')).toBe('20')
+      expect(icon.getAttribute('height')).toBe('20')
+      expect(icon.getAttribute('aria-hidden')).toBe('true')
+    } finally {
+      style.remove()
+    }
+  })
+
+  it('keeps a visible focus ring', () => {
+    expect(css).toMatch(/\.ui-dialog__close:focus-visible\s*\{[^}]*outline:\s*2px solid var\(--electric\)/)
+    expect(css).not.toMatch(/\.ui-dialog__close[^{]*\{[^}]*outline:\s*(none|0)/)
   })
 })
