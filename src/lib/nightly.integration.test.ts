@@ -44,7 +44,7 @@ describe('the night', () => {
     const latest = new Map<string, { ok: boolean; error: string | null }>()
     for (const r of rows) if (!latest.has(r.job)) latest.set(r.job, r)
     expect([...latest.keys()].sort(), 'the night has not run, or ran only some of its jobs')
-      .toEqual(['agreements', 'enterprise subscriptions', 'settlements', 'subscriptions'])
+      .toEqual(['agreements', 'documents', 'enterprise subscriptions', 'settlements', 'subscriptions'])
     for (const [job, r] of latest) expect(r.ok, `${job} failed: ${r.error}`).toBe(true)
   })
 
@@ -61,6 +61,32 @@ describe('the night', () => {
     const running = (data ?? []).filter(s => !s.auto_renew || s.status === 'suspended')
       .map(s => `${s.id} (${s.status}) ran to ${s.renews}`)
     expect(running).toEqual([])
+  })
+
+  it('leaves no statement open after its period has ended', async () => {
+    const { data } = await supabase.from('settlement_statements')
+      .select('id, closed_on').eq('status', 'open').not('partner_id', 'is', null).lt('closed_on', YESTERDAY)
+    expect((data ?? []).map(s => `${s.id} closed ${s.closed_on}`)).toEqual([])
+  })
+
+  it('leaves no seller document accepted past its expiry', async () => {
+    const { data } = await supabase.from('partner_category_evidence')
+      .select('id, expires_on').eq('state', 'accepted').lt('expires_on', YESTERDAY)
+    expect((data ?? []).map(e => `${e.id} expired ${e.expires_on}`)).toEqual([])
+  })
+
+  it('settles every month that has closed, not only the latest', async () => {
+    const { data } = await supabase.from('settlement_lines')
+      .select('partner_id, occurred_on').is('statement_id', null).not('partner_id', 'is', null)
+    const monthEnd = (d: string) => iso(Date.UTC(+d.slice(0, 4), +d.slice(5, 7), 0))
+    const terms = await supabase.from('partner_settlement_terms').select('partner_id, frequency')
+    const monthly = new Set((terms.data ?? []).filter(t => t.frequency === 'monthly').map(t => t.partner_id))
+    const live = await supabase.from('partners').select('id, status')
+    const trading = new Set((live.data ?? []).filter(p => p.status === 'live').map(p => p.id))
+    const left = (data ?? [])
+      .filter(l => monthly.has(l.partner_id) && trading.has(l.partner_id) && monthEnd(l.occurred_on) < YESTERDAY)
+      .map(l => `${l.partner_id} ${l.occurred_on}`)
+    expect(left, 'a monthly seller has sales in a closed month that nothing settled').toEqual([])
   })
 
   it('records the renewal of every agreement whose notice deadline has passed with auto-renew on', () => {
