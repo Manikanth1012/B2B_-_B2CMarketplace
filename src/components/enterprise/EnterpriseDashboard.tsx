@@ -9,7 +9,8 @@ import { waiting, committed, budgetPosition, NEED_LABEL } from '../../lib/enterp
 import { useAccountMoney } from './money'
 import type { EnterpriseView } from '../../types/view'
 import { loadEnquiries } from '../../lib/enquiryRepo'
-import { waitingOn, localToday } from '../../lib/enquiries'
+import { waitingOn } from '../../lib/enquiries'
+import { dbToday } from '../../lib/dbDay'
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
@@ -24,7 +25,7 @@ export function EnterpriseDashboard({ onNavigate }: { onNavigate: (v: Enterprise
   useEffect(() => {
     void loadEnquiries().then(b => {
       setEnquiries(b.loadError && !b.enquiries.length ? b.loadError
-        : { waiting: b.enquiries.filter(e => waitingOn(e, localToday()) === 'buyer').length })
+        : { waiting: b.enquiries.filter(e => waitingOn(e, dbToday()) === 'buyer').length })
     })
   }, [])
   useEffect(() => {

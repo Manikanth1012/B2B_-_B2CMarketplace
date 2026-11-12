@@ -3,6 +3,8 @@
 // them so a screen never offers what the database would refuse. No supabase
 // import here: it must stay testable in Node.
 //
+import { dbToday } from './dbDay'
+
 // Dates are 'YYYY-MM-DD' strings compared lexically; timestamps are ISO strings.
 
 export type EnquiryType = 'quote' | 'demo' | 'sales'
@@ -185,15 +187,8 @@ export function demoOffered(p: { model: string; category_id: string }): boolean 
   return p.model !== 'oneoff' || ['iot', 'security'].includes(p.category_id)
 }
 
-/** Today in the browser's own calendar, as YYYY-MM-DD. */
-export function localToday(): string {
-  const n = new Date()
-  const p = (x: number) => String(x).padStart(2, '0')
-  return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}`
-}
-
 /** The accepted quote as requisition lines at the quoted prices. Throws unless it is an accepted, unexpired quote with every line priced. */
-export function toRequisitionLines(e: Enquiry, lines: readonly EnquiryLine[], today: string = localToday()): {
+export function toRequisitionLines(e: Enquiry, lines: readonly EnquiryLine[], today: string = dbToday()): {
   product_id: string; name: string; partner_id: string | null; quantity: number; unit_price: number; quote_line_id: string
 }[] {
   if (e.type !== 'quote' || e.status !== 'accepted') throw new Error('Only an accepted quote can be added to a requisition.')

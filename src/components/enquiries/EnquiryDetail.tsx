@@ -9,7 +9,10 @@
  */
 import { useState } from 'react'
 import type React from 'react'
-import { Send } from 'lucide-react'
+import { Send, CalendarPlus } from 'lucide-react'
+import { demoInvite, quoteExpiryInvite } from '../../lib/calendarInvite'
+import { fmtDbDate, validUntilLabel } from '../../lib/dbDay'
+import { downloadIcs } from './downloadIcs'
 import { Table, Td, StatusPill, Btn, TextArea, FormField, EmptyState, fmtDate, fmtDateTime, fmtInt } from '../operator/shared'
 import { enquiryState, nextActions, quoteTotals } from '../../lib/enquiries'
 import type { Action, Enquiry, EnquiryLine, EnquiryMessage, EnquirySlot, Role } from '../../lib/enquiries'
@@ -82,6 +85,20 @@ export function EnquiryDetail({ enquiry: e, book, role, today, opts, onAction, a
   const offered = slots.filter(s => !s.confirmed && s.proposed_by !== mySide)
   const toConfirm = offered[offered.length - 1]
 
+  /* A scheduled demo (its confirmed time) or a sent, still-valid quote (its expiry) can go into a calendar. */
+  const confirmed = slots.find(s => s.confirmed)
+  const invite =
+    e.type === 'demo' && e.status === 'scheduled' && confirmed
+      ? { summary: `Demo: ${e.subject}`, text: () => demoInvite({
+          enquiryId: e.id, updatedAt: e.updated_at, summary: `Demo: ${e.subject}`,
+          description: `${FORMAT[e.format ?? ''] ?? 'Demo'} (enquiry ${e.id})`, location: confirmed.location ?? undefined, startsAt: confirmed.starts_at }) }
+      : e.type === 'quote' && (e.status === 'quoted' || e.status === 'accepted') && e.valid_until && state !== 'expired'
+        ? { summary: `Quote expires: ${e.subject}`, text: () => quoteExpiryInvite({
+            enquiryId: e.id, updatedAt: e.updated_at, summary: `Quote expires: ${e.subject}`,
+            description: `The quote for ${e.subject} (enquiry ${e.id}) is valid until ${fmtDbDate(e.valid_until!)} (UTC).`, validUntil: e.valid_until! }) }
+        : null
+  const addToCalendar = () => { if (invite) downloadIcs(`${e.id}.ics`, invite.text()) }
+
   const [body, setBody] = useState('')
   const [sending, setSending] = useState(false)
   const [replyError, setReplyError] = useState<string | null>(null)
@@ -110,7 +127,14 @@ export function EnquiryDetail({ enquiry: e, book, role, today, opts, onAction, a
         <div><dt>Last update</dt><dd>{fmtDateTime(e.updated_at)}</dd></div>
         {e.type === 'quote' && <div><dt>Needed by</dt><dd>{fmtDate(e.needed_by)}</dd></div>}
         {e.type === 'quote' && e.valid_until && (
-          <div><dt>Quote valid until</dt><dd>{fmtDate(e.valid_until)}{state === 'expired' ? ' (expired)' : ''}</dd></div>
+          <div><dt>Quote valid until</dt><dd>{validUntilLabel(e.valid_until)}{state === 'expired' ? ' (expired)' : ''}</dd></div>
+        )}
+        {invite && (
+          <div className="enq-facts__wide">
+            <Btn variant="secondary" style={{ minHeight: 44 }} onClick={addToCalendar} aria-label={`Add to calendar: ${invite.summary}`}>
+              <CalendarPlus size={14} aria-hidden="true" /> Add to calendar
+            </Btn>
+          </div>
         )}
         {e.type === 'demo' && <div><dt>Format</dt><dd>{e.format ? FORMAT[e.format] : '—'}</dd></div>}
         {e.type === 'demo' && <div><dt>Attendees</dt><dd>{e.attendees ?? '—'}</dd></div>}
