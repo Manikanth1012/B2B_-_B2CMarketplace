@@ -35,23 +35,41 @@ restyle, and get their own spec after the revamp.
 - [x] **Enterprise enquiry tracking** — the buyer's list of quotes, demos and enquiries with status.
 - [x] **Configurable product bundles** — buyer assembles a bundle with options and gets one price.
 
+## Spec 8 — polish (2026-11-11/12)
+
+Done — merged to main (`35d477a`, `78023e0`, `bea3f7a`): the 13 items below, except the database check,
+which waits on the user (migration `20261111300000`, branch `requisition-price-check`).
+Plan: `docs/superpowers/plans/2026-11-11-polish.md`.
+
+## Spec 9 — account price books and guided buying (2026-11-12)
+
+Built on branch `price-books` (not merged): spec `docs/superpowers/specs/2026-11-12-account-price-books-design.md`,
+plan `docs/superpowers/plans/2026-11-12-account-price-books.md`. Waits on the user applying migration
+`20261112100000` together with the deploy, after `20261111200000` and `20261111300000`.
+Reverses CR-008 ("negotiated pricing not operated here" → "sold here") — confirm the policy.
+Deferred minors: extra reads in the enterprise Price book reload; preference errors shown at the top;
+the drawer's off-book flag can lag a price change made while it is open; Approvals' off-book marker
+follows the account's current rule; no tests for the Approvals change or the note-lift wording.
+
 ## Still open after spec 5 (small, non-blocking)
+
+All closed by spec 8 except the database check (awaiting the user's apply).
 
 Found by the spec 5 reviews and sweep, judged not worth holding the merge.
 
-- [ ] **Component tests need a DOM.** Vitest runs in Node, so `Dialog`, `useFocusTrap`, `AccountTabs` and the price Retry state are covered by pure-function tests plus the browser sweep only. Adding `jsdom` (a dev dependency) would let them be tested directly.
-- [ ] My account form labels (`Field` in `AccountView.tsx`) are not tied to their inputs with `htmlFor`/`id` (pre-existing).
-- [ ] The public product window does not pass `onNotifyMe`, so its "Notify me when available" line stays plain text there (it opens `NotifyMeModal` on the signed-in product page).
-- [ ] Public `CategorySection` tiles have no description line (consumer tiles do).
-- [ ] Rewards figures lost their icons: `KpiCard` has no icon slot.
-- [ ] Order lines show a generic package tile: order items carry no image.
-- [ ] Rewards progress bar: its cyan end is 1.9:1 against the track (the text label carries the meaning, so not an AA failure).
-- [ ] Business Accounts: the Waiting chip counts 0 while a search is typed (applications have no searchable text).
-- [ ] `AccountTabs` sets no `aria-orientation` (the list is vertical only by CSS; arrow keys work both ways).
-- [ ] `Dialog` does not stop Escape propagating, so another document-level Escape listener open beneath a dialog (account menu, cart drawer) would also close — no such stacking exists today.
-- [ ] Contrast guard blind spots: a `catColors = {…}` assignment form and template strings inside style objects; the browser scanner skips `color()`/`oklch()` values.
+- [x] **Component tests need a DOM.** Vitest runs in Node, so `Dialog`, `useFocusTrap`, `AccountTabs` and the price Retry state are covered by pure-function tests plus the browser sweep only. Adding `jsdom` (a dev dependency) would let them be tested directly.
+- [x] My account form labels (`Field` in `AccountView.tsx`) are not tied to their inputs with `htmlFor`/`id` (pre-existing).
+- [x] The public product window does not pass `onNotifyMe`, so its "Notify me when available" line stays plain text there (it opens `NotifyMeModal` on the signed-in product page).
+- [x] Public `CategorySection` tiles have no description line (consumer tiles do).
+- [x] Rewards figures lost their icons: `KpiCard` has no icon slot.
+- [x] Order lines show a generic package tile: order items carry no image.
+- [x] Rewards progress bar: its cyan end is 1.9:1 against the track (the text label carries the meaning, so not an AA failure).
+- [x] Business Accounts: the Waiting chip counts 0 while a search is typed (applications have no searchable text).
+- [x] `AccountTabs` sets no `aria-orientation` (the list is vertical only by CSS; arrow keys work both ways).
+- [x] `Dialog` does not stop Escape propagating, so another document-level Escape listener open beneath a dialog (account menu, cart drawer) would also close — no such stacking exists today.
+- [x] Contrast guard blind spots: a `catColors = {…}` assignment form and template strings inside style objects; the browser scanner skips `color()`/`oklch()` values.
 - [ ] Requisition lines take `unit_price` from the client; the database does not re-check it against the price book (spec 6 checks quoted lines only).
-- [ ] Build warns that the main chunk is over 500 kB (pre-existing): split by persona with dynamic `import()`.
+- [x] Build warns that the main chunk is over 500 kB (pre-existing): split by persona with dynamic `import()`.
 
 ## Changes to be aware of (deliberate, from spec 5)
 
@@ -67,7 +85,7 @@ sources; "lacks" judged from the README and backlog — confirm against the code
 scoping). Nothing here is scheduled; the user chooses. S < 1 week, M 1–3 weeks, L a month+.
 
 Recommended first:
-- [ ] **Account price books and guided buying** (M) — standing negotiated prices per account, preferred sellers, off-contract flags; builds on spec 6 quotes; closes the unchecked requisition `unit_price` gap.
+- [x] **Account price books and guided buying** (M) — spec 9, built, awaiting apply — standing negotiated prices per account, preferred sellers, off-contract flags; builds on spec 6 quotes; closes the unchecked requisition `unit_price` gap.
 - [ ] **Reorder lists + buyer spend analytics** (S–M) — repeat purchases and spend by category/cost centre/seller vs budget; also fixes the basket not surviving a reload.
 - [ ] **Net terms and credit line at checkout** (M) — expose the existing credit & collections limits as a payment option with an invoice due date.
 - [ ] **Punch-out (cXML) + invoice-to-PO matching** (L) — reach large accounts from Coupa/Ariba/SAP; behind a flag, one reference system first.
@@ -91,7 +109,7 @@ Also worth considering:
 
 ## Still open after spec 7 (small, non-blocking)
 
-- [ ] **Decision needed — existing bug:** an ordinary (non-bundle) business requisition raised from the basket fails at approval: `raiseRequisition` never sets the requisition's `product_id` and `place_requisition_order` orders from that single header product, ignoring the lines. Spec 7 orders bundle requisitions line by line; ordinary multi-line requisitions still fail. Fixing it changes a live flow.
+- [x] **Fixed, awaiting the user's apply (migration `20261111200000`, branch `requisition-lines-order`) — existing bug:** an ordinary (non-bundle) business requisition raised from the basket fails at approval: `raiseRequisition` never sets the requisition's `product_id` and `place_requisition_order` orders from that single header product, ignoring the lines. Spec 7 orders bundle requisitions line by line; ordinary multi-line requisitions still fail. Fixing it changes a live flow.
 - [ ] Accepted risk: a shopper who removes the rest of a bundle mid-checkout buys one part at its bundle price. No seller goes below its floor; only the marketplace's discount is exposed. Each part can be ordered only once.
 - [ ] A requisition raised in a secondary currency cannot hold a bundle (bundles are priced in the account's currency).
 - [ ] Refund picker and operator order views do not group bundle lines yet (refunds work per part at its price).
@@ -115,7 +133,7 @@ Also worth considering:
 
 ## Data to check (not code)
 
-- [ ] Nimbus Sensors' (PTR-1004) AE market grant was left `suspended` by an interrupted pricing test (2026-11-05); set it back to approved.
+- [x] Nimbus Sensors' (PTR-1004) AE market grant was left `suspended` by an interrupted pricing test (2026-11-05); set it back to approved.
 - [ ] ~30 `notification_log` rows `NL-ENQ-*` point at deleted test enquiries (`ENQ-10xx`); only the service role can remove them.
 
 - [ ] Beacon IoT Care (SKU-7011) has no INR price — confirm that is intended (seller not approved in India).
