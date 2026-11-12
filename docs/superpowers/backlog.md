@@ -46,7 +46,7 @@ Plan: `docs/superpowers/plans/2026-11-11-polish.md`.
 Done — merged to main (`a229421`), migration `20261112100000` applied 2026-11-12; its 11 integration tests pass and
 the screens were checked in the browser (SmartBuild's seeded price on the book, the shelf and the desk). Spec `docs/superpowers/specs/2026-11-12-account-price-books-design.md`,
 plan `docs/superpowers/plans/2026-11-12-account-price-books.md`. Never re-run `20261111300000` now: it would put back the
-published-price-only check. Reverses CR-008 ("negotiated pricing not operated here" → "sold here") — confirm the policy.
+published-price-only check. Reverses CR-008 ("negotiated pricing not operated here" → "sold here") — confirmed by the user 2026-11-12, on the condition (enforced by the database) that an account price is never below the seller's floor.
 Deferred minors: extra reads in the enterprise Price book reload; preference errors shown at the top;
 Approvals' off-book marker follows the account's current rule. (Fixed in spec 10: the drawer re-checks prices on
 Raise; Approvals and the note lift have tests.)
