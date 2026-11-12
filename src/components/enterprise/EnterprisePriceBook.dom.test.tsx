@@ -11,6 +11,7 @@ const book = (can: boolean) => ({
 let current = book(true)
 const add = vi.fn()
 const save = vi.fn()
+let products: unknown[] = []
 
 vi.mock('../../lib/enterpriseRepo', () => ({
   loadAccount: async () => current,
@@ -20,11 +21,11 @@ vi.mock('../../lib/priceBookRepo', () => ({
   saveBuyingRules: (...a: unknown[]) => save(...a),
   addPreference: (...a: unknown[]) => add(...a),
   removePreference: async () => ({ ok: true, value: undefined }),
-  loadProductsByIds: async () => ({ ok: true, value: [] }),
+  loadProductsByIds: async () => ({ ok: true, value: products }),
 }))
 vi.mock('../../lib/MarketContext', () => ({ useMarket: () => ({ book: null }) }))
 
-afterEach(() => { cleanup(); vi.clearAllMocks() })
+afterEach(() => { cleanup(); vi.clearAllMocks(); products = [] })
 
 describe('EnterprisePriceBook', () => {
   it('shows the empty state and the database sentence when a save is refused', async () => {
@@ -55,5 +56,17 @@ describe('EnterprisePriceBook', () => {
     await screen.findByText(/no prices of its own yet/)
     expect(screen.getAllByText(/Only somebody who can set your account's policy/).length).toBeGreaterThan(0)
     expect(screen.queryByRole('button', { name: 'Save buying rules' })).toBeNull()
+  })
+
+  it('shows the charged price, not the agreed one, when the floor holds it up', async () => {
+    current = { ...book(true), prices: [{
+      id: 'P1', account_id: 'A1', product_id: 'p1', currency: 'INR', unit_price: 60,
+      starts_on: '2020-01-01', ends_on: null, withdrawn_on: null,
+    }] } as unknown as ReturnType<typeof book>
+    products = [{ id: 'p1', name: 'Gauge', published: { INR: 100 }, floors: { INR: 80 } }]
+    render(<EnterprisePriceBook />)
+    await screen.findByText('held at floor')
+    expect(screen.queryByText(/60/)).toBeNull()
+    expect(screen.getAllByText(/80/).length).toBeGreaterThan(0)
   })
 })

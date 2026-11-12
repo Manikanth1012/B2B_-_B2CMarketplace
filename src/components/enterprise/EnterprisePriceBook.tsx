@@ -9,7 +9,7 @@ import { loadAccount, loadEnterpriseCatalogue } from '../../lib/enterpriseRepo'
 import type { AccountBook, EnterpriseListing } from '../../lib/enterpriseRepo'
 import { saveBuyingRules, addPreference, removePreference, loadProductsByIds } from '../../lib/priceBookRepo'
 import type { PricedProduct } from '../../lib/priceBookRepo'
-import { standingOf } from '../../lib/accountPrices'
+import { standingOf, shelfPrice } from '../../lib/accountPrices'
 import type { AccountPrice, OffContractRule, PriceStanding } from '../../lib/accountPrices'
 import { may } from '../../lib/enterpriseAdmin'
 import { priceStandingStatus } from '../../lib/consoleTone'
@@ -99,13 +99,23 @@ export function EnterprisePriceBook() {
     /* Today's published price says nothing about a price that is over. */
     const live = standing === 'in force' || standing === 'scheduled'
     const pub = live ? publishedOf(p) : null
-    const saved = pub !== null && pub > p.unit_price ? pub - p.unit_price : 0
+    /* What is charged is least(published, greatest(agreed, floor)), not the agreed figure. */
+    const charged = pub !== null ? shelfPrice(pub, named?.get(p.product_id)?.floors[p.currency] ?? null, p) : null
+    const price = charged ? charged.price : p.unit_price
+    const saved = charged ? Math.max(0, charged.saving) : 0
     return (
       <tr key={p.id}>
         <Td>{nameOf(p)}</Td>
-        <Td>{pub !== null ? <PriceTag price={p.unit_price} published={pub} currency={p.currency} /> : <PriceTag price={p.unit_price} published={p.unit_price} currency={p.currency} />}</Td>
+        <Td>
+          {pub !== null ? <PriceTag price={price} published={pub} currency={p.currency} /> : <PriceTag price={p.unit_price} published={p.unit_price} currency={p.currency} />}
+          {charged && charged.clamp !== 'none' && (
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--warning)', fontWeight: 600 }}>
+              {charged.clamp === 'floor' ? 'held at floor' : 'published is lower'}
+            </div>
+          )}
+        </Td>
         <Td right>{pub !== null ? <PriceTag price={pub} published={pub} currency={p.currency} /> : '—'}</Td>
-        <Td right>{saved > 0 ? fmtRow(saved, p.currency, p.unit_price, pub ?? 0) : '—'}</Td>
+        <Td right>{saved > 0 ? fmtRow(saved, p.currency, price, pub ?? 0) : '—'}</Td>
         <Td>{p.currency}</Td>
         <Td>{fmtDate(p.starts_on)} – {p.ends_on ? fmtDate(p.ends_on) : 'open-ended'}</Td>
         <Td><StatusPill status={priceStandingStatus(standing)} label={standing} /></Td>

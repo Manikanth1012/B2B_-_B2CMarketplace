@@ -3,12 +3,13 @@
  *
  * No React and no Supabase, so the rules can be tested without a network.
  *
- * A contract here settles everything except the price. Nothing is negotiated on
- * this marketplace — every account buys at the published price for its market —
- * so there is no rate card hanging off this, and `term_value` is a figure the
- * account stated rather than a commitment that buys anything. CR-008 records the
- * boundary; this module is what is left once pricing is out of it, which is
- * still the thing that decides whether the account may buy at all.
+ * A contract here settles everything except the price. An account buys at the
+ * published price for its market unless it has its own price on its Price book
+ * (account_prices; CR-008 now records that as sold here), so there is no rate
+ * card hanging off the agreement, and `term_value` is a figure the account
+ * stated rather than a commitment that buys anything. This module is what is
+ * left once pricing is out of it, which is still the thing that decides whether
+ * the account may buy at all.
  *
  * Three ideas run through it.
  *

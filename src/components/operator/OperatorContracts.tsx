@@ -66,8 +66,8 @@ export function OperatorContracts() {
         </h1>
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px', maxWidth: '84ch' }}>
           What each business account buys under: the term, the payment terms and who signed.
-          Not a price list — every account is charged the published price for its market, and
-          nothing here changes what anything costs. An account with no agreement in force
+          Not a price list — an account is charged the published price for its market unless it
+          has its own price on its Price book, and nothing on an agreement changes what anything costs. An account with no agreement in force
           cannot raise or approve a purchase at all.
         </p>
       </div>
