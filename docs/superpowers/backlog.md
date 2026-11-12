@@ -143,8 +143,10 @@ a seller no longer reads the desk's quoted price on its lines of a desk quote (i
 
 ## Data to check (not code)
 
+- [ ] Every seed agreement has fixed dates and ends during 2027 (SmartBuild CTR-2007-01 on 31 Mar 2027, CTR-2014-01 31 Jan 2027, CTR-2013-01 31 May 2027, CTR-2011-01 30 Jun 2027, CTR-2015-01 19 Jul 2027, Meridian CTR-2012-02 11 Nov 2027). A lapse stops that account buying on account and fails its integration tests. Renew in the operator console, then `scripts/make-agreement-copy.ts` (CONTRACT=<new id>) files the signed copy.
+
 - [x] Nimbus Sensors' (PTR-1004) AE market grant was left `suspended` by an interrupted pricing test (2026-11-05); set it back to approved.
 - [ ] ~30 `notification_log` rows `NL-ENQ-*` point at deleted test enquiries (`ENQ-10xx`); only the service role can remove them.
 
 - [ ] Beacon IoT Care (SKU-7011) has no INR price — confirm that is intended (seller not approved in India).
-- [ ] 13 integration tests fail against the shared live database (still true 2026-11-12: `contracts.integration.test.ts` has 7, all on Meridian Foods ENT-2012's agreement — none in force, CTR-2012-03 unsigned or already present — and `requisitionScope` fails on the same lapsed agreement) (contract renewals, credit, disputes, help coverage, partner certificates, settlement idempotency, withholding) — the seed data has drifted since it was written. Unchanged by the revamp.
+- [x] **Contracts and requisitionScope fixed 2026-11-12** (migration `20261112400000`: Meridian Foods renewed as CTR-2012-02 to 2027-11-11, test debris CTR-2012-03 removed; the contracts tests no longer depend on today's date; all 44 pass). Re-check the rest of: 13 integration tests fail against the shared live database (contract renewals, credit, disputes, help coverage, partner certificates, settlement idempotency, withholding) — the seed data has drifted since it was written. Unchanged by the revamp.
