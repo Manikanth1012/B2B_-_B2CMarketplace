@@ -1,5 +1,42 @@
 import { describe, it, expect } from 'vitest'
-import { quoteLinesPayload, sendQuotePayload, asLine } from './enquiryPayload'
+import {
+  quoteLinesPayload, sendQuotePayload, asLine, proposeLinePricePayload, asDeskQuoteLine, isMissingFunction,
+} from './enquiryPayload'
+
+describe("the seller's proposal on a line", () => {
+  const base = { id: 'a', enquiry_id: 'ENQ-1', product_id: 'p', name: 'n', partner_id: 'PTR-1', quantity: 2,
+    target_unit_price: null, quoted_unit_price: null, sort_order: 1 }
+  it('reads as null when the database does not have the columns yet', () => {
+    const l = asLine(base)
+    expect(l.seller_unit_price).toBeNull()
+    expect(l.seller_note).toBeNull()
+    expect(l.seller_priced_at).toBeNull()
+  })
+  it('turns a numeric string into a number', () => {
+    const l = asLine({ ...base, seller_unit_price: '3899.00', seller_note: 'ok', seller_priced_at: '2026-11-12T10:00:00Z' })
+    expect(l.seller_unit_price).toBe(3899)
+    expect(l.seller_note).toBe('ok')
+    expect(l.seller_priced_at).toBe('2026-11-12T10:00:00Z')
+  })
+  it('sends a blank note as null', () => {
+    expect(proposeLinePricePayload('L1', 10, '  ')).toEqual({ p_line_id: 'L1', p_price: 10, p_note: null })
+    expect(proposeLinePricePayload('L1', 10, ' why ')).toEqual({ p_line_id: 'L1', p_price: 10, p_note: 'why' })
+  })
+  it('maps a desk quote line', () => {
+    const d = asDeskQuoteLine({ line_id: 'L1', enquiry_id: 'E', subject: 's', status: 'submitted', currency: 'INR',
+      needed_by: null, raised_at: 't', product_id: 'p', name: 'n', quantity: '3', target_unit_price: null,
+      floor_price: '100.50', sort_order: 2, seller_unit_price: null, seller_note: null, seller_priced_at: null })
+    expect(d.quantity).toBe(3)
+    expect(d.floor_price).toBe(100.5)
+    expect(d.seller_unit_price).toBeNull()
+  })
+  it('knows a function that is not there yet from any other failure', () => {
+    expect(isMissingFunction({ code: 'PGRST202', message: 'Could not find the function public.my_desk_quote_lines' })).toBe(true)
+    expect(isMissingFunction({ message: 'function public.propose_line_price(text, numeric, text) does not exist' })).toBe(true)
+    expect(isMissingFunction({ code: 'P0001', message: 'That line is not one of yours on a desk quote.' })).toBe(false)
+    expect(isMissingFunction(null)).toBe(false)
+  })
+})
 
 describe('quoteLinesPayload', () => {
   it('sends product, quantity and target; a missing target is null', () => {

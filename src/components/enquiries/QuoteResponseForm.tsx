@@ -2,16 +2,21 @@
  * the seller and by the operator desk on what is routed to it.
  * A price under the seller's own agreed floor is flagged, not refused: the
  * floor is the seller's number and the seller may knowingly go beneath it.
- * The desk has no floor of its own and passes none, so it sees no warning. */
+ * The desk has no floor of its own and passes none, so it sees no warning.
+ * On a desk quote across sellers, each seller may have proposed a price for
+ * its own lines (propose_line_price). The desk sees it beside the line and
+ * can use it with one press, or price the line itself. */
 import { useState } from 'react'
 import { TriangleAlert } from 'lucide-react'
-import { Btn, FormField, TextInput, TextArea, fmtInt } from '../operator/shared'
+import { Btn, FormField, TextInput, TextArea, fmtInt, fmtDateTime } from '../operator/shared'
 import { validUntilProblem } from '../../lib/enquiries'
 import type { Enquiry, EnquiryLine } from '../../lib/enquiries'
+import type { SellerProposal } from '../../lib/enquiryPayload'
 
 export interface QuoteResponseFormProps {
   enquiry: Enquiry
-  lines: readonly EnquiryLine[]
+  /** The seller's proposal is there only on desk quotes, once 20261112200000 is applied. */
+  lines: readonly (EnquiryLine & Partial<SellerProposal>)[]
   today: string
   /** product_id -> the seller's agreed floor, where it could be read. */
   floors: Readonly<Record<string, number>>
@@ -81,6 +86,25 @@ export function QuoteResponseForm({ enquiry, lines, today, floors, floorsFailed,
             <div id={`${id}-hint`} className="c-field__hint">
               {fmtInt(l.quantity)} wanted{l.target_unit_price !== null ? ` · they hope for ${money(l.target_unit_price, cur)}` : ''}
             </div>
+            {typeof l.seller_unit_price === 'number' && (
+              <div className="enq-proposal" id={`${id}-proposal`}>
+                <p className="enq-muted">
+                  The seller proposes {money(l.seller_unit_price, cur)} a unit
+                  {l.seller_priced_at ? ` (${fmtDateTime(l.seller_priced_at)})` : ''}.
+                  {l.seller_note ? ` “${l.seller_note}”` : ''}
+                </p>
+                <div className="enq-actions" style={{ justifyContent: 'flex-start' }}>
+                  <Btn type="button" variant="secondary" style={{ minHeight: 44 }}
+                    aria-label={`Use the seller's price for ${l.name}`}
+                    onClick={() => {
+                      setPrices(p => ({ ...p, [l.id]: String(l.seller_unit_price) }))
+                      setErrors(e => { const rest = { ...e }; delete rest[l.id]; return rest })
+                    }}>
+                    Use the seller's price
+                  </Btn>
+                </div>
+              </div>
+            )}
             <div id={`${id}-msg`}>
               {errors[l.id] && <p className="enq-error" role="alert">{errors[l.id]}</p>}
               {below && (

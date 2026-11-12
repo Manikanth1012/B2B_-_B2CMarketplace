@@ -29,13 +29,69 @@ export function sendQuotePayload(
 
 const num = (v: unknown): number | null => (v === null || v === undefined || v === '' ? null : Number(v))
 
+const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
+
+/** On a desk quote, what the seller of a line told the desk it would charge
+    (20261112200000). Null on every other line, and on every line while that
+    migration is not yet applied: the columns are read through `select('*')`,
+    so a database without them simply returns rows without them. */
+export interface SellerProposal {
+  seller_unit_price: number | null
+  seller_note: string | null
+  seller_priced_at: string | null
+}
+
+export type ProposedLine = EnquiryLine & SellerProposal
+
 /** A line as the database returns it. `numeric` can arrive as a string. */
-export function asLine(r: Record<string, unknown>): EnquiryLine {
+export function asLine(r: Record<string, unknown>): ProposedLine {
   return {
     ...(r as unknown as EnquiryLine),
     quantity: Number(r.quantity),
     target_unit_price: num(r.target_unit_price),
     quoted_unit_price: num(r.quoted_unit_price),
     sort_order: Number(r.sort_order ?? 0),
+    seller_unit_price: num(r.seller_unit_price),
+    seller_note: str(r.seller_note),
+    seller_priced_at: str(r.seller_priced_at),
   }
+}
+
+/** The arguments `propose_line_price` takes. A blank note is sent as null,
+    which clears any note proposed before. */
+export function proposeLinePricePayload(
+  lineId: string, price: number, note?: string | null,
+): { p_line_id: string; p_price: number; p_note: string | null } {
+  const trimmed = note?.trim()
+  return { p_line_id: lineId, p_price: Number(price), p_note: trimmed ? trimmed : null }
+}
+
+/** One of the seller's own lines on a desk quote, as `my_desk_quote_lines()`
+    returns it: the line, the few facts about the quote the seller needs to
+    price it, and the seller's own floor in the quote's currency. */
+export interface DeskQuoteLine extends SellerProposal {
+  line_id: string; enquiry_id: string; subject: string; status: string; currency: string
+  needed_by: string | null; raised_at: string; product_id: string; name: string; quantity: number
+  target_unit_price: number | null; floor_price: number | null; sort_order: number
+}
+
+export function asDeskQuoteLine(r: Record<string, unknown>): DeskQuoteLine {
+  return {
+    line_id: String(r.line_id), enquiry_id: String(r.enquiry_id), subject: String(r.subject ?? ''),
+    status: String(r.status ?? ''), currency: String(r.currency ?? ''),
+    needed_by: str(r.needed_by), raised_at: String(r.raised_at ?? ''),
+    product_id: String(r.product_id), name: String(r.name ?? ''), quantity: Number(r.quantity),
+    target_unit_price: num(r.target_unit_price), floor_price: num(r.floor_price),
+    sort_order: Number(r.sort_order ?? 0),
+    seller_unit_price: num(r.seller_unit_price), seller_note: str(r.seller_note),
+    seller_priced_at: str(r.seller_priced_at),
+  }
+}
+
+/** True when an rpc failed because the function is not on this database yet:
+    the migration that adds it has not been applied. */
+export function isMissingFunction(error: { message?: string; code?: string } | null | undefined): boolean {
+  if (!error) return false
+  if (error.code === 'PGRST202' || error.code === '42883') return true
+  return /could not find the function|function .* does not exist/i.test(error.message ?? '')
 }

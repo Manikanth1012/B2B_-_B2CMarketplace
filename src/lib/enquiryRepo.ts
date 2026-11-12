@@ -7,8 +7,11 @@
 // security hides rows it will not let you touch) is an error, not an "ok".
 
 import { supabase } from './supabase'
-import type { Enquiry, EnquiryLine, EnquirySlot, EnquiryMessage } from './enquiries'
-import { quoteLinesPayload, sendQuotePayload, asLine } from './enquiryPayload'
+import type { Enquiry, EnquirySlot, EnquiryMessage } from './enquiries'
+import {
+  quoteLinesPayload, sendQuotePayload, asLine, proposeLinePricePayload, asDeskQuoteLine, isMissingFunction,
+} from './enquiryPayload'
+import type { ProposedLine, DeskQuoteLine } from './enquiryPayload'
 import type { QuotedProduct } from './enquiryList'
 
 export interface EnquiryEvent {
@@ -18,7 +21,7 @@ export interface EnquiryEvent {
 }
 
 export interface EnquiryBook {
-  enquiries: Enquiry[]; lines: EnquiryLine[]; slots: EnquirySlot[]
+  enquiries: Enquiry[]; lines: ProposedLine[]; slots: EnquirySlot[]
   messages: EnquiryMessage[]; events: EnquiryEvent[]; loadError: string | null
 }
 
@@ -108,6 +111,37 @@ export async function sendQuote(
   try {
     const { error } = await supabase.rpc('send_quote', sendQuotePayload(id, prices, valid_until, note))
     return error ? { ok: false, error: error.message } : { ok: true }
+  } catch (err) {
+    return { ok: false, error: errorText(err) }
+  }
+}
+
+/** A seller's own lines on desk quotes (quotes across sellers, which the desk
+    answers). `missing` is true when the database does not have
+    `my_desk_quote_lines` yet: 20261112200000 is not applied, and the screen
+    says pricing these is not set up rather than showing an error. */
+export async function loadMyDeskQuoteLines(): Promise<
+  { ok: true; lines: DeskQuoteLine[] } | { ok: false; missing: boolean; error: string }
+> {
+  try {
+    const { data, error } = await supabase.rpc('my_desk_quote_lines')
+    if (error) return { ok: false, missing: isMissingFunction(error), error: error.message }
+    return { ok: true, lines: ((data ?? []) as Record<string, unknown>[]).map(asDeskQuoteLine) }
+  } catch (err) {
+    return { ok: false, missing: false, error: errorText(err) }
+  }
+}
+
+/** The seller of a line on a desk quote proposes its unit price to the desk.
+    The database checks who, when and how much, and tells the desk. */
+export async function proposeLinePrice(lineId: string, price: number, note?: string | null): Promise<Result> {
+  try {
+    const { error } = await supabase.rpc('propose_line_price', proposeLinePricePayload(lineId, price, note))
+    if (!error) return { ok: true }
+    if (isMissingFunction(error)) {
+      return { ok: false, error: 'Pricing your part of a desk quote is not set up on this marketplace yet.' }
+    }
+    return { ok: false, error: error.message }
   } catch (err) {
     return { ok: false, error: errorText(err) }
   }
