@@ -37,23 +37,23 @@ restyle, and get their own spec after the revamp.
 
 ## Spec 8 — polish (2026-11-11/12)
 
-Done — merged to main (`35d477a`, `78023e0`, `bea3f7a`): the 13 items below, except the database check,
-which waits on the user (migration `20261111300000`, branch `requisition-price-check`).
+Done — merged to main (`35d477a`, `78023e0`, `bea3f7a`, `86cbc33`): all 13 items below. The database check
+(migration `20261111300000`) was applied 2026-11-12; its integration test passes.
 Plan: `docs/superpowers/plans/2026-11-11-polish.md`.
 
 ## Spec 9 — account price books and guided buying (2026-11-12)
 
-Built on branch `price-books` (not merged): spec `docs/superpowers/specs/2026-11-12-account-price-books-design.md`,
-plan `docs/superpowers/plans/2026-11-12-account-price-books.md`. Waits on the user applying migration
-`20261112100000` together with the deploy, after `20261111200000` and `20261111300000`.
-Reverses CR-008 ("negotiated pricing not operated here" → "sold here") — confirm the policy.
+Done — merged to main (`a229421`), migration `20261112100000` applied 2026-11-12; its 11 integration tests pass and
+the screens were checked in the browser (SmartBuild's seeded price on the book, the shelf and the desk). Spec `docs/superpowers/specs/2026-11-12-account-price-books-design.md`,
+plan `docs/superpowers/plans/2026-11-12-account-price-books.md`. Never re-run `20261111300000` now: it would put back the
+published-price-only check. Reverses CR-008 ("negotiated pricing not operated here" → "sold here") — confirm the policy.
 Deferred minors: extra reads in the enterprise Price book reload; preference errors shown at the top;
 the drawer's off-book flag can lag a price change made while it is open; Approvals' off-book marker
 follows the account's current rule; no tests for the Approvals change or the note-lift wording.
 
 ## Still open after spec 5 (small, non-blocking)
 
-All closed by spec 8 except the database check (awaiting the user's apply).
+All closed by spec 8.
 
 Found by the spec 5 reviews and sweep, judged not worth holding the merge.
 
@@ -85,7 +85,7 @@ sources; "lacks" judged from the README and backlog — confirm against the code
 scoping). Nothing here is scheduled; the user chooses. S < 1 week, M 1–3 weeks, L a month+.
 
 Recommended first:
-- [x] **Account price books and guided buying** (M) — spec 9, built, awaiting apply — standing negotiated prices per account, preferred sellers, off-contract flags; builds on spec 6 quotes; closes the unchecked requisition `unit_price` gap.
+- [x] **Account price books and guided buying** (M) — spec 9, done 2026-11-12 — standing negotiated prices per account, preferred sellers, off-contract flags; builds on spec 6 quotes; closes the unchecked requisition `unit_price` gap.
 - [ ] **Reorder lists + buyer spend analytics** (S–M) — repeat purchases and spend by category/cost centre/seller vs budget; also fixes the basket not surviving a reload.
 - [ ] **Net terms and credit line at checkout** (M) — expose the existing credit & collections limits as a payment option with an invoice due date.
 - [ ] **Punch-out (cXML) + invoice-to-PO matching** (L) — reach large accounts from Coupa/Ariba/SAP; behind a flag, one reference system first.
@@ -109,7 +109,7 @@ Also worth considering:
 
 ## Still open after spec 7 (small, non-blocking)
 
-- [x] **Fixed, awaiting the user's apply (migration `20261111200000`, branch `requisition-lines-order`) — existing bug:** an ordinary (non-bundle) business requisition raised from the basket fails at approval: `raiseRequisition` never sets the requisition's `product_id` and `place_requisition_order` orders from that single header product, ignoring the lines. Spec 7 orders bundle requisitions line by line; ordinary multi-line requisitions still fail. Fixing it changes a live flow.
+- [x] **Fixed — migration `20261111200000` applied 2026-11-12, integration test passes — existing bug:** an ordinary (non-bundle) business requisition raised from the basket fails at approval: `raiseRequisition` never sets the requisition's `product_id` and `place_requisition_order` orders from that single header product, ignoring the lines. Spec 7 orders bundle requisitions line by line; ordinary multi-line requisitions still fail. Fixing it changes a live flow.
 - [ ] Accepted risk: a shopper who removes the rest of a bundle mid-checkout buys one part at its bundle price. No seller goes below its floor; only the marketplace's discount is exposed. Each part can be ordered only once.
 - [ ] A requisition raised in a secondary currency cannot hold a bundle (bundles are priced in the account's currency).
 - [ ] Refund picker and operator order views do not group bundle lines yet (refunds work per part at its price).
@@ -137,4 +137,4 @@ Also worth considering:
 - [ ] ~30 `notification_log` rows `NL-ENQ-*` point at deleted test enquiries (`ENQ-10xx`); only the service role can remove them.
 
 - [ ] Beacon IoT Care (SKU-7011) has no INR price — confirm that is intended (seller not approved in India).
-- [ ] 13 integration tests fail against the shared live database (contract renewals, credit, disputes, help coverage, partner certificates, settlement idempotency, withholding) — the seed data has drifted since it was written. Unchanged by the revamp.
+- [ ] 13 integration tests fail against the shared live database (still true 2026-11-12: `contracts.integration.test.ts` has 7, all on Meridian Foods ENT-2012's agreement — none in force, CTR-2012-03 unsigned or already present — and `requisitionScope` fails on the same lapsed agreement) (contract renewals, credit, disputes, help coverage, partner certificates, settlement idempotency, withholding) — the seed data has drifted since it was written. Unchanged by the revamp.
