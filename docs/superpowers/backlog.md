@@ -68,7 +68,7 @@ Found by the spec 5 reviews and sweep, judged not worth holding the merge.
 - [x] `AccountTabs` sets no `aria-orientation` (the list is vertical only by CSS; arrow keys work both ways).
 - [x] `Dialog` does not stop Escape propagating, so another document-level Escape listener open beneath a dialog (account menu, cart drawer) would also close — no such stacking exists today.
 - [x] Contrast guard blind spots: a `catColors = {…}` assignment form and template strings inside style objects; the browser scanner skips `color()`/`oklch()` values.
-- [ ] Requisition lines take `unit_price` from the client; the database does not re-check it against the price book (spec 6 checks quoted lines only).
+- [x] Requisition lines take `unit_price` from the client; the database does not re-check it against the price book (spec 6 checks quoted lines only). Fixed by migration `20261111300000`, then account prices by spec 9.
 - [x] Build warns that the main chunk is over 500 kB (pre-existing): split by persona with dynamic `import()`.
 
 ## Changes to be aware of (deliberate, from spec 5)
