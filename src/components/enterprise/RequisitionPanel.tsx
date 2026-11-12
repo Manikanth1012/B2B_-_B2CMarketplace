@@ -13,8 +13,11 @@ import { useState, useEffect, useRef } from 'react'
 import { X, Trash2, TriangleAlert as AlertTriangle, Check } from 'lucide-react'
 import { Btn, toast } from '../operator/shared'
 import { useRequisition } from '../../lib/RequisitionContext'
-import { verdict, missingFields, missingNote, verticalOf, modelOf } from '../../lib/requisitionBasket'
-import type { MissingField } from '../../lib/requisitionBasket'
+import { verdict, missingFields, missingNote, verticalOf, modelOf, isOffContract } from '../../lib/requisitionBasket'
+import type { MissingField, BasketLine } from '../../lib/requisitionBasket'
+import { DEFAULT_RULES, showsOffContract, offContractReasonProblem } from '../../lib/accountPrices'
+import type { OffContractRule } from '../../lib/accountPrices'
+import { OffContractMarker } from '../pricebooks/PriceTag'
 import { raiseRequisition, loadAccount } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
 import { useMarket } from '../../lib/MarketContext'
@@ -35,10 +38,15 @@ const BLANK = { title: '', reason: '', cost_centre: null as string | null, po_re
    maps to the title field because an empty requisition has no line to focus —
    the panel says "Nothing here yet" in that state and the footer is not
    rendered at all, so it is unreachable in practice. */
-const FIELD_ID: Record<MissingField, string> = {
+const FIELD_ID: Record<Exclude<MissingField, 'off_contract_reason'>, string> = {
   lines: 'req-title', title: 'req-title', reason: 'req-reason',
   cost_centre: 'req-cc', po_ref: 'req-po',
 }
+
+/* One reason field per line off the price book, so each has its own id. Built
+   from the product id (a basket holds one ordinary line per product) with
+   anything an id would not like replaced. */
+export const offReasonId = (product_id: string) => `req-offreason-${product_id.replace(/[^A-Za-z0-9_-]/g, '_')}`
 
 export function RequisitionPanel({ onRaised, onQuoteRequested }: {
   /* The console is told afterwards, because the queue the buyer is about to be
@@ -48,7 +56,7 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
   onQuoteRequested?: () => void
 }) {
   const [quoting, setQuoting] = useState(false)
-  const { basket, open, setOpen, setQuantity, remove, removeBundle, empty, total, count } = useRequisition()
+  const { basket, open, setOpen, setQuantity, remove, setReason, removeBundle, empty, total, count } = useRequisition()
   /* The marketplace's formatter, with the currency table in it. This panel used
      to import `money` from `enterprise.ts`, which has no table and writes
      "INR 400,000.00" — every price on the panel, not only the threshold. */
@@ -109,13 +117,29 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
   const currencies = book?.currencies ?? []
   const rates = book?.rates ?? []
   const today = new Date().toISOString().slice(0, 10)
+  /* The account's own prices and buying rules. Before price books exist on the
+     database these come back empty and 'allow', and the panel is as it was. */
+  const prices = book?.prices ?? []
+  const rules = book?.rules ?? DEFAULT_RULES(account?.id ?? '')
+  const rule = rules.off_contract
+  /* Decision 20: an account with no price in force and rule 'allow' would see
+     every line flagged, so the marker is hidden then. */
+  const shows = showsOffContract(rules, prices, today)
+  const offLine = (l: BasketLine) => shows && isOffContract(l)
   const v = account && policy
     /* The preview names the threshold, and without the currency table it names
        it as "INR 400,000.00" beside a basket priced "₹4,00,000.00". */
-    ? verdict(basket, account, policy, rates, today, fmtIn)
+    ? verdict(basket, account, policy, rates, today, fmtIn, { rule })
     : null
-  const missing = account ? missingFields(basket, draft, account)
+  const missing = account ? missingFields(basket, draft, account, { rule, shows })
     : [{ field: 'lines' as MissingField, says: book ? 'your account, which did not load' : 'your account to finish loading' }]
+  /* Where pressing Raise takes somebody: for a missing reason, the first line
+     whose reason the database would refuse. */
+  const fieldId = (f: MissingField): string => {
+    if (f !== 'off_contract_reason') return FIELD_ID[f]
+    const first = basket.lines.find(l => offLine(l) && offContractReasonProblem(l.off_contract_reason) !== null)
+    return first ? offReasonId(first.product_id) : 'req-title'
+  }
   const stopper = missingNote(missing.map(m => m.says))
   const short = (f: MissingField) => attempted && missing.some(m => m.field === f)
 
@@ -145,7 +169,7 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
     if (missing.length) {
       setAttempted(true)
       const first = missing[0].field
-      const el = document.getElementById(FIELD_ID[first])
+      const el = document.getElementById(fieldId(first))
       if (el) {
         el.scrollIntoView({ block: 'center', behavior: 'smooth' })
         ;(el as HTMLElement).focus({ preventScroll: true })
@@ -164,9 +188,13 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
           partner_id: l.partner_id, quantity: l.quantity, unit_price: l.unit_price,
           quote_line_id: l.quote_line_id ?? null,
           bundle_selection_id: l.bundle_selection_id ?? null,
+          /* Only where the rules ask for one, on a line off the price book.
+             A database without price books has no column to take it. */
+          ...(rule === 'reason' && offLine(l) && l.off_contract_reason?.trim()
+            ? { off_contract_reason: l.off_contract_reason.trim() } : {}),
         })),
       },
-      me, account, policy, currencies, rates,
+      me, account, policy, currencies, rates, prices, rules,
     })
     setBusy(false)
     if (!res.ok) { toast(res.reason, 'error'); return }
@@ -249,7 +277,8 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
                     </div>
                   )
                 })() : g.lines.map((l) => (
-                  <div key={l.product_id} style={{ display: 'flex', gap: '12px', padding: '12px', borderTop: gi ? '1px solid var(--border-light)' : 'none', alignItems: 'center' }}>
+                  <div key={l.product_id} style={{ padding: '12px', borderTop: gi ? '1px solid var(--border-light)' : 'none' }}>
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                     <div style={{ width: 48, height: 48, borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--bg-alt)', flexShrink: 0 }}>
                       <img src={getProductImage(l.product_id)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
                     </div>
@@ -283,6 +312,14 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
                     <button onClick={() => remove(l.product_id)} aria-label={`Remove ${l.name}`} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}>
                       <Trash2 size={16} />
                     </button>
+                  </div>
+                  {offLine(l) && (
+                    <OffContractLine line={l} rule={rule} attempted={attempted} field={field} wanting={wanting} label={label}
+                      onReason={reason => {
+                        const r = setReason(l.product_id, reason)
+                        if (!r.ok) toast(r.reason, 'error')
+                      }} />
+                  )}
                   </div>
                 )))}
                 <div style={{ padding: '12px', borderTop: '1px solid var(--border)', background: 'var(--bg-alt)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -413,6 +450,51 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
         onQuoteRequested?.()
       }} />
     </>
+  )
+}
+
+/* Under a line bought off the account's price book: the marker, and what the
+   buying rules ask of it. Under 'reason' a field the database will check
+   (guard_requisition_line_contract: 5 to 300 characters, trimmed); under
+   'approval' the sentence saying where it goes; under 'allow' the marker only. */
+function OffContractLine({ line, rule, attempted, field, wanting, label, onReason }: {
+  line: Pick<BasketLine, 'product_id' | 'name' | 'off_contract_reason'>
+  rule: OffContractRule
+  attempted: boolean
+  field: React.CSSProperties; wanting: React.CSSProperties; label: React.CSSProperties
+  onReason: (reason: string) => void
+}) {
+  const id = offReasonId(line.product_id)
+  const problem = rule === 'reason' ? offContractReasonProblem(line.off_contract_reason, line.name) : null
+  const showProblem = attempted && !!problem
+  return (
+    <div style={{ marginTop: '8px', paddingLeft: '60px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+      <OffContractMarker />
+      {rule === 'approval' && (
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+          Goes to a finance approver because it is off your price book
+        </div>
+      )}
+      {rule === 'reason' && (
+        <div>
+          <label style={label} htmlFor={id}>Why buy {line.name} off your price book</label>
+          <textarea id={id} rows={2} maxLength={300}
+            value={line.off_contract_reason ?? ''}
+            aria-invalid={showProblem}
+            aria-describedby={`${id}-hint${showProblem ? ` ${id}-error` : ''}`}
+            onChange={e => onReason(e.target.value)}
+            style={{ ...(showProblem ? wanting : field), minHeight: '44px', resize: 'vertical' }} />
+          <div id={`${id}-hint`} style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+            Your buying rules ask for a reason, 5 to 300 characters. The approver reads it.
+          </div>
+          {showProblem && (
+            <div id={`${id}-error`} style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', fontWeight: 600, marginTop: '4px' }}>
+              {problem}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 

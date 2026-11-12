@@ -1,0 +1,24 @@
+/* Price tag, badges and the off-contract marker. Colours are tokens whose
+   pairings contrast.test.ts guards. */
+.pb-tag, .pb-tag__visual { display: inline-flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; }
+.pb-tag__label { font-size: 12px; font-weight: 600; color: var(--success); }
+.pb-tag__price { font-weight: 700; color: var(--text); }
+.pb-tag__was { color: var(--text-secondary); font-size: 0.875em; }
+.pb-tag--compact .pb-tag__label { font-size: 11px; }
+
+.pb-badge { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: var(--radius-full); font-size: 12px; font-weight: 600; line-height: 1.4; }
+.pb-badge--contract { background: var(--success-bg); color: var(--success); }
+.pb-badge--preferred { background: var(--info-bg); color: var(--info); }
+
+.pb-off { display: inline-flex; flex-direction: column; gap: 2px; }
+.pb-off__label { display: inline-flex; align-self: flex-start; padding: 2px 8px; border-radius: var(--radius-full); background: var(--warning-bg); color: var(--warning); font-size: 12px; font-weight: 600; }
+.pb-off__reason { font-size: 13px; color: var(--text-secondary); overflow-wrap: anywhere; }
+
+/* Anything on the price-book screens that can be pressed or typed into keeps a
+   44px target. */
+.pb-target { min-height: 44px; min-width: 44px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pb-tag, .pb-badge, .pb-off, .pb-target { transition: none; animation: none; }
+}
+.pb-badges { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }

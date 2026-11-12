@@ -20,6 +20,13 @@ import { currenciesOf , round2} from './money'
 import type { Rate, MarketCurrency } from './money'
 import type { EnterpriseRole } from './enterpriseAdmin'
 import type { Position as CreditPosition } from './credit'
+import {
+  DEFAULT_RULES, shelfPrice, inForce, preferenceOf, lineContract, needWithRules, offContractNote,
+  offContractReasonProblem,
+} from './accountPrices'
+import type { AccountPrice, BuyingRules, Preference } from './accountPrices'
+import { loadAccountPrices, loadBuyingRules, loadPreferences } from './priceBookRepo'
+import { joinNote } from './priceBookPayload'
 
 export type Result = Check
 
@@ -67,6 +74,12 @@ export interface AccountBook {
      an account — its own — and null here means it did not load, not that there
      is no limit. */
   credit: CreditPosition | null
+  /* The account's own prices, its buying rules and its preferred sellers and
+     products. Before the price-book migration is applied these read as none,
+     'allow' and none, which is how the account behaved before it. */
+  prices: AccountPrice[]
+  rules: BuyingRules
+  preferences: Preference[]
   loadError?: string
 }
 
@@ -74,6 +87,7 @@ const EMPTY: AccountBook = {
   account: null, me: null, members: [], roles: [], centres: [], policy: null,
   requisitions: [], lines: [], subscriptions: [], invoices: [], invoiceLines: [],
   currencies: [], rates: [], credit: null,
+  prices: [], rules: DEFAULT_RULES(''), preferences: [],
 }
 
 /* PostgREST sends numerics as strings, and a limit compared as a string is
@@ -105,7 +119,7 @@ export async function loadAccount(): Promise<AccountBook> {
   const { data: session } = await supabase.auth.getUser()
   const uid = session.user?.id ?? null
 
-  const [a, u, ro, c, p, r, l, s, i, il, mc, fx, cp] = await Promise.all([
+  const [a, u, ro, c, p, r, l, s, i, il, mc, fx, cp, apr, abr, apf] = await Promise.all([
     supabase.from('enterprise_accounts').select('*').maybeSingle(),
     supabase.from('enterprise_users').select('*').order('sort_order'),
     supabase.from('enterprise_roles').select('*').order('sort_order'),
@@ -119,6 +133,9 @@ export async function loadAccount(): Promise<AccountBook> {
     supabase.from('market_currencies').select('*').order('sort_order'),
     supabase.from('fx_rates').select('*').order('as_of'),
     supabase.from('account_credit_position').select('*').maybeSingle(),
+    loadAccountPrices(),
+    loadBuyingRules(),
+    loadPreferences(),
   ])
 
   const errors: string[] = []
@@ -128,6 +145,15 @@ export async function loadAccount(): Promise<AccountBook> {
   }
   const members = grab<Member>(u, 'your colleagues')
   const account = (a.data ?? null) as Account | null
+  /* The price-book reads answer as results; a missing table is already "none". */
+  const settled = <T>(res: { ok: true; value: T } | { ok: false; error: string }, what: string, empty: T): T => {
+    if (!res.ok) { errors.push(`${what}: ${res.error}`); return empty }
+    return res.value
+  }
+  const prices = settled(apr, 'your price book', [] as AccountPrice[])
+  const rulesRead = settled(abr, 'your buying rules', DEFAULT_RULES(account?.id ?? ''))
+  const rules = rulesRead.account_id ? rulesRead : { ...rulesRead, account_id: account?.id ?? '' }
+  const preferences = settled(apf, 'your preferred sellers and products', [] as Preference[])
 
   return {
     ...EMPTY,
@@ -154,6 +180,7 @@ export async function loadAccount(): Promise<AccountBook> {
     /* Every figure through `Number`: PostgREST sends numerics as strings, and a
        limit compared as a string is compared alphabetically. */
     credit: cp.data ? creditRow(cp.data as Record<string, unknown>) : null,
+    prices, rules, preferences,
     ...(a.error ? { loadError: `Your account did not load (${a.error.message}).` }
       : errors.length ? { loadError: `Some of this did not load (${errors.join('; ')}).` } : {}),
   }
@@ -280,6 +307,9 @@ export interface Draft {
     /* The configured bundle this part belongs to, if any. Its unit price is the
        selection's; guard_bundle_requisition_line holds it to that. */
     bundle_selection_id?: string | null
+    /* Why this line is bought off the account's price book, when the buying
+       rules ask (guard_requisition_line_contract). Sent only when present. */
+    off_contract_reason?: string | null
   }[]
 }
 
@@ -291,13 +321,18 @@ export interface Draft {
  * asked for on the day.
  */
 export async function raiseRequisition(
-  { draft, me, account, policy, currencies = [], rates = [] }: {
+  { draft, me, account, policy, currencies = [], rates = [], prices = [], rules = { off_contract: 'allow' } }: {
     draft: Draft; me: Member; account: Account; policy: Policy
     /* What this account's market takes. Checked here as well as by
        `guard_requisition_currency`, so the refusal is a sentence rather than a
        Postgres error string. */
     currencies?: readonly string[]
     rates?: readonly Rate[]
+    /* The account's own prices and its buying rules, as loadAccount read them.
+       Without them every line is judged as before price books: no account
+       price and rule 'allow', so nothing here changes. */
+    prices?: readonly AccountPrice[]
+    rules?: Pick<BuyingRules, 'off_contract'>
   },
 ): Promise<Result> {
   const check = validateRequisition(draft, me)
@@ -337,14 +372,45 @@ export async function raiseRequisition(
     }
   }
 
-  const need = needFor({ amount: at.amount, vertical: draft.vertical }, policy)
+  /* What the database will decide about each line, decided here first so a
+     refusal is a sentence before anything is written. The database sets
+     `off_contract`, `off_contract_rule` and `account_price_id` itself; none of
+     them is sent. */
+  const rule = rules.off_contract
+  if (rule !== 'allow') {
+    /* lineContract reads a product-less line as not off contract, but the
+       price guard refuses it before the contract guard is reached. */
+    const loose = lines.find(l => !l.quote_line_id && !l.bundle_selection_id && !l.product_id)
+    if (loose) {
+      return {
+        ok: false,
+        reason: `${loose.name.trim() || 'That line'} names no listing, so there is no price to hold it to. Add it from the catalogue and raise the requisition again.`,
+      }
+    }
+  }
+  const off = lines.filter(l => lineContract(l, prices, account.id, currency, today).off)
+  if (rule === 'reason') {
+    for (const l of off) {
+      const problem = offContractReasonProblem(l.off_contract_reason, l.name.trim() || l.product_id || 'That line')
+      if (problem) return { ok: false, reason: problem }
+    }
+  }
+
+  const baseNeed = needFor({ amount: at.amount, vertical: draft.vertical }, policy)
+  const need = needWithRules(baseNeed, off.length > 0, rule)
+  /* The threshold sentence says what the threshold asked; the off-contract
+     sentence says what the buying rules added on top. */
+  const policyNote = joinNote(
+    policyNoteFor(baseNeed, at.amount, policy, account.currency, at, money, need !== baseNeed),
+    offContractNote(rule, off.length),
+  )
   const id = `REQ-${Math.floor(Date.now() / 1000).toString().slice(-4)}`
 
   const { error } = await supabase.from('enterprise_requisitions').insert({
     id, account_id: account.id, raised_by: me.id, raised_on: today, raised_at: 'Just now',
     title: draft.title.trim(), vertical: draft.vertical, cost_centre: draft.cost_centre,
     amount, currency, model: draft.model, reason: draft.reason.trim(),
-    need, policy_note: policyNoteFor(need, at.amount, policy, account.currency, at), state: 'pending',
+    need, policy_note: policyNote, state: 'pending',
     po_ref: draft.po_ref.trim() || null,
     sort_order: 0,
   })
@@ -363,6 +429,7 @@ export async function raiseRequisition(
          the columns it always has. */
       ...(l.quote_line_id ? { quote_line_id: l.quote_line_id } : {}),
       ...bundleColumns(l),
+      ...(l.off_contract_reason?.trim() ? { off_contract_reason: l.off_contract_reason.trim() } : {}),
     })),
   )
   if (lineError) {
@@ -527,15 +594,35 @@ export interface EnterpriseListing {
   fulfil: string | null
   specs: Record<string, string> | null
   price_includes_tax: boolean | null
+  /* The account's own price. `price` is what the account is charged —
+     least(published, greatest(account price, floor)) — and `published_price`
+     is the market's price beside it. Where the account has no price in force
+     the two are equal, `on_contract` is false and the listing is as it was. */
+  published_price: number
+  account_price_id: string | null
+  on_contract: boolean
+  preferred: 'product' | 'seller' | null
 }
 
-export async function loadEnterpriseCatalogue(currency: string): Promise<EnterpriseListing[]> {
-  const [p, book, copy] = await Promise.all([
+export async function loadEnterpriseCatalogue(currency: string, accountId?: string): Promise<EnterpriseListing[]> {
+  const [p, book, copy, ap, pf] = await Promise.all([
     supabase.from('products').select('*')
       .contains('audiences', ['enterprise']).eq('status', 'live').order('sort_order'),
     loadPriceBook(currency),
     loadCopyBook(),
+    /* RLS gives a buyer its own account's rows only. */
+    loadAccountPrices(accountId),
+    loadPreferences(accountId),
   ])
+  /* A failed read leaves the shelf at published prices and is said in the
+     console rather than hidden. A missing table is not a failure: the repo
+     already reads it as no rows. */
+  if (!ap.ok) console.warn(`Account prices did not load, so the shelf shows published prices (${ap.error}).`)
+  if (!pf.ok) console.warn(`Preferred sellers and products did not load (${pf.error}).`)
+  const prices = (ap.ok ? ap.value : []).filter(x => x.currency === currency)
+  const prefs = pf.ok ? pf.value : []
+  const account = accountId ?? prices[0]?.account_id ?? ''
+  const today = new Date().toISOString().slice(0, 10)
   type Row = {
     id: string; name: string; category_id: string; sub_category: string | null
     seller: string; partner_id: string | null; price: number; model: string
@@ -546,14 +633,21 @@ export async function loadEnterpriseCatalogue(currency: string): Promise<Enterpr
   }
   return ((p.data ?? []) as Row[]).map(r => {
     const priced = book.get(r.id)
+    const shelfCurrency = priced ? currency : 'USD'
+    const published = priced ? priced.price : Number(r.price)
+    /* Only a row in the shelf's own currency is discounted: the base-row
+       fallback is in other money, and nothing converts. */
+    const row = shelfCurrency === currency && account
+      ? inForce(prices, { account_id: account, product_id: r.id, currency }, today) : null
+    const charged = shelfPrice(published, priced ? priced.floor_price : null, row)
     return {
       id: r.id, name: r.name, category_id: r.category_id, sub_category: r.sub_category,
       seller: r.seller, partner_id: r.partner_id,
       /* The book's figure, or the base row if the book does not price it there.
          Converting on the spot would put an unrounded number on a shelf beside
          chosen ones — the same rule `reprice` follows for the storefront. */
-      price: priced ? priced.price : Number(r.price),
-      currency: priced ? currency : 'USD',
+      price: row ? charged.price : published,
+      currency: shelfCurrency,
       model: r.model, unit: r.unit,
       rating: Number(r.rating ?? 0), reviews: Number(r.reviews ?? 0),
       stock: r.stock,
@@ -562,6 +656,10 @@ export async function loadEnterpriseCatalogue(currency: string): Promise<Enterpr
       description: describeIn({ id: r.id, description: r.description ?? '' }, copy, currency),
       fulfil: r.fulfil, specs: r.specs,
       price_includes_tax: r.price_includes_tax,
+      published_price: row ? charged.published_price : published,
+      account_price_id: charged.account_price_id,
+      on_contract: charged.on_contract,
+      preferred: preferenceOf({ id: r.id, partner_id: r.partner_id }, prefs),
     }
   })
 }

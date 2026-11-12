@@ -40,7 +40,7 @@ export function stockTone(stock: string): 'success' | 'warning' | 'danger' {
    the currency it was priced in, and rating only when buyers have left one. The
    name is the button that opens the product, stretched over the whole card by CSS;
    the basket button and checkbox sit above it as separate, reachable controls. */
-export function ProductCard({ product: p, onOpen, action, compare, showStock, notify, priceNote }: {
+export function ProductCard({ product: p, onOpen, action, compare, showStock, notify, priceNote, badges, priceSlot }: {
   product: CardProduct
   onOpen: (p: CardProduct) => void
   action?: { label: string; onClick: () => void; disabled?: boolean }
@@ -48,6 +48,9 @@ export function ProductCard({ product: p, onOpen, action, compare, showStock, no
   showStock?: boolean
   notify?: { watching: boolean; onNotify: () => void }
   priceNote?: string
+  /* Business shelf only: preferred and price-book badges, and the account's own price in place of the plain figure. */
+  badges?: React.ReactNode
+  priceSlot?: React.ReactNode
 }) {
   const { fmtIn, currency } = useMarket()
   const price = (n: number) => fmtIn(n, p.currency ?? currency?.code ?? 'USD')
@@ -70,6 +73,7 @@ export function ProductCard({ product: p, onOpen, action, compare, showStock, no
             aria-label={`${p.name}, ${price(p.price)} — view details`}>{p.name}</button>
         </h3>
         <div className="p-card__seller">{p.seller}</div>
+        {badges}
         {p.description && <p className="p-card__desc">{p.description}</p>}
         {hasRating && (
           <div className="p-card__rating">
@@ -80,7 +84,7 @@ export function ProductCard({ product: p, onOpen, action, compare, showStock, no
         {showStock && <div><StatusBadge tone={stockTone(p.stock)}>{stockLabel(p.stock)}</StatusBadge></div>}
         <div className="p-card__foot">
           <span className="p-card__price">
-            {price(p.price)}
+            {priceSlot ?? price(p.price)}
             {(priceNote ?? p.unit) && <span className="p-card__unit">{priceNote ?? p.unit}</span>}
             {p.was_price != null && p.was_price > p.price && (
               <span className="p-card__was">{price(p.was_price)}</span>

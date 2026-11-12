@@ -15,6 +15,7 @@ import { EnterpriseApprovals } from './EnterpriseApprovals'
 import { EnterpriseRefunds } from './EnterpriseRefunds'
 import { EnterpriseBilling } from './EnterpriseBilling'
 import { EnterpriseAgreement } from './EnterpriseAgreement'
+import { EnterprisePriceBook } from './EnterprisePriceBook'
 import { EnterpriseRewards } from './EnterpriseRewards'
 import { EnterpriseSupport } from './EnterpriseSupport'
 import { KnowledgeBase } from '../KnowledgeBase'
@@ -49,6 +50,7 @@ export function EnterpriseScreens({ view, anchor, onSetView }: {
       {view === 'en-refunds' && <EnterpriseRefunds />}
       {view === 'en-billing' && <EnterpriseBilling />}
       {view === 'en-agreement' && <EnterpriseAgreement />}
+      {view === 'en-pricebook' && <EnterprisePriceBook />}
       {view === 'en-rewards' && <EnterpriseRewards />}
       {view === 'en-support' && <EnterpriseSupport />}
       {view === 'en-notifications' && <EnterpriseNotifications />}

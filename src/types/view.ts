@@ -23,6 +23,7 @@ export type OperatorView =
   | 'op-disputes'
   | 'op-credit'
   | 'op-contracts'
+  | 'op-pricebooks'
   | 'op-enquiries'
   | 'op-shelves'
   | 'op-reviews'
@@ -64,6 +65,7 @@ export type PartnerView =
 
 export type EnterpriseView =
   | 'en-agreement'
+  | 'en-pricebook'
   | 'en-dashboard'
   | 'en-browse'
   | 'en-iot'

@@ -4,7 +4,7 @@ import { describe, it, expect } from 'vitest'
 import {
   EMPTY_BASKET, MAX_QUANTITY, addToBasket, setQuantity, removeLine,
   basketTotal, basketCount, verticalOf, modelOf, repriceTo, verdict,
-  whatIsMissing, missingFields, missingNote, holdsQuote, isQuoted,
+  whatIsMissing, missingFields, missingNote, holdsQuote, isQuoted, setReason,
 } from './requisitionBasket'
 import type { Basket, BasketLine } from './requisitionBasket'
 import type { Policy, Account } from './enterprise'
@@ -377,5 +377,79 @@ describe('a line from an accepted quote', () => {
     expect(b.lines).toHaveLength(1)
     expect(b.lines[0].quantity).toBe(2)
     expect(holdsQuote(b)).toBe(false)
+  })
+})
+
+describe('the account price book and its buying rules', () => {
+  const onBook = item({ product_id: 'SKU-9101', name: 'Agreed tracker', on_contract: true })
+  const offBook = item({ product_id: 'SKU-9102', name: 'Unagreed tracker', on_contract: false })
+  const full = { title: 'Trackers', reason: 'Fleet', cost_centre: 'CC-01', po_ref: '' }
+
+  it('records a reason on a line, and refuses a line that is not there', () => {
+    const b = build({ line: offBook })
+    const r = setReason(b, 'SKU-9102', 'Only stockist in Pune')
+    expect(r.ok).toBe(true)
+    if (r.ok) expect(r.basket.lines[0].off_contract_reason).toBe('Only stockist in Pune')
+    const nope = setReason(b, 'SKU-0000', 'Only stockist in Pune')
+    expect(nope.ok).toBe(false)
+    expect(b.lines[0].off_contract_reason).toBeUndefined()
+  })
+
+  it('under approval, a line off the book sends a within-policy requisition to finance', () => {
+    const v = verdict(build({ line: offBook }), ACCOUNT, POLICY, [], '2026-08-04', undefined, { rule: 'approval' })
+    expect(v.need).toBe('finance')
+    expect(v.note).toContain("1 line is off the account's price book — finance approval required")
+  })
+
+  it('under approval, an IT sign-off becomes both', () => {
+    const fw = item({ ...firewall, on_contract: false })
+    expect(verdict(build({ line: fw }), ACCOUNT, POLICY, [], '2026-08-04').need).toBe('it')
+    expect(verdict(build({ line: fw }), ACCOUNT, POLICY, [], '2026-08-04', undefined, { rule: 'approval' }).need).toBe('both')
+  })
+
+  it('under approval, a basket wholly on the book is unchanged', () => {
+    const plain = verdict(build({ line: onBook }), ACCOUNT, POLICY, [], '2026-08-04')
+    const ruled = verdict(build({ line: onBook }), ACCOUNT, POLICY, [], '2026-08-04', undefined, { rule: 'approval' })
+    expect(ruled).toEqual(plain)
+  })
+
+  it('under allow or reason, the need is unchanged', () => {
+    const b = build({ line: offBook })
+    const plain = verdict(b, ACCOUNT, POLICY, [], '2026-08-04')
+    expect(verdict(b, ACCOUNT, POLICY, [], '2026-08-04', undefined, { rule: 'allow' })).toEqual(plain)
+    const reason = verdict(b, ACCOUNT, POLICY, [], '2026-08-04', undefined, { rule: 'reason' })
+    expect(reason.need).toBe(plain.need)
+    expect(reason.note).toContain('a reason is recorded for each')
+  })
+
+  it('asks for a reason on each off-book line when the rule is reason and it is shown', () => {
+    const b = build({ line: offBook }, { line: onBook })
+    const asks = missingFields(b, full, ACCOUNT, { rule: 'reason', shows: true })
+    expect(asks).toEqual([{ field: 'off_contract_reason', says: 'a reason for each line off your price book' }])
+    const r = setReason(b, 'SKU-9102', 'Only stockist in Pune')
+    if (!r.ok) throw new Error(r.reason)
+    expect(missingFields(r.basket, full, ACCOUNT, { rule: 'reason', shows: true })).toEqual([])
+    const short = setReason(b, 'SKU-9102', ' abc ')
+    if (!short.ok) throw new Error(short.reason)
+    expect(missingFields(short.basket, full, ACCOUNT, { rule: 'reason', shows: true }).map(m => m.field)).toEqual(['off_contract_reason'])
+  })
+
+  it('asks for no reason under allow or approval, when hidden, or without rules', () => {
+    const b = build({ line: offBook })
+    expect(missingFields(b, full, ACCOUNT, { rule: 'allow', shows: true })).toEqual([])
+    expect(missingFields(b, full, ACCOUNT, { rule: 'approval', shows: true })).toEqual([])
+    expect(missingFields(b, full, ACCOUNT, { rule: 'reason', shows: false })).toEqual([])
+    expect(missingFields(b, full, ACCOUNT)).toEqual([])
+  })
+
+  it('takes on_contract from the new shelf and drops a reason once the line is on the book', () => {
+    const r = setReason(build({ line: offBook }), 'SKU-9102', 'Only stockist in Pune')
+    if (!r.ok) throw new Error(r.reason)
+    const on = repriceTo(r.basket, 'AED', [{ id: 'SKU-9102', price: 300, model: 'oneoff', unit: null, currency: 'AED', on_contract: true }]).basket
+    expect(on.lines[0].on_contract).toBe(true)
+    expect(on.lines[0].off_contract_reason).toBeUndefined()
+    const still = repriceTo(r.basket, 'AED', [{ id: 'SKU-9102', price: 300, model: 'oneoff', unit: null, currency: 'AED', on_contract: false }]).basket
+    expect(still.lines[0].on_contract).toBe(false)
+    expect(still.lines[0].off_contract_reason).toBe('Only stockist in Pune')
   })
 })

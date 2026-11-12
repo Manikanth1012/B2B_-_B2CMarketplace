@@ -66,8 +66,8 @@ export function OperatorContracts() {
         </h1>
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px', maxWidth: '84ch' }}>
           What each business account buys under: the term, the payment terms and who signed.
-          Not a price list — every account is charged the published price for its market, and
-          nothing here changes what anything costs. An account with no agreement in force
+          Not a price list — an account is charged the published price for its market unless it
+          has its own price on its Price book, and nothing on an agreement changes what anything costs. An account with no agreement in force
           cannot raise or approve a purchase at all.
         </p>
       </div>
@@ -491,7 +491,7 @@ function AmendModal({ contract, onClose, onDone }: {
       <Callout tone="info" title="Both sides, and why">
         An amendment says what it changed from and what to. One side alone cannot be read back
         by whoever has to explain it to the account that signed it, and a change with no reason
-        is an edit somebody made. Prices are not amendable here — see CR-008.
+        is an edit somebody made. Prices are not part of an agreement — they are on Price books.
       </Callout>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
