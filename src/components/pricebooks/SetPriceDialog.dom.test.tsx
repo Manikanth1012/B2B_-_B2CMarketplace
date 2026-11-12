@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { AccountPrice } from '../../lib/accountPrices'
 
+/* No database here: CI has no Supabase keys, and supabase.ts throws without them. */
+vi.mock('../../lib/supabase', () => ({ supabase: {} }))
+
 const repo = vi.hoisted(() => ({ setAccountPrice: vi.fn(), promoteQuoteLine: vi.fn() }))
 vi.mock('../../lib/priceBookRepo', () => repo)
 vi.mock('../../lib/moneyRepo', () => ({

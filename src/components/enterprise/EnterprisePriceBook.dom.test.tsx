@@ -3,6 +3,9 @@ import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/re
 import { EnterprisePriceBook } from './EnterprisePriceBook'
 import { DEFAULT_RULES } from '../../lib/accountPrices'
 
+/* No database here: CI has no Supabase keys, and supabase.ts throws without them. */
+vi.mock('../../lib/supabase', () => ({ supabase: {} }))
+
 const roles = [{ id: 'lead', can_set_policy: true }]
 const book = (can: boolean) => ({
   account: { id: 'A1', currency: 'INR' }, me: { role: can ? 'lead' : 'other' }, roles,

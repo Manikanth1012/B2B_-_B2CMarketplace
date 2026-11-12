@@ -1,6 +1,9 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { ShelfBadges, shelfPriceTag } from './EnterpriseListingModal'
+
+/* No database here: CI has no Supabase keys, and supabase.ts throws without them. */
+vi.mock('../../lib/supabase', () => ({ supabase: {} }))
 
 describe('shelf badges and price', () => {
   it('render nothing for a listing with no preference and no price book', () => {

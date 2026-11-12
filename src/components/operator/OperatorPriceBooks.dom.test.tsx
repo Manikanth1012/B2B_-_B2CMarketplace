@@ -2,6 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { AccountPrice } from '../../lib/accountPrices'
 
+/* No database here: CI has no Supabase keys, and supabase.ts throws without them. */
+vi.mock('../../lib/supabase', () => ({ supabase: {} }))
+
 /* Each account's reads are held until the test lets them go, so the order they answer in is chosen here. */
 const gates = vi.hoisted(() => new Map<string, (v: unknown) => void>())
 const hold = (key: string, value: unknown) => new Promise(res => gates.set(key, () => res(value)))
