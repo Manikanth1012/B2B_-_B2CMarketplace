@@ -24,12 +24,15 @@ vi.mock('../../lib/enterpriseRepo', () => ({
 vi.mock('../../lib/priceBookRepo', () => ({
   loadAccountPrices: (id: string) => repo.prices(id),
   loadBuyingRules: (id: string) => repo.rules(id),
-}))
-vi.mock('../../lib/moneyRepo', () => ({
-  loadPriceBookResult: (c: string) => repo.published(c),
+  loadPublishedPrices: (ids: string[], c: string) => repo.published(ids, c),
 }))
 vi.mock('../../lib/MarketContext', () => ({
   useMarket: () => ({ fmtIn: (n: number, c: string) => `${c} ${n.toFixed(2)}`, book: null }),
+}))
+const toasts = vi.hoisted(() => ({ calls: [] as unknown[][] }))
+vi.mock('../operator/shared', async (orig) => ({
+  ...(await orig<Record<string, unknown>>()),
+  toast: (...a: unknown[]) => { toasts.calls.push(a) },
 }))
 
 const ctx = vi.hoisted(() => ({ basket: null as unknown, setBasket: null as unknown, setOpen: () => {} }))
@@ -106,6 +109,7 @@ beforeEach(() => {
   repo.raise.mockReset()
   repo.raise.mockResolvedValue({ ok: true, note: 'Raised' })
   repo.prices.mockReset(); repo.rules.mockReset(); repo.published.mockReset()
+  toasts.calls = []
   Element.prototype.scrollIntoView = vi.fn()
   vi.spyOn(console, 'warn').mockImplementation(() => {})
 })
@@ -128,7 +132,7 @@ describe('RequisitionPanel re-checks today\'s prices on Raise', () => {
     await userEvent.click(raiseButton())
     await waitFor(() => expect(repo.raise).toHaveBeenCalledTimes(1))
     expect(repo.prices).toHaveBeenCalledWith('ENT-1')
-    expect(repo.published).toHaveBeenCalledWith('INR')
+    expect(repo.published).toHaveBeenCalledWith(['SKU-9001'], 'INR')
     expect(repo.raise.mock.calls[0][0].draft.lines[0].unit_price).toBe(1000)
     expect(screen.queryByText(PRICES_MOVED)).toBeNull()
   })
@@ -144,6 +148,8 @@ describe('RequisitionPanel re-checks today\'s prices on Raise', () => {
     const note = await screen.findByText('Price now INR 900.00 (was INR 1000.00), now on your price book')
     expect(repo.raise).not.toHaveBeenCalled()
     expect(screen.getByRole('status').textContent).toBe(PRICES_MOVED)
+    /* Announced once: by the status line, not by a toast as well. */
+    expect(toasts.calls.some(c => c[0] === PRICES_MOVED)).toBe(false)
     const line = document.getElementById('req-line-SKU-9001')!
     await waitFor(() => expect(document.activeElement).toBe(line))
     expect(line.getAttribute('aria-describedby')).toBe(note.id)
@@ -195,6 +201,34 @@ describe('RequisitionPanel re-checks today\'s prices on Raise', () => {
     await waitFor(() => expect(document.activeElement).toBe(field))
     expect(repo.raise).not.toHaveBeenCalled()
     expect(screen.queryByText(PRICES_MOVED)).toBeNull()
+  })
+
+  it("the rule moved from 'reason' to 'allow': the missing reason is judged on today's rule, and it is raised", async () => {
+    repo.book = bookWith('reason', [])
+    freshReads('allow', [])
+    render(<Harness start={[LINE]} />)
+    await screen.findByLabelText('Why buy Gateway off your price book')
+    await fillDraft()
+    await userEvent.click(raiseButton())
+    await waitFor(() => expect(repo.raise).toHaveBeenCalledTimes(1))
+    expect(repo.raise.mock.calls[0][0].rules.off_contract).toBe('allow')
+    expect('off_contract_reason' in repo.raise.mock.calls[0][0].draft.lines[0]).toBe(false)
+  })
+
+  it('the line controls are held while the prices are re-read', async () => {
+    repo.book = bookWith('allow', [])
+    let release: (v: unknown) => void = () => {}
+    repo.prices.mockReturnValue(new Promise(r => { release = r }))
+    repo.rules.mockResolvedValue({ ok: true, value: rulesOf('allow') })
+    repo.published.mockResolvedValue({ ok: true, value: new Map([['SKU-9001', { price: 1000, floor_price: null }]]) })
+    render(<Harness start={[LINE]} />)
+    await screen.findByText(/no approval needed/)
+    await fillDraft()
+    await userEvent.click(raiseButton())
+    expect((screen.getByLabelText('Quantity of Gateway') as HTMLInputElement).disabled).toBe(true)
+    expect((screen.getByRole('button', { name: 'Remove Gateway' }) as HTMLButtonElement).disabled).toBe(true)
+    release({ ok: true, value: [] })
+    await waitFor(() => expect(repo.raise).toHaveBeenCalledTimes(1))
   })
 
   it('the re-read failing raises as before, on the figures shown (the database still checks the price)', async () => {

@@ -276,6 +276,28 @@ export function repriceTo(
   return { basket: lines.length ? { currency, lines } : EMPTY_BASKET, dropped }
 }
 
+/**
+ * Each listing's published price in one currency, read the way
+ * guard_requisition_line_price reads it: the `product_prices` row for that
+ * currency (with its floor), else the listing's base row when the base row is in
+ * that currency (no floor). A listing with neither is absent.
+ */
+export function publishedIn(
+  currency: string,
+  rows: readonly { product_id: string; currency: string; price: number; floor_price: number | null }[],
+  base: readonly { id: string; currency: string | null; price: number }[],
+): Map<string, { price: number; floor_price: number | null }> {
+  const out = new Map<string, { price: number; floor_price: number | null }>()
+  for (const b of base) {
+    if (b.currency === currency && Number.isFinite(b.price)) out.set(b.id, { price: round2(b.price), floor_price: null })
+  }
+  for (const r of rows) {
+    if (r.currency !== currency || !Number.isFinite(r.price)) continue
+    out.set(r.product_id, { price: round2(r.price), floor_price: r.floor_price === null ? null : round2(r.floor_price) })
+  }
+  return out
+}
+
 /** One ordinary line whose price or standing on the price book moved since it was added. */
 export interface ContractChange {
   product_id: string

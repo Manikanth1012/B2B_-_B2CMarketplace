@@ -21,6 +21,7 @@ import {
   setPriceArgs, endPriceArgs, promoteArgs, isMissing, friendly, NOT_SET_UP,
 } from './priceBookPayload'
 import type { SellerAccountPrice, WireError } from './priceBookPayload'
+import { publishedIn } from './requisitionBasket'
 
 export type { SellerAccountPrice }
 
@@ -190,6 +191,33 @@ export async function loadProductsByIds(ids: readonly string[]): Promise<Result<
         id: String(r.id), name: String(r.name), published: published.get(String(r.id)) ?? {}, floors: floors.get(String(r.id)) ?? {},
       })),
     }
+  } catch (e) {
+    return { ok: false, error: errorText(e) }
+  }
+}
+
+/** The published price of each listing in one currency, as the requisition price guard reads it:
+    its `product_prices` row, else its base row when that is in this currency (publishedIn). */
+export async function loadPublishedPrices(
+  ids: readonly string[], currency: string,
+): Promise<Result<Map<string, { price: number; floor_price: number | null }>>> {
+  const want = Array.from(new Set(ids.filter(Boolean)))
+  if (want.length === 0) return { ok: true, value: new Map() }
+  try {
+    const [pp, p] = await Promise.all([
+      supabase.from('product_prices').select('product_id, currency, price, floor_price').in('product_id', want).eq('currency', currency),
+      supabase.from('products').select('id, currency, price').in('id', want),
+    ])
+    if (pp.error) return { ok: false, error: pp.error.message }
+    if (p.error) return { ok: false, error: p.error.message }
+    const rows = ((pp.data ?? []) as Row[]).map(r => ({
+      product_id: String(r.product_id), currency: String(r.currency), price: Number(r.price),
+      floor_price: r.floor_price === null || r.floor_price === undefined ? null : Number(r.floor_price),
+    }))
+    const base = ((p.data ?? []) as Row[]).map(r => ({
+      id: String(r.id), currency: r.currency === null || r.currency === undefined ? null : String(r.currency), price: Number(r.price),
+    }))
+    return { ok: true, value: publishedIn(currency, rows, base) }
   } catch (e) {
     return { ok: false, error: errorText(e) }
   }

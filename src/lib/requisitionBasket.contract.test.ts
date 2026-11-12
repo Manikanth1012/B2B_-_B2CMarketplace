@@ -1,6 +1,6 @@
 /* The drawer's re-check before Raise: today's prices against what the basket holds. */
 import { describe, it, expect } from 'vitest'
-import { contractChanges, applyContractChanges } from './requisitionBasket'
+import { contractChanges, applyContractChanges, publishedIn } from './requisitionBasket'
 import type { Basket, BasketLine } from './requisitionBasket'
 import type { AccountPrice } from './accountPrices'
 
@@ -79,6 +79,29 @@ describe('contractChanges', () => {
   it('compares at two places', () => {
     const b = basket(line({ unit_price: 999.999 }))
     expect(contractChanges(b, { prices: [], published: published([['SKU-1', 1000, null]]) }, 'ENT-1', TODAY)).toEqual([])
+  })
+})
+
+describe('publishedIn (the price guard\'s published price)', () => {
+  it('the currency row wins, with its floor', () => {
+    const m = publishedIn('INR', [{ product_id: 'SKU-1', currency: 'INR', price: 1000, floor_price: 800 }], [{ id: 'SKU-1', currency: 'INR', price: 1200 }])
+    expect(m.get('SKU-1')).toEqual({ price: 1000, floor_price: 800 })
+  })
+
+  it('no row in the currency: the base row when it is in that currency, with no floor', () => {
+    const m = publishedIn('USD', [{ product_id: 'SKU-1', currency: 'INR', price: 1000, floor_price: 800 }], [{ id: 'SKU-1', currency: 'USD', price: 49.999 }])
+    expect(m.get('SKU-1')).toEqual({ price: 50, floor_price: null })
+  })
+
+  it('a base row in other money is not a price here', () => {
+    expect(publishedIn('USD', [], [{ id: 'SKU-1', currency: 'INR', price: 1000 }]).has('SKU-1')).toBe(false)
+  })
+
+  it('a listing priced only on its base row: an account price that starts moves its price to the account\'s', () => {
+    const b: Basket = { currency: 'USD', lines: [line({ unit_price: 50 })] }
+    const published = publishedIn('USD', [], [{ id: 'SKU-1', currency: 'USD', price: 50 }])
+    const [c] = contractChanges(b, { prices: [price({ currency: 'USD', unit_price: 45 })], published }, 'ENT-1', TODAY)
+    expect(c.now).toEqual({ unit_price: 45, on_contract: true })
   })
 })
 

@@ -21,9 +21,7 @@ vi.mock('../../lib/enterpriseRepo', () => ({
 vi.mock('../../lib/priceBookRepo', () => ({
   loadAccountPrices: () => Promise.resolve({ ok: true, value: repo.book.prices }),
   loadBuyingRules: () => Promise.resolve({ ok: true, value: repo.book.rules }),
-}))
-vi.mock('../../lib/moneyRepo', () => ({
-  loadPriceBookResult: () => Promise.resolve({ ok: true, value: new Map([['SKU-9001', { price: 1000, floor_price: null }]]) }),
+  loadPublishedPrices: () => Promise.resolve({ ok: true, value: new Map([['SKU-9001', { price: 1000, floor_price: null }]]) }),
 }))
 vi.mock('../../lib/MarketContext', () => ({
   useMarket: () => ({ fmtIn: (n: number, c: string) => `${c} ${n.toFixed(2)}`, book: null }),
@@ -111,8 +109,9 @@ describe('RequisitionPanel and the buying rules', () => {
     await fillDraft()
 
     await userEvent.click(screen.getByRole('button', { name: /Raise/ }))
+    /* Judged after the re-read, so focus arrives on the next render. */
+    await waitFor(() => expect(document.activeElement).toBe(field))
     expect(repo.raise).not.toHaveBeenCalled()
-    expect(document.activeElement).toBe(field)
     expect(field.getAttribute('aria-invalid')).toBe('true')
     const error = screen.getByText(/Gateway is not on your account's price book/)
     expect(field.getAttribute('aria-describedby')).toContain(error.id)

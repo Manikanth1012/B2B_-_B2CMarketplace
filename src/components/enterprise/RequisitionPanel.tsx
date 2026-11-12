@@ -17,8 +17,7 @@ import { verdict, missingFields, missingNote, verticalOf, modelOf, isOffContract
 import type { MissingField, BasketLine, Basket, ContractChange } from '../../lib/requisitionBasket'
 import { DEFAULT_RULES, showsOffContract, offContractReasonProblem } from '../../lib/accountPrices'
 import type { OffContractRule, AccountPrice, BuyingRules } from '../../lib/accountPrices'
-import { loadAccountPrices, loadBuyingRules } from '../../lib/priceBookRepo'
-import { loadPriceBookResult } from '../../lib/moneyRepo'
+import { loadAccountPrices, loadBuyingRules, loadPublishedPrices } from '../../lib/priceBookRepo'
 import { OffContractMarker } from '../pricebooks/PriceTag'
 import { raiseRequisition, loadAccount } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
@@ -66,7 +65,10 @@ async function recheck(account_id: string, basket: Basket, today: string):
   Promise<{ prices: AccountPrice[]; rules: BuyingRules; changes: ContractChange[] } | null> {
   try {
     const [ap, br, pb] = await Promise.all([
-      loadAccountPrices(account_id), loadBuyingRules(account_id), loadPriceBookResult(basket.currency),
+      loadAccountPrices(account_id), loadBuyingRules(account_id),
+      /* Each listing's published price as the database's price guard reads it,
+         base row included (publishedIn). */
+      loadPublishedPrices(basket.lines.map(l => l.product_id), basket.currency),
     ])
     if (!ap.ok || !br.ok || !pb.ok) {
       console.warn(`Today's prices could not be re-read before raising, so the requisition goes on the figures shown (${
@@ -124,9 +126,11 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
   useEffect(() => {
     const id = focusNext.current
     if (!id) return
+    /* Tried once, on the render that follows: a target that never rendered
+       (its line removed meanwhile) must not take focus later. */
+    focusNext.current = null
     const el = document.getElementById(id)
     if (!el) return
-    focusNext.current = null
     el.scrollIntoView({ block: 'center', behavior: 'smooth' })
     el.focus({ preventScroll: true })
   })
@@ -213,21 +217,13 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
 
   const raise = async () => {
     if (!account || !me || !policy) return
-    if (missing.length) {
-      setAttempted(true)
-      const first = missing[0].field
-      const el = document.getElementById(fieldId(first))
-      if (el) {
-        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
-        ;(el as HTMLElement).focus({ preventScroll: true })
-      }
-      toast(missingNote(missing.map(m => m.says)) ?? 'Something is missing', 'error')
-      return
-    }
     setBusy(true)
-    /* Today's prices and rules, read again: a price can start, end or be
+    /* Today's prices and rules, read again first: a price can start, end or be
        withdrawn while the drawer is open, and the database would refuse a line
-       priced the old way. A failed read raises on what is shown, as before. */
+       priced the old way. The missing fields are then judged on those rules, not
+       the ones the drawer opened with. A failed read goes on what is shown, as
+       before; the database's price guard still decides. The line controls are
+       held while this runs, so the lines raised are the lines on screen. */
     let lines = basket.lines
     let rulesNow: BuyingRules = rules
     let pricesNow: readonly AccountPrice[] = prices
@@ -244,27 +240,26 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
       const stopOn = fresh.changes.filter(c =>
         c.was.unit_price !== c.now.unit_price || (showsNow && c.was.on_contract !== c.now.on_contract))
       if (stopOn.length) {
+        /* Said once, by the footer's status line; no toast beside it. */
         setMoved(stopOn)
         setBusy(false)
         const first = stopOn[0]
         const asks = fresh.rules.off_contract === 'reason' && showsNow && !first.now.on_contract
         focusNext.current = asks ? offReasonId(first.product_id) : lineId(first.product_id)
-        toast(PRICES_MOVED, 'error')
         return
       }
       setMoved([])
-      /* The rules may have moved too: a reason may now be asked for. */
-      const again = missingFields({ ...basket, lines }, draft, account, { rule: fresh.rules.off_contract, shows: showsNow })
-      if (again.length) {
-        setBusy(false)
-        setAttempted(true)
-        focusNext.current = fieldId(again[0].field, lines, showsNow)
-        toast(missingNote(again.map(m => m.says)) ?? 'Something is missing', 'error')
-        return
-      }
     }
     const ruleNow = rulesNow.off_contract
     const showsNow = showsOffContract(rulesNow, pricesNow, today)
+    const missingNow = missingFields({ ...basket, lines }, draft, account, { rule: ruleNow, shows: showsNow })
+    if (missingNow.length) {
+      setBusy(false)
+      setAttempted(true)
+      focusNext.current = fieldId(missingNow[0].field, lines, showsNow)
+      toast(missingNote(missingNow.map(m => m.says)) ?? 'Something is missing', 'error')
+      return
+    }
     const res = await raiseRequisition({
       draft: {
         title: draft.title, reason: draft.reason, currency: basket.currency,
@@ -386,7 +381,7 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
                       </div>
                     ) : (
                     <input
-                      type="number" min={0} value={l.quantity} aria-label={`Quantity of ${l.name}`}
+                      type="number" min={0} value={l.quantity} aria-label={`Quantity of ${l.name}`} disabled={busy}
                       onChange={e => {
                         const n = Number(e.target.value)
                         if (!Number.isInteger(n)) return
@@ -399,7 +394,7 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
                     <div style={{ width: 96, textAlign: 'right', fontWeight: 700, fontSize: 'var(--text-sm)' }}>
                       {money(round2(l.quantity * l.unit_price), basket.currency)}
                     </div>
-                    <button onClick={() => remove(l.product_id)} aria-label={`Remove ${l.name}`} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}>
+                    <button onClick={() => remove(l.product_id)} disabled={busy} aria-label={`Remove ${l.name}`} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}>
                       <Trash2 size={16} />
                     </button>
                   </div>
@@ -409,7 +404,7 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
                       fmt={n => money(n, basket.currency)} /> : null
                   })()}
                   {offLine(l) && (
-                    <OffContractLine line={l} rule={rule} attempted={attempted} field={field} wanting={wanting} label={label}
+                    <OffContractLine line={l} rule={rule} attempted={attempted} busy={busy} field={field} wanting={wanting} label={label}
                       onReason={reason => {
                         const r = setReason(l.product_id, reason)
                         if (!r.ok) toast(r.reason, 'error')
@@ -556,10 +551,11 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
    buying rules ask of it. Under 'reason' a field the database will check
    (guard_requisition_line_contract: 5 to 300 characters, trimmed); under
    'approval' the sentence saying where it goes; under 'allow' the marker only. */
-function OffContractLine({ line, rule, attempted, field, wanting, label, onReason }: {
+function OffContractLine({ line, rule, attempted, busy, field, wanting, label, onReason }: {
   line: Pick<BasketLine, 'product_id' | 'name' | 'off_contract_reason'>
   rule: OffContractRule
   attempted: boolean
+  busy: boolean
   field: React.CSSProperties; wanting: React.CSSProperties; label: React.CSSProperties
   onReason: (reason: string) => void
 }) {
@@ -578,7 +574,7 @@ function OffContractLine({ line, rule, attempted, field, wanting, label, onReaso
         <div>
           <label style={label} htmlFor={id}>Why buy {line.name} off your price book</label>
           <textarea id={id} rows={2} maxLength={300}
-            value={line.off_contract_reason ?? ''}
+            value={line.off_contract_reason ?? ''} readOnly={busy}
             aria-invalid={showProblem}
             aria-describedby={`${id}-hint${showProblem ? ` ${id}-error` : ''}`}
             onChange={e => onReason(e.target.value)}
