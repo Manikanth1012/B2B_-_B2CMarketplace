@@ -17,6 +17,14 @@ vi.mock('../../lib/enterpriseRepo', () => ({
   loadAccount: () => Promise.resolve(repo.book),
   raiseRequisition: (args: unknown) => repo.raise(args),
 }))
+/* Raise re-reads the prices and rules; here they read back as the book has them. */
+vi.mock('../../lib/priceBookRepo', () => ({
+  loadAccountPrices: () => Promise.resolve({ ok: true, value: repo.book.prices }),
+  loadBuyingRules: () => Promise.resolve({ ok: true, value: repo.book.rules }),
+}))
+vi.mock('../../lib/moneyRepo', () => ({
+  loadPriceBookResult: () => Promise.resolve({ ok: true, value: new Map([['SKU-9001', { price: 1000, floor_price: null }]]) }),
+}))
 vi.mock('../../lib/MarketContext', () => ({
   useMarket: () => ({ fmtIn: (n: number, c: string) => `${c} ${n.toFixed(2)}`, book: null }),
 }))

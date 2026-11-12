@@ -19,8 +19,9 @@ import { requisitionTotal, needFor, policyNoteFor, inPolicyMoney, money } from '
 import type { Policy, Account, Need, Check, Fmt } from './enterprise'
 import type { Rate } from './money'
 import type { BundleMeta } from './bundleLines'
-import { needWithRules, offContractNote, offContractReasonProblem } from './accountPrices'
-import type { OffContractRule } from './accountPrices'
+import { needWithRules, offContractNote, offContractReasonProblem, inForce, shelfPrice } from './accountPrices'
+import type { OffContractRule, AccountPrice } from './accountPrices'
+import { round2 } from './money'
 import { joinNote } from './priceBookPayload'
 
 export interface BasketLine {
@@ -273,6 +274,63 @@ export function repriceTo(
     lines.push(next)
   }
   return { basket: lines.length ? { currency, lines } : EMPTY_BASKET, dropped }
+}
+
+/** One ordinary line whose price or standing on the price book moved since it was added. */
+export interface ContractChange {
+  product_id: string
+  name: string
+  was: { unit_price: number; on_contract: boolean }
+  now: { unit_price: number; on_contract: boolean }
+}
+
+/**
+ * What today's prices say about each ordinary line, against what the basket holds.
+ *
+ * The shelf priced each line when it was added; a price can start, end or be
+ * withdrawn while the drawer is open. This is the shelf's own sum
+ * (`shelfPrice`: least(published, greatest(account, floor))) run again on fresh
+ * reads, so the drawer can stop and show the change instead of raising lines
+ * the database would price differently. Quoted and bundled lines are held by
+ * their own guards and never re-read. A line whose listing has no published
+ * price in the basket's currency keeps its price (the database refuses it in
+ * its own words); its standing is still judged.
+ */
+export function contractChanges(
+  basket: Basket,
+  fresh: {
+    prices: readonly AccountPrice[]
+    published: ReadonlyMap<string, { price: number; floor_price: number | null }>
+  },
+  account_id: string, today: string,
+): ContractChange[] {
+  const out: ContractChange[] = []
+  for (const l of basket.lines) {
+    if (l.quote_line_id || l.bundle_selection_id) continue
+    const row = inForce(fresh.prices, { account_id, product_id: l.product_id, currency: basket.currency }, today)
+    const pub = fresh.published.get(l.product_id)
+    const price = pub ? shelfPrice(pub.price, pub.floor_price, row).price : round2(l.unit_price)
+    const was = { unit_price: round2(l.unit_price), on_contract: l.on_contract === true }
+    const now = { unit_price: price, on_contract: !!row }
+    if (was.unit_price !== now.unit_price || was.on_contract !== now.on_contract) {
+      out.push({ product_id: l.product_id, name: l.name, was, now })
+    }
+  }
+  return out
+}
+
+/** The basket with those changes made. A line now on the price book no longer carries a reason. */
+export function applyContractChanges(basket: Basket, changes: readonly ContractChange[]): Basket {
+  if (!changes.length) return basket
+  const by = new Map(changes.map(c => [c.product_id, c]))
+  const lines = basket.lines.map(l => {
+    const c = !l.quote_line_id && !l.bundle_selection_id ? by.get(l.product_id) : undefined
+    if (!c) return l
+    const next: BasketLine = { ...l, unit_price: c.now.unit_price, on_contract: c.now.on_contract }
+    if (c.now.on_contract) delete next.off_contract_reason
+    return next
+  })
+  return { ...basket, lines }
 }
 
 export interface BasketVerdict {
