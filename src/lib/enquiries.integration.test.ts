@@ -178,18 +178,23 @@ describe('the seed is readable by the people it belongs to', () => {
     expect(seed).toEqual(['ENQ-SEED-1', 'ENQ-SEED-2', 'ENQ-SEED-3', 'ENQ-SEED-4'])
   })
 
-  it('Nimbus sees the two routed to it, and on the desk quote only its own line', async () => {
+  it("Nimbus sees the two routed to it, and none of the desk quote's lines directly", async () => {
     await as(NIMBUS)
     const b = await loadEnquiries()
     expect(b.loadError).toBeNull()
     const seed = b.enquiries.map(e => e.id).filter(id => id.startsWith('ENQ-SEED-')).sort()
     expect(seed, 'Nimbus reads a header that is not routed to it').toEqual(['ENQ-SEED-1', 'ENQ-SEED-2'])
 
-    /* ENQ-SEED-4 is on the desk, across Nimbus and another seller. Nimbus may
-       read its own line so it can tell the desk what it would charge. */
-    const desk = b.lines.filter(l => l.enquiry_id === 'ENQ-SEED-4')
+    /* ENQ-SEED-4 is on the desk, across Nimbus and another seller. Since
+       20261112300000 Nimbus reads none of its line rows (they carry the desk's
+       price); it reads its own line through my_desk_quote_lines, which leaves
+       the desk's price out. */
+    expect(b.lines.filter(l => l.enquiry_id === 'ENQ-SEED-4')).toEqual([])
+    const { data, error } = await supabase.rpc('my_desk_quote_lines')
+    expect(error).toBeNull()
+    const desk = ((data ?? []) as Record<string, unknown>[]).filter(l => l.enquiry_id === 'ENQ-SEED-4')
     expect(desk.map(l => l.product_id)).toEqual([SEED_SENSOR])
-    expect(desk.every(l => l.partner_id === NIMBUS_ID)).toBe(true)
+    expect(desk.every(l => !('quoted_unit_price' in l))).toBe(true)
     /* And none of the desk enquiry's conversation, times or history. */
     expect(b.messages.some(m => m.enquiry_id === 'ENQ-SEED-4')).toBe(false)
     expect(b.events.some(e => e.enquiry_id === 'ENQ-SEED-4')).toBe(false)
