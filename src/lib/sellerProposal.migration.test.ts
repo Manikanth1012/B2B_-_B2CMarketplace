@@ -1,8 +1,9 @@
 // 20261112200000, checked without a database. Nobody here can apply it, so
-// these are the structural facts the screens and the repo rely on: the three
-// columns, the one rpc that writes them, the guard that refuses any other
-// write, the seller's read, the desk's notification, and the house rules for a
-// migration (one transaction, re-runnable, a self-check at the end).
+// these are the structural facts the screens and the repo rely on: the
+// proposals live in their own table that the buyer cannot read, the one rpc
+// that writes them, the guard that refuses any other write, the seller's read,
+// the desk's notification, the seller's help, nothing of 20261105100000
+// replaced, and the house rules for a migration.
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 
@@ -23,31 +24,61 @@ describe("the seller's price on a desk quote, as a migration", () => {
     expect(code.trim().startsWith('begin;')).toBe(true)
     expect(code.trim().endsWith('commit;')).toBe(true)
     const last = code.lastIndexOf('do $$')
-    expect(last).toBeGreaterThan(code.indexOf('create trigger enquiry_lines_guard'))
+    expect(last).toBeGreaterThan(code.indexOf('create trigger enquiry_line_proposals_guard'))
     expect(code.slice(last)).toContain('raise exception')
   })
 
-  it.each([
-    ['seller_unit_price', 'numeric\\(12,2\\)'],
-    ['seller_note', 'text'],
-    ['seller_priced_at', 'timestamptz'],
-  ])('adds %s idempotently', (col, type) => {
-    expect(code).toMatch(new RegExp(`alter table enquiry_lines add column if not exists ${col} ${type};`))
+  it('keeps the proposal off enquiry_lines, where the buyer reads every column', () => {
+    expect(code).not.toMatch(/alter table enquiry_lines/)
+    expect(code).not.toMatch(/add column if not exists seller_/)
+    expect(code).toMatch(/create table if not exists enquiry_line_proposals \(/)
+    expect(code).toContain('line_id     text primary key references enquiry_lines(id) on delete cascade')
+    expect(code).toContain('unit_price  numeric(12,2) not null')
   })
 
-  it('names its constraints so none collides with an auto-named <table>_<col>_check, and drops each first', () => {
-    const named = [...code.matchAll(/add constraint (\w+)/g)].map(m => m[1])
-    expect(named.length).toBe(3)
-    for (const c of named) {
-      expect(c).not.toMatch(/_check$/)
-      expect(code).toContain(`drop constraint if exists ${c};`)
+  it('replaces nothing of 20261105100000', () => {
+    for (const f of ['guard_enquiry_line', 'guard_enquiry', 'send_quote', 'enquiry_send', 'notify_enquiry', 'guard_quoted_line']) {
+      expect(code, f).not.toContain(`create or replace function ${f}(`)
     }
+    expect(code).not.toMatch(/drop policy if exists "[^"]+" on enquiry_lines/)
+    expect(code).not.toMatch(/drop trigger if exists \w+ on enquiry_lines;/)
+  })
+
+  it('names its constraints so none collides with an auto-named <table>_<col>_check', () => {
+    const named = [...code.matchAll(/constraint (\w+) check/g)].map(m => m[1])
+    expect(named).toEqual(['enquiry_line_proposals_price_above_nought', 'enquiry_line_proposals_note_length'])
+  })
+
+  it('lets the desk and the seller read, the buyer nothing, and nobody write directly', () => {
+    expect(code).toMatch(/alter table enquiry_line_proposals enable row level security/)
+    expect(code).toMatch(/revoke all on enquiry_line_proposals from public, anon;/)
+    expect(code).toMatch(/revoke insert, update, delete, truncate on enquiry_line_proposals from authenticated;/)
+    const policies = [...code.matchAll(/create policy "([^"]+)" on enquiry_line_proposals for (\w+)[^;]*;/g)]
+    expect(policies.map(p => [p[1], p[2]])).toEqual([
+      ['operator_read_enquiry_line_proposals', 'select'],
+      ['partner_read_enquiry_line_proposals', 'select'],
+    ])
+    for (const p of policies) {
+      expect(code).toContain(`drop policy if exists "${p[1]}"`)
+      expect(p[0]).not.toContain('enterprise')
+    }
+    expect(policies[1][0]).toContain('partner_id = current_partner_id()')
   })
 
   it('keeps its token where no API role can reach it', () => {
     expect(code).toContain('create table if not exists enquiry_seller_price_tokens')
     expect(code).toMatch(/alter table enquiry_seller_price_tokens enable row level security/)
     expect(code).toMatch(/revoke all on enquiry_seller_price_tokens from public, anon, authenticated/)
+  })
+
+  it('guards the table so a write that skipped the rpc is refused, the service role exempt', () => {
+    const g = fn('guard_line_proposal')
+    expect(g).toContain('if current_persona() is null then return new; end if;')
+    expect(g).toContain('from enquiry_seller_price_tokens where txid = txid_current()')
+    expect(g).toContain('never written on its own')
+    expect(code).toContain('drop trigger if exists enquiry_line_proposals_guard on enquiry_line_proposals;')
+    /* Not on delete: the cascade from a deleted enquiry has to get through. */
+    expect(code).toContain('create trigger enquiry_line_proposals_guard before insert or update on enquiry_line_proposals')
   })
 
   it('defines propose_line_price as security definer with a search path, for signed-in callers only', () => {
@@ -64,6 +95,7 @@ describe("the seller's price on a desk quote, as a migration", () => {
     expect(f).toContain('v_line.partner_id is distinct from v_me')
     expect(f).toContain("v_e.type is distinct from 'quote' or v_e.partner_id is not null")
     expect(f).toContain("v_e.status is distinct from 'submitted'")
+    expect(f).toContain('from enquiries where id = v_line.enquiry_id for update')
   })
 
   it('refuses a price at or under nought, over the column, or under the floor, in sentences', () => {
@@ -83,34 +115,24 @@ describe("the seller's price on a desk quote, as a migration", () => {
     expect(code).toMatch(/revoke all on function enquiry_seller_floor\(text, text\) from public, anon, authenticated;/)
   })
 
-  it('writes the columns only between putting its token down and taking it up', () => {
+  it('writes the proposal only between putting its token down and taking it up', () => {
     const f = fn('propose_line_price')
     const put = f.indexOf('insert into enquiry_seller_price_tokens')
-    const write = f.indexOf('update enquiry_lines')
+    const write = f.indexOf('insert into enquiry_line_proposals')
     const take = f.indexOf('delete from enquiry_seller_price_tokens')
     expect(put).toBeGreaterThan(0)
     expect(write).toBeGreaterThan(put)
     expect(take).toBeGreaterThan(write)
+    expect(f).toContain('on conflict (line_id) do update')
   })
 
-  it('tells the desk through the existing notification path', () => {
-    expect(fn('propose_line_price')).toContain("perform enquiry_send('enquiry.seller_priced', 'operator'")
-    expect(code).toContain("('enquiry.seller_priced'")
+  it('tells the desk through the existing notification path, and writes nothing the buyer reads', () => {
+    const f = fn('propose_line_price')
+    expect(f).toContain("perform enquiry_send('enquiry.seller_priced', 'operator'")
+    expect(f).not.toContain('enquiry_events')
+    expect(f).not.toContain('enquiry_messages')
     expect(code).toContain("('nr-o-enq-seller-priced', 'operator', 'enquiry.seller_priced'")
     expect(code).toContain("where r.id = 'nr-o-enq-seller-priced'")
-  })
-
-  it('replaces the line guard so a direct write of the proposal is refused, the service role exempt', () => {
-    const g = fn('guard_enquiry_line')
-    expect(g).toContain('if v_persona is null then return new; end if;')
-    expect(g).toContain('from enquiry_seller_price_tokens where txid = txid_current()')
-    expect(g).toContain('never written on its own')
-    /* A line is never raised with a proposal on it. */
-    expect(g).toContain('new.seller_unit_price is not null or new.seller_note is not null or new.seller_priced_at is not null')
-    /* And send_quote's own rule is still there. */
-    expect(g).toContain('from enquiry_rpc_tokens where txid = txid_current()')
-    expect(code).toContain('drop trigger if exists enquiry_lines_guard on enquiry_lines;')
-    expect(code).toContain('create trigger enquiry_lines_guard before insert or update on enquiry_lines')
   })
 
   it("gives the seller its own desk-quote lines and nobody else's", () => {
@@ -119,8 +141,17 @@ describe("the seller's price on a desk quote, as a migration", () => {
     expect(f).toContain('set search_path = public')
     expect(f).toContain('l.partner_id = current_partner_id()')
     expect(f).toContain("e.type = 'quote' and e.partner_id is null")
+    expect(f).toContain('left join enquiry_line_proposals p')
     expect(f).not.toContain('quoted_unit_price')
     expect(code).toMatch(/grant execute on function my_desk_quote_lines\(\) to authenticated;/)
+  })
+
+  it("adds one prose section to the seller's enquiries help, once, and checks it is there", () => {
+    expect(code).toMatch(/update kb_articles k[\s\S]*where k\.view = 'pt-enquiries'/)
+    expect(code).toContain("jsonb_build_object('kind', 'prose', 'heading', 'your lines on a quote the desk answers'")
+    expect(code).toContain("b ->> 'heading' = 'your lines on a quote the desk answers'")
+    expect(sql).toContain('You can propose until the desk sends the quote')
+    expect(code.slice(code.lastIndexOf('do $$'))).toContain("k.view = 'pt-enquiries'")
   })
 
   it('puts no bare CASE inside an IF condition and drops no table', () => {

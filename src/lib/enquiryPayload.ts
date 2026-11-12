@@ -31,30 +31,39 @@ const num = (v: unknown): number | null => (v === null || v === undefined || v =
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
 
-/** On a desk quote, what the seller of a line told the desk it would charge
-    (20261112200000). Null on every other line, and on every line while that
-    migration is not yet applied: the columns are read through `select('*')`,
-    so a database without them simply returns rows without them. */
-export interface SellerProposal {
-  seller_unit_price: number | null
-  seller_note: string | null
-  seller_priced_at: string | null
-}
-
-export type ProposedLine = EnquiryLine & SellerProposal
-
 /** A line as the database returns it. `numeric` can arrive as a string. */
-export function asLine(r: Record<string, unknown>): ProposedLine {
+export function asLine(r: Record<string, unknown>): EnquiryLine {
   return {
     ...(r as unknown as EnquiryLine),
     quantity: Number(r.quantity),
     target_unit_price: num(r.target_unit_price),
     quoted_unit_price: num(r.quoted_unit_price),
     sort_order: Number(r.sort_order ?? 0),
-    seller_unit_price: num(r.seller_unit_price),
-    seller_note: str(r.seller_note),
-    seller_priced_at: str(r.seller_priced_at),
   }
+}
+
+/** On a desk quote, what the seller of a line told the desk it would charge
+    (`enquiry_line_proposals`, 20261112200000). Its own table, not columns on
+    the line, so the buyer — who reads every column of its lines — never sees
+    it. The desk reads them all; a seller reads its own. */
+export interface LineProposal {
+  line_id: string; enquiry_id: string; partner_id: string
+  unit_price: number; note: string | null; proposed_at: string; proposed_by: string
+}
+
+export function asProposal(r: Record<string, unknown>): LineProposal {
+  return {
+    line_id: String(r.line_id), enquiry_id: String(r.enquiry_id), partner_id: String(r.partner_id ?? ''),
+    unit_price: Number(r.unit_price), note: str(r.note),
+    proposed_at: String(r.proposed_at ?? ''), proposed_by: String(r.proposed_by ?? ''),
+  }
+}
+
+/** True when a read failed because the table is not on this database yet. */
+export function isMissingTable(error: { message?: string; code?: string } | null | undefined): boolean {
+  if (!error) return false
+  if (error.code === '42P01' || error.code === 'PGRST205') return true
+  return /could not find the table|relation .* does not exist|schema cache/i.test(error.message ?? '')
 }
 
 /** The arguments `propose_line_price` takes. A blank note is sent as null,
@@ -69,10 +78,12 @@ export function proposeLinePricePayload(
 /** One of the seller's own lines on a desk quote, as `my_desk_quote_lines()`
     returns it: the line, the few facts about the quote the seller needs to
     price it, and the seller's own floor in the quote's currency. */
-export interface DeskQuoteLine extends SellerProposal {
+export interface DeskQuoteLine {
   line_id: string; enquiry_id: string; subject: string; status: string; currency: string
   needed_by: string | null; raised_at: string; product_id: string; name: string; quantity: number
   target_unit_price: number | null; floor_price: number | null; sort_order: number
+  /** The seller's own proposal on this line, if it has made one. */
+  seller_unit_price: number | null; seller_note: string | null; seller_priced_at: string | null
 }
 
 export function asDeskQuoteLine(r: Record<string, unknown>): DeskQuoteLine {

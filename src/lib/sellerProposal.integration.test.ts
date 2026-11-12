@@ -3,9 +3,10 @@
  *
  * 20261112200000_a_seller_prices_its_part_of_a_desk_quote.sql: the seller of a
  * line on a desk quote proposes a unit price for it through
- * propose_line_price, and only that way; the desk sees it on the line and is
- * told. The rules live in the rpc and in guard_enquiry_line, so they can only
- * be checked against the database.
+ * propose_line_price, and only that way; it lives in enquiry_line_proposals,
+ * which the desk and that seller read and the buyer does not; the desk is
+ * told. The rules live in the rpc, the policies and guard_line_proposal, so
+ * they can only be checked against the database.
  *
  * Skipped, saying why, until that migration is applied: my_desk_quote_lines is
  * called, and a function the database cannot find means it is not there yet.
@@ -13,20 +14,21 @@
  *
  * Clean-up, in afterAll and again at the start in case a run died: the
  * operator deletes every enquiry whose subject starts with the prefix; lines,
- * messages and events cascade. Left behind, by design, as in
+ * proposals, messages and events cascade. Left behind, by design, as in
  * enquiries.integration.test.ts: the notification_log rows, which nobody may
  * delete. They carry the deleted enquiry's id in `ref`.
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { supabase } from './supabase'
 import { signIn, signOut } from './authRepo'
-import { raiseQuote, sendQuote, loadMyDeskQuoteLines, proposeLinePrice } from './enquiryRepo'
+import { raiseQuote, sendQuote, loadMyDeskQuoteLines, proposeLinePrice, loadLineProposals } from './enquiryRepo'
 import { isMissingFunction } from './enquiryPayload'
 
 const OPERATOR = { email: 'anika.sharma@aventa.com', password: 'operator123' }
 const BUYER = { email: 'vikram.shah@smartbuild.in', password: 'enterprise123' }      // SmartBuild, ENT-2007
 const NIMBUS = { email: 'rajesh.kumar@nimbussensors.com', password: 'partner123' }   // PTR-1004, sells SKU-5003
 
+const NIMBUS_ID = 'PTR-1004'
 const SENSOR = 'SKU-5003'      // Nimbus, live for businesses
 const FIREWALL = 'SKU-6001'    // another seller, so a quote across both goes to the desk
 const SUBJECT = 'ITEST-SP '
@@ -62,7 +64,7 @@ async function sweep() {
 async function linesOf(id: string) {
   const { data, error } = await supabase.from('enquiry_lines').select('*').eq('enquiry_id', id).order('sort_order')
   expect(error).toBeNull()
-  return (data ?? []) as { id: string; product_id: string; seller_unit_price: number | string | null; seller_note: string | null }[]
+  return (data ?? []) as ({ id: string; product_id: string } & Record<string, unknown>)[]
 }
 
 let applied = false
@@ -165,39 +167,58 @@ describe("a seller prices its part of a desk quote", () => {
     expect(r).toEqual({ ok: true })
 
     await as(OPERATOR)
-    const line = (await linesOf(deskId)).find(l => l.id === sensorLine)!
-    expect(Number(line.seller_unit_price)).toBe(price)
-    expect(line.seller_note).toBe('Includes pairing on site.')
-    const other = (await linesOf(deskId)).find(l => l.id === firewallLine)!
-    expect(other.seller_unit_price).toBeNull()
+    const desk = await loadLineProposals(deskId)
+    expect(desk.ok).toBe(true)
+    if (!desk.ok) return
+    expect(Object.keys(desk.proposals)).toEqual([sensorLine])
+    expect(desk.proposals[sensorLine].unit_price).toBe(price)
+    expect(desk.proposals[sensorLine].note).toBe('Includes pairing on site.')
+    expect(desk.proposals[sensorLine].partner_id).toBe(NIMBUS_ID)
 
     const { data, error } = await supabase.from('notification_log').select('rule_id, ref')
       .eq('ref', deskId).eq('rule_id', 'NR-O-ENQ-SELLER-PRICED')
     expect(error).toBeNull()
     expect((data ?? []).length).toBeGreaterThan(0)
-  })
 
-  it('5. nobody writes the proposal directly: not the seller, the desk or the buyer', async (ctx) => {
-    skipUnlessApplied(ctx)
+    /* The seller reads its own back, through the table and through its rpc. */
     await as(NIMBUS)
-    const s = await supabase.from('enquiry_lines').update({ seller_unit_price: 1 }).eq('id', sensorLine).select('id')
-    /* Row-level security hides the row from a seller's update, or the guard refuses it. */
-    expect(s.error !== null || (s.data ?? []).length === 0).toBe(true)
-
-    await as(OPERATOR)
-    const o = await supabase.from('enquiry_lines').update({ seller_unit_price: 1 }).eq('id', sensorLine).select('id')
-    expect(o.error?.message).toMatch(/never written on its own/)
-
-    await as(BUYER)
-    const b = await supabase.from('enquiry_lines').update({ seller_note: 'mine' }).eq('id', sensorLine).select('id')
-    expect(b.error?.message).toMatch(/never written on its own/)
-
-    await as(OPERATOR)
-    const line = (await linesOf(deskId)).find(l => l.id === sensorLine)!
-    expect(line.seller_note).toBe('Includes pairing on site.')
+    const own = await supabase.from('enquiry_line_proposals').select('line_id').eq('enquiry_id', deskId)
+    expect(own.error).toBeNull()
+    expect((own.data ?? []).map(r => (r as { line_id: string }).line_id)).toEqual([sensorLine])
+    const mine = await loadMyDeskQuoteLines()
+    expect(mine.ok && mine.lines.find(l => l.line_id === sensorLine)?.seller_unit_price).toBe(price)
   })
 
-  it('6. once the desk has sent the quote, the seller can no longer propose', async (ctx) => {
+  it('5. the buyer sees none of it: not in the table, not on its lines', async (ctx) => {
+    skipUnlessApplied(ctx)
+    await as(BUYER)
+    const p = await supabase.from('enquiry_line_proposals').select('*').eq('enquiry_id', deskId)
+    expect(p.error).toBeNull()
+    expect(p.data ?? []).toEqual([])
+    const lines = await linesOf(deskId)
+    expect(lines).toHaveLength(2)
+    for (const l of lines) {
+      expect(Object.keys(l).some(k => k.startsWith('seller_') || k === 'proposal')).toBe(false)
+    }
+  })
+
+  it('6. nobody writes a proposal directly: not the seller, the desk or the buyer', async (ctx) => {
+    skipUnlessApplied(ctx)
+    const row = { line_id: firewallLine, enquiry_id: deskId, partner_id: NIMBUS_ID, unit_price: 1, proposed_by: 'x' }
+    for (const c of [NIMBUS, OPERATOR, BUYER]) {
+      await as(c)
+      const ins = await supabase.from('enquiry_line_proposals').insert(row).select('line_id')
+      expect(ins.error, `${c.email} inserted a proposal`).not.toBeNull()
+      const upd = await supabase.from('enquiry_line_proposals').update({ unit_price: 1 }).eq('line_id', sensorLine).select('line_id')
+      expect(upd.error !== null || (upd.data ?? []).length === 0, `${c.email} updated a proposal`).toBe(true)
+    }
+    await as(OPERATOR)
+    const desk = await loadLineProposals(deskId)
+    expect(desk.ok && Object.keys(desk.proposals)).toEqual([sensorLine])
+    expect(desk.ok && desk.proposals[sensorLine].unit_price).toBe(Math.max(floor, 100) + 1)
+  })
+
+  it('7. once the desk has sent the quote, the seller can no longer propose', async (ctx) => {
     skipUnlessApplied(ctx)
     await as(OPERATOR)
     const sent = await sendQuote(deskId, { [sensorLine]: Math.max(floor, 100) + 1, [firewallLine]: 500 }, day(14))

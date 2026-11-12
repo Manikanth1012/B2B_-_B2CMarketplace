@@ -1,22 +1,21 @@
 import { describe, it, expect } from 'vitest'
 import {
   quoteLinesPayload, sendQuotePayload, asLine, proposeLinePricePayload, asDeskQuoteLine, isMissingFunction,
+  asProposal, isMissingTable,
 } from './enquiryPayload'
 
 describe("the seller's proposal on a line", () => {
-  const base = { id: 'a', enquiry_id: 'ENQ-1', product_id: 'p', name: 'n', partner_id: 'PTR-1', quantity: 2,
-    target_unit_price: null, quoted_unit_price: null, sort_order: 1 }
-  it('reads as null when the database does not have the columns yet', () => {
-    const l = asLine(base)
-    expect(l.seller_unit_price).toBeNull()
-    expect(l.seller_note).toBeNull()
-    expect(l.seller_priced_at).toBeNull()
+  it('maps a proposal row, turning a numeric string into a number', () => {
+    const p = asProposal({ line_id: 'L1', enquiry_id: 'E', partner_id: 'PTR-1', unit_price: '3899.00',
+      note: '', proposed_at: '2026-11-12T10:00:00Z', proposed_by: 'Nimbus' })
+    expect(p.unit_price).toBe(3899)
+    expect(p.note).toBeNull()
+    expect(p.proposed_by).toBe('Nimbus')
   })
-  it('turns a numeric string into a number', () => {
-    const l = asLine({ ...base, seller_unit_price: '3899.00', seller_note: 'ok', seller_priced_at: '2026-11-12T10:00:00Z' })
-    expect(l.seller_unit_price).toBe(3899)
-    expect(l.seller_note).toBe('ok')
-    expect(l.seller_priced_at).toBe('2026-11-12T10:00:00Z')
+  it('knows a table that is not there yet from any other failure', () => {
+    expect(isMissingTable({ code: 'PGRST205', message: "Could not find the table 'public.enquiry_line_proposals' in the schema cache" })).toBe(true)
+    expect(isMissingTable({ code: '42P01', message: 'relation "enquiry_line_proposals" does not exist' })).toBe(true)
+    expect(isMissingTable({ code: '42501', message: 'permission denied for table enquiry_line_proposals' })).toBe(false)
   })
   it('sends a blank note as null', () => {
     expect(proposeLinePricePayload('L1', 10, '  ')).toEqual({ p_line_id: 'L1', p_price: 10, p_note: null })

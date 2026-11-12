@@ -31,6 +31,7 @@ describe('DeskQuoteLines', () => {
     render(<DeskQuoteLines state={{ kind: 'ready', lines: [line()] }} money={money} onPropose={onPropose} />)
     const price = screen.getByLabelText('Your unit price (INR)')
     const note = screen.getByLabelText('Note to the desk (optional)')
+    expect(screen.getByText(/You can propose until the desk sends the quote\./, { selector: '.c-field__hint' })).toBeTruthy()
     fireEvent.change(price, { target: { value: '3899' } })
     fireEvent.change(note, { target: { value: ' Includes pairing. ' } })
     fireEvent.click(screen.getByRole('button', { name: 'Propose this price' }))

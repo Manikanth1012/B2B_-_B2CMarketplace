@@ -45,7 +45,7 @@ export function DeskQuoteLines({ state, money, onPropose }: DeskQuoteLinesProps)
       {state.kind === 'ready' && (
         <>
           <p className="enq-muted">
-            These quotes also name another seller's listings, so the desk sends one quote for all of them. Tell the desk what you would charge for your lines; it decides what to send.
+            These quotes also name another seller's listings, so the desk sends one quote for all of them. Tell the desk what you would charge for your lines; it decides what to send, and the buyer does not see your price. You can propose until the desk sends the quote.
           </p>
           {state.lines.map(l => <DeskLine key={l.line_id} line={l} money={money} onPropose={onPropose} />)}
         </>
@@ -118,6 +118,7 @@ function DeskLine({ line: l, money, onPropose }: { line: DeskQuoteLine } & Omit<
               {l.floor_price !== null && l.floor_price > 0
                 ? `Not below your agreed minimum of ${money(l.floor_price, l.currency)}.`
                 : 'What you would charge the buyer for one unit.'}
+              {' You can propose until the desk sends the quote.'}
             </div>
             <div id={`${id}-msg`}>{error && <p className="enq-error" role="alert">{error}</p>}</div>
           </div>

@@ -11,12 +11,14 @@ import { TriangleAlert } from 'lucide-react'
 import { Btn, FormField, TextInput, TextArea, fmtInt, fmtDateTime } from '../operator/shared'
 import { validUntilProblem } from '../../lib/enquiries'
 import type { Enquiry, EnquiryLine } from '../../lib/enquiries'
-import type { SellerProposal } from '../../lib/enquiryPayload'
+import type { LineProposal } from '../../lib/enquiryPayload'
 
 export interface QuoteResponseFormProps {
   enquiry: Enquiry
-  /** The seller's proposal is there only on desk quotes, once 20261112200000 is applied. */
-  lines: readonly (EnquiryLine & Partial<SellerProposal>)[]
+  lines: readonly EnquiryLine[]
+  /** line id -> the seller's proposal. Only the desk passes these, on its own
+      quotes; none before 20261112200000 is applied. */
+  proposals?: Readonly<Record<string, LineProposal>>
   today: string
   /** product_id -> the seller's agreed floor, where it could be read. */
   floors: Readonly<Record<string, number>>
@@ -28,7 +30,7 @@ export interface QuoteResponseFormProps {
   onCancel: () => void
 }
 
-export function QuoteResponseForm({ enquiry, lines, today, floors, floorsFailed, money, onSubmit, onCancel }: QuoteResponseFormProps) {
+export function QuoteResponseForm({ enquiry, lines, proposals, today, floors, floorsFailed, money, onSubmit, onCancel }: QuoteResponseFormProps) {
   const cur = enquiry.currency ?? ''
   const [prices, setPrices] = useState<Record<string, string>>(() =>
     Object.fromEntries(lines.map(l => [l.id, l.quoted_unit_price !== null ? String(l.quoted_unit_price) : ''])))
@@ -86,25 +88,29 @@ export function QuoteResponseForm({ enquiry, lines, today, floors, floorsFailed,
             <div id={`${id}-hint`} className="c-field__hint">
               {fmtInt(l.quantity)} wanted{l.target_unit_price !== null ? ` · they hope for ${money(l.target_unit_price, cur)}` : ''}
             </div>
-            {typeof l.seller_unit_price === 'number' && (
-              <div className="enq-proposal" id={`${id}-proposal`}>
-                <p className="enq-muted">
-                  The seller proposes {money(l.seller_unit_price, cur)} a unit
-                  {l.seller_priced_at ? ` (${fmtDateTime(l.seller_priced_at)})` : ''}.
-                  {l.seller_note ? ` “${l.seller_note}”` : ''}
-                </p>
-                <div className="enq-actions" style={{ justifyContent: 'flex-start' }}>
-                  <Btn type="button" variant="secondary" style={{ minHeight: 44 }}
-                    aria-label={`Use the seller's price for ${l.name}`}
-                    onClick={() => {
-                      setPrices(p => ({ ...p, [l.id]: String(l.seller_unit_price) }))
-                      setErrors(e => { const rest = { ...e }; delete rest[l.id]; return rest })
-                    }}>
-                    Use the seller's price
-                  </Btn>
+            {(() => {
+              const p = proposals?.[l.id]
+              if (!p) return null
+              return (
+                <div className="enq-proposal">
+                  <p className="enq-muted">
+                    {p.proposed_by || 'The seller'} proposes {money(p.unit_price, cur)} a unit
+                    {p.proposed_at ? ` (${fmtDateTime(p.proposed_at)})` : ''}.
+                    {p.note ? ` “${p.note}”` : ''}
+                  </p>
+                  <div className="enq-actions" style={{ justifyContent: 'flex-start' }}>
+                    <Btn type="button" variant="secondary" style={{ minHeight: 44 }}
+                      aria-label={`Use the seller's price for ${l.name}`}
+                      onClick={() => {
+                        setPrices(x => ({ ...x, [l.id]: String(p.unit_price) }))
+                        setErrors(e => { const rest = { ...e }; delete rest[l.id]; return rest })
+                      }}>
+                      Use the seller's price
+                    </Btn>
+                  </div>
                 </div>
-              </div>
-            )}
+              )
+            })()}
             <div id={`${id}-msg`}>
               {errors[l.id] && <p className="enq-error" role="alert">{errors[l.id]}</p>}
               {below && (

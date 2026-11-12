@@ -7,11 +7,12 @@
 // security hides rows it will not let you touch) is an error, not an "ok".
 
 import { supabase } from './supabase'
-import type { Enquiry, EnquirySlot, EnquiryMessage } from './enquiries'
+import type { Enquiry, EnquiryLine, EnquirySlot, EnquiryMessage } from './enquiries'
 import {
   quoteLinesPayload, sendQuotePayload, asLine, proposeLinePricePayload, asDeskQuoteLine, isMissingFunction,
+  asProposal, isMissingTable,
 } from './enquiryPayload'
-import type { ProposedLine, DeskQuoteLine } from './enquiryPayload'
+import type { DeskQuoteLine, LineProposal } from './enquiryPayload'
 import type { QuotedProduct } from './enquiryList'
 
 export interface EnquiryEvent {
@@ -21,7 +22,7 @@ export interface EnquiryEvent {
 }
 
 export interface EnquiryBook {
-  enquiries: Enquiry[]; lines: ProposedLine[]; slots: EnquirySlot[]
+  enquiries: Enquiry[]; lines: EnquiryLine[]; slots: EnquirySlot[]
   messages: EnquiryMessage[]; events: EnquiryEvent[]; loadError: string | null
 }
 
@@ -129,6 +130,27 @@ export async function loadMyDeskQuoteLines(): Promise<
     return { ok: true, lines: ((data ?? []) as Record<string, unknown>[]).map(asDeskQuoteLine) }
   } catch (err) {
     return { ok: false, missing: false, error: errorText(err) }
+  }
+}
+
+/** The sellers' proposals on one desk quote, keyed by line id, for the desk
+    pricing it. RLS shows the desk every row and a buyer none. Before
+    20261112200000 there is no table, and that is an empty answer: the quote
+    form works exactly as it did. Any other failure is reported. */
+export async function loadLineProposals(enquiryId: string): Promise<
+  { ok: true; proposals: Record<string, LineProposal> } | { ok: false; error: string }
+> {
+  try {
+    const { data, error } = await supabase.from('enquiry_line_proposals').select('*').eq('enquiry_id', enquiryId)
+    if (error) return isMissingTable(error) ? { ok: true, proposals: {} } : { ok: false, error: error.message }
+    const proposals: Record<string, LineProposal> = {}
+    for (const r of (data ?? []) as Record<string, unknown>[]) {
+      const p = asProposal(r)
+      proposals[p.line_id] = p
+    }
+    return { ok: true, proposals }
+  } catch (err) {
+    return { ok: false, error: errorText(err) }
   }
 }
 
