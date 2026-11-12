@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Dialog } from '../ui/Dialog'
 import { fmtDateTime } from '../operator/shared'
+import { dbToday } from '../../lib/dbDay'
 import { Callout } from '../OnboardingJourney'
 import { EnquiryList } from '../enquiries/EnquiryList'
 import { EnquiryDetail } from '../enquiries/EnquiryDetail'
@@ -22,12 +23,6 @@ import { useMarket } from '../../lib/MarketContext'
 
 const EMPTY: EnquiryBook = { enquiries: [], lines: [], slots: [], messages: [], events: [], loadError: null }
 
-function today(): string {
-  const n = new Date()
-  const p = (x: number) => String(x).padStart(2, '0')
-  return `${n.getFullYear()}-${p(n.getMonth() + 1)}-${p(n.getDate())}`
-}
-
 type Form = { kind: 'quote' } | { kind: 'decline' } | { kind: 'confirm'; slotId: string } | { kind: 'propose' } | null
 
 export function PartnerEnquiries({ partnerId }: { partnerId: string }) {
@@ -43,7 +38,7 @@ export function PartnerEnquiries({ partnerId }: { partnerId: string }) {
   const [busy, setBusy] = useState(false)          // mark done
   const [floorsFailed, setFloorsFailed] = useState(false)
   const [desk, setDesk] = useState<DeskLinesState>({ kind: 'loading' })
-  const day = today()
+  const day = dbToday()
 
   /* The seller's own lines on quotes the desk answers. Read apart from the
      book: the seller cannot read those enquiries, and before 20261112200000

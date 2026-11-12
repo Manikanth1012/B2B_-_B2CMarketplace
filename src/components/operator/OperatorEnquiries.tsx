@@ -12,7 +12,7 @@ import { Callout } from '../OnboardingJourney'
 import { Select, toast, fmtDateTime } from './shared'
 import { loadEnquiries, listPartners, reply, markDone, closeEnquiry, sendQuote, decline, confirmSlot, proposeSlot } from '../../lib/enquiryRepo'
 import type { EnquiryBook } from '../../lib/enquiryRepo'
-import { localToday } from '../../lib/enquiries'
+import { dbToday } from '../../lib/dbDay'
 import type { Action, Enquiry } from '../../lib/enquiries'
 import { waitingOver } from '../../lib/enquiryList'
 import type { Chip, TypeFilter } from '../../lib/enquiryList'
@@ -53,7 +53,7 @@ export function OperatorEnquiries() {
   const [openId, setOpenId] = useState<string | null>(null)
   const [form, setForm] = useState<Form>(null)
   const [busy, setBusy] = useState(false)
-  const today = localToday()
+  const today = dbToday()
   /* Every amount in the enquiry's own currency, spelt as the buyer and the
      seller see it. */
   const { fmtIn } = useMarket()

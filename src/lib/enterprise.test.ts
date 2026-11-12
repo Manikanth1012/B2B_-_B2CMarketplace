@@ -129,6 +129,32 @@ describe('policyNoteFor', () => {
   it('does not say "below the threshold" about something above it', () => {
     expect(policyNoteFor('it', 5000, { ...policy, threshold: 2000 }, 'USD')).not.toMatch(/Below/)
   })
+
+  /* Spec 9: the buying rules lift a 'none' to 'finance' for an off-contract line,
+     and the threshold sentence must not then say "no approval needed". */
+  it('lifted by the buying rules: says what the value is, not that no approval is needed', () => {
+    const lifted = policyNoteFor('none', 136, policy, 'USD', undefined, undefined, true)
+    expect(lifted).toBe('Below the USD 2,000.00 threshold and not a security purchase')
+    expect(lifted).not.toMatch(/no approval needed/)
+  })
+
+  it('not lifted (the default): the audit-trail sentence as before', () => {
+    expect(policyNoteFor('none', 136, policy, 'USD')).toBe(
+      'Below the USD 2,000.00 threshold and not a security purchase — no approval needed, recorded for the audit trail')
+    expect(policyNoteFor('none', 136, policy, 'USD', undefined, undefined, false)).toMatch(/no approval needed/)
+  })
+
+  it('lifted keeps the conversion it was judged on', () => {
+    const at = { amount: 136, currency: 'USD', native: false, rate: 0.012, as_of: '2026-11-01' }
+    expect(policyNoteFor('none', 136, policy, 'USD', at, undefined, true))
+      .toBe('Below the USD 2,000.00 threshold and not a security purchase (judged on USD 136.00, converted at 0.012 as of 2026-11-01)')
+  })
+
+  it('the flag only changes the "none" sentence', () => {
+    for (const need of ['finance', 'it', 'both'] as const) {
+      expect(policyNoteFor(need, 5000, policy, 'USD', undefined, undefined, true)).toBe(policyNoteFor(need, 5000, policy, 'USD'))
+    }
+  })
 })
 
 /* A business in a two-currency market may raise a requisition in either of them

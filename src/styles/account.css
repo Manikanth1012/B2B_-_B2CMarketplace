@@ -19,12 +19,17 @@
   display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-shrink: 0;
 }
 .ui-dialog__title { margin: 0; font-size: var(--text-lg); font-weight: 700; color: var(--text); }
+/* A 44×44 hit target (WCAG 2.5.8 and the project's 44px rule) around the same
+   20px icon. The -4px margin keeps its footprint at the 36px it used to be, so
+   no dialog header grows and the icon sits exactly where it did. */
 .ui-dialog__close {
   border: none; background: none; cursor: pointer; color: var(--text-secondary);
-  padding: 8px; border-radius: 50%; display: inline-flex; min-width: 36px; min-height: 36px;
+  padding: 12px; margin: -4px; border-radius: 50%; display: inline-flex;
+  width: 44px; height: 44px; min-width: 44px; min-height: 44px;
   align-items: center; justify-content: center; flex-shrink: 0;
 }
 .ui-dialog__close:hover { background: var(--bg-alt); color: var(--text); }
+.ui-dialog__close:focus-visible { outline: 2px solid var(--electric); outline-offset: 2px; }
 /* min-width: 0 keeps the max-width from being a suggestion: a column flex
    item's minimum width is its content, so one unwrappable table cell would
    otherwise push the dialog wider than the window. See Modal in
