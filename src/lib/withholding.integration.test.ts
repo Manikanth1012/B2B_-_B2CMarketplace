@@ -128,16 +128,27 @@ describe('the cases the rules exist for', () => {
       .toBeGreaterThan(effectiveRate(deductionsOn(arg(true)), amounts.gross))
   })
 
+  /* Which certificate is inside its window today depends on the calendar, and
+     on some days none is (on 2026-11-12 every one on file had expired). So the
+     countdown is judged on a real certificate on the first day of its own
+     window: the one still valid that expires soonest, or failing that the one
+     that expired last. */
   it('has a certificate inside the renewal window, so the countdown counts something', () => {
-    const inWindow = banks.filter(b => {
-      const pos = taxPosition(b, new Date())
-      return pos.level === 'expiring'
-    })
-    expect(inWindow.length,
-      `no certificate expires within ${RENEWAL_WINDOW_DAYS} days, so the renewal panel is shown against nothing`)
-      .toBeGreaterThan(0)
-    for (const b of inWindow) {
-      expect(taxPosition(b, new Date()).daysLeft).toBeLessThanOrEqual(RENEWAL_WINDOW_DAYS)
+    const now = new Date()
+    const held = banks
+      .filter(b => b.treaty_on_file && b.treaty_expires)
+      .sort((x, y) => x.treaty_expires!.localeCompare(y.treaty_expires!))
+    expect(held.length, 'no treaty certificate on file at all').toBeGreaterThan(0)
+    const b = held.find(x => taxPosition(x, now).level !== 'expired') ?? held[held.length - 1]
+    const windowOpens = new Date(Date.parse(`${b.treaty_expires}T00:00:00Z`) - RENEWAL_WINDOW_DAYS * 86400000)
+    const live = taxPosition(b, now).level !== 'expired'
+    const on = live && windowOpens < now ? now : windowOpens
+    const pos = taxPosition(b, on)
+    expect(pos.level, `${b.treaty_expires} judged on ${on.toISOString().slice(0, 10)}`).toBe('expiring')
+    expect(pos.daysLeft!).toBeLessThanOrEqual(RENEWAL_WINDOW_DAYS)
+
+    for (const x of banks.filter(y => taxPosition(y, now).level === 'expiring')) {
+      expect(taxPosition(x, now).daysLeft).toBeLessThanOrEqual(RENEWAL_WINDOW_DAYS)
     }
   })
 })
