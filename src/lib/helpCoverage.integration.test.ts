@@ -53,7 +53,10 @@ function unionMembers(source: string, name: string): string[] {
   return [...body.matchAll(/'([^']+)'/g)].map(m => m[1])
 }
 
-const SOURCE = readFileSync(new URL('../types/view.ts', import.meta.url), 'utf8')
+/* Line endings normalised: a Windows checkout (core.autocrlf) has \r\n, and the
+   declaration's end is found by its blank line. Without this every union ran on
+   to the end of the file and the shopper was asked about 223 console screens. */
+const SOURCE = readFileSync(new URL('../types/view.ts', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 
 /* `kb` is a consumer screen and is in the union; the three consoles name theirs
    op-kb / pt-kb / en-kb. Nothing is excluded — a knowledge base that cannot
