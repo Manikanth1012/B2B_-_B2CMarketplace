@@ -7,7 +7,7 @@
  * guard_quoted_line holds them to it.
  */
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Btn, FormField, TextArea, TextInput, toast, fmtDate, fmtDateTime } from '../operator/shared'
+import { Btn, FormField, TextArea, TextInput, toast, fmtDateTime } from '../operator/shared'
 import { Dialog } from '../ui/Dialog'
 import { Callout } from '../OnboardingJourney'
 import { EnquiryList } from '../enquiries/EnquiryList'
@@ -18,7 +18,8 @@ import {
   loadEnquiries, acceptQuote, decline, withdraw, confirmSlot, proposeSlot, reply, closeEnquiry, loadQuotedProducts,
 } from '../../lib/enquiryRepo'
 import type { EnquiryBook } from '../../lib/enquiryRepo'
-import { toRequisitionLines, slotProblems, localToday } from '../../lib/enquiries'
+import { toRequisitionLines, slotProblems } from '../../lib/enquiries'
+import { dbToday, validUntilLabel } from '../../lib/dbDay'
 import type { Action, Enquiry, EnquiryLine } from '../../lib/enquiries'
 import {
   answererName, localToIso, liveQuoteLineIds, acceptedQuoteStanding, quoteChanged, quotedBasketLines, quoteBasketClash,
@@ -46,7 +47,7 @@ export function EnterpriseEnquiries() {
   const [addProblem, setAddProblem] = useState<{ id: string; text: string } | null>(null)
   const req = useRequisition()
   const { fmtIn } = useMarket()
-  const today = localToday()
+  const today = dbToday()
 
   const reload = useCallback(async () => {
     const [b, a] = await Promise.all([loadEnquiries(), loadAccount()])
@@ -100,7 +101,7 @@ export function EnterpriseEnquiries() {
     const todo = quoted.filter(l => !held.has(l.quote_line_id) && !req.basket.lines.some(b => b.quote_line_id === l.quote_line_id))
     if (!todo.length) { setAddProblem(null); return true }
     /* One sentence for the whole quote, rather than the same refusal per line. */
-    const clash = quoteBasketClash(req.basket, cur, e.valid_until ? fmtDate(e.valid_until) : null)
+    const clash = quoteBasketClash(req.basket, cur, e.valid_until ? validUntilLabel(e.valid_until) : null)
     if (clash) { req.setOpen(true); return fail(clash) }
     /* The quote's own lines, with the product facts read by id whatever the
        listing's status: a quote on a listing paused since it was priced is
