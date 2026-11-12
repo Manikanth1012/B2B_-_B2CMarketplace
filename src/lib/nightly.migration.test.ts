@@ -60,6 +60,11 @@ describe('renewals and settlement every night, as a migration', () => {
     expect(body).toMatch(/as \$function\$\n<<core>>\ndeclare/)
     expect(body).toContain('set considered = core.considered, settled = core.settled, skipped = skips,')
     expect(body).not.toMatch(/set considered = considered/)
+    /* The same statement's note names them too. */
+    expect(body).toContain("partners settled on %s.', core.settled, core.considered, p_as_of)")
+    const update = body.slice(body.indexOf('update public.settlement_run'), body.indexOf('where id = run_id', body.indexOf('update public.settlement_run')))
+    expect(update.replace(/core\.(settled|considered)/g, '').replace(/^\s+set considered = |, settled = /g, ''))
+      .not.toMatch(/[(,]\s*(settled|considered)\b/)
   })
 
   it('runs agreements before the subscriptions that need one, each job on its own', () => {

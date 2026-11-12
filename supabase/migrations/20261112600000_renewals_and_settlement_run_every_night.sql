@@ -28,7 +28,8 @@
  *    settled`, names two columns that are also variables (42702: ambiguous).
  *    Only a run that settled somebody reaches that statement, and none ever had.
  *    The body is now labelled `core` and the two right-hand sides read
- *    `core.considered` / `core.settled`. Otherwise it is 20260810180000's text.
+ *    `core.considered` / `core.settled`, as do the two in the note the same
+ *    statement writes. Otherwise it is 20260810180000's text.
  *
  * 3. `renew_subscriptions` and `renew_contract`: unchanged except the guard.
  *
@@ -357,7 +358,7 @@ begin
     update public.settlement_run
        set considered = core.considered, settled = core.settled, skipped = skips,
            finished_at = now(),
-           note = format('%s of %s partners settled on %s.', settled, considered, p_as_of)
+           note = format('%s of %s partners settled on %s.', core.settled, core.considered, p_as_of)
      where id = run_id;
   end if;
 
@@ -754,7 +755,9 @@ begin
   end if;
 
   if pg_get_functiondef('public.run_settlements_core(date,text,text,text)'::regprocedure)
-       not like '%set considered = core.considered, settled = core.settled%' then
+       not like '%set considered = core.considered, settled = core.settled%'
+     or pg_get_functiondef('public.run_settlements_core(date,text,text,text)'::regprocedure)
+       not like '%partners settled on %s.'', core.settled, core.considered, p_as_of)%' then
     raise exception 'run_settlements_core still names considered and settled ambiguously';
   end if;
   if exists (select 1 from unnest(array[
