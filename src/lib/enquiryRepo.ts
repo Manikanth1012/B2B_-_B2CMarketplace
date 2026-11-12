@@ -126,7 +126,7 @@ export async function loadMyDeskQuoteLines(): Promise<
 > {
   try {
     const { data, error } = await supabase.rpc('my_desk_quote_lines')
-    if (error) return { ok: false, missing: isMissingFunction(error), error: error.message }
+    if (error) return { ok: false, missing: isMissingFunction(error, 'my_desk_quote_lines'), error: error.message }
     return { ok: true, lines: ((data ?? []) as Record<string, unknown>[]).map(asDeskQuoteLine) }
   } catch (err) {
     return { ok: false, missing: false, error: errorText(err) }
@@ -142,7 +142,7 @@ export async function loadLineProposals(enquiryId: string): Promise<
 > {
   try {
     const { data, error } = await supabase.from('enquiry_line_proposals').select('*').eq('enquiry_id', enquiryId)
-    if (error) return isMissingTable(error) ? { ok: true, proposals: {} } : { ok: false, error: error.message }
+    if (error) return isMissingTable(error, 'enquiry_line_proposals') ? { ok: true, proposals: {} } : { ok: false, error: error.message }
     const proposals: Record<string, LineProposal> = {}
     for (const r of (data ?? []) as Record<string, unknown>[]) {
       const p = asProposal(r)
@@ -160,7 +160,7 @@ export async function proposeLinePrice(lineId: string, price: number, note?: str
   try {
     const { error } = await supabase.rpc('propose_line_price', proposeLinePricePayload(lineId, price, note))
     if (!error) return { ok: true }
-    if (isMissingFunction(error)) {
+    if (isMissingFunction(error, 'propose_line_price')) {
       return { ok: false, error: 'Pricing your part of a desk quote is not set up on this marketplace yet.' }
     }
     return { ok: false, error: error.message }

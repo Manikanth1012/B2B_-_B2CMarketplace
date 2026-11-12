@@ -16,9 +16,11 @@
  * WHERE IT LIVES. In its own table, `enquiry_line_proposals`, one row per line,
  * and not on `enquiry_lines`. The buyer reads every column of its own lines,
  * and the gap between what a seller asked for and what the desk quoted is the
- * desk's margin: it is between the seller and the desk. Here the seller reads
- * the rows for its own lines, the desk reads them all, and the buyer reads
- * none. Nothing of 20261105100000 is replaced — not `enquiry_lines`, not its
+ * desk's margin: the buyer must not see it. Here the seller reads the rows for
+ * its own lines, the desk reads them all, and the buyer reads none. (The
+ * seller can still read the price the desk sent on its own lines, through the
+ * existing `partner_read_enquiry_lines` policy; closing that would mean
+ * replacing a policy of 20261105100000, which this file does not do.) Nothing of 20261105100000 is replaced — not `enquiry_lines`, not its
  * guard, not its policies — so every screen that reads lines reads exactly
  * what it read before.
  *
@@ -50,7 +52,8 @@
  * see the quote's status, subject or currency. `my_desk_quote_lines()` returns
  * the seller's own lines on desk quotes with just those facts about the quote,
  * its own proposal, and its floor in that currency. Nothing about other
- * sellers' lines, and not the price the desk sent.
+ * sellers' lines. It does not return the price the desk sent, though the
+ * seller can read that on its own line rows, as before.
  *
  * The desk is told through the existing path (`enquiry_send`), under a new
  * event, `enquiry.seller_priced`, in-app only like the rest. No row goes to
@@ -203,10 +206,13 @@ begin
   /* Locked, so the desk sending the quote and the seller proposing cannot
      pass each other: whichever comes second sees the other. */
   select * into v_e from enquiries where id = v_line.enquiry_id for update;
+  if v_e.type is distinct from 'quote' then
+    raise exception 'That line is not one of yours on a desk quote.';
+  end if;
   if v_e.partner_id is not distinct from v_me then
     raise exception '% is routed to you, so price it and send the quote yourself.', v_e.id;
   end if;
-  if v_e.type is distinct from 'quote' or v_e.partner_id is not null then
+  if v_e.partner_id is not null then
     raise exception 'That line is not one of yours on a desk quote.';
   end if;
   if v_e.status is distinct from 'submitted' then
@@ -392,12 +398,14 @@ begin
   select count(*) into n from enquiry_seller_price_tokens;
   if n <> 0 then raise exception '% seller price tokens were left behind', n; end if;
 
-  /* Every proposal is the line's own seller's, on a desk quote. */
+  /* Every proposal is the line's own seller's, on the line's own enquiry. Not
+     "on a desk quote": the desk may since have reassigned the quote to one
+     seller (reassign_enquiry), and a proposal made while it was at the desk
+     is still history, not an error to roll a re-run back over. */
   select count(*) into n from enquiry_line_proposals p
-    join enquiry_lines l on l.id = p.line_id join enquiries e on e.id = l.enquiry_id
-   where p.partner_id is distinct from l.partner_id or p.enquiry_id <> l.enquiry_id
-      or not (e.type = 'quote' and e.partner_id is null);
-  if n > 0 then raise exception '% proposals are not the line seller''s on a desk quote', n; end if;
+    join enquiry_lines l on l.id = p.line_id
+   where p.partner_id is distinct from l.partner_id or p.enquiry_id <> l.enquiry_id;
+  if n > 0 then raise exception '% proposals are not their line seller''s, on their line''s enquiry', n; end if;
 
   /* The rpc and the read are security definer with a search path, callable by
      a signed-in seller and by nobody signed out. */

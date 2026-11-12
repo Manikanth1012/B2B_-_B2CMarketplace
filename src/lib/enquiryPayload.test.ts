@@ -13,9 +13,9 @@ describe("the seller's proposal on a line", () => {
     expect(p.proposed_by).toBe('Nimbus')
   })
   it('knows a table that is not there yet from any other failure', () => {
-    expect(isMissingTable({ code: 'PGRST205', message: "Could not find the table 'public.enquiry_line_proposals' in the schema cache" })).toBe(true)
-    expect(isMissingTable({ code: '42P01', message: 'relation "enquiry_line_proposals" does not exist' })).toBe(true)
-    expect(isMissingTable({ code: '42501', message: 'permission denied for table enquiry_line_proposals' })).toBe(false)
+    expect(isMissingTable({ code: 'PGRST205', message: "Could not find the table 'public.enquiry_line_proposals' in the schema cache" }, 'enquiry_line_proposals')).toBe(true)
+    expect(isMissingTable({ code: '42P01', message: 'relation "enquiry_line_proposals" does not exist' }, 'enquiry_line_proposals')).toBe(true)
+    expect(isMissingTable({ code: '42501', message: 'permission denied for table enquiry_line_proposals' }, 'enquiry_line_proposals')).toBe(false)
   })
   it('sends a blank note as null', () => {
     expect(proposeLinePricePayload('L1', 10, '  ')).toEqual({ p_line_id: 'L1', p_price: 10, p_note: null })
@@ -30,10 +30,12 @@ describe("the seller's proposal on a line", () => {
     expect(d.seller_unit_price).toBeNull()
   })
   it('knows a function that is not there yet from any other failure', () => {
-    expect(isMissingFunction({ code: 'PGRST202', message: 'Could not find the function public.my_desk_quote_lines' })).toBe(true)
-    expect(isMissingFunction({ message: 'function public.propose_line_price(text, numeric, text) does not exist' })).toBe(true)
-    expect(isMissingFunction({ code: 'P0001', message: 'That line is not one of yours on a desk quote.' })).toBe(false)
-    expect(isMissingFunction(null)).toBe(false)
+    expect(isMissingFunction({ code: 'PGRST202', message: 'Could not find the function public.my_desk_quote_lines' }, 'my_desk_quote_lines')).toBe(true)
+    expect(isMissingFunction({ message: 'function public.propose_line_price(text, numeric, text) does not exist' }, 'propose_line_price')).toBe(true)
+    expect(isMissingFunction({ code: 'P0001', message: 'That line is not one of yours on a desk quote.' }, 'propose_line_price')).toBe(false)
+    expect(isMissingFunction(null, 'propose_line_price')).toBe(false)
+    /* A missing helper inside a function that is there is a real failure. */
+    expect(isMissingFunction({ code: '42883', message: 'function enquiry_seller_floor(text, text) does not exist' }, 'propose_line_price')).toBe(false)
   })
 })
 

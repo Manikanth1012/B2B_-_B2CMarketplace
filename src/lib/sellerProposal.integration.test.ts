@@ -79,7 +79,7 @@ beforeAll(async () => {
   await as(NIMBUS)
   const { error } = await supabase.rpc('my_desk_quote_lines')
   if (error) {
-    if (isMissingFunction(error)) {
+    if (isMissingFunction(error, 'my_desk_quote_lines')) {
       skipReason = 'Skipped: there is no my_desk_quote_lines, so 20261112200000_a_seller_prices_its_part_of_a_desk_quote.sql has not been applied yet.'
       return
     }

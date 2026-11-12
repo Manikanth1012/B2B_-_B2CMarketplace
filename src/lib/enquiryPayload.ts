@@ -59,11 +59,14 @@ export function asProposal(r: Record<string, unknown>): LineProposal {
   }
 }
 
-/** True when a read failed because the table is not on this database yet. */
-export function isMissingTable(error: { message?: string; code?: string } | null | undefined): boolean {
+/** True when a read of `table` failed because that table is not on this
+    database yet. PostgREST's own "no such table" code is about the table
+    asked for; Postgres's is believed only when it names that table. */
+export function isMissingTable(error: { message?: string; code?: string } | null | undefined, table: string): boolean {
   if (!error) return false
-  if (error.code === '42P01' || error.code === 'PGRST205') return true
-  return /could not find the table|relation .* does not exist|schema cache/i.test(error.message ?? '')
+  const msg = error.message ?? ''
+  if (error.code === 'PGRST205') return true
+  return (error.code === '42P01' || /could not find the table|does not exist/i.test(msg)) && msg.includes(table)
 }
 
 /** The arguments `propose_line_price` takes. A blank note is sent as null,
@@ -99,10 +102,13 @@ export function asDeskQuoteLine(r: Record<string, unknown>): DeskQuoteLine {
   }
 }
 
-/** True when an rpc failed because the function is not on this database yet:
-    the migration that adds it has not been applied. */
-export function isMissingFunction(error: { message?: string; code?: string } | null | undefined): boolean {
+/** True when an rpc failed because the function `fn` is not on this database
+    yet: the migration that adds it has not been applied. A "does not exist"
+    about some other function, raised from inside one that is there, is a
+    real failure and is not mistaken for this. */
+export function isMissingFunction(error: { message?: string; code?: string } | null | undefined, fn: string): boolean {
   if (!error) return false
-  if (error.code === 'PGRST202' || error.code === '42883') return true
-  return /could not find the function|function .* does not exist/i.test(error.message ?? '')
+  const msg = error.message ?? ''
+  if (error.code === 'PGRST202') return true
+  return (error.code === '42883' || /could not find the function|does not exist/i.test(msg)) && msg.includes(fn)
 }

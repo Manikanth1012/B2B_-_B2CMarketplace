@@ -93,7 +93,11 @@ describe("the seller's price on a desk quote, as a migration", () => {
     const f = fn('propose_line_price')
     expect(f).toContain("current_persona() is distinct from 'partner'")
     expect(f).toContain('v_line.partner_id is distinct from v_me')
-    expect(f).toContain("v_e.type is distinct from 'quote' or v_e.partner_id is not null")
+    /* The type first, so a demo's line is not told to "send the quote yourself". */
+    const type = f.indexOf("if v_e.type is distinct from 'quote' then")
+    expect(type).toBeGreaterThan(0)
+    expect(type).toBeLessThan(f.indexOf('is routed to you'))
+    expect(f).toContain('if v_e.partner_id is not null then')
     expect(f).toContain("v_e.status is distinct from 'submitted'")
     expect(f).toContain('from enquiries where id = v_line.enquiry_id for update')
   })
@@ -152,6 +156,13 @@ describe("the seller's price on a desk quote, as a migration", () => {
     expect(code).toContain("b ->> 'heading' = 'your lines on a quote the desk answers'")
     expect(sql).toContain('You can propose until the desk sends the quote')
     expect(code.slice(code.lastIndexOf('do $$'))).toContain("k.view = 'pt-enquiries'")
+  })
+
+  it('does not refuse a re-run because a quote with proposals was since reassigned to a seller', () => {
+    const check = code.slice(code.lastIndexOf('do $$'))
+    const block = check.slice(check.indexOf('from enquiry_line_proposals p'), check.indexOf('if n > 0', check.indexOf('from enquiry_line_proposals p')))
+    expect(block).toContain('p.partner_id is distinct from l.partner_id')
+    expect(block).not.toContain('e.partner_id is null')
   })
 
   it('puts no bare CASE inside an IF condition and drops no table', () => {

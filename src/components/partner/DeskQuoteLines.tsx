@@ -10,7 +10,17 @@
  * Before 20261112200000 is applied there is nothing to ask, and the section
  * says so in one calm sentence instead of offering a form that would fail. */
 import { useState } from 'react'
-import { Btn, TextInput, TextArea, fmtInt, fmtDateTime } from '../operator/shared'
+import { Btn, TextInput, TextArea, fmtInt, fmtDate, fmtDateTime } from '../operator/shared'
+
+/* Why a line takes no more proposals, by what became of its quote. */
+function closedSentence(status: string): string {
+  switch (status) {
+    case 'withdrawn': return 'The buyer withdrew this quote, so your price can no longer be changed.'
+    case 'declined': return 'This quote was declined, so your price can no longer be changed.'
+    case 'accepted': return 'The buyer accepted the quote the desk sent, so your price can no longer be changed.'
+    default: return 'The desk has already answered this quote, so your price can no longer be changed.'
+  }
+}
 import type { DeskQuoteLine } from '../../lib/enquiryPayload'
 
 export type DeskLinesState =
@@ -74,7 +84,8 @@ function DeskLine({ line: l, money, onPropose }: { line: DeskQuoteLine } & Omit<
       document.getElementById(id)?.focus()
       return
     }
-    if (l.floor_price !== null && l.floor_price > 0 && n < l.floor_price) {
+    /* Rounded to the cent first, as the database rounds it. */
+    if (l.floor_price !== null && l.floor_price > 0 && Math.round(n * 100) / 100 < l.floor_price) {
       setError(`That is below the minimum you agreed for this listing, which is ${money(l.floor_price, l.currency)}.`)
       document.getElementById(id)?.focus()
       return
@@ -95,7 +106,7 @@ function DeskLine({ line: l, money, onPropose }: { line: DeskQuoteLine } & Omit<
       <p className="enq-muted">
         {fmtInt(l.quantity)} wanted
         {l.target_unit_price !== null ? ` · they hope for ${money(l.target_unit_price, l.currency)}` : ''}
-        {l.needed_by ? ` · needed by ${l.needed_by}` : ''}
+        {l.needed_by ? ` · needed by ${fmtDate(l.needed_by)}` : ''}
       </p>
       {l.seller_unit_price !== null && (
         <p className="enq-muted">
@@ -105,7 +116,7 @@ function DeskLine({ line: l, money, onPropose }: { line: DeskQuoteLine } & Omit<
       )}
       {!open ? (
         <p className="enq-muted" role="status">
-          The desk has already answered this quote, so your price can no longer be changed.
+          {closedSentence(l.status)}
         </p>
       ) : (
         <form className="enq-resp" onSubmit={submit} noValidate>
