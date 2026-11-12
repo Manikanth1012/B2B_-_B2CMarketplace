@@ -13,10 +13,11 @@ import { useState, useEffect, useRef } from 'react'
 import { X, Trash2, TriangleAlert as AlertTriangle, Check } from 'lucide-react'
 import { Btn, toast } from '../operator/shared'
 import { useRequisition } from '../../lib/RequisitionContext'
-import { verdict, missingFields, missingNote, verticalOf, modelOf, isOffContract } from '../../lib/requisitionBasket'
-import type { MissingField, BasketLine } from '../../lib/requisitionBasket'
+import { verdict, missingFields, missingNote, verticalOf, modelOf, isOffContract, contractChanges, applyContractChanges } from '../../lib/requisitionBasket'
+import type { MissingField, BasketLine, Basket, ContractChange } from '../../lib/requisitionBasket'
 import { DEFAULT_RULES, showsOffContract, offContractReasonProblem } from '../../lib/accountPrices'
-import type { OffContractRule } from '../../lib/accountPrices'
+import type { OffContractRule, AccountPrice, BuyingRules } from '../../lib/accountPrices'
+import { loadAccountPrices, loadBuyingRules, loadPublishedPrices } from '../../lib/priceBookRepo'
 import { OffContractMarker } from '../pricebooks/PriceTag'
 import { raiseRequisition, loadAccount } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
@@ -47,6 +48,40 @@ const FIELD_ID: Record<Exclude<MissingField, 'off_contract_reason'>, string> = {
    from the product id (a basket holds one ordinary line per product) with
    anything an id would not like replaced. */
 export const offReasonId = (product_id: string) => `req-offreason-${product_id.replace(/[^A-Za-z0-9_-]/g, '_')}`
+/* The line itself, for when Raise stops on a line whose price moved and there is no field to go to. */
+export const lineId = (product_id: string) => `req-line-${product_id.replace(/[^A-Za-z0-9_-]/g, '_')}`
+
+/* The sentence Raise answers with when a line's price or standing moved while the drawer was open. */
+export const PRICES_MOVED = 'Your account\'s prices changed since these lines were added. Check the changed lines and raise again.'
+
+/**
+ * Today's prices and rules, read again as Raise is pressed, and what they change.
+ *
+ * Null when any read fails: the caller then raises as it always did, on the
+ * figures the drawer already holds, and the database's price guard still
+ * refuses a line whose price has moved, in its own words.
+ */
+async function recheck(account_id: string, basket: Basket, today: string):
+  Promise<{ prices: AccountPrice[]; rules: BuyingRules; changes: ContractChange[] } | null> {
+  try {
+    const [ap, br, pb] = await Promise.all([
+      loadAccountPrices(account_id), loadBuyingRules(account_id),
+      /* Each listing's published price as the database's price guard reads it,
+         base row included (publishedIn). */
+      loadPublishedPrices(basket.lines.map(l => l.product_id), basket.currency),
+    ])
+    if (!ap.ok || !br.ok || !pb.ok) {
+      console.warn(`Today's prices could not be re-read before raising, so the requisition goes on the figures shown (${
+        [ap, br, pb].map(r => (r.ok ? '' : r.error)).filter(Boolean).join('; ')}).`)
+      return null
+    }
+    const rules = br.value.account_id ? br.value : { ...br.value, account_id }
+    return { prices: ap.value, rules, changes: contractChanges(basket, { prices: ap.value, published: pb.value }, account_id, today) }
+  } catch (e) {
+    console.warn(`Today's prices could not be re-read before raising (${e instanceof Error ? e.message : 'the request failed'}).`)
+    return null
+  }
+}
 
 export function RequisitionPanel({ onRaised, onQuoteRequested }: {
   /* The console is told afterwards, because the queue the buyer is about to be
@@ -56,7 +91,7 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
   onQuoteRequested?: () => void
 }) {
   const [quoting, setQuoting] = useState(false)
-  const { basket, open, setOpen, setQuantity, remove, setReason, removeBundle, empty, total, count } = useRequisition()
+  const { basket, open, setOpen, setQuantity, remove, setReason, removeBundle, empty, total, count, applyChanges } = useRequisition()
   /* The marketplace's formatter, with the currency table in it. This panel used
      to import `money` from `enterprise.ts`, which has no table and writes
      "INR 400,000.00" — every price on the panel, not only the threshold. */
@@ -82,7 +117,23 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
 
   /* Cleared once it has actually been raised, not on every close — a buyer who
      shuts the panel to go and check a budget should not lose their reasoning. */
-  useEffect(() => { if (!basket.lines.length) { setDraft(BLANK); setAttempted(false) } }, [basket.lines.length])
+  useEffect(() => { if (!basket.lines.length) { setDraft(BLANK); setAttempted(false); setMoved([]) } }, [basket.lines.length])
+
+  /* The lines Raise last stopped on because today's prices moved them, as they were and are. */
+  const [moved, setMoved] = useState<ContractChange[]>([])
+  /* Where focus goes once the drawer has re-rendered with the changed lines (a reason field may only appear then). */
+  const focusNext = useRef<string | null>(null)
+  useEffect(() => {
+    const id = focusNext.current
+    if (!id) return
+    /* Tried once, on the render that follows: a target that never rendered
+       (its line removed meanwhile) must not take focus later. */
+    focusNext.current = null
+    const el = document.getElementById(id)
+    if (!el) return
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    el.focus({ preventScroll: true })
+  })
 
   /* Escape closes it, and focus goes back to whatever opened it. The panel is a
      modal dialog, so leaving focus on a control that has just been unmounted
@@ -135,9 +186,9 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
     : [{ field: 'lines' as MissingField, says: book ? 'your account, which did not load' : 'your account to finish loading' }]
   /* Where pressing Raise takes somebody: for a missing reason, the first line
      whose reason the database would refuse. */
-  const fieldId = (f: MissingField): string => {
+  const fieldId = (f: MissingField, lines: readonly BasketLine[] = basket.lines, showing = shows): string => {
     if (f !== 'off_contract_reason') return FIELD_ID[f]
-    const first = basket.lines.find(l => offLine(l) && offContractReasonProblem(l.off_contract_reason) !== null)
+    const first = lines.find(l => showing && isOffContract(l) && offContractReasonProblem(l.off_contract_reason) !== null)
     return first ? offReasonId(first.product_id) : 'req-title'
   }
   const stopper = missingNote(missing.map(m => m.says))
@@ -166,38 +217,70 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
 
   const raise = async () => {
     if (!account || !me || !policy) return
-    if (missing.length) {
-      setAttempted(true)
-      const first = missing[0].field
-      const el = document.getElementById(fieldId(first))
-      if (el) {
-        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
-        ;(el as HTMLElement).focus({ preventScroll: true })
+    setBusy(true)
+    /* Today's prices and rules, read again first: a price can start, end or be
+       withdrawn while the drawer is open, and the database would refuse a line
+       priced the old way. The missing fields are then judged on those rules, not
+       the ones the drawer opened with. A failed read goes on what is shown, as
+       before; the database's price guard still decides. The line controls are
+       held while this runs, so the lines raised are the lines on screen. */
+    let lines = basket.lines
+    let rulesNow: BuyingRules = rules
+    let pricesNow: readonly AccountPrice[] = prices
+    const fresh = await recheck(account.id, basket, today)
+    if (fresh) {
+      rulesNow = fresh.rules
+      pricesNow = fresh.prices
+      setBook(b => (b ? { ...b, prices: fresh.prices, rules: fresh.rules } : b))
+      const showsNow = showsOffContract(fresh.rules, fresh.prices, today)
+      if (fresh.changes.length) applyChanges(fresh.changes)
+      lines = applyContractChanges(basket, fresh.changes).lines
+      /* A standing that moved behind a hidden marker (decision 20) changes
+         nothing the buyer sees or the database refuses, so it is taken quietly. */
+      const stopOn = fresh.changes.filter(c =>
+        c.was.unit_price !== c.now.unit_price || (showsNow && c.was.on_contract !== c.now.on_contract))
+      if (stopOn.length) {
+        /* Said once, by the footer's status line; no toast beside it. */
+        setMoved(stopOn)
+        setBusy(false)
+        const first = stopOn[0]
+        const asks = fresh.rules.off_contract === 'reason' && showsNow && !first.now.on_contract
+        focusNext.current = asks ? offReasonId(first.product_id) : lineId(first.product_id)
+        return
       }
-      toast(missingNote(missing.map(m => m.says)) ?? 'Something is missing', 'error')
+      setMoved([])
+    }
+    const ruleNow = rulesNow.off_contract
+    const showsNow = showsOffContract(rulesNow, pricesNow, today)
+    const missingNow = missingFields({ ...basket, lines }, draft, account, { rule: ruleNow, shows: showsNow })
+    if (missingNow.length) {
+      setBusy(false)
+      setAttempted(true)
+      focusNext.current = fieldId(missingNow[0].field, lines, showsNow)
+      toast(missingNote(missingNow.map(m => m.says)) ?? 'Something is missing', 'error')
       return
     }
-    setBusy(true)
     const res = await raiseRequisition({
       draft: {
         title: draft.title, reason: draft.reason, currency: basket.currency,
-        vertical: verticalOf(basket.lines), cost_centre: draft.cost_centre,
-        model: modelOf(basket.lines), po_ref: draft.po_ref,
-        lines: basket.lines.map(l => ({
+        vertical: verticalOf(lines), cost_centre: draft.cost_centre,
+        model: modelOf(lines), po_ref: draft.po_ref,
+        lines: lines.map(l => ({
           product_id: l.product_id, name: l.name, seller: l.seller,
           partner_id: l.partner_id, quantity: l.quantity, unit_price: l.unit_price,
           quote_line_id: l.quote_line_id ?? null,
           bundle_selection_id: l.bundle_selection_id ?? null,
           /* Only where the rules ask for one, on a line off the price book.
              A database without price books has no column to take it. */
-          ...(rule === 'reason' && offLine(l) && l.off_contract_reason?.trim()
+          ...(ruleNow === 'reason' && showsNow && isOffContract(l) && l.off_contract_reason?.trim()
             ? { off_contract_reason: l.off_contract_reason.trim() } : {}),
         })),
       },
-      me, account, policy, currencies, rates, prices, rules,
+      me, account, policy, currencies, rates, prices: pricesNow, rules: rulesNow,
     })
     setBusy(false)
     if (!res.ok) { toast(res.reason, 'error'); return }
+    setMoved([])
     toast(res.note ?? 'Raised', 'success')
     empty()
     setDraft(BLANK)
@@ -277,7 +360,9 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
                     </div>
                   )
                 })() : g.lines.map((l) => (
-                  <div key={l.product_id} style={{ padding: '12px', borderTop: gi ? '1px solid var(--border-light)' : 'none' }}>
+                  <div key={l.product_id} id={lineId(l.product_id)} tabIndex={-1}
+                    aria-describedby={moved.some(c => c.product_id === l.product_id) ? `${lineId(l.product_id)}-moved` : undefined}
+                    style={{ padding: '12px', borderTop: gi ? '1px solid var(--border-light)' : 'none' }}>
                   <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                     <div style={{ width: 48, height: 48, borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--bg-alt)', flexShrink: 0 }}>
                       <img src={getProductImage(l.product_id)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
@@ -296,7 +381,7 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
                       </div>
                     ) : (
                     <input
-                      type="number" min={0} value={l.quantity} aria-label={`Quantity of ${l.name}`}
+                      type="number" min={0} value={l.quantity} aria-label={`Quantity of ${l.name}`} disabled={busy}
                       onChange={e => {
                         const n = Number(e.target.value)
                         if (!Number.isInteger(n)) return
@@ -309,12 +394,17 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
                     <div style={{ width: 96, textAlign: 'right', fontWeight: 700, fontSize: 'var(--text-sm)' }}>
                       {money(round2(l.quantity * l.unit_price), basket.currency)}
                     </div>
-                    <button onClick={() => remove(l.product_id)} aria-label={`Remove ${l.name}`} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}>
+                    <button onClick={() => remove(l.product_id)} disabled={busy} aria-label={`Remove ${l.name}`} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-tertiary)' }}>
                       <Trash2 size={16} />
                     </button>
                   </div>
+                  {(() => {
+                    const c = moved.find(m => m.product_id === l.product_id)
+                    return c ? <MovedNote id={`${lineId(l.product_id)}-moved`} change={c} shows={shows}
+                      fmt={n => money(n, basket.currency)} /> : null
+                  })()}
                   {offLine(l) && (
-                    <OffContractLine line={l} rule={rule} attempted={attempted} field={field} wanting={wanting} label={label}
+                    <OffContractLine line={l} rule={rule} attempted={attempted} busy={busy} field={field} wanting={wanting} label={label}
                       onReason={reason => {
                         const r = setReason(l.product_id, reason)
                         if (!r.ok) toast(r.reason, 'error')
@@ -397,6 +487,10 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--warning)' }}>
                 Your role on this account cannot raise a requisition. Ask a colleague who can, or an administrator to move you to a role that raises.
               </div>
+            ) : moved.length > 0 ? (
+              <div role="status" style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', fontWeight: 600 }}>
+                {PRICES_MOVED}
+              </div>
             ) : stuckBundle ? (
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', fontWeight: 600 }}>
                 {stuckBundle.says}
@@ -457,10 +551,11 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
    buying rules ask of it. Under 'reason' a field the database will check
    (guard_requisition_line_contract: 5 to 300 characters, trimmed); under
    'approval' the sentence saying where it goes; under 'allow' the marker only. */
-function OffContractLine({ line, rule, attempted, field, wanting, label, onReason }: {
+function OffContractLine({ line, rule, attempted, busy, field, wanting, label, onReason }: {
   line: Pick<BasketLine, 'product_id' | 'name' | 'off_contract_reason'>
   rule: OffContractRule
   attempted: boolean
+  busy: boolean
   field: React.CSSProperties; wanting: React.CSSProperties; label: React.CSSProperties
   onReason: (reason: string) => void
 }) {
@@ -479,7 +574,7 @@ function OffContractLine({ line, rule, attempted, field, wanting, label, onReaso
         <div>
           <label style={label} htmlFor={id}>Why buy {line.name} off your price book</label>
           <textarea id={id} rows={2} maxLength={300}
-            value={line.off_contract_reason ?? ''}
+            value={line.off_contract_reason ?? ''} readOnly={busy}
             aria-invalid={showProblem}
             aria-describedby={`${id}-hint${showProblem ? ` ${id}-error` : ''}`}
             onChange={e => onReason(e.target.value)}
@@ -494,6 +589,22 @@ function OffContractLine({ line, rule, attempted, field, wanting, label, onReaso
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+/* Under a line Raise stopped on: what moved, in the requisition's money. */
+function MovedNote({ id, change, shows, fmt }: { id: string; change: ContractChange; shows: boolean; fmt: (n: number) => string }) {
+  const priced = change.was.unit_price !== change.now.unit_price
+  const standing = change.was.on_contract !== change.now.on_contract
+  const parts: string[] = []
+  if (priced) parts.push(`Price now ${fmt(change.now.unit_price)} (was ${fmt(change.was.unit_price)})`)
+  if (standing && change.now.on_contract) parts.push('now on your price book')
+  else if (standing && shows) parts.push('now off your price book')
+  const text = parts.join(', ')
+  return (
+    <div id={id} style={{ marginTop: '8px', paddingLeft: '60px', fontSize: 'var(--text-xs)', color: 'var(--danger)', fontWeight: 600 }}>
+      {text.charAt(0).toUpperCase() + text.slice(1)}
     </div>
   )
 }
