@@ -29,6 +29,8 @@ export function sendQuotePayload(
 
 const num = (v: unknown): number | null => (v === null || v === undefined || v === '' ? null : Number(v))
 
+const str = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null)
+
 /** A line as the database returns it. `numeric` can arrive as a string. */
 export function asLine(r: Record<string, unknown>): EnquiryLine {
   return {
@@ -38,4 +40,75 @@ export function asLine(r: Record<string, unknown>): EnquiryLine {
     quoted_unit_price: num(r.quoted_unit_price),
     sort_order: Number(r.sort_order ?? 0),
   }
+}
+
+/** On a desk quote, what the seller of a line told the desk it would charge
+    (`enquiry_line_proposals`, 20261112200000). Its own table, not columns on
+    the line, so the buyer — who reads every column of its lines — never sees
+    it. The desk reads them all; a seller reads its own. */
+export interface LineProposal {
+  line_id: string; enquiry_id: string; partner_id: string
+  unit_price: number; note: string | null; proposed_at: string; proposed_by: string
+}
+
+export function asProposal(r: Record<string, unknown>): LineProposal {
+  return {
+    line_id: String(r.line_id), enquiry_id: String(r.enquiry_id), partner_id: String(r.partner_id ?? ''),
+    unit_price: Number(r.unit_price), note: str(r.note),
+    proposed_at: String(r.proposed_at ?? ''), proposed_by: String(r.proposed_by ?? ''),
+  }
+}
+
+/** True when a read of `table` failed because that table is not on this
+    database yet. PostgREST's own "no such table" code is about the table
+    asked for; Postgres's is believed only when it names that table. */
+export function isMissingTable(error: { message?: string; code?: string } | null | undefined, table: string): boolean {
+  if (!error) return false
+  const msg = error.message ?? ''
+  if (error.code === 'PGRST205') return true
+  return (error.code === '42P01' || /could not find the table|does not exist/i.test(msg)) && msg.includes(table)
+}
+
+/** The arguments `propose_line_price` takes. A blank note is sent as null,
+    which clears any note proposed before. */
+export function proposeLinePricePayload(
+  lineId: string, price: number, note?: string | null,
+): { p_line_id: string; p_price: number; p_note: string | null } {
+  const trimmed = note?.trim()
+  return { p_line_id: lineId, p_price: Number(price), p_note: trimmed ? trimmed : null }
+}
+
+/** One of the seller's own lines on a desk quote, as `my_desk_quote_lines()`
+    returns it: the line, the few facts about the quote the seller needs to
+    price it, and the seller's own floor in the quote's currency. */
+export interface DeskQuoteLine {
+  line_id: string; enquiry_id: string; subject: string; status: string; currency: string
+  needed_by: string | null; raised_at: string; product_id: string; name: string; quantity: number
+  target_unit_price: number | null; floor_price: number | null; sort_order: number
+  /** The seller's own proposal on this line, if it has made one. */
+  seller_unit_price: number | null; seller_note: string | null; seller_priced_at: string | null
+}
+
+export function asDeskQuoteLine(r: Record<string, unknown>): DeskQuoteLine {
+  return {
+    line_id: String(r.line_id), enquiry_id: String(r.enquiry_id), subject: String(r.subject ?? ''),
+    status: String(r.status ?? ''), currency: String(r.currency ?? ''),
+    needed_by: str(r.needed_by), raised_at: String(r.raised_at ?? ''),
+    product_id: String(r.product_id), name: String(r.name ?? ''), quantity: Number(r.quantity),
+    target_unit_price: num(r.target_unit_price), floor_price: num(r.floor_price),
+    sort_order: Number(r.sort_order ?? 0),
+    seller_unit_price: num(r.seller_unit_price), seller_note: str(r.seller_note),
+    seller_priced_at: str(r.seller_priced_at),
+  }
+}
+
+/** True when an rpc failed because the function `fn` is not on this database
+    yet: the migration that adds it has not been applied. A "does not exist"
+    about some other function, raised from inside one that is there, is a
+    real failure and is not mistaken for this. */
+export function isMissingFunction(error: { message?: string; code?: string } | null | undefined, fn: string): boolean {
+  if (!error) return false
+  const msg = error.message ?? ''
+  if (error.code === 'PGRST202') return true
+  return (error.code === '42883' || /could not find the function|does not exist/i.test(msg)) && msg.includes(fn)
 }

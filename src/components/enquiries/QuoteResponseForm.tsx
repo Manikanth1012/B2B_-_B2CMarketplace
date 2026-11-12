@@ -2,16 +2,23 @@
  * the seller and by the operator desk on what is routed to it.
  * A price under the seller's own agreed floor is flagged, not refused: the
  * floor is the seller's number and the seller may knowingly go beneath it.
- * The desk has no floor of its own and passes none, so it sees no warning. */
+ * The desk has no floor of its own and passes none, so it sees no warning.
+ * On a desk quote across sellers, each seller may have proposed a price for
+ * its own lines (propose_line_price). The desk sees it beside the line and
+ * can use it with one press, or price the line itself. */
 import { useState } from 'react'
 import { TriangleAlert } from 'lucide-react'
-import { Btn, FormField, TextInput, TextArea, fmtInt } from '../operator/shared'
+import { Btn, FormField, TextInput, TextArea, fmtInt, fmtDateTime } from '../operator/shared'
 import { validUntilProblem } from '../../lib/enquiries'
 import type { Enquiry, EnquiryLine } from '../../lib/enquiries'
+import type { LineProposal } from '../../lib/enquiryPayload'
 
 export interface QuoteResponseFormProps {
   enquiry: Enquiry
   lines: readonly EnquiryLine[]
+  /** line id -> the seller's proposal. Only the desk passes these, on its own
+      quotes; none before 20261112200000 is applied. */
+  proposals?: Readonly<Record<string, LineProposal>>
   today: string
   /** product_id -> the seller's agreed floor, where it could be read. */
   floors: Readonly<Record<string, number>>
@@ -23,7 +30,7 @@ export interface QuoteResponseFormProps {
   onCancel: () => void
 }
 
-export function QuoteResponseForm({ enquiry, lines, today, floors, floorsFailed, money, onSubmit, onCancel }: QuoteResponseFormProps) {
+export function QuoteResponseForm({ enquiry, lines, proposals, today, floors, floorsFailed, money, onSubmit, onCancel }: QuoteResponseFormProps) {
   const cur = enquiry.currency ?? ''
   const [prices, setPrices] = useState<Record<string, string>>(() =>
     Object.fromEntries(lines.map(l => [l.id, l.quoted_unit_price !== null ? String(l.quoted_unit_price) : ''])))
@@ -81,6 +88,29 @@ export function QuoteResponseForm({ enquiry, lines, today, floors, floorsFailed,
             <div id={`${id}-hint`} className="c-field__hint">
               {fmtInt(l.quantity)} wanted{l.target_unit_price !== null ? ` · they hope for ${money(l.target_unit_price, cur)}` : ''}
             </div>
+            {(() => {
+              const p = proposals?.[l.id]
+              if (!p) return null
+              return (
+                <div className="enq-proposal">
+                  <p className="enq-muted">
+                    {p.proposed_by || 'The seller'} proposes {money(p.unit_price, cur)} a unit
+                    {p.proposed_at ? ` (${fmtDateTime(p.proposed_at)})` : ''}.
+                    {p.note ? ` “${p.note}”` : ''}
+                  </p>
+                  <div className="enq-actions" style={{ justifyContent: 'flex-start' }}>
+                    <Btn type="button" variant="secondary" style={{ minHeight: 44 }}
+                      aria-label={`Use the seller's price for ${l.name}`}
+                      onClick={() => {
+                        setPrices(x => ({ ...x, [l.id]: String(p.unit_price) }))
+                        setErrors(e => { const rest = { ...e }; delete rest[l.id]; return rest })
+                      }}>
+                      Use the seller's price
+                    </Btn>
+                  </div>
+                </div>
+              )
+            })()}
             <div id={`${id}-msg`}>
               {errors[l.id] && <p className="enq-error" role="alert">{errors[l.id]}</p>}
               {below && (
