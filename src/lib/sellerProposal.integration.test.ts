@@ -228,4 +228,20 @@ describe("a seller prices its part of a desk quote", () => {
     expect(r.ok).toBe(false)
     if (!r.ok) expect(r.error).toMatch(/already answered/)
   })
+
+  it('8. the seller cannot read the price the desk sent on its line (20261112300000)', async (ctx) => {
+    skipUnlessApplied(ctx)
+    await as(NIMBUS)
+    /* No line row of the desk quote at all: that row carries quoted_unit_price. */
+    expect(await linesOf(deskId)).toEqual([])
+    /* Its own view still lists the line, without the desk's price. */
+    const { data, error } = await supabase.rpc('my_desk_quote_lines')
+    expect(error).toBeNull()
+    const mine = ((data ?? []) as Record<string, unknown>[]).filter(l => l.enquiry_id === deskId)
+    expect(mine.map(l => l.line_id)).toEqual([sensorLine])
+    expect(mine[0].status).toBe('quoted')
+    expect('quoted_unit_price' in mine[0]).toBe(false)
+    /* Its own single-seller quote it still reads in full, as before. */
+    expect((await linesOf(soloId)).length).toBe(1)
+  })
 })
