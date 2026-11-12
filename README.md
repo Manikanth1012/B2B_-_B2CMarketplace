@@ -78,7 +78,40 @@ Supabase environment variables"* in the console means this file.
 
 `npm run test:integration` signs in as the seeded demo personas and writes to the
 real database. It cleans up after itself, but do not point it at anything you would
-mind it touching.
+mind it touching. Supabase rate-limits sign-ins, so run integration files one at a time
+with a pause between them; a sudden "Incorrect email or password" is usually the limit,
+and "JWT issued at future" is clock skew — rerun.
+
+### Migrations and the nightly run
+
+Database changes are SQL files in `supabase/migrations/`, applied by hand in the
+Supabase SQL editor in timestamp order. Each runs in one transaction and checks itself
+at the end, so a failure leaves nothing half-applied. Each has a structural test
+(`*.migration.test.ts`) that runs without a database.
+
+Since `20261112600000` the database looks after itself every night. pg_cron runs
+`public.run_nightly()` at 00:30 UTC, with five jobs, each run separately so one failure
+does not stop the rest:
+
+| Job | What it does |
+|---|---|
+| agreements | Renews an agreement with auto-renew once its notice deadline passes (`CTR-2014-01` → `CTR-2014-02`) |
+| enterprise subscriptions | Renews an active auto-renew subscription for a year under an agreement in force; ends one that is not renewing once its date has passed |
+| subscriptions | Renews Aventa's own shopper subscriptions |
+| documents | A seller document past its expiry stops counting as accepted, and renewal is requested |
+| settlements | Closes statements left open after their period, settles every missed month oldest first, then runs today |
+
+Each outcome is written to `scheduled_job_log`, which the operator can read. To run
+the night by hand: `select public.run_nightly();` in the SQL editor. The app cannot
+call it, because only the scheduler (`is_scheduler()`) or the operator may.
+`src/lib/nightly.integration.test.ts` checks that the last night ran and that
+nothing it handles was left behind.
+
+The demo data was brought up to 12 Nov 2026 by `20261112700000`. Open work (refunds,
+disputes, listing questions, inbound stock) was moved forward so it is as old today
+as it was on 7 Aug, and overdue credit reviews, renewals and FX were filled in. No
+trade was backfilled, so orders, bills, invoices and ledger postings stop at 7 Aug.
+`docs/superpowers/backlog.md` lists what that leaves.
 
 ### Artwork
 
@@ -351,6 +384,23 @@ On Business Accounts, the status chips filter with `inBand` and the summary card
 - **Settles as parts.** A bundle's lines go into the basket, requisition and order as ordinary lines carrying `bundle_selection_id` at their share of the price, so each seller is paid, refunded and settled for its own parts. Guards keep the lines to the selection (product, quantity, price, owner, currency, the hold, parts on sale); a bundle goes in whole, removing a part removes it all, and each part is ordered once. `place_requisition_order` copies bundle lines onto the business order.
 - **Screens.** Bundle cards (marked Configurable) in both shops open `BundleConfigurator`; the basket, checkout and requisition show a bundle as one group with Edit, Re-price and Remove. The configurator hands off through `src/components/bundles/handoff.ts`; the basket and requisition sinks are registered in `App.tsx` for the persona that has one.
 - **Tests.** `src/lib/bundles.test.ts` (pure rules), `bundles.migration.test.ts` (structure, including constraint-name clashes and CASE-in-IF), and `bundles.integration.test.ts` against the live database, cleaning up after itself.
+
+**Polish (spec 8).** Component tests for `Dialog` (Escape closes only the top dialog), `AccountTabs` and the price Retry state; labelled account fields; Notify me from the public product modal; order-line pictures; the contrast checks catch more colour forms; each persona's console is lazy-loaded. Migration `20261111300000` makes the database hold an ordinary requisition line to the listed price. Never re-run it now: spec 9 replaced its check.
+
+**Account price books and guided buying (spec 9).** A business account can buy at its own negotiated price. Migration `supabase/migrations/20261112100000_an_account_buys_at_its_own_price.sql`; it reverses channel rule CR-008 to "sold here".
+
+- **Prices.** `account_prices` holds one price per account, listing, currency and date window, at or above the seller's floor and at or below the published price. Only the operator sets them (`set_account_price`, `end_account_price`, `promote_quote_line` from an accepted quote). Prices are never edited: a new one ends the old, and windows never overlap. The seller bears the discount, as with quotes and bundles.
+- **Charging.** A requisition line is charged `least(published, greatest(account price, floor))`, and stores which price it used.
+- **Guided buying.** `enterprise_buying_rules` sets what happens to an off-contract line (no account price in force): `allow`, `reason` (the buyer gives one) or `approval` (the requisition needs approval). `account_preferences` badges preferred sellers and products first on every enterprise shelf.
+- **Screens.** Operator **Price books**, enterprise **Price book** with Buying rules, and a read-only Account prices block for the seller. The rules are in `src/lib/accountPrices.ts` (tested), with `accountPrices.migration.test.ts` and `accountPrices.integration.test.ts`.
+
+**Loose ends (spec 10).** Migrations `20261112200000` and `20261112300000`.
+
+- Demos and quotes offer an **Add to calendar** `.ics` download. Real email still needs a provider.
+- Quote expiry is judged on the database's (UTC) day, on screen and on accept.
+- On a multi-seller desk quote, each seller proposes its price for its own lines, privately from the buyer. A seller reads its lines only through `my_desk_quote_lines`, never the desk's quoted price.
+- The requisition drawer re-checks prices on Raise.
+- Approvals have tests, and the dialog Close button is 44px.
 
 **Shared components** live in `src/components/ui/`, are class-based, and are styled by `src/styles/ui.css` (imported in `src/main.tsx` after `global.css`).
 
