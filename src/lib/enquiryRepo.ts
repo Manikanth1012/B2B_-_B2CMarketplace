@@ -8,7 +8,11 @@
 
 import { supabase } from './supabase'
 import type { Enquiry, EnquiryLine, EnquirySlot, EnquiryMessage } from './enquiries'
-import { quoteLinesPayload, sendQuotePayload, asLine } from './enquiryPayload'
+import {
+  quoteLinesPayload, sendQuotePayload, asLine, proposeLinePricePayload, asDeskQuoteLine, isMissingFunction,
+  asProposal, isMissingTable,
+} from './enquiryPayload'
+import type { DeskQuoteLine, LineProposal } from './enquiryPayload'
 import type { QuotedProduct } from './enquiryList'
 
 export interface EnquiryEvent {
@@ -108,6 +112,58 @@ export async function sendQuote(
   try {
     const { error } = await supabase.rpc('send_quote', sendQuotePayload(id, prices, valid_until, note))
     return error ? { ok: false, error: error.message } : { ok: true }
+  } catch (err) {
+    return { ok: false, error: errorText(err) }
+  }
+}
+
+/** A seller's own lines on desk quotes (quotes across sellers, which the desk
+    answers). `missing` is true when the database does not have
+    `my_desk_quote_lines` yet: 20261112200000 is not applied, and the screen
+    says pricing these is not set up rather than showing an error. */
+export async function loadMyDeskQuoteLines(): Promise<
+  { ok: true; lines: DeskQuoteLine[] } | { ok: false; missing: boolean; error: string }
+> {
+  try {
+    const { data, error } = await supabase.rpc('my_desk_quote_lines')
+    if (error) return { ok: false, missing: isMissingFunction(error, 'my_desk_quote_lines'), error: error.message }
+    return { ok: true, lines: ((data ?? []) as Record<string, unknown>[]).map(asDeskQuoteLine) }
+  } catch (err) {
+    return { ok: false, missing: false, error: errorText(err) }
+  }
+}
+
+/** The sellers' proposals on one desk quote, keyed by line id, for the desk
+    pricing it. RLS shows the desk every row and a buyer none. Before
+    20261112200000 there is no table, and that is an empty answer: the quote
+    form works exactly as it did. Any other failure is reported. */
+export async function loadLineProposals(enquiryId: string): Promise<
+  { ok: true; proposals: Record<string, LineProposal> } | { ok: false; error: string }
+> {
+  try {
+    const { data, error } = await supabase.from('enquiry_line_proposals').select('*').eq('enquiry_id', enquiryId)
+    if (error) return isMissingTable(error, 'enquiry_line_proposals') ? { ok: true, proposals: {} } : { ok: false, error: error.message }
+    const proposals: Record<string, LineProposal> = {}
+    for (const r of (data ?? []) as Record<string, unknown>[]) {
+      const p = asProposal(r)
+      proposals[p.line_id] = p
+    }
+    return { ok: true, proposals }
+  } catch (err) {
+    return { ok: false, error: errorText(err) }
+  }
+}
+
+/** The seller of a line on a desk quote proposes its unit price to the desk.
+    The database checks who, when and how much, and tells the desk. */
+export async function proposeLinePrice(lineId: string, price: number, note?: string | null): Promise<Result> {
+  try {
+    const { error } = await supabase.rpc('propose_line_price', proposeLinePricePayload(lineId, price, note))
+    if (!error) return { ok: true }
+    if (isMissingFunction(error, 'propose_line_price')) {
+      return { ok: false, error: 'Pricing your part of a desk quote is not set up on this marketplace yet.' }
+    }
+    return { ok: false, error: error.message }
   } catch (err) {
     return { ok: false, error: errorText(err) }
   }

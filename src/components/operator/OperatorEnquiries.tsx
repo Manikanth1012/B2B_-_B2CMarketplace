@@ -17,6 +17,8 @@ import type { Action, Enquiry } from '../../lib/enquiries'
 import { waitingOver } from '../../lib/enquiryList'
 import type { Chip, TypeFilter } from '../../lib/enquiryList'
 import { useMarket } from '../../lib/MarketContext'
+import { loadLineProposals } from '../../lib/enquiryRepo'
+import type { LineProposal } from '../../lib/enquiryPayload'
 
 /* Everything that has been asked, and the desk's own to answer.
    The enquiries table may not exist yet (the migration is applied by hand), so
@@ -111,6 +113,25 @@ export function OperatorEnquiries() {
 
   const open = book.enquiries.find(e => e.id === openId) ?? null
 
+  /* What each seller proposed for its lines on a desk quote, read when the
+     desk opens the quote form. None before 20261112200000; a failed read
+     leaves the form as it always was, with the reason under it. */
+  const [proposals, setProposals] = useState<Record<string, LineProposal>>({})
+  const [proposalsError, setProposalsError] = useState<string | null>(null)
+  const quoting = form?.kind === 'quote' && open !== null && open.type === 'quote' && open.partner_id === null
+  const quotingId = quoting ? open.id : null
+  useEffect(() => {
+    setProposals({}); setProposalsError(null)
+    if (!quotingId) return
+    let live = true
+    void loadLineProposals(quotingId).then(r => {
+      if (!live) return
+      if (r.ok) setProposals(r.proposals)
+      else setProposalsError(r.error)
+    })
+    return () => { live = false }
+  }, [quotingId])
+
   const finished = async (msg: string) => { setForm(null); await refresh(); toast(msg) }
   /* For the shared forms: the error to show in the form, or null once it went
      through and the dialog has closed. */
@@ -180,7 +201,9 @@ export function OperatorEnquiries() {
 
       <Dialog className="enq-dialog" open={form?.kind === 'quote' && !!open} onClose={close}
         title={open?.status === 'quoted' ? 'Send a new quote' : 'Send a quote'} wide>
+        {proposalsError && <p className="enq-muted" role="status">The sellers' proposed prices could not be read ({proposalsError}). Price the lines as usual.</p>}
         {open && <QuoteResponseForm key={open.id} enquiry={open} today={today} floors={NO_FLOORS} money={money}
+          proposals={proposals}
           lines={book.lines.filter(l => l.enquiry_id === open.id).sort((a, b) => a.sort_order - b.sort_order)}
           onCancel={close}
           onSubmit={async (prices, until, note) => answered(await sendQuote(open.id, prices, until, note || null), 'Quote sent.')} />}

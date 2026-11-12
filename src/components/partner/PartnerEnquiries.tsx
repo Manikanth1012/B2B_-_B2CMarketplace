@@ -12,7 +12,12 @@ import { SlotResponseForm } from '../enquiries/SlotResponseForm'
 import { DeclineForm } from '../enquiries/DeclineForm'
 import type { Action } from '../../lib/enquiries'
 import type { Chip, TypeFilter } from '../../lib/enquiryList'
-import { loadEnquiries, sendQuote, decline, markDone, confirmSlot, proposeSlot, reply, loadFloors } from '../../lib/enquiryRepo'
+import { DeskQuoteLines } from './DeskQuoteLines'
+import type { DeskLinesState } from './DeskQuoteLines'
+import {
+  loadEnquiries, sendQuote, decline, markDone, confirmSlot, proposeSlot, reply, loadFloors,
+  loadMyDeskQuoteLines, proposeLinePrice,
+} from '../../lib/enquiryRepo'
 import type { EnquiryBook } from '../../lib/enquiryRepo'
 import { useMarket } from '../../lib/MarketContext'
 
@@ -32,17 +37,29 @@ export function PartnerEnquiries({ partnerId }: { partnerId: string }) {
   const [form, setForm] = useState<Form>(null)
   const [busy, setBusy] = useState(false)          // mark done
   const [floorsFailed, setFloorsFailed] = useState(false)
+  const [desk, setDesk] = useState<DeskLinesState>({ kind: 'loading' })
   const day = dbToday()
+
+  /* The seller's own lines on quotes the desk answers. Read apart from the
+     book: the seller cannot read those enquiries, and before 20261112200000
+     the function is not there, which the section says calmly. */
+  const reloadDesk = useCallback(async () => {
+    const d = await loadMyDeskQuoteLines()
+    if (d.ok) setDesk({ kind: 'ready', lines: d.lines })
+    else if (d.missing) setDesk({ kind: 'missing' })
+    else setDesk({ kind: 'failed', error: d.error })
+  }, [])
 
   const reload = useCallback(async () => {
     const b = await loadEnquiries()
     setBook(b)
     setLoading(false)
+    void reloadDesk()
     /* The seller's agreed floors; if the read fails the quote form shows no
        floor warning and says so. */
     const f = await loadFloors(b.lines.map(l => l.product_id))
     if (f.ok) { setFloors(f.floors); setFloorsFailed(false) } else { setFloors({}); setFloorsFailed(true) }
-  }, [])
+  }, [reloadDesk])
   useEffect(() => { void reload() }, [reload, partnerId])
 
   const open = useMemo(() => book.enquiries.find(e => e.id === openId) ?? null, [book, openId])
@@ -102,6 +119,13 @@ export function PartnerEnquiries({ partnerId }: { partnerId: string }) {
             <EnquiryDetail key={open.id} enquiry={open} book={book} role="responder" today={day}
               opts={{ isDesk: false }} onAction={onAction} answerer="You" money={money} busy={busy} />
           )}
+          <DeskQuoteLines state={desk} money={money}
+            onPropose={async (lineId, price, note) => {
+              const r = await proposeLinePrice(lineId, price, note || null)
+              if (!r.ok) return r.error
+              await reloadDesk()
+              return null
+            }} />
         </>
       )}
 
