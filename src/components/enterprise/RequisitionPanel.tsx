@@ -30,7 +30,7 @@ import { round2 } from '../../lib/money'
 import { RaiseQuoteDialog } from '../enquiries/RaiseQuoteDialog'
 import { enquiriesChanged } from '../enquiries/events'
 import { groupBySelection } from '../../lib/bundles'
-import { BUNDLE_FALLBACK_NAME, requisitionBundleBlock } from '../../lib/bundleLines'
+import { BUNDLE_FALLBACK_NAME, requisitionBundleBlock, businessRenewalNote } from '../../lib/bundleLines'
 import { BundleGroup } from '../bundles/BundleGroup'
 import { StockFlag } from '../StockFlag'
 import { requisitionSink } from '../bundles/sinks'
@@ -376,7 +376,7 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
                     <div key={g.selectionId} style={{ padding: '12px', borderTop: gi ? '1px solid var(--border-light)' : 'none' }}>
                       <BundleGroup
                         name={meta?.name ?? BUNDLE_FALLBACK_NAME}
-                        parts={g.lines.map(l => ({ key: l.product_id, name: l.name, seller: l.seller, quantity: l.quantity, lineTotal: round2(l.quantity * l.unit_price) }))}
+                        parts={g.lines.map(l => ({ key: l.product_id, name: l.name, seller: l.seller, quantity: l.quantity, lineTotal: round2(l.quantity * l.unit_price), note: businessRenewalNote(l.model) }))}
                         total={round2(g.lines.reduce((n, l) => n + round2(l.quantity * l.unit_price), 0))}
                         fmt={n => money(n, basket.currency)}
                         block={bundleView(g.selectionId!)}
