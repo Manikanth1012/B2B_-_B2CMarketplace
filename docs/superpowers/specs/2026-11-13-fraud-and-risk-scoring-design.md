@@ -39,11 +39,12 @@ returning `{score, band, reasons:[{rule, label, points}]}`. Missing data counts 
 
 ## 2. Storage
 
-`orders` gains `risk_score`, `risk_band` ('low'|'review'|'hold'), `risk_reasons jsonb`, `risk_scored_at`,
-`risk_decided_by`, `risk_decided_at`, `risk_note`. `account_risk(kind 'shopper'|'business', id, score, band,
-reasons, scored_at)`. `risk_rule_changes` audit (rule, field, was, now, by, at). Operator reads all; buyers and
-sellers read none of these columns' meaning (`risk_*` are not shown and the policies on `account_risk`,
-`risk_rules` are operator-only).
+`order_risk(order_id pk → orders, score, band 'low'|'review'|'hold', reasons jsonb, scored_at, decided_by,
+decided_at, decision 'released'|'cancelled' null, note)` and `account_risk(kind 'shopper'|'business', id, score,
+band 'low'|'review'|'high', reasons, scored_at)`, plus `risk_rule_changes` (rule, field, was, now, by, at). All
+four, and `risk_rules` / `risk_settings`, are read by the operator only. Scores live in their own tables rather
+than on `orders` because a buyer reads their own orders row: the only trace a buyer or seller sees is the order's
+status `held`.
 
 ## 3. Flow
 
