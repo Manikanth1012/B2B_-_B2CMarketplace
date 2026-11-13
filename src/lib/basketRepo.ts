@@ -117,12 +117,14 @@ export async function clearRequisitionBasket(): Promise<Kept<number>> {
   }
 }
 
-/** Accept a stock flag: the line keeps the quantity it was cut to. Refused while it still cannot be bought. */
-export async function acceptBasketFlag(kind: 'cart' | 'requisition', lineId: string): Promise<Kept<{ quantity: number }>> {
+/** Accept a stock flag: the line keeps the quantity it was cut to. Refused while it still cannot be bought.
+    `changed` is false when the line had no flag to accept, and null before 20261113300000 says. */
+export async function acceptBasketFlag(kind: 'cart' | 'requisition', lineId: string): Promise<Kept<{ quantity: number; changed: boolean | null }>> {
   try {
     const { data, error } = await supabase.rpc('accept_basket_flag', { p_kind: kind, p_line_id: lineId })
     if (error) return fail(error)
-    return { ok: true, value: { quantity: Number((data as { quantity?: number } | null)?.quantity ?? 0) } }
+    const d = (data ?? null) as { quantity?: number; changed?: boolean } | null
+    return { ok: true, value: { quantity: Number(d?.quantity ?? 0), changed: typeof d?.changed === 'boolean' ? d.changed : null } }
   } catch (e) {
     return fail(e)
   }
