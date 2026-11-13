@@ -82,6 +82,13 @@ describe('summarise', () => {
     expect(summarise('bundle selections', { deleted: 1 })).toBe('1 unused bundle selection deleted')
     expect(summarise('bundle selections', { deleted: 0 })).toBe('No unused bundle selections')
   })
+  it('invoices', () => {
+    expect(summarise('invoices', { ran_on: '2026-12-01', period: 'Nov 2026', invoices: 3, orders: 7, lines: 9 }))
+      .toBe('3 invoices raised, 7 orders billed')
+    expect(summarise('invoices', { ran_on: '2026-12-02', period: 'Nov 2026', invoices: 0, orders: 0, lines: 0 }))
+      .toBe('Nothing to invoice')
+  })
+
   it('baskets', () => {
     expect(summarise('baskets', { ran_on: '2026-11-13', flagged: 3, cleared: 2, cleared_baskets: 1, cleared_carts: 1 }))
       .toBe('3 basket lines flagged, 2 untouched baskets cleared')
