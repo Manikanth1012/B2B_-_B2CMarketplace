@@ -24,6 +24,7 @@ const OperatorAudit = lazy(() => import('./OperatorAudit').then(m => ({ default:
 const OperatorShelves = lazy(() => import('./OperatorShelves').then(m => ({ default: m.OperatorShelves })))
 const OperatorNotes = lazy(() => import('./OperatorNotes').then(m => ({ default: m.OperatorNotes })))
 const OperatorOrders = lazy(() => import('./OperatorOrders').then(m => ({ default: m.OperatorOrders })))
+const OperatorBaskets = lazy(() => import('./OperatorBaskets').then(m => ({ default: m.OperatorBaskets })))
 const OperatorDisputes = lazy(() => import('./OperatorDisputes').then(m => ({ default: m.OperatorDisputes })))
 const OperatorCredit = lazy(() => import('./OperatorCredit').then(m => ({ default: m.OperatorCredit })))
 const OperatorContracts = lazy(() => import('./OperatorContracts').then(m => ({ default: m.OperatorContracts })))
@@ -86,6 +87,7 @@ export function OperatorScreens({ view, focus, onNavigate, onSetView }: {
       {view === 'op-revshare' && <OperatorRevenueShare />}
       {view === 'op-notes' && <OperatorNotes />}
       {view === 'op-orders' && <OperatorOrders />}
+      {view === 'op-baskets' && <OperatorBaskets />}
       {view === 'op-disputes' && <OperatorDisputes />}
       {view === 'op-credit' && <OperatorCredit />}
       {view === 'op-contracts' && <OperatorContracts />}

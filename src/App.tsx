@@ -28,6 +28,7 @@ import { OperatorShell } from './components/operator/OperatorShell'
 import { PartnerShell } from './components/partner/PartnerShell'
 import { EnterpriseShell } from './components/enterprise/EnterpriseShell'
 import { RequisitionProvider } from './lib/RequisitionContext'
+import { acceptBasketFlag } from './lib/basketRepo'
 import { BundleConfiguratorHost } from './components/bundles/BundleConfigurator'
 import { LazyArea } from './components/ui/LazyArea'
 
@@ -178,6 +179,23 @@ function AppInner() {
   useEffect(() => {
     loadCart().then(() => setLoading(false))
   }, [loadCart])
+
+  /* A stock flag is written by the database while the shopper is away (spec
+     11, 2b), so the basket is read again whenever the window comes back. */
+  useEffect(() => {
+    if (persona !== 'consumer') return undefined
+    const again = () => { void loadCart() }
+    window.addEventListener('focus', again)
+    return () => window.removeEventListener('focus', again)
+  }, [persona, loadCart])
+
+  /* Accepting a stock flag keeps the quantity it was cut to. Refused, in the
+     database's words, while the line still cannot be bought. */
+  const acceptCartFlag = async (itemId: string): Promise<{ ok: true } | { ok: false; reason: string }> => {
+    const r = await acceptBasketFlag('cart', itemId)
+    await loadCart()
+    return r.ok ? { ok: true } : { ok: false, reason: r.error }
+  }
 
   /* A bundle added, edited or removed elsewhere (the configurator, the drawer). */
   useEffect(() => {
@@ -580,6 +598,8 @@ function AppInner() {
             cartItems={activeLines(cartItems)}
             onClearCart={clearCart}
             onComplete={() => navigate('home')}
+            onAcceptFlag={acceptCartFlag}
+            onRemove={removeFromCart}
           />
         )}
         {!loading && view === 'orders' && <OrdersView />}
@@ -614,6 +634,7 @@ function AppInner() {
         onUpdateQuantity={updateCartQuantity}
         onRemove={removeFromCart}
         onSetSaved={setSaved}
+        onAcceptFlag={acceptCartFlag}
         onCheckout={() => {
           setCartOpen(false)
           navigate('checkout')

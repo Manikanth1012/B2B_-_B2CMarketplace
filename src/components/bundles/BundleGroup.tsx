@@ -107,8 +107,8 @@ export function BundleGroup({
         )}
         {actions}
         <button type="button" className="bundle-group__btn" disabled={busy}
-          onClick={() => { void onRemove() }} aria-label={`Remove ${name}`}>
-          Remove
+          onClick={() => { void onRemove() }} aria-label={block.kind === 'stock' ? `Remove bundle ${name}` : `Remove ${name}`}>
+          {block.kind === 'stock' ? 'Remove bundle' : 'Remove'}
         </button>
       </div>
     </div>

@@ -81,6 +81,14 @@ export interface CartItem {
      price it holds for this product (null when it did not load). */
   bundle?: import('../lib/bundleLines').BundleInfo | null
   bundle_unit_price?: number | null
+  /* The marketplace's stock flag (absent before the baskets migration): "Only 3
+     left — we reduced this from 5" or "No longer available". Written by the
+     database only; while set the line cannot be ordered (baskets.ts). */
+  stock_note?: string | null
+  was_quantity?: number | null
+  flagged_at?: string | null
+  /* The shopper's last change to the line, stamped by the database. */
+  updated_at?: string
 }
 
 export interface Order {

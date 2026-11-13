@@ -20,6 +20,7 @@ export type OperatorView =
   | 'op-roles'
   | 'op-audit'
   | 'op-orders'
+  | 'op-baskets'
   | 'op-renewals'
   | 'op-disputes'
   | 'op-credit'

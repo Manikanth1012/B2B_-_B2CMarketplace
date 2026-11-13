@@ -23,6 +23,8 @@ import { removeCartBundle } from '../lib/bundleBasketRepo'
 import { BundleGroup } from './bundles/BundleGroup'
 import { basketSink } from './bundles/sinks'
 import { bundlesChanged } from './bundles/events'
+import { StockFlag } from './StockFlag'
+import { lineFlag, blockedSentence, stockBlock } from '../lib/baskets'
 
 /* One icon per rail, so the list reads at a glance rather than as six identical
    rows of text. */
@@ -54,9 +56,22 @@ interface CheckoutProps {
   cartItems: CartItem[]
   onClearCart: () => void
   onComplete: () => void
+  /* A line the stock flag caught: accept the cut quantity, or take it out. */
+  onAcceptFlag?: (itemId: string) => Promise<{ ok: true } | { ok: false; reason: string }>
+  onRemove?: (itemId: string) => void | Promise<void>
 }
 
-export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) {
+export function Checkout({ cartItems, onClearCart, onComplete, onAcceptFlag, onRemove }: CheckoutProps) {
+  const [accepting, setAccepting] = useState<string | null>(null)
+  const [flagProblem, setFlagProblem] = useState<{ id: string; text: string } | null>(null)
+  const acceptFlag = async (id: string) => {
+    if (!onAcceptFlag) return
+    setAccepting(id)
+    setFlagProblem(null)
+    const r = await onAcceptFlag(id)
+    setAccepting(null)
+    if (!r.ok) setFlagProblem({ id, text: r.reason })
+  }
   const fieldId = useId()
   const [step, setStep] = useState<'details' | 'payment' | 'confirm'>('details')
   // step can be 'confirm' after order placement
@@ -132,7 +147,16 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
      days, with every part still on sale. One that is not stops the order here,
      named, before anything is written. Ordinary baskets have none. */
   const bundleBlocks = basketBundleBlocks(cartItems, shopCurrency, new Date().toISOString())
-  const blockOf = (id: string): BundleBlock => bundleBlocks.find(b => b.selectionId === id)?.block ?? { kind: 'ok' }
+  const blockOf = (id: string): BundleBlock => {
+    /* A part the stock flag caught blocks its bundle whole. */
+    const mine = cartItems.filter(l => l.bundle_selection_id === id)
+    const flaggedPart = stockBlock(mine.map(l => ({ name: l.product?.name ?? l.product_id, stock_note: l.stock_note })),
+      mine[0]?.bundle?.name ?? BUNDLE_FALLBACK_NAME)
+    return flaggedPart ?? bundleBlocks.find(b => b.selectionId === id)?.block ?? { kind: 'ok' }
+  }
+  /* Any flagged line stops the order until it is accepted or removed; the
+     database refuses it too (guard_flagged_cart_order_line). */
+  const flagged = blockedSentence(cartItems, 'order')
   /* The price an order line is written at: a bundle part's is the selection's. */
   const unitPrice = (item: CartItem) => item.bundle_selection_id ? (item.bundle_unit_price ?? 0) : (item.product?.price || 0)
 
@@ -172,6 +196,7 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
   const handleSubmit = async () => {
     if (!method || !provider || !marketCode) return
     if (bundleBlocks.length) { setFailure(`${bundleBlocks[0].block.says} Nothing has been charged.`); return }
+    if (flagged) { setFailure(`${flagged} Nothing has been charged.`); return }
     setProcessing(true)
     setFailure(null)
 
@@ -645,14 +670,27 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                     }}
                   />
                 )
-              })() : g.lines.map((item) => (
-                <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 'var(--text-sm)' }}>
+              })() : g.lines.map((item) => {
+                const f = lineFlag(item)
+                return (
+                <div key={item.id}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 'var(--text-sm)' }}>
                   <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                     {item.product?.name} × {item.quantity}
                   </span>
                   <span style={{ fontWeight: 500 }}>{fmt((item.product?.price || 0) * item.quantity)}</span>
                 </div>
-              )))}
+                {f && (
+                  <StockFlag note={f.note} name={item.product?.name ?? item.product_id} from="your basket"
+                    style={{ marginTop: '6px' }}
+                    canAccept={f.actions.includes('accept') && !!onAcceptFlag} busy={accepting === item.id || processing}
+                    problem={flagProblem?.id === item.id ? flagProblem.text : null}
+                    onAccept={() => { void acceptFlag(item.id) }}
+                    onRemove={() => { void onRemove?.(item.id) }} />
+                )}
+                </div>
+                )
+              }))}
             </div>
             {/* Worded the same way as the cart drawer, and for the same reason:
                 a subtotal above a tax line above a larger total reads as tax
@@ -691,14 +729,16 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
             {step === 'payment' && (
               <button
                 onClick={handleSubmit}
-                disabled={processing || !handoff.ok || bundleBlocks.length > 0}
+                disabled={processing || !handoff.ok || bundleBlocks.length > 0 || !!flagged}
                 className="btn btn-cyan btn-lg"
                 style={{ width: '100%', marginTop: '16px' }}
               >
                 {processing ? 'Taking you to the provider…' : `Pay ${fmt(total)}`}
               </button>
             )}
-            {bundleBlocks.length > 0 && (
+            {flagged ? (
+              <p className="bundle-checkout-block" role="status">{flagged}</p>
+            ) : bundleBlocks.length > 0 && (
               <p className="bundle-checkout-block" role="status">{bundleBlocks[0].block.says}</p>
             )}
           </div>

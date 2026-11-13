@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { X, Minus, Plus, Trash2, ShoppingBag, Bookmark, Undo2 } from 'lucide-react'
 import type { CartItem } from '../types'
 import { getProductImage } from '../lib/images'
@@ -12,6 +12,12 @@ import { bundleBlock, partOnSale, BUNDLE_FALLBACK_NAME } from '../lib/bundleLine
 import { BundleGroup } from './bundles/BundleGroup'
 import { basketSink } from './bundles/sinks'
 import { hasOpenTrap } from './ui/useFocusTrap'
+import { StockFlag } from './StockFlag'
+import { lineFlag, blockedSentence, stockBlock } from '../lib/baskets'
+
+/* A bundle's parts as the stock flag names them. */
+const flagParts = (lines: readonly CartItem[]) =>
+  lines.map(l => ({ name: l.product?.name ?? l.product_id, stock_note: l.stock_note }))
 
 interface CartDrawerProps {
   open: boolean
@@ -21,9 +27,21 @@ interface CartDrawerProps {
   onRemove: (itemId: string) => void
   onCheckout: () => void
   onSetSaved: (itemId: string, saved: boolean) => void
+  /** Accept a stock flag on a line (accept_basket_flag); absent, Accept is not offered. */
+  onAcceptFlag?: (itemId: string) => Promise<{ ok: true } | { ok: false; reason: string }>
 }
 
-export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, onCheckout, onSetSaved }: CartDrawerProps) {
+export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, onCheckout, onSetSaved, onAcceptFlag }: CartDrawerProps) {
+  const [accepting, setAccepting] = useState<string | null>(null)
+  const [flagProblem, setFlagProblem] = useState<{ id: string; text: string } | null>(null)
+  const accept = async (id: string) => {
+    if (!onAcceptFlag) return
+    setAccepting(id)
+    setFlagProblem(null)
+    const r = await onAcceptFlag(id)
+    setAccepting(null)
+    if (!r.ok) setFlagProblem({ id, text: r.reason })
+  }
   /* Saved lines live in the same basket but are not part of it: not counted, not
      totalled, not bought. */
   const active = activeLines(items)
@@ -42,7 +60,8 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
     const info = lines[0].bundle ?? null
     const name = info?.name ?? BUNDLE_FALLBACK_NAME
     const onSale = new Map(lines.map(l => [l.product_id, partOnSale(l.product)]))
-    const block = savedGroup ? { kind: 'ok' as const } : bundleBlock(info, shopCurrency, now, pid => onSale.get(pid) ?? true)
+    const block = savedGroup ? { kind: 'ok' as const }
+      : stockBlock(flagParts(lines), name) ?? bundleBlock(info, shopCurrency, now, pid => onSale.get(pid) ?? true)
     const total = lines.reduce((n, l) => n + (l.product?.price ?? 0) * l.quantity, 0)
     return (
       <div key={lines[0].bundle_selection_id} className={savedGroup ? 'cart-line--saved' : undefined}>
@@ -76,6 +95,8 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
     )
   }
   const money = basketMoney(items, Number(market?.tax_rate ?? 0))
+  /* A flagged line stops checkout until it is accepted or removed (spec 11, 2b). */
+  const flagged = blockedSentence(active, 'order')
   const taxLabel = market?.tax_label ?? 'Tax'
 
   /* Escape closes the drawer — listened for only while it is open, and not
@@ -157,6 +178,17 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
                       {fmt((item.product?.price || 0) * item.quantity)}
                     </span>
                   </div>
+                  {(() => {
+                    const f = lineFlag(item)
+                    if (!f) return null
+                    const name = item.product?.name ?? item.product_id
+                    return (
+                      <StockFlag note={f.note} name={name} from="your cart" style={{ marginTop: '8px' }}
+                        canAccept={f.actions.includes('accept') && !!onAcceptFlag} busy={accepting === item.id}
+                        problem={flagProblem?.id === item.id ? flagProblem.text : null}
+                        onAccept={() => { void accept(item.id) }} onRemove={() => onRemove(item.id)} />
+                    )
+                  })()}
                 </div>
 
                 <div className="cart-line__actions">
@@ -279,7 +311,8 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
                 </div>
               </>
             )}
-            <button onClick={onCheckout} className="btn btn-cyan btn-lg" style={{ width: '100%' }}>
+            {flagged && <p className="stock-flag-block" role="status">{flagged}</p>}
+            <button onClick={onCheckout} className="btn btn-cyan btn-lg" style={{ width: '100%' }} disabled={!!flagged}>
               Checkout
             </button>
           </div>

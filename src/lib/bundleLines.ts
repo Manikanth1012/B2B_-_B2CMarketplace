@@ -69,6 +69,8 @@ export type BundleBlock =
   | { kind: 'currency'; says: string }
   | { kind: 'expired'; says: string }
   | { kind: 'part-unavailable'; product_id: string; name: string; says: string }
+  /* A part the marketplace's stock flag caught (baskets.ts): blocked whole until removed. */
+  | { kind: 'stock'; says: string }
 
 /**
  * Whether a bundle in the basket can be bought now, and the sentence when it
