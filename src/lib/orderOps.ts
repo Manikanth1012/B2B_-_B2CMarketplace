@@ -76,6 +76,8 @@ export interface LineRow {
   quantity: number
   fulfil: string
   status: string
+  /** The configured bundle this line was bought as; null or absent otherwise. */
+  bundle_selection_id?: string | null
 }
 
 export interface PushRow {

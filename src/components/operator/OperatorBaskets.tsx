@@ -117,7 +117,8 @@ export function OperatorBaskets() {
       {problem?.missing && (
         <Callout tone="info" title="Baskets are not set up yet">
           This database does not keep baskets yet (the baskets migration is not applied), so there is nothing to show.
-          Business baskets stay in the buyer&rsquo;s browser until it is.
+          Until it is, a business buyer&rsquo;s basket is kept only in the page they have open, and is lost when they
+          reload or close it.
         </Callout>
       )}
       {problem && !problem.missing && (

@@ -8,7 +8,7 @@ import {
 } from '../lib/basket'
 import { useMarket } from '../lib/MarketContext'
 import { groupBySelection } from '../lib/bundles'
-import { bundleBlock, partOnSale, BUNDLE_FALLBACK_NAME } from '../lib/bundleLines'
+import { bundleBlock, partOnSale, bundleRenewalNote, BUNDLE_FALLBACK_NAME } from '../lib/bundleLines'
 import { BundleGroup } from './bundles/BundleGroup'
 import { basketSink } from './bundles/sinks'
 import { hasOpenTrap } from './ui/useFocusTrap'
@@ -71,6 +71,7 @@ export function CartDrawer({ open, items, onClose, onUpdateQuantity, onRemove, o
           parts={lines.map(l => ({
             key: l.id, name: l.product?.name ?? l.product_id, quantity: l.quantity,
             lineTotal: (l.product?.price ?? 0) * l.quantity,
+            note: bundleRenewalNote(l.product?.model, info?.lines.find(x => x.product_id === l.product_id)?.list_unit_price, fmt),
           }))}
           total={total}
           partsTotal={info?.selection.parts_total ?? null}

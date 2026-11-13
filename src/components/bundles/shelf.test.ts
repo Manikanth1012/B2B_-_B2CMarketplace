@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  fromPrice, templatesFor, pickedTwice, bundleCurrency, partsFor, unavailable, togglePick, setPickQty, slotHint, totalsDiffer,
+  fromPrice, templatesFor, pickedTwice, bundleCurrency, configureCurrency, partsFor, unavailable, togglePick, setPickQty, slotHint, totalsDiffer,
   type Shelf, type ShelfPart,
 } from './shelf'
 import type { BundleTemplate, BundleSlot, BundleOption } from '../../lib/bundles'
@@ -96,5 +96,18 @@ describe('bundle shelf', () => {
     expect(bundleCurrency('KES', 'USD')).toBe('KES')
     expect(bundleCurrency(null, 'USD')).toBe('USD')
     expect(bundleCurrency(null, null)).toBeNull()
+  })
+})
+
+describe('the currency a bundle is configured in', () => {
+  it("follows a business buyer's open requisition, and defaults to the account's", () => {
+    expect(configureCurrency('enterprise', 'INR', 'USD')).toEqual({ currency: 'USD', from: 'requisition' })
+    expect(configureCurrency('enterprise', 'INR', null)).toEqual({ currency: 'INR', from: 'own' })
+    expect(configureCurrency('enterprise', 'INR', 'INR')).toEqual({ currency: 'INR', from: 'own' })
+  })
+
+  it("is always a shopper's own, and nothing until that is known", () => {
+    expect(configureCurrency('consumer', 'KES', 'USD')).toEqual({ currency: 'KES', from: 'own' })
+    expect(configureCurrency('enterprise', null, 'USD')).toEqual({ currency: null, from: 'own' })
   })
 })

@@ -90,6 +90,7 @@
 .bundle-group__parts { list-style: none; margin: 10px 0 0; padding: 0 0 0 42px; display: flex; flex-direction: column; gap: 4px; }
 .bundle-group__part { display: flex; justify-content: space-between; gap: 12px; font-size: var(--text-xs); color: var(--text-secondary); }
 .bundle-group__part-name { min-width: 0; overflow-wrap: anywhere; }
+.bundle-group__part-note { display: block; color: var(--text-secondary); }
 .bundle-group__part-price { white-space: nowrap; color: var(--text); }
 .bundle-group__qty { font-weight: 600; }
 .bundle-group__saving { margin: 8px 0 0 42px; font-size: var(--text-xs); color: var(--success); font-weight: 600; }
@@ -194,3 +195,4 @@
 .stock-flag__btn { min-height: 44px; min-width: 44px; }
 .stock-flag__problem { font-size: var(--text-xs); color: var(--danger); font-weight: 600; }
 .stock-flag-block { margin: 0 0 12px; padding: 8px 10px; border-radius: var(--radius, 8px); background: var(--danger-bg); color: var(--danger); font-size: var(--text-sm); font-weight: 600; }
+.bcfg__line-note { display: block; font-size: var(--text-xs); color: var(--text-secondary); }

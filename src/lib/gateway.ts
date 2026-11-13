@@ -943,3 +943,28 @@ export function validateConfirm(
   }
   return { ok: true }
 }
+
+/**
+ * What a settled payment is, from the database's answer rather than from what
+ * the provider's page asked for.
+ *
+ * `settle_payment_attempt` can turn a "succeeded" from the provider into a
+ * failure: a bundle not bought whole, a wallet that would pass its ceiling,
+ * a basket no longer waiting to be paid. In each case nothing was charged, and
+ * the screen has to say so instead of confirming a purchase that did not
+ * happen. A second call finds the first call's answer, which is what counts.
+ */
+export function settledAs(
+  asked: 'succeeded' | 'failed' | 'cancelled' | 'expired',
+  said: { state?: string; note?: string; failure?: string },
+  reason?: string,
+): { state: AttemptState; failure_reason: string | null } {
+  const known: AttemptState[] = ['initiated', 'succeeded', 'failed', 'cancelled', 'expired']
+  const state = known.includes(said.state as AttemptState) ? said.state as AttemptState : asked
+  if (state !== 'failed') return { state, failure_reason: null }
+  const own = asked === 'failed' ? (reason?.trim() || null) : null
+  return {
+    state,
+    failure_reason: own ?? said.failure ?? said.note ?? 'The payment did not go through.',
+  }
+}

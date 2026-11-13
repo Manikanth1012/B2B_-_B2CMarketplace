@@ -17,6 +17,8 @@ import type { OrderRow, Severity } from '../../lib/orderOps'
 import { STATE_LABEL as COM_LABEL, STATE_TONE as COM_TONE } from '../../lib/com'
 import { formatGroups } from '../../lib/money'
 import { useMarket } from '../../lib/MarketContext'
+import { groupBySelection } from '../../lib/bundles'
+import { useBundleNames } from '../bundles/useBundleNames'
 
 /* Working somebody else's order.
  *
@@ -213,6 +215,8 @@ function Register({ book, today, onOpen }: {
   }, [book, q, kind, status])
 
   const page = usePaging(found)
+  /* A configured bundle's parts read as one item under its name. */
+  const bundleName = useBundleNames(book.lines)
   const statuses = [...new Set(book.orders.map(o => o.status))].sort()
 
   return (
@@ -260,7 +264,9 @@ function Register({ book, today, onOpen }: {
                     </Td>
                     <Td style={{ maxWidth: '30ch' }}>
                       <div style={{ fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>
-                        {mine.map(l => l.product_name).join(', ') || '—'}
+                        {groupBySelection(mine).map(g => g.selectionId
+                          ? `Bundle: ${bundleName(g.selectionId)} (${g.lines.map(l => l.product_name).join(', ')})`
+                          : g.lines[0].product_name).join(', ') || '—'}
                       </div>
                       {o.seller && (
                         <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{o.seller}</div>
@@ -305,6 +311,9 @@ function OrderDetail({ order, book, today, onClose, onChanged }: {
   const [ref, setRef] = useState(order.tracking_ref ?? '')
 
   const lines = book.lines.filter(l => l.order_id === order.id)
+  /* A configured bundle is one group under its name; each part keeps its own
+     row and price, as settlement and refunds are per part. */
+  const bundleName = useBundleNames(lines)
   const pushes = book.pushes.filter(p => p.order_ref === order.order_ref)
   const problems = problemsFor(order, book.lines, book.pushes, today)
   const forward = canAdvance(order, book.pushes)
@@ -349,10 +358,18 @@ function OrderDetail({ order, book, today, onClose, onChanged }: {
 
       <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: '6px' }}>What was bought</div>
       <Table headers={['Line', 'Fulfilment', { label: 'Qty', align: 'right' }, { label: 'Charged', align: 'right' }, 'Network']}>
-        {lines.map(l => {
+        {groupBySelection(lines).flatMap(g => [
+          ...(g.selectionId ? [
+            <tr key={`b-${g.selectionId}`} className="bundle-row-head">
+              <td className="c-td" colSpan={3}><strong>Bundle: {bundleName(g.selectionId)}</strong></td>
+              <Td right style={{ fontWeight: 700 }}>{fmtIn(g.lines.reduce((n, l) => n + l.price * l.quantity, 0), order.currency)}</Td>
+              <td className="c-td" />
+            </tr>,
+          ] : []),
+          ...g.lines.map(l => {
           const p = pushes.find(x => x.product_name === l.product_name)
           return (
-            <tr key={l.id}>
+            <tr key={l.id} className={g.selectionId ? 'bundle-row-part' : undefined}>
               <Td>
                 <div style={{ fontSize: 'var(--text-xs)' }}>{l.product_name}</div>
                 <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
@@ -376,7 +393,8 @@ function OrderDetail({ order, book, today, onClose, onChanged }: {
               </Td>
             </tr>
           )
-        })}
+          }),
+        ])}
       </Table>
 
       {/* Tax-inclusive, so the lines sum to what was charged before any

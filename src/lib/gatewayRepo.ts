@@ -6,7 +6,7 @@
    together, and three writes from a browser cannot promise that. */
 import { supabase } from './supabase'
 import { referenceFor } from './gateway'
-import type { PaymentMethod, MethodMarket, PaymentAttempt, Check } from './gateway'
+import type { PaymentMethod, MethodMarket, PaymentAttempt } from './gateway'
 
 export interface PaymentCatalogue {
   methods: PaymentMethod[]
@@ -122,6 +122,12 @@ export async function startPayment(
   return { ok: true, attempt: { ...attempt, amount: Number(attempt.amount) } }
 }
 
+/** The database's answer to a settle: the state the attempt is now in, and
+    why, when it failed. */
+export type Settled =
+  | { ok: true; state?: string; note?: string; failure?: string; already?: boolean }
+  | { ok: false; reason: string }
+
 /**
  * What the provider said.
  *
@@ -144,7 +150,7 @@ export async function settle(
     instalment?: number | null
     financier?: string | null
   },
-): Promise<Check & { state?: string }> {
+): Promise<Settled> {
   const { data, error } = await supabase.rpc('settle_payment_attempt', {
     p_attempt: attemptId,
     p_outcome: outcome,
@@ -160,6 +166,9 @@ export async function settle(
     return { ok: false, reason: m }
   }
 
-  const out = (data ?? {}) as { state?: string; note?: string; already?: boolean }
-  return { ok: true, state: out.state, note: out.note }
+  /* `state` is the database's answer and the one that counts: a success the
+     provider reported can come back `failed` (a bundle not bought whole, a
+     wallet past its ceiling), with the reason in `reason` or `note`. */
+  const out = (data ?? {}) as { state?: string; note?: string; reason?: string; already?: boolean }
+  return { ok: true, state: out.state, note: out.note, failure: out.reason, already: out.already }
 }

@@ -96,6 +96,8 @@ describe('OperatorBaskets', () => {
     repo.load.mockResolvedValue({ ok: false, missing: true, error: 'relation "public.requisition_baskets" does not exist' })
     render(<OperatorBaskets />)
     expect(await screen.findByText('Baskets are not set up yet')).toBeTruthy()
+    expect(screen.getByText(/kept only in the page they have open/)).toBeTruthy()
+    expect(screen.queryByText(/browser/)).toBeNull()
     expect(screen.queryByRole('table')).toBeNull()
   })
 })

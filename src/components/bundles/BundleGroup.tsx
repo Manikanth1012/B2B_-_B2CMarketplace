@@ -13,7 +13,11 @@ import type { BundleBlock } from '../../lib/bundleLines'
 import { openBundleConfigurator } from './events'
 import { rebundle, type Sink } from './sinks'
 
-export interface BundleGroupPart { key: string; name: string; seller?: string; quantity: number; lineTotal: number }
+export interface BundleGroupPart {
+  key: string; name: string; seller?: string; quantity: number; lineTotal: number
+  /** A line under the part, e.g. what a monthly part renews at (bundleRenewalNote). */
+  note?: string | null
+}
 
 export function BundleGroup({
   name, parts, total, partsTotal, fmt, block, editable, sink, onRemove, actions, compact,
@@ -64,6 +68,7 @@ export function BundleGroup({
             <span className="bundle-group__part-name">
               {p.name} <span className="bundle-group__qty">× {p.quantity}</span>
               {p.seller && <span className="bundle-group__seller"> · {p.seller}</span>}
+              {p.note && <span className="bundle-group__part-note">{p.note}</span>}
             </span>
             <span className="bundle-group__part-price">{fmt(p.lineTotal)}</span>
           </li>

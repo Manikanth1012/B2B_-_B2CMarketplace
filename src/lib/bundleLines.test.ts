@@ -4,6 +4,7 @@ import {
   bundleIdsOf, priceCartBundles, bundleBlock, bundleBasketLines, addBundleToBasket,
   removeBundleFromBasket, holdsBundle, heldCurrencyNote, bundleColumns, partOnSale,
   basketBundleBlocks, requisitionBundleBlock, requisitionBillingBlock, billingOf, heldBilling, type BundleInfo,
+  bundlePriceUntil, bundleSubscriptionColumns, bundleRenewalNote,
 } from './bundleLines'
 import {
   addToBasket, setQuantity, removeLine, repriceTo, EMPTY_BASKET, quoteHoldsCurrency,
@@ -259,5 +260,30 @@ describe('a business bundle is billed one way', () => {
     expect(addBundleToBasket(EMPTY_BASKET, same.lines, 'INR').ok).toBe(true)
     const m2 = new Map(same.lines.map(l => [l.product_id, l.model]))
     expect(requisitionBillingBlock('Kit', same.lines, id => m2.get(id), nameOf)).toBeNull()
+  })
+})
+
+describe('a monthly bundle part renews at the bundle price for 12 months', () => {
+  const fmt = (n: number) => `₹${n.toFixed(2)}`
+
+  it('stops the bundle price on the same day a year on, clamped into a short month', () => {
+    expect(bundlePriceUntil('2026-11-13')).toBe('2027-11-13')
+    expect(bundlePriceUntil('2028-02-29')).toBe('2029-02-28')
+    expect(bundlePriceUntil('2026-11-13T09:30:00Z')).toBe('2027-11-13')
+  })
+
+  it("writes the bundle columns only on a bundle part's subscription", () => {
+    expect(bundleSubscriptionColumns({ bundle_selection_id: 'BS-1' }, '2026-11-13'))
+      .toEqual({ bundle_selection_id: 'BS-1', bundle_price_until: '2027-11-13' })
+    expect(bundleSubscriptionColumns({ bundle_selection_id: null }, '2026-11-13')).toEqual({})
+    expect(bundleSubscriptionColumns({}, '2026-11-13')).toEqual({})
+  })
+
+  it('tells the buyer what a monthly part renews at afterwards', () => {
+    expect(bundleRenewalNote('monthly', 499, fmt)).toBe('Bundle price for 12 months, then ₹499.00/month')
+    expect(bundleRenewalNote('oneoff', 499, fmt)).toBeNull()
+    expect(bundleRenewalNote(undefined, 499, fmt)).toBeNull()
+    /* No published price in that currency: nothing is promised. */
+    expect(bundleRenewalNote('monthly', null, fmt)).toBeNull()
   })
 })

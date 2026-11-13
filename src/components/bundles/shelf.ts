@@ -139,8 +139,20 @@ export function pickedTwice(choices: Choices): string | null {
 }
 
 /** The currency a bundle is priced in: the buyer's own (consumer home or
-    business account currency), which is the only one configure_bundle takes.
-    A visitor has none, and sees the shop's. */
+    business account currency). A visitor has none, and sees the shop's. A
+    business buyer's open requisition can change it: see `configureCurrency`. */
 export function bundleCurrency(account: string | null, header: string | null): string | null {
   return account ?? header
+}
+
+/** The currency the configurator prices a bundle in. A business buyer whose
+    open requisition (one with lines) is in another currency gets that one, so
+    the bundle can join it (configure_bundle takes any currency the account's
+    market takes, spec 11 decision 8, and refuses one it does not, in words).
+    Otherwise, and always for a shopper, the buyer's own. Null until known. */
+export function configureCurrency(
+  shop: 'consumer' | 'enterprise', own: string | null, requisition: string | null,
+): { currency: string | null; from: 'own' | 'requisition' } {
+  if (shop === 'enterprise' && own && requisition && requisition !== own) return { currency: requisition, from: 'requisition' }
+  return { currency: own, from: 'own' }
 }
