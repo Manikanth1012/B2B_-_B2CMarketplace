@@ -90,7 +90,7 @@ at the end, so a failure leaves nothing half-applied. Each has a structural test
 (`*.migration.test.ts`) that runs without a database.
 
 Since `20261112600000` the database looks after itself every night. pg_cron runs
-`public.run_nightly()` at 00:30 UTC, with eight jobs (since `20261113200000`), each
+`public.run_nightly()` at 00:30 UTC, with nine jobs (since `20261113400000`), each
 run separately so one failure does not stop the rest:
 
 | Job | What it does |
@@ -102,6 +102,7 @@ run separately so one failure does not stop the rest:
 | payments | A payment nobody answered for 15 minutes expires, and the unpaid orders behind it go (`expire_stale_payments`) |
 | bundle selections | Deletes a priced bundle whose hold ended more than 7 days ago and that no basket, requisition, order or subscription uses |
 | baskets | Checks every basket line against stock again and flags it where it no longer fits; clears baskets untouched for 90 days |
+| invoices | On the 1st, invoices each business account for last month's delivered orders, one line per order line carrying its requisition (`bill_account_orders`) |
 | settlements | Closes statements left open after their period, settles every missed month oldest first, then runs today |
 
 Each outcome is written to `scheduled_job_log`, which the operator reads on the
@@ -423,6 +424,11 @@ On Business Accounts, the status chips filter with `inBand` and the summary card
 - The requisition basket is saved at once when the page is hidden, and sent as a `keepalive` request when it is closed.
 - The operator's Baskets screen prices a shopper's bundle part at its bundle price.
 - A business buyer's monthly bundle part says it renews under the account's agreement.
+
+**Business invoices and recent trade (spec 12).** Migrations `20261113400000` and `20261113500000`.
+
+- A business is invoiced monthly for what was delivered: one invoice per account and currency (`INV-2007-202609-INR`), a line per order line with its requisition and cost centre, net of tax, tax at the market rate or nil with the reason for reverse charge, due after the account's terms. Orders carry their invoice. The refund form groups a bundle's parts because each line names its requisition.
+- Demo trade for Aug–Nov 2026: 19 business requisitions and orders (two configured bundles) invoiced by the run (Aug and Sep paid, Oct open, Nov waiting for 1 Dec), and 9 shopper orders. Every row is marked `REQ-D26…` / `ORD-D26…`; the migration header has the SQL that removes them.
 
 **Shared components** live in `src/components/ui/`, are class-based, and are styled by `src/styles/ui.css` (imported in `src/main.tsx` after `global.css`).
 

@@ -43,9 +43,12 @@ describe('the night', () => {
     const rows = (data ?? []) as { job: string; ok: boolean; error: string | null }[]
     const latest = new Map<string, { ok: boolean; error: string | null }>()
     for (const r of rows) if (!latest.has(r.job)) latest.set(r.job, r)
-    expect([...latest.keys()].sort(), 'the night has not run, or ran only some of its jobs')
-      .toEqual(['agreements', 'baskets', 'bundle selections', 'documents', 'enterprise subscriptions',
-                'payments', 'settlements', 'subscriptions'])
+    /* Eight jobs since 20261113200000, nine once 20261113400000 adds
+       `invoices`: whichever the night ran, every one of the eight is there. */
+    const ran = [...latest.keys()].sort()
+    const eight = ['agreements', 'baskets', 'bundle selections', 'documents', 'enterprise subscriptions',
+                   'payments', 'settlements', 'subscriptions']
+    expect(ran.filter(j => j !== 'invoices'), 'the night has not run, or ran only some of its jobs').toEqual(eight)
     for (const [job, r] of latest) expect(r.ok, `${job} failed: ${r.error}`).toBe(true)
   })
 

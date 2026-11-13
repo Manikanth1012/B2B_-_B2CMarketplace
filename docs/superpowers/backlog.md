@@ -119,6 +119,16 @@ means an account, a sending domain and keys, which are the user's decision; the 
 a seller no longer reads the desk's quoted price on its lines of a desk quote (it reads them only through
 `my_desk_quote_lines`).
 
+## Spec 12 — business invoices and recent trade (2026-11-13)
+
+Built on branch `invoices-and-recent-trade`. Spec `docs/superpowers/specs/2026-11-13-business-invoices-and-recent-trade-design.md`.
+Migrations `20261113400000` (billing run, ninth nightly job `invoices`) and `20261113500000` (demo orders Aug–Nov
+2026, invoiced by the run) — **to be applied by the user, in that order**; `invoicing.integration.test.ts` skips until then.
+Still open:
+- [ ] Business subscriptions are not billed by the run; their recurring invoices on file stop at July 2026.
+- [ ] Nothing moves an invoice from open to overdue after its due date (as before).
+- [ ] Seller settlement lines and ledger postings are not written for the new orders.
+
 ## Spec 11 — loose ends II (2026-11-13)
 
 Done — branch `loose-ends-ii`, migrations `20261113100000` and `20261113200000` applied by the user 2026-11-13;
@@ -132,7 +142,7 @@ Still open (worked on 2026-11-13 on branch `loose-ends-iii`; migration `20261113
 - [x] **Fixed:** a bundle part is priced at its selection's bundle price (`cartUnitPrice`). The operator's cart value is approximate (today's list price, not what checkout would charge).
 - [x] **Fixed:** "Billed monthly; renews under your account’s agreement" in the configurator and the requisition drawer. A business monthly bundle shows no renewal note (its renewal follows the agreement).
 - [x] **Fixed in `20261113300000`** (`report_renewal` charges `subscription_renewal_price` unless the seller names an amount; `vendor_renewal_book` shows that price): A bundle part renewed by its seller (not the marketplace) is not switched to list price after 12 months.
-- [ ] Refund grouping needs `requisition_id` on the invoice line; lines without it are listed ungrouped. Checked 2026-11-13: no code writes enterprise invoice lines today (every invoice is seed data), so there is nothing to fix until a billing run for approved requisitions exists — that run is a feature, and it must set `requisition_id`.
+- [x] **Fixed in spec 12** (billing run `bill_account_orders`, migration `20261113400000`): Refund grouping needs `requisition_id` on the invoice line; lines without it are listed ungrouped. Checked 2026-11-13: no code writes enterprise invoice lines today (every invoice is seed data), so there is nothing to fix until a billing run for approved requisitions exists — that run is a feature, and it must set `requisition_id`.
 
 ## Still open after spec 7 (small, non-blocking)
 
@@ -164,7 +174,7 @@ Still open (worked on 2026-11-13 on branch `loose-ends-iii`; migration `20261113
 
 - [x] **A nightly schedule, 2026-11-12** (migrations `20261112600000`, `20261112700000`, applied). pg_cron runs `run_nightly()` at 00:30 UTC: agreements with auto-renew, enterprise subscriptions (renew a year, or end), the marketplace's own subscriptions, expired seller documents, and settlement (closes statements left open past their period, settles every missed month, then today). Each job is logged in `scheduled_job_log`. Run it by hand in the SQL editor with `select public.run_nightly();`; the app cannot call it.
 - [x] **Demo data brought to 12 Nov 2026** (`20261112700000`): open refunds, disputes, listing queries and inbound stock moved forward 97 days (as old today as on 7 Aug); expired banners extended or ended; Beacon's treaty certificate renewed; 4 overdue credit reviews recorded; seller-reported renewals filed; FX for Sep–Nov. August settled.
-- [ ] **Not refreshed (needs a trade backfill if wanted):** no orders, sales, shopper bills, enterprise invoices or ledger postings after 7 Aug. Four shopper bills and four enterprise invoices are still open from August; the ledger's last period is July (open); promotions and earn rules past their end dates still read active (they have no ended state).
+- [x] **Orders and business invoices refreshed in spec 12** (`20261113500000`: Aug–Nov 2026 orders, invoiced by the new billing run). Still not refreshed: shopper bills, seller settlement lines and ledger postings. **Not refreshed (needs a trade backfill if wanted):** no orders, sales, shopper bills, enterprise invoices or ledger postings after 7 Aug. Four shopper bills and four enterprise invoices are still open from August; the ledger's last period is July (open); promotions and earn rules past their end dates still read active (they have no ended state).
 - [ ] Beacon (PTR-1009) shows "7.5% reserve, nothing retained" until Q4 closes on 31 Dec: its Q3 payout was entirely taken by wholesale charge recovery, so there was nothing to retain. This makes `credit.integration` "does not disagree with itself" fail until then. The check could look at whether the closed statement had anything payable.
 - [x] **Fixed in spec 11 (Scheduled jobs screen):** No operator screen shows `scheduled_job_log` yet; failures are only visible in the table.
 

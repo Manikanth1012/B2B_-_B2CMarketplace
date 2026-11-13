@@ -143,6 +143,11 @@ export function summarise(job: string, result: unknown): string {
         c('flagged', n => `${plural(n, 'basket line')} flagged`),
         c('cleared', n => `${plural(n, 'untouched basket')} cleared`),
       ], 'No baskets to flag or clear')
+    case 'invoices':
+      return join([
+        c('invoices', n => `${plural(n, 'invoice')} raised`),
+        c('orders', n => `${plural(n, 'order')} billed`),
+      ], 'Nothing to invoice')
     default:
       return 'Done'
   }
