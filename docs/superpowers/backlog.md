@@ -100,7 +100,8 @@ Also worth considering:
 - [ ] RFQ broadcast: one need, several sellers bid (M)
 - [ ] Escrow-style order protection (M)
 - [ ] Automated KYB and sanctions screening in onboarding (M, needs a vendor)
-- [ ] Fraud and risk scoring on orders and accounts (M)
+- [ ] Fraud and risk scoring on orders and accounts (M) — designed 2026-11-13, spec 13 (`docs/superpowers/specs/2026-11-13-fraud-and-risk-scoring-design.md`)
+- [ ] **Omnichannel notifications and customer care (M–L, needs providers)** — asked 2026-11-13. Today: five notification kinds (in-app, email, push, SMS, WhatsApp) and six configured providers (Route Mobile, Twilio, SES, SendGrid, FCM, Meta) on the Channels screen, but no server-side sender, so nothing is actually delivered, and support tickets are in-app only. Wanted: more kinds (USSD menus, Viber, RCS, Telegram, voice), real delivery through an Edge Function with provider keys, and inbound messages that open and answer tickets.
 - [ ] TM Forum standard APIs (TMF620 catalogue, TMF648 quote, TMF650 partnership) (M)
 - [ ] Channel / reseller sales with reseller commissions (L)
 - [ ] Buyer-facing AI shopping assistant (M–L)
