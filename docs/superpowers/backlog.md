@@ -113,7 +113,9 @@ Done — merged to main (`7de0841`), migration `20261112200000` applied 2026-11-
 enquiries tests pass. Plan `docs/superpowers/plans/2026-11-12-loose-ends.md`. Calendar invites (.ics) for demos and
 quotes; quote expiry judged on the database's (UTC) day; a seller proposes its price on its lines of a desk quote
 (private from the buyer); the requisition drawer re-checks prices on Raise; Approvals tests; 44px dialog Close.
-Still open: real email needs a provider (none chosen). Follow-up migration `20261112300000` (applied 2026-11-12):
+Still open: real email needs a provider. Not taken up on 2026-11-13: choosing one (Resend, SendGrid, Postmark, SES…)
+means an account, a sending domain and keys, which are the user's decision; the in-app notifications and the
+.ics downloads carry everything until then. Follow-up migration `20261112300000` (applied 2026-11-12):
 a seller no longer reads the desk's quoted price on its lines of a desk quote (it reads them only through
 `my_desk_quote_lines`).
 
@@ -123,14 +125,14 @@ Done — branch `loose-ends-ii`, migrations `20261113100000` and `20261113200000
 `bundleWhole` (5) and `baskets` (7) integration tests pass. Spec `docs/superpowers/specs/2026-11-13-loose-ends-ii-design.md`.
 Scheduled jobs screen; the requisition basket kept in the database; flag and cap when stock goes; operator Baskets
 screen with reminders; a bundle bought whole; bundle renewals; eight nightly jobs.
-Still open:
+Still open (worked on 2026-11-13 on branch `loose-ends-iii`; migration `20261113300000` written, not yet applied):
 - [ ] `nightly.integration.test.ts` expects eight jobs, so it passes only after the first night with both migrations (00:30 UTC on 14 Nov).
-- [ ] `accept_basket_flag` on a line with no flag answers `accepted: true` and changes nothing.
-- [ ] Up to ~400 ms of basket edits can be lost if the tab closes right after a change.
-- [ ] The operator's cart value is approximate (today's list price, not what checkout would charge).
-- [ ] A business monthly bundle shows no renewal note (its renewal follows the agreement).
-- [ ] A bundle part renewed by its seller (not the marketplace) is not switched to list price after 12 months.
-- [ ] Refund grouping needs `requisition_id` on the invoice line; lines without it are listed ungrouped.
+- [x] **Fixed in `20261113300000`** (answers `changed: false` with a note; `true` when it cleared a flag): `accept_basket_flag` on a line with no flag answers `accepted: true` and changes nothing.
+- [x] **Fixed:** saved at once when the page is hidden, and sent as a `keepalive` request when it is closed. Up to ~400 ms of basket edits can be lost if the tab closes right after a change.
+- [x] **Fixed:** a bundle part is priced at its selection's bundle price (`cartUnitPrice`). The operator's cart value is approximate (today's list price, not what checkout would charge).
+- [x] **Fixed:** "Billed monthly; renews under your account’s agreement" in the configurator and the requisition drawer. A business monthly bundle shows no renewal note (its renewal follows the agreement).
+- [x] **Fixed in `20261113300000`** (`report_renewal` charges `subscription_renewal_price` unless the seller names an amount; `vendor_renewal_book` shows that price): A bundle part renewed by its seller (not the marketplace) is not switched to list price after 12 months.
+- [ ] Refund grouping needs `requisition_id` on the invoice line; lines without it are listed ungrouped. Checked 2026-11-13: no code writes enterprise invoice lines today (every invoice is seed data), so there is nothing to fix until a billing run for approved requisitions exists — that run is a feature, and it must set `requisition_id`.
 
 ## Still open after spec 7 (small, non-blocking)
 

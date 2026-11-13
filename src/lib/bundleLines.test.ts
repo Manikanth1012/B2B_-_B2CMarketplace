@@ -4,7 +4,7 @@ import {
   bundleIdsOf, priceCartBundles, bundleBlock, bundleBasketLines, addBundleToBasket,
   removeBundleFromBasket, holdsBundle, heldCurrencyNote, bundleColumns, partOnSale,
   basketBundleBlocks, requisitionBundleBlock, requisitionBillingBlock, billingOf, heldBilling, type BundleInfo,
-  bundlePriceUntil, bundleSubscriptionColumns, bundleRenewalNote,
+  bundlePriceUntil, bundleSubscriptionColumns, bundleRenewalNote, businessRenewalNote,
 } from './bundleLines'
 import {
   addToBasket, setQuantity, removeLine, repriceTo, EMPTY_BASKET, quoteHoldsCurrency,
@@ -285,5 +285,13 @@ describe('a monthly bundle part renews at the bundle price for 12 months', () =>
     expect(bundleRenewalNote(undefined, 499, fmt)).toBeNull()
     /* No published price in that currency: nothing is promised. */
     expect(bundleRenewalNote('monthly', null, fmt)).toBeNull()
+  })
+})
+
+describe('businessRenewalNote', () => {
+  it("says a business account's monthly part renews under its agreement, and nothing for a one-off part", () => {
+    expect(businessRenewalNote('monthly')).toBe('Billed monthly; renews under your account’s agreement')
+    expect(businessRenewalNote('oneoff')).toBeNull()
+    expect(businessRenewalNote(null)).toBeNull()
   })
 })

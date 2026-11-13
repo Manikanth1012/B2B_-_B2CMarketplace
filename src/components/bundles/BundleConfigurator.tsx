@@ -12,7 +12,7 @@ import { enquiriesChanged } from '../enquiries/events'
 import { onOpenBundle, bundlesChanged, type OpenBundleDetail } from './events'
 import { useRequisition } from '../../lib/RequisitionContext'
 import { sendBundleTo, hasBundleSink, notAvailable } from './handoff'
-import { heldBilling, requisitionBillingBlock, bundleRenewalNote } from '../../lib/bundleLines'
+import { heldBilling, requisitionBillingBlock, bundleRenewalNote, businessRenewalNote } from '../../lib/bundleLines'
 import { useBundleShelf, useBundleCurrency } from './useBundleShelf'
 import {
   slotsOf, optionsOf, partsFor, estimate, unavailable, slotHint, togglePick, clearSlot, setPickQty,
@@ -120,10 +120,10 @@ function BundleConfigurator({
   /* What a monthly part renews at once the bundle price ends (decision 3),
      from its published price in this currency, which the shelf carries. A
      shopper's monthly part is a subscription renewed that way; a business
-     account's monthly lines renew under its agreement, so nothing is said. */
+     account's monthly lines renew under its agreement, and it is told so. */
   const renewalOf = (id: string) => shop === 'consumer'
     ? bundleRenewalNote(shelf.parts.get(id)?.model, shelf.parts.get(id)?.list, money)
-    : null
+    : businessRenewalNote(shelf.parts.get(id)?.model)
   const kind = shop === 'consumer' ? 'basket' as const : 'requisition' as const
   /* Said before anything is written, rather than after a selection is saved
      and then refused: nothing takes bundles yet, or the chosen parts are

@@ -315,3 +315,11 @@ export function bundleRenewalNote(
   if (listUnitPrice == null || !Number.isFinite(Number(listUnitPrice))) return null
   return `Bundle price for ${BUNDLE_PRICE_MONTHS} months, then ${fmt(Number(listUnitPrice))}/month`
 }
+
+/** Said under a business account's monthly bundle part. Its renewal is not the
+    shopper's 12-months-then-list rule: a business is billed under its
+    agreement, so that is where the price after the first term is set. Null
+    for a one-off part. */
+export function businessRenewalNote(model: string | null | undefined): string | null {
+  return billingOf(model) === 'monthly' ? 'Billed monthly; renews under your account’s agreement' : null
+}

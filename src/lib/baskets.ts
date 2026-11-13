@@ -44,6 +44,16 @@ export function basketValue(lines: readonly { quantity: number; unit_price: numb
   return round2(lines.reduce((n, l) => n + round2(Number(l.quantity) * Number(l.unit_price)), 0))
 }
 
+/**
+ * What a shopper's cart line costs, as checkout would charge it: a bundle
+ * part at its bundle price (the selection's line), anything else from the
+ * price book in the owner's money, else the listing's base price when that is
+ * in it. Null when none of them is in the owner's money.
+ */
+export function cartUnitPrice(p: { bundle: number | null; own: number | null; base: number | null }): number | null {
+  return p.bundle ?? p.own ?? p.base ?? null
+}
+
 /* ---------------------------------------------------------------- flags -- */
 
 /** The note the database writes when a listing cannot be bought at all. */

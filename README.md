@@ -416,6 +416,14 @@ On Business Accounts, the status chips filter with `inBand` and the summary card
 - **Bundle renewals.** A monthly bundle part renews at the bundle price for 12 months (`subscriptions.bundle_price_until`), then at the published price, never below the seller's floor. Checkout and the configurator say so.
 - Refunds and the operator's order views group bundle lines under the bundle's name. The bundle shelf cache is kept per signed-in user, so switching accounts never shows another buyer's prices.
 
+**Loose ends III.** Migration `20261113300000`.
+
+- A bundle part its seller renews (`report_renewal`) is charged as the marketplace's own run charges it: the bundle price for 12 months, then the published price, unless the seller names the amount; the seller's renewal book shows that price.
+- `accept_basket_flag` says whether it changed anything (`changed`).
+- The requisition basket is saved at once when the page is hidden, and sent as a `keepalive` request when it is closed.
+- The operator's Baskets screen prices a shopper's bundle part at its bundle price.
+- A business buyer's monthly bundle part says it renews under the account's agreement.
+
 **Shared components** live in `src/components/ui/`, are class-based, and are styled by `src/styles/ui.css` (imported in `src/main.tsx` after `global.css`).
 
 | Component | Use it for |

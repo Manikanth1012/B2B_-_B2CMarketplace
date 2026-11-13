@@ -169,6 +169,8 @@ describe("a business buyer's basket is kept", () => {
     const r = await acceptBasketFlag('requisition', unflagged.id)
     expect(r.ok, r.ok ? '' : r.error).toBe(true)
     if (r.ok) expect(r.value.quantity).toBe(unflagged.quantity)
+    /* Since 20261113300000 it says it changed nothing; before, it does not say. */
+    if (r.ok && r.value.changed !== null) expect(r.value.changed).toBe(false)
     const after = await loadRequisitionBasket()
     const same = after.ok ? after.value?.lines.find(l => l.id === unflagged.id) : undefined
     expect(same?.quantity).toBe(unflagged.quantity)

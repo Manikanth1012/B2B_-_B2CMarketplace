@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  idleState, IDLE_DAYS, basketValue, lineFlag, isFlagged, isBlocked, flaggedSelections, blockedSentence,
+  idleState, IDLE_DAYS, basketValue, cartUnitPrice, lineFlag, isFlagged, isBlocked, flaggedSelections, blockedSentence,
   bundleStockSays, cartsByUser, lineKey, fromKept, mergeSaved, fellOff, NO_LONGER_AVAILABLE,
 } from './baskets'
 import type { KeptBasket, KeptLine } from './baskets'
@@ -157,5 +157,21 @@ describe('lines that fell off the shelf', () => {
     ] }
     const published = new Map([['SKU-1', { price: 100, floor_price: null }]])
     expect(fellOff(b, published)).toEqual([{ product_id: 'SKU-2', name: 'Gone' }])
+  })
+})
+
+describe('cartUnitPrice', () => {
+  it('prices a bundle part at the bundle price checkout charges, whatever the list says', () => {
+    expect(cartUnitPrice({ bundle: 45.5, own: 60, base: 55 })).toBe(45.5)
+  })
+  it("prices anything else from the price book in the owner's money, then the listing's base", () => {
+    expect(cartUnitPrice({ bundle: null, own: 60, base: 55 })).toBe(60)
+    expect(cartUnitPrice({ bundle: null, own: null, base: 55 })).toBe(55)
+  })
+  it("says nothing when no price is in the owner's money", () => {
+    expect(cartUnitPrice({ bundle: null, own: null, base: null })).toBeNull()
+  })
+  it('keeps a bundle price of zero rather than falling back to the list', () => {
+    expect(cartUnitPrice({ bundle: 0, own: 60, base: 55 })).toBe(0)
   })
 })
