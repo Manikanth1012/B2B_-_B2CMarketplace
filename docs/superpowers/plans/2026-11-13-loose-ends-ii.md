@@ -40,17 +40,29 @@ new `src/components/operator/OperatorJobs.tsx` (+ `OperatorJobs.dom.test.tsx`); 
   duration, summary, full error when failed; footnote with `select public.run_nightly();`. Loading, empty and
   failed-read states.
 
-### Task B: The basket survives a reload; the bundle shelf cache per person
-Files: new pure `src/lib/basketStore.ts` (+ test): `saveBasket(store, userId, basket, now)`, `loadBasket(store, userId, now)`
-(null when missing, older than 7 days, wrong shape or broken JSON), `clearBasket(store, userId)`; key
-`aventa.requisition.<userId>`; `store` is a `Storage`-like param so it is testable. `src/lib/RequisitionContext.tsx`:
-save on every commit, restore on mount and when the signed-in user changes (auth listener through an existing auth
-helper, not raw supabase in the component), clear on sign-out; after restore, mark the basket `restored` so the
-panel re-prices it against the shelf it opens with and lists what moved/fell off (reuse `repriceTo` /
-`contractChanges` and spec 10's changed-lines block in `RequisitionPanel.tsx`); rewrite the header comment.
-Accepted quote "Add to requisition" checks the restored basket (`quote_line_id`).
-`src/components/bundles/useBundleShelf.ts`: cache key `${userId}:${currency}`, cleared on auth change.
-Tests: basketStore unit; a DOM test that a provider remounted with the same store restores lines.
+### Task B (revised 2026-11-13): Baskets kept in the database, watched by the operator, flagged when stock goes
+Spec section 2 and decisions 1, 2, 2a–2c bind. Two parts, one branch.
+
+**B1 — migration** `supabase/migrations/20261113200000_a_basket_is_kept_and_watched.sql` + `src/lib/baskets.migration.test.ts`,
+written to apply after `20261113100000` (which is on this branch, not yet applied; copy `run_nightly` from it, eight jobs:
+agreements, enterprise subscriptions, subscriptions, documents, payments, bundle selections, baskets, settlements).
+Tables, `save_requisition_basket`, `cart_items` columns + `updated_at` trigger + operator read, `flag_basket_stock`
+and the `products` trigger, the database refusals while a line is flagged (cart: extend the order-line path that
+checkout's `order_items` insert hits; requisition: raising — find how `raiseRequisition` writes), `remind_basket_owner`,
+`run_baskets_night(p_as_of)` (sweep + 90-day clear), `op-baskets` help article (same shape as the op-jobs one in
+`20261113100000`). Self-check with a rolled-back dry run of the night (8 jobs ok) and a rolled-back stock-flag case.
+STOP after syntax check: the user applies both migrations.
+
+**B2 — client**: `src/lib/basketRepo.ts` (load/save/accept/remove for both kinds, operator lists, remind);
+pure `src/lib/baskets.ts` (+ test, first): idle state Pending/Abandoned at 7 days, flag → note/actions, value,
+"blocked" for a basket/bundle with any flagged line. `RequisitionContext.tsx`: load on sign-in, debounced save,
+re-read on focus and before Raise, delete on raise; header comment rewritten. `RequisitionPanel.tsx` and
+`CartDrawer.tsx`/`Checkout.tsx`: flagged lines with Accept/Remove, Raise/checkout blocked. Accepted quote
+"Add to requisition" recognises a basket line by `quote_line_id`. `useBundleShelf.ts`: cache key
+`${userId}:${currency}`, cleared on auth change. New operator screen `OperatorBaskets.tsx` (`op-baskets`) with
+Business / Shoppers tabs, Pending/Abandoned filter, line detail, Send reminder; nav + route + view union.
+`jobLog.ts` summarises `baskets`. Before the migration is applied every read must fail soft (the screens behave as
+today; the basket stays in memory). DOM tests for the drawer's flagged line and the operator screen.
 
 ### Task C: The migration (user applies)
 File: `supabase/migrations/20261113100000_a_bundle_is_bought_whole.sql` + `src/lib/bundleWhole.migration.test.ts`.
@@ -83,7 +95,13 @@ Files: `src/components/Checkout.tsx` (write `bundle_selection_id`, `bundle_price
 bundle part's subscription; surface the settle failure reason); `BundleConfigurator.tsx` and `BundleGroup.tsx`
 ("Bundle price for 12 months, then {list}/month" on monthly parts); business configurator passes the requisition's
 currency; `EnterpriseRefunds.tsx` refund picker and `OperatorOrders.tsx` group bundle lines (`groupBySelection`,
-`useBundleNames`, `BundleGroup` heading); `nightly.integration.test.ts` expects 7 jobs.
+`useBundleNames`, `BundleGroup` heading); `nightly.integration.test.ts` expects 8 jobs (incl. `payments`,
+`bundle selections`, `baskets`).
+**Must land before the migrations are merged to main** (from Task C's report): `PaymentGateway.tsx` passes its own
+`outcome` to `onSettled` and ignores `res.state` — read `res.state`/`note` from `settle_payment_attempt` so a
+"bundle not bought whole" failure shows as a failed payment, not success; and on any failed/cancelled payment,
+checkout's `undo` also removes the never-charged subscriptions it wrote for those orders (today it deletes only
+orders). `bundle_price_until` = purchase date + 12 months (a renewal starting on that date is at the published price).
 New `src/lib/bundleWhole.integration.test.ts`: second requisition refused for the same selection (create, then
 delete); a throwaway template with `SKU-5004` (paused) as an option is blocked (operator creates, deletes);
 `delete_unused_bundle_selections` not callable through the API.
