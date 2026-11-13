@@ -21,7 +21,7 @@ import { ShieldCheck, ArrowLeft, Smartphone } from 'lucide-react'
 import { Btn, FormField, TextInput, Select, toast } from './operator/shared'
 import {
   fieldsFor, validateFields, instrumentLabel, confirmFor, validateConfirm,
-  isFinanced, tenureOf, longestTenure, instalmentOf,
+  isFinanced, tenureOf, longestTenure, instalmentOf, settledAs,
 } from '../lib/gateway'
 import type { PaymentMethod, PaymentAttempt } from '../lib/gateway'
 import { settle } from '../lib/gatewayRepo'
@@ -72,15 +72,20 @@ export function PaymentGateway({ attempt, method, savedLabel, merchant, money, o
         financier: months ? (attempt.provider ?? null) : null,
       })
       if (!res.ok) { toast(res.reason, 'error'); return }
+      /* What the database made of it, not what this page asked for: a success
+         from the provider can be refused when it settles (a bundle not bought
+         whole), and then nothing was charged and the shopper must be told. */
+      const { state, failure_reason } = settledAs(outcome, res, reason)
+      const kept = state === 'succeeded'
       await onSettled({
         ...attempt,
-        state: outcome,
+        state,
         instrument: instrument ?? attempt.instrument,
-        failure_reason: outcome === 'failed' ? (reason ?? null) : null,
+        failure_reason,
         decided_at: new Date().toISOString(),
-        tenure_months: months,
-        instalment: each,
-        financier: months ? (attempt.provider ?? null) : null,
+        tenure_months: kept ? months : null,
+        instalment: kept ? each : null,
+        financier: kept && months ? (attempt.provider ?? null) : null,
       })
     } finally { setBusy(false) }
   }

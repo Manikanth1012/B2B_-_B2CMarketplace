@@ -57,6 +57,15 @@ export interface BasketLine {
   on_contract?: boolean
   /* Why it is bought off the price book, when the buying rules ask. */
   off_contract_reason?: string
+  /* The kept line's id (requisition_basket_lines.id), once the basket has been
+     saved. Needed to accept a stock flag; absent before the first save. */
+  id?: string
+  /* The marketplace's stock flag, written by the database (flag_basket_stock),
+     never by the buyer: "Only 3 left — we reduced this from 5" or "No longer
+     available". While set the requisition cannot be raised (baskets.ts). */
+  stock_note?: string | null
+  was_quantity?: number | null
+  flagged_at?: string | null
 }
 
 /** An ordinary line the account has no price for: what the buying rules judge.

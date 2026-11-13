@@ -44,7 +44,8 @@ describe('the night', () => {
     const latest = new Map<string, { ok: boolean; error: string | null }>()
     for (const r of rows) if (!latest.has(r.job)) latest.set(r.job, r)
     expect([...latest.keys()].sort(), 'the night has not run, or ran only some of its jobs')
-      .toEqual(['agreements', 'documents', 'enterprise subscriptions', 'settlements', 'subscriptions'])
+      .toEqual(['agreements', 'baskets', 'bundle selections', 'documents', 'enterprise subscriptions',
+                'payments', 'settlements', 'subscriptions'])
     for (const [job, r] of latest) expect(r.ok, `${job} failed: ${r.error}`).toBe(true)
   })
 

@@ -12,11 +12,11 @@ import { enquiriesChanged } from '../enquiries/events'
 import { onOpenBundle, bundlesChanged, type OpenBundleDetail } from './events'
 import { useRequisition } from '../../lib/RequisitionContext'
 import { sendBundleTo, hasBundleSink, notAvailable } from './handoff'
-import { heldBilling, requisitionBillingBlock } from '../../lib/bundleLines'
+import { heldBilling, requisitionBillingBlock, bundleRenewalNote } from '../../lib/bundleLines'
 import { useBundleShelf, useBundleCurrency } from './useBundleShelf'
 import {
   slotsOf, optionsOf, partsFor, estimate, unavailable, slotHint, togglePick, clearSlot, setPickQty,
-  totalsDiffer, pickedTwice, BUNDLE_QTY_MAX,
+  totalsDiffer, pickedTwice, configureCurrency, BUNDLE_QTY_MAX,
 } from './shelf'
 
 type Phase =
@@ -81,13 +81,16 @@ function BundleConfigurator({
   requisitionBilling?: 'oneoff' | 'monthly' | null
 }) {
   const { fmtIn } = useMarket()
-  /* Always the buyer's own currency (consumer home, business account): the
-     only one configure_bundle prices in. A visitor has none and sees the shop's. */
+  /* The buyer's own currency (consumer home, business account); a visitor has
+     none and sees the shop's. A business buyer's open requisition in another
+     currency is priced in that one instead, so the bundle can join it
+     (configure_bundle refuses, in words, a currency the market does not take). */
   const { currency: own, header, own: isOwn } = useBundleCurrency()
-  const currency = own ?? ''
+  const priceIn = configureCurrency(shop, own, requisitionCurrency)
+  const currency = priceIn.currency ?? ''
   const money = (n: number) => fmtIn(n, currency)
-  const { shelf, loading: shelfLoading, loadError } = useBundleShelf(own)
-  const loading = shelfLoading || !own
+  const { shelf, loading: shelfLoading, loadError } = useBundleShelf(priceIn.currency)
+  const loading = shelfLoading || !priceIn.currency
 
   const template = shelf.templates.find(t => t.id === detail.templateId) ?? null
   const slots = useMemo(() => slotsOf(shelf, detail.templateId), [shelf, detail.templateId])
@@ -114,15 +117,20 @@ function BundleConfigurator({
     && Object.keys(problems).length === 0 && !unpicked && !twice && !!priced && phase.kind === 'choose'
 
   const nameOf = (id: string) => shelf.parts.get(id)?.name ?? id
+  /* What a monthly part renews at once the bundle price ends (decision 3),
+     from its published price in this currency, which the shelf carries. A
+     shopper's monthly part is a subscription renewed that way; a business
+     account's monthly lines renew under its agreement, so nothing is said. */
+  const renewalOf = (id: string) => shop === 'consumer'
+    ? bundleRenewalNote(shelf.parts.get(id)?.model, shelf.parts.get(id)?.list, money)
+    : null
   const kind = shop === 'consumer' ? 'basket' as const : 'requisition' as const
   /* Said before anything is written, rather than after a selection is saved
-     and then refused: nothing takes bundles yet, the open requisition is in
-     another currency (the database refuses a bundle there anyway), or the
-     chosen parts are billed two ways, or the other way from the open
-     requisition (the requisition basket refuses both). */
+     and then refused: nothing takes bundles yet, or the chosen parts are
+     billed two ways, or the other way from the open requisition (the
+     requisition basket refuses both). The bundle is priced in the open
+     requisition's currency, so the two currencies never differ here. */
   const addBlocked = !hasBundleSink(kind) ? notAvailable(kind)
-    : shop === 'enterprise' && requisitionCurrency && requisitionCurrency !== currency
-      ? `Your open requisition is in ${requisitionCurrency}, and bundles are priced in ${currency}, your account's currency. Raise or clear that requisition first, or request a quote for this bundle.`
       : shop === 'enterprise'
         ? requisitionBillingBlock(template?.name ?? 'This bundle', Object.values(picks).flat(), id => shelf.parts.get(id)?.model, nameOf,
           requisitionBilling)
@@ -200,7 +208,9 @@ function BundleConfigurator({
           and the bundle now costs <strong>{money(phase.selection.total)}</strong>. Here is the price that will be charged.
         </p>
         <Breakdown
-          rows={phase.lines.map(l => ({ key: l.id, name: l.name, quantity: l.quantity, total: round2(l.unit_price * l.quantity) }))}
+          rows={phase.lines.map(l => ({
+            key: l.id, name: l.name, quantity: l.quantity, total: round2(l.unit_price * l.quantity), note: renewalOf(l.product_id),
+          }))}
           partsTotal={phase.selection.parts_total} total={phase.selection.total} money={money} />
         <div className="bcfg__row">
           <button type="button" className="btn btn-primary bcfg__btn" onClick={() => void handOn(phase.selection)}>
@@ -270,12 +280,16 @@ function BundleConfigurator({
         <aside className="pd__buy bcfg__panel" aria-label="Your bundle">
           <h3 className="bcfg__panel-title">Your bundle</h3>
           <p className="bcfg__note">
-            Prices in {currency}{isOwn ? ", your account's currency" : ''}.
-            {header && header !== currency && ` The shop is showing ${header}; a bundle is always priced in ${currency}.`}
+            Prices in {currency}{priceIn.from === 'requisition' ? ', the currency of your open requisition'
+              : isOwn ? ", your account's currency" : ''}.
+            {header && header !== currency && priceIn.from === 'own'
+              && ` The shop is showing ${header}; a bundle is always priced in ${currency}.`}
           </p>
           {priced ? (
             <Breakdown
-              rows={priced.lines.map(l => ({ key: l.product_id, name: nameOf(l.product_id), quantity: l.quantity, total: l.line_total }))}
+              rows={priced.lines.map(l => ({
+                key: l.product_id, name: nameOf(l.product_id), quantity: l.quantity, total: l.line_total, note: renewalOf(l.product_id),
+              }))}
               partsTotal={priced.parts_total} total={priced.total} money={money} />
           ) : !unpicked && !twice && (
             <p className="bcfg__calm">Choose the parts to see the price.</p>
@@ -332,7 +346,7 @@ function BundleConfigurator({
    Which parts sit at a seller's minimum is not the buyer's business and is
    not shown. */
 function Breakdown({ rows, partsTotal, total, money }: {
-  rows: { key: string; name: string; quantity: number; total: number }[]
+  rows: { key: string; name: string; quantity: number; total: number; note?: string | null }[]
   partsTotal: number
   total: number
   money: (n: number) => string
@@ -342,7 +356,10 @@ function Breakdown({ rows, partsTotal, total, money }: {
     <div className="bcfg__breakdown">
       <ul className="bcfg__lines">
         {rows.map(r => (
-          <li key={r.key}><span>{r.name} × {r.quantity}</span><span>{money(r.total)}</span></li>
+          <li key={r.key}>
+            <span>{r.name} × {r.quantity}{r.note && <span className="bcfg__line-note">{r.note}</span>}</span>
+            <span>{money(r.total)}</span>
+          </li>
         ))}
       </ul>
       {saving > 0 && <div className="bcfg__sum"><span>Bought separately</span><span>{money(partsTotal)}</span></div>}

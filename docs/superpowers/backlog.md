@@ -117,27 +117,42 @@ Still open: real email needs a provider (none chosen). Follow-up migration `2026
 a seller no longer reads the desk's quoted price on its lines of a desk quote (it reads them only through
 `my_desk_quote_lines`).
 
+## Spec 11 — loose ends II (2026-11-13)
+
+Done — branch `loose-ends-ii`, migrations `20261113100000` and `20261113200000` applied by the user 2026-11-13;
+`bundleWhole` (5) and `baskets` (7) integration tests pass. Spec `docs/superpowers/specs/2026-11-13-loose-ends-ii-design.md`.
+Scheduled jobs screen; the requisition basket kept in the database; flag and cap when stock goes; operator Baskets
+screen with reminders; a bundle bought whole; bundle renewals; eight nightly jobs.
+Still open:
+- [ ] `nightly.integration.test.ts` expects eight jobs, so it passes only after the first night with both migrations (00:30 UTC on 14 Nov).
+- [ ] `accept_basket_flag` on a line with no flag answers `accepted: true` and changes nothing.
+- [ ] Up to ~400 ms of basket edits can be lost if the tab closes right after a change.
+- [ ] The operator's cart value is approximate (today's list price, not what checkout would charge).
+- [ ] A business monthly bundle shows no renewal note (its renewal follows the agreement).
+- [ ] A bundle part renewed by its seller (not the marketplace) is not switched to list price after 12 months.
+- [ ] Refund grouping needs `requisition_id` on the invoice line; lines without it are listed ungrouped.
+
 ## Still open after spec 7 (small, non-blocking)
 
 - [x] **Fixed — migration `20261111200000` applied 2026-11-12, integration test passes — existing bug:** an ordinary (non-bundle) business requisition raised from the basket fails at approval: `raiseRequisition` never sets the requisition's `product_id` and `place_requisition_order` orders from that single header product, ignoring the lines. Spec 7 orders bundle requisitions line by line; ordinary multi-line requisitions still fail. Fixing it changes a live flow.
-- [ ] Accepted risk: a shopper who removes the rest of a bundle mid-checkout buys one part at its bundle price. No seller goes below its floor; only the marketplace's discount is exposed. Each part can be ordered only once.
-- [ ] A requisition raised in a secondary currency cannot hold a bundle (bundles are priced in the account's currency).
-- [ ] Refund picker and operator order views do not group bundle lines yet (refunds work per part at its price).
-- [ ] "A paused part blocks the bundle" is enforced by the database but not covered by a live test (it would pause a real product).
+- [x] **Fixed in spec 11 (settle refuses a part-bought bundle):** Accepted risk: a shopper who removes the rest of a bundle mid-checkout buys one part at its bundle price. No seller goes below its floor; only the marketplace's discount is exposed. Each part can be ordered only once.
+- [x] **Fixed in spec 11:** A requisition raised in a secondary currency cannot hold a bundle (bundles are priced in the account's currency).
+- [x] **Fixed in spec 11:** Refund picker and operator order views do not group bundle lines yet (refunds work per part at its price).
+- [x] **Covered in spec 11** (a template offering a paused part cannot go on sale; live test with SKU-5004, nothing paused): "A paused part blocks the bundle" is enforced by the database but not covered by a live test (it would pause a real product).
 - [x] **Fixed in spec 10 (44×44):** The shared dialog's Close button is 36px tall (24px AA minimum met; 44px target not).
 - [ ] Business templates are billed one way (all one-off or all monthly; migration `20261111100000`, 2026-11-11). A monthly business kit (SIMs, managed firewall) could be a second template.
-- [ ] The bundle shelf cache is keyed by currency only, so after switching accounts it can be stale for up to 60 s.
-- [ ] Monthly parts of a bundle renew at the bundle price indefinitely; decide whether renewals revert to list price.
-- [ ] Unused selections (configured, never added) are never cleaned up; only the operator can delete them.
-- [ ] An abandoned checkout can leave a bundle half-ordered (parts already ordered can't be ordered again); re-configure to buy it.
-- [ ] The same selection can go on two requisitions; the second approval then cannot be ordered.
+- [x] **Fixed in spec 11 (keyed per user):** The bundle shelf cache is keyed by currency only, so after switching accounts it can be stale for up to 60 s.
+- [x] **Decided in spec 11 (bundle price for 12 months, then published, floored):** Monthly parts of a bundle renew at the bundle price indefinitely; decide whether renewals revert to list price.
+- [x] **Fixed in spec 11 (nightly `bundle selections` job):** Unused selections (configured, never added) are never cleaned up; only the operator can delete them.
+- [x] **Fixed in spec 11 (nightly `payments` job; unpaid orders of another payment no longer count):** An abandoned checkout can leave a bundle half-ordered (parts already ordered can't be ordered again); re-configure to buy it.
+- [x] **Fixed in spec 11:** The same selection can go on two requisitions; the second approval then cannot be ordered.
 - [ ] Seller-authored templates and a free-form build-your-own are out of scope.
 
 ## Still open after spec 6 (small, non-blocking)
 
 - [x] **Calendar invites done in spec 10** (.ics download); email still needs a provider. No calendar invites or email for demos and quotes — in-app notifications only (no gateway).
 - [x] **Fixed in spec 10 (seller proposes; desk can use it):** The seller of a multi-seller desk quote can read its own lines but has no screen to tell the desk its price, and cannot read a desk-routed conversation; the desk has to reach the seller outside the enquiry, or reassign it to them.
-- [ ] The requisition basket is not saved across a reload; an accepted quote offers "Add to requisition" again until it is on a live requisition.
+- [x] **Fixed in spec 11 (kept in the database, watched by the operator, flagged when stock goes):** The requisition basket is not saved across a reload; an accepted quote offers "Add to requisition" again until it is on a live requisition.
 - [x] **Fixed in spec 10 (UTC day everywhere):** Expiry is checked against the browser's date on screen and the database's date on accept; around midnight they can differ by a day.
 - [ ] Seed enquiries name SKU-5004, which is paused on the live shelf. An accepted quote on it still reaches the requisition (its product facts are read by id, whatever the status); only raising a new enquiry from the shelf needs a live listing.
 
@@ -149,7 +164,7 @@ a seller no longer reads the desk's quoted price on its lines of a desk quote (i
 - [x] **Demo data brought to 12 Nov 2026** (`20261112700000`): open refunds, disputes, listing queries and inbound stock moved forward 97 days (as old today as on 7 Aug); expired banners extended or ended; Beacon's treaty certificate renewed; 4 overdue credit reviews recorded; seller-reported renewals filed; FX for Sep–Nov. August settled.
 - [ ] **Not refreshed (needs a trade backfill if wanted):** no orders, sales, shopper bills, enterprise invoices or ledger postings after 7 Aug. Four shopper bills and four enterprise invoices are still open from August; the ledger's last period is July (open); promotions and earn rules past their end dates still read active (they have no ended state).
 - [ ] Beacon (PTR-1009) shows "7.5% reserve, nothing retained" until Q4 closes on 31 Dec: its Q3 payout was entirely taken by wholesale charge recovery, so there was nothing to retain. This makes `credit.integration` "does not disagree with itself" fail until then. The check could look at whether the closed statement had anything payable.
-- [ ] No operator screen shows `scheduled_job_log` yet; failures are only visible in the table.
+- [x] **Fixed in spec 11 (Scheduled jobs screen):** No operator screen shows `scheduled_job_log` yet; failures are only visible in the table.
 
 - [x] Nimbus Sensors' (PTR-1004) AE market grant was left `suspended` by an interrupted pricing test (2026-11-05); set it back to approved.
 - [ ] ~30 `notification_log` rows `NL-ENQ-*` point at deleted test enquiries (`ENQ-10xx`); only the service role can remove them.

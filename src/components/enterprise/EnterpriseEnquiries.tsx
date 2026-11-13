@@ -196,6 +196,10 @@ export function EnterpriseEnquiries() {
                 </>
               ) : standing.kind === 'held' ? (
                 <span className="enq-muted">Already on requisition {standing.requisitionId}</span>
+              ) : open.type === 'quote' && open.status === 'accepted'
+                  && book.lines.some(l => l.enquiry_id === open.id && inBasket.has(l.id)) ? (
+                /* The kept basket holds this quote's lines (by quote_line_id), so it is not offered again. */
+                <span className="enq-muted">In your requisition basket</span>
               ) : undefined} />
           )}
         </div>

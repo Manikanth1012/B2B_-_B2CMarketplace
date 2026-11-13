@@ -106,3 +106,23 @@ function friendly(message: string): string {
   if (/row-level security/i.test(m)) return 'That bundle cannot go in this basket.'
   return m
 }
+
+/** Which bundle each part of a requisition was bought as, keyed
+    `${requisition_id}::${product_id}`, for screens that start from somewhere
+    else (an invoice line) and want to group a bundle's parts under its name.
+    A line with no bundle is left out; a read that fails gives an empty map, so
+    the screen shows its lines ungrouped rather than not at all. */
+export async function loadRequisitionBundleParts(requisitionIds: string[]): Promise<Map<string, string>> {
+  const ids = [...new Set(requisitionIds.filter(Boolean))]
+  if (!ids.length) return new Map()
+  try {
+    const { data, error } = await supabase.from('enterprise_requisition_lines')
+      .select('requisition_id, product_id, bundle_selection_id')
+      .in('requisition_id', ids).not('bundle_selection_id', 'is', null)
+    if (error) return new Map()
+    return new Map(((data ?? []) as { requisition_id: string; product_id: string; bundle_selection_id: string }[])
+      .map(r => [`${r.requisition_id}::${r.product_id}`, r.bundle_selection_id]))
+  } catch {
+    return new Map()
+  }
+}

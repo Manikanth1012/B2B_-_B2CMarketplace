@@ -51,6 +51,10 @@ vi.mock('../../lib/RequisitionContext', () => ({
       applyChanges: (changes: ContractChange[]) => setBasket(applyContractChanges(basket, changes)),
       empty: () => {}, total: basket.lines.reduce((n, l) => n + l.quantity * l.unit_price, 0),
       count: basket.lines.reduce((n, l) => n + l.quantity, 0),
+      /* Kept-basket plumbing (spec 11): nothing kept here, nothing flagged. */
+      restored: null, dismissRestored: () => {}, keepError: null,
+      sync: () => Promise.resolve(ctx.basket as Basket), acceptFlag: () => Promise.resolve({ ok: true }),
+      raised: () => Promise.resolve(),
     }
   },
 }))

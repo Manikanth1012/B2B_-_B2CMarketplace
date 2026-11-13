@@ -18,11 +18,16 @@ import { loadPaymentCatalogue, startPayment, newReference } from '../lib/gateway
 import type { PaymentCatalogue } from '../lib/gatewayRepo'
 import { PaymentGateway } from './PaymentGateway'
 import { groupBySelection } from '../lib/bundles'
-import { basketBundleBlocks, bundleColumns, BUNDLE_FALLBACK_NAME, type BundleBlock } from '../lib/bundleLines'
+import {
+  basketBundleBlocks, bundleColumns, bundleSubscriptionColumns, bundleRenewalNote, BUNDLE_FALLBACK_NAME,
+  type BundleBlock,
+} from '../lib/bundleLines'
 import { removeCartBundle } from '../lib/bundleBasketRepo'
 import { BundleGroup } from './bundles/BundleGroup'
 import { basketSink } from './bundles/sinks'
 import { bundlesChanged } from './bundles/events'
+import { StockFlag } from './StockFlag'
+import { lineFlag, blockedSentence, stockBlock } from '../lib/baskets'
 
 /* One icon per rail, so the list reads at a glance rather than as six identical
    rows of text. */
@@ -54,9 +59,22 @@ interface CheckoutProps {
   cartItems: CartItem[]
   onClearCart: () => void
   onComplete: () => void
+  /* A line the stock flag caught: accept the cut quantity, or take it out. */
+  onAcceptFlag?: (itemId: string) => Promise<{ ok: true } | { ok: false; reason: string }>
+  onRemove?: (itemId: string) => void | Promise<void>
 }
 
-export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) {
+export function Checkout({ cartItems, onClearCart, onComplete, onAcceptFlag, onRemove }: CheckoutProps) {
+  const [accepting, setAccepting] = useState<string | null>(null)
+  const [flagProblem, setFlagProblem] = useState<{ id: string; text: string } | null>(null)
+  const acceptFlag = async (id: string) => {
+    if (!onAcceptFlag) return
+    setAccepting(id)
+    setFlagProblem(null)
+    const r = await onAcceptFlag(id)
+    setAccepting(null)
+    if (!r.ok) setFlagProblem({ id, text: r.reason })
+  }
   const fieldId = useId()
   const [step, setStep] = useState<'details' | 'payment' | 'confirm'>('details')
   // step can be 'confirm' after order placement
@@ -132,7 +150,16 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
      days, with every part still on sale. One that is not stops the order here,
      named, before anything is written. Ordinary baskets have none. */
   const bundleBlocks = basketBundleBlocks(cartItems, shopCurrency, new Date().toISOString())
-  const blockOf = (id: string): BundleBlock => bundleBlocks.find(b => b.selectionId === id)?.block ?? { kind: 'ok' }
+  const blockOf = (id: string): BundleBlock => {
+    /* A part the stock flag caught blocks its bundle whole. */
+    const mine = cartItems.filter(l => l.bundle_selection_id === id)
+    const flaggedPart = stockBlock(mine.map(l => ({ name: l.product?.name ?? l.product_id, stock_note: l.stock_note })),
+      mine[0]?.bundle?.name ?? BUNDLE_FALLBACK_NAME)
+    return flaggedPart ?? bundleBlocks.find(b => b.selectionId === id)?.block ?? { kind: 'ok' }
+  }
+  /* Any flagged line stops the order until it is accepted or removed; the
+     database refuses it too (guard_flagged_cart_order_line). */
+  const flagged = blockedSentence(cartItems, 'order')
   /* The price an order line is written at: a bundle part's is the selection's. */
   const unitPrice = (item: CartItem) => item.bundle_selection_id ? (item.bundle_unit_price ?? 0) : (item.product?.price || 0)
 
@@ -156,7 +183,15 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
      answer arrives later, and a refusal has to be able to take them back. */
   const [placed, setPlaced] = useState<{ id: string; ref: string }[]>([])
 
-  const undo = async (rows: { id: string }[]) => {
+  /* The orders go, and the monthly subscriptions written with them: they were
+     never charged, and one left behind would renew a purchase that did not
+     happen and refuse the retry as a duplicate. A shopper may delete their own
+     (owner_delete_subscriptions). When the database refused the payment itself
+     (a bundle not bought whole) it has removed both already, and this finds
+     nothing left to delete. */
+  const undo = async (rows: { id: string; ref: string }[]) => {
+    const refs = rows.map(o => o.ref)
+    if (refs.length) await supabase.from('subscriptions').delete().in('ref', refs)
     for (const o of rows) await supabase.from('orders').delete().eq('id', o.id)
   }
 
@@ -172,6 +207,7 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
   const handleSubmit = async () => {
     if (!method || !provider || !marketCode) return
     if (bundleBlocks.length) { setFailure(`${bundleBlocks[0].block.says} Nothing has been charged.`); return }
+    if (flagged) { setFailure(`${flagged} Nothing has been charged.`); return }
     setProcessing(true)
     setFailure(null)
 
@@ -196,6 +232,8 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
     }
 
     const made: { id: string; ref: string }[] = []
+    /* The day the purchase is made, from which a bundle part's 12 months run. */
+    const today = new Date().toISOString().slice(0, 10)
     const undoAll = async () => { await undo(made) }
 
     for (const [n, group] of groups.entries()) {
@@ -272,15 +310,28 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
              of them and walks the billing day backwards in the other eight —
              `ORD-14800252-2` started on the 7th and was already renewing on the
              6th before it had billed once. */
-          next_renewal: nextRenewalFrom(new Date().toISOString().slice(0, 10)),
+          next_renewal: nextRenewalFrom(today),
           price: unitPrice(item),
           /* NOT NULL since subscriptions got a currency, and guarded against the
              customer's bills — so this insert was failing outright, not merely
              recording the wrong mark. */
           currency: shopCurrency,
+          /* A bundle part renews at the bundle price for 12 months, then at the
+             published price (renew_subscriptions). Only on a bundle part, so an
+             ordinary subscription writes what it always has. */
+          ...bundleSubscriptionColumns(item, today),
         }))
       if (subs.length > 0) {
-        await supabase.from('subscriptions').insert(subs)
+        const { error: subsErr } = await supabase.from('subscriptions').insert(subs)
+        /* An ordinary subscription that did not write has always been let go
+           (the order stands). A bundle part's cannot be: its price after the
+           first 12 months lives on it, so the order goes back instead. */
+        if (subsErr && group.lines.some(l => l.bundle_selection_id && l.product?.model === 'monthly')) {
+          await undoAll()
+          setProcessing(false)
+          setFailure(friendly(subsErr.message) ?? 'The bundle could not be set up to renew. Nothing has been charged.')
+          return
+        }
       }
     }
 
@@ -628,7 +679,10 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                     key={g.selectionId}
                     compact
                     name={info?.name ?? BUNDLE_FALLBACK_NAME}
-                    parts={g.lines.map(l => ({ key: l.id, name: l.product?.name ?? l.product_id, quantity: l.quantity, lineTotal: unitPrice(l) * l.quantity }))}
+                    parts={g.lines.map(l => ({
+                      key: l.id, name: l.product?.name ?? l.product_id, quantity: l.quantity, lineTotal: unitPrice(l) * l.quantity,
+                      note: bundleRenewalNote(l.product?.model, info?.lines.find(x => x.product_id === l.product_id)?.list_unit_price, fmt),
+                    }))}
                     total={g.lines.reduce((n, l) => n + unitPrice(l) * l.quantity, 0)}
                     partsTotal={info?.selection.parts_total ?? null}
                     fmt={fmt}
@@ -645,14 +699,27 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
                     }}
                   />
                 )
-              })() : g.lines.map((item) => (
-                <div key={item.id} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 'var(--text-sm)' }}>
+              })() : g.lines.map((item) => {
+                const f = lineFlag(item)
+                return (
+                <div key={item.id}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', fontSize: 'var(--text-sm)' }}>
                   <span style={{ color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0 }}>
                     {item.product?.name} × {item.quantity}
                   </span>
                   <span style={{ fontWeight: 500 }}>{fmt((item.product?.price || 0) * item.quantity)}</span>
                 </div>
-              )))}
+                {f && (
+                  <StockFlag note={f.note} name={item.product?.name ?? item.product_id} from="your basket"
+                    style={{ marginTop: '6px' }}
+                    canAccept={f.actions.includes('accept') && !!onAcceptFlag} busy={accepting === item.id || processing}
+                    problem={flagProblem?.id === item.id ? flagProblem.text : null}
+                    onAccept={() => { void acceptFlag(item.id) }}
+                    onRemove={() => { void onRemove?.(item.id) }} />
+                )}
+                </div>
+                )
+              }))}
             </div>
             {/* Worded the same way as the cart drawer, and for the same reason:
                 a subtotal above a tax line above a larger total reads as tax
@@ -691,14 +758,16 @@ export function Checkout({ cartItems, onClearCart, onComplete }: CheckoutProps) 
             {step === 'payment' && (
               <button
                 onClick={handleSubmit}
-                disabled={processing || !handoff.ok || bundleBlocks.length > 0}
+                disabled={processing || !handoff.ok || bundleBlocks.length > 0 || !!flagged}
                 className="btn btn-cyan btn-lg"
                 style={{ width: '100%', marginTop: '16px' }}
               >
                 {processing ? 'Taking you to the provider…' : `Pay ${fmt(total)}`}
               </button>
             )}
-            {bundleBlocks.length > 0 && (
+            {flagged ? (
+              <p className="bundle-checkout-block" role="status">{flagged}</p>
+            ) : bundleBlocks.length > 0 && (
               <p className="bundle-checkout-block" role="status">{bundleBlocks[0].block.says}</p>
             )}
           </div>

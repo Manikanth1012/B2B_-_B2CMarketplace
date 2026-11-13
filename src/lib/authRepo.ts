@@ -96,3 +96,27 @@ export async function requestPasswordReset(email: string): Promise<void> {
     redirectTo: `${window.location.origin}/`,
   })
 }
+
+/** The signed-in user's id, or null. Read from the local session, so no round trip. */
+export async function currentUserId(): Promise<string | null> {
+  const { data } = await supabase.auth.getSession()
+  return data.session?.user.id ?? null
+}
+
+/**
+ * Told the signed-in user's id now and whenever it changes — sign-in, sign-out,
+ * another account. A token refresh for the same user is not a change, so it is
+ * not repeated. Returns the unsubscribe.
+ */
+export function onUserChange(cb: (userId: string | null) => void): () => void {
+  let last: string | null | undefined
+  let live = true
+  const tell = (id: string | null) => {
+    if (!live || id === last) return
+    last = id
+    cb(id)
+  }
+  void currentUserId().then(tell, () => tell(null))
+  const { data } = supabase.auth.onAuthStateChange((_event, session) => tell(session?.user.id ?? null))
+  return () => { live = false; data.subscription.unsubscribe() }
+}

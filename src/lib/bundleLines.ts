@@ -7,6 +7,7 @@
  * through every function here untouched.
  */
 import { bundleStanding, type Choices } from './bundles'
+import { nextRenewalFrom } from './subscriptions'
 import type { Selection, SelectionLine } from './bundlePayload'
 import type { Basket, BasketLine } from './requisitionBasket'
 
@@ -69,6 +70,8 @@ export type BundleBlock =
   | { kind: 'currency'; says: string }
   | { kind: 'expired'; says: string }
   | { kind: 'part-unavailable'; product_id: string; name: string; says: string }
+  /* A part the marketplace's stock flag caught (baskets.ts): blocked whole until removed. */
+  | { kind: 'stock'; says: string }
 
 /**
  * Whether a bundle in the basket can be bought now, and the sentence when it
@@ -279,4 +282,36 @@ export function basketBundleBlocks<T extends { product_id: string; bundle_select
     the columns it always has. */
 export function bundleColumns(l: { bundle_selection_id?: string | null }): { bundle_selection_id?: string } {
   return l.bundle_selection_id ? { bundle_selection_id: l.bundle_selection_id } : {}
+}
+
+/** How long a monthly bundle part renews at the bundle price (spec 11, decision 3). */
+export const BUNDLE_PRICE_MONTHS = 12
+
+/** The day the bundle price stops on a part bought on `purchasedOn`: the same
+    day twelve months on (clamped into a shorter month). A renewal starting on
+    that day is charged the published price. */
+export function bundlePriceUntil(purchasedOn: string): string {
+  return nextRenewalFrom(purchasedOn, BUNDLE_PRICE_MONTHS)
+}
+
+/** What a monthly bundle part's subscription carries beyond an ordinary one.
+    Nothing on an ordinary line, so its insert writes what it always has (and
+    still works before the columns exist). */
+export function bundleSubscriptionColumns(
+  l: { bundle_selection_id?: string | null }, purchasedOn: string,
+): { bundle_selection_id?: string; bundle_price_until?: string } {
+  return l.bundle_selection_id
+    ? { bundle_selection_id: l.bundle_selection_id, bundle_price_until: bundlePriceUntil(purchasedOn) }
+    : {}
+}
+
+/** Said under a monthly bundle part: what it renews at, and from when. Null
+    for a one-off part, or when its published price in this currency is not
+    known (nothing is promised that cannot be stated). */
+export function bundleRenewalNote(
+  model: string | null | undefined, listUnitPrice: number | null | undefined, fmt: (n: number) => string,
+): string | null {
+  if (billingOf(model) !== 'monthly') return null
+  if (listUnitPrice == null || !Number.isFinite(Number(listUnitPrice))) return null
+  return `Bundle price for ${BUNDLE_PRICE_MONTHS} months, then ${fmt(Number(listUnitPrice))}/month`
 }

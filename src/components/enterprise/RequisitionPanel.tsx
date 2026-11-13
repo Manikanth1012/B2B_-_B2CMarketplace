@@ -13,11 +13,12 @@ import { useState, useEffect, useRef } from 'react'
 import { X, Trash2, TriangleAlert as AlertTriangle, Check } from 'lucide-react'
 import { Btn, toast } from '../operator/shared'
 import { useRequisition } from '../../lib/RequisitionContext'
-import { verdict, missingFields, missingNote, verticalOf, modelOf, isOffContract, contractChanges, applyContractChanges } from '../../lib/requisitionBasket'
+import { verdict, missingFields, missingNote, verticalOf, modelOf, isOffContract, applyContractChanges } from '../../lib/requisitionBasket'
 import type { MissingField, BasketLine, Basket, ContractChange } from '../../lib/requisitionBasket'
 import { DEFAULT_RULES, showsOffContract, offContractReasonProblem } from '../../lib/accountPrices'
 import type { OffContractRule, AccountPrice, BuyingRules } from '../../lib/accountPrices'
-import { loadAccountPrices, loadBuyingRules, loadPublishedPrices } from '../../lib/priceBookRepo'
+import { recheck } from '../../lib/requisitionRecheck'
+import { lineFlag, isBlocked, blockedSentence, stockBlock } from '../../lib/baskets'
 import { OffContractMarker } from '../pricebooks/PriceTag'
 import { raiseRequisition, loadAccount } from '../../lib/enterpriseRepo'
 import type { AccountBook } from '../../lib/enterpriseRepo'
@@ -31,6 +32,7 @@ import { enquiriesChanged } from '../enquiries/events'
 import { groupBySelection } from '../../lib/bundles'
 import { BUNDLE_FALLBACK_NAME, requisitionBundleBlock } from '../../lib/bundleLines'
 import { BundleGroup } from '../bundles/BundleGroup'
+import { StockFlag } from '../StockFlag'
 import { requisitionSink } from '../bundles/sinks'
 
 const BLANK = { title: '', reason: '', cost_centre: null as string | null, po_ref: '' }
@@ -54,34 +56,13 @@ export const lineId = (product_id: string) => `req-line-${product_id.replace(/[^
 /* The sentence Raise answers with when a line's price or standing moved while the drawer was open. */
 export const PRICES_MOVED = 'Your account\'s prices changed since these lines were added. Check the changed lines and raise again.'
 
-/**
- * Today's prices and rules, read again as Raise is pressed, and what they change.
- *
- * Null when any read fails: the caller then raises as it always did, on the
- * figures the drawer already holds, and the database's price guard still
- * refuses a line whose price has moved, in its own words.
- */
-async function recheck(account_id: string, basket: Basket, today: string):
-  Promise<{ prices: AccountPrice[]; rules: BuyingRules; changes: ContractChange[] } | null> {
-  try {
-    const [ap, br, pb] = await Promise.all([
-      loadAccountPrices(account_id), loadBuyingRules(account_id),
-      /* Each listing's published price as the database's price guard reads it,
-         base row included (publishedIn). */
-      loadPublishedPrices(basket.lines.map(l => l.product_id), basket.currency),
-    ])
-    if (!ap.ok || !br.ok || !pb.ok) {
-      console.warn(`Today's prices could not be re-read before raising, so the requisition goes on the figures shown (${
-        [ap, br, pb].map(r => (r.ok ? '' : r.error)).filter(Boolean).join('; ')}).`)
-      return null
-    }
-    const rules = br.value.account_id ? br.value : { ...br.value, account_id }
-    return { prices: ap.value, rules, changes: contractChanges(basket, { prices: ap.value, published: pb.value }, account_id, today) }
-  } catch (e) {
-    console.warn(`Today's prices could not be re-read before raising (${e instanceof Error ? e.message : 'the request failed'}).`)
-    return null
-  }
-}
+/* Today's prices and rules are read again as Raise is pressed (requisitionRecheck).
+   Null when any read fails: the panel then raises as it always did, on the
+   figures the drawer already holds, and the database's price guard still
+   refuses a line whose price has moved, in its own words. */
+
+/* The sentence beside a kept basket that was re-priced when it loaded. */
+export const RESTORED_MOVED = 'Prices changed since this basket was last open. The changed lines are marked; check them before you raise.'
 
 export function RequisitionPanel({ onRaised, onQuoteRequested }: {
   /* The console is told afterwards, because the queue the buyer is about to be
@@ -91,7 +72,13 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
   onQuoteRequested?: () => void
 }) {
   const [quoting, setQuoting] = useState(false)
-  const { basket, open, setOpen, setQuantity, remove, setReason, removeBundle, empty, total, count, applyChanges } = useRequisition()
+  const {
+    basket, open, setOpen, setQuantity, remove, setReason, removeBundle, empty, total, count, applyChanges,
+    restored, keepError, sync, acceptFlag, raised,
+  } = useRequisition()
+  /* A refused Accept, said under its line. */
+  const [flagProblem, setFlagProblem] = useState<{ id: string; text: string } | null>(null)
+  const [accepting, setAccepting] = useState<string | null>(null)
   /* The marketplace's formatter, with the currency table in it. This panel used
      to import `money` from `enterprise.ts`, which has no table and writes
      "INR 400,000.00" — every price on the panel, not only the threshold. */
@@ -211,30 +198,56 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
     const mine = basket.lines.filter(l => l.bundle_selection_id === id)
     return requisitionBundleBlock(mine[0]?.bundle, mine, basket.currency, now)
   }
+  /* A bundle with a part the stock flag caught is blocked whole (spec 11, 2b). */
+  const bundleView = (id: string) => {
+    const mine = basket.lines.filter(l => l.bundle_selection_id === id)
+    return stockBlock(mine, mine[0]?.bundle?.name ?? BUNDLE_FALLBACK_NAME) ?? bundleBlockOf(id)
+  }
   const stuckBundle = [...new Set(basket.lines.map(l => l.bundle_selection_id).filter((x): x is string => !!x))]
     .map(bundleBlockOf).find(b => b.kind !== 'ok')
-  const blocked = !!(v?.blocked) || !!(me && !me.can_raise) || !account || !policy || !!stuckBundle
+  /* Any line the database flagged for stock stops Raise until it is accepted or removed. */
+  const flagged = blockedSentence(basket.lines, 'requisition')
+  const blocked = !!(v?.blocked) || !!(me && !me.can_raise) || !account || !policy || !!stuckBundle || !!flagged
+  /* The restore's changed lines, when Raise has not since marked its own. */
+  const restoredMoved = (restored?.changes ?? []).filter(c =>
+    c.was.unit_price !== c.now.unit_price || (shows && c.was.on_contract !== c.now.on_contract))
+  const marked = moved.length ? moved : restoredMoved
+
+  const accept = async (l: BasketLine) => {
+    if (!l.id) return
+    setAccepting(l.id)
+    setFlagProblem(null)
+    const r = await acceptFlag(l.id)
+    setAccepting(null)
+    if (!r.ok) setFlagProblem({ id: l.id, text: r.reason })
+  }
 
   const raise = async () => {
     if (!account || !me || !policy) return
     setBusy(true)
+    /* Anything waiting to be kept is saved, and the kept basket read again, so
+       a stock flag the database wrote since the drawer opened stops Raise here
+       rather than in the database. */
+    const current = await sync()
+    if (isBlocked(current.lines)) { setBusy(false); return }
+    if (!current.lines.length) { setBusy(false); return }
     /* Today's prices and rules, read again first: a price can start, end or be
        withdrawn while the drawer is open, and the database would refuse a line
        priced the old way. The missing fields are then judged on those rules, not
        the ones the drawer opened with. A failed read goes on what is shown, as
        before; the database's price guard still decides. The line controls are
        held while this runs, so the lines raised are the lines on screen. */
-    let lines = basket.lines
+    let lines = current.lines
     let rulesNow: BuyingRules = rules
     let pricesNow: readonly AccountPrice[] = prices
-    const fresh = await recheck(account.id, basket, today)
+    const fresh = await recheck(account.id, current, today)
     if (fresh) {
       rulesNow = fresh.rules
       pricesNow = fresh.prices
       setBook(b => (b ? { ...b, prices: fresh.prices, rules: fresh.rules } : b))
       const showsNow = showsOffContract(fresh.rules, fresh.prices, today)
       if (fresh.changes.length) applyChanges(fresh.changes)
-      lines = applyContractChanges(basket, fresh.changes).lines
+      lines = applyContractChanges(current, fresh.changes).lines
       /* A standing that moved behind a hidden marker (decision 20) changes
          nothing the buyer sees or the database refuses, so it is taken quietly. */
       const stopOn = fresh.changes.filter(c =>
@@ -252,7 +265,7 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
     }
     const ruleNow = rulesNow.off_contract
     const showsNow = showsOffContract(rulesNow, pricesNow, today)
-    const missingNow = missingFields({ ...basket, lines }, draft, account, { rule: ruleNow, shows: showsNow })
+    const missingNow = missingFields({ ...current, lines }, draft, account, { rule: ruleNow, shows: showsNow })
     if (missingNow.length) {
       setBusy(false)
       setAttempted(true)
@@ -262,7 +275,7 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
     }
     const res = await raiseRequisition({
       draft: {
-        title: draft.title, reason: draft.reason, currency: basket.currency,
+        title: draft.title, reason: draft.reason, currency: current.currency,
         vertical: verticalOf(lines), cost_centre: draft.cost_centre,
         model: modelOf(lines), po_ref: draft.po_ref,
         lines: lines.map(l => ({
@@ -282,7 +295,8 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
     if (!res.ok) { toast(res.reason, 'error'); return }
     setMoved([])
     toast(res.note ?? 'Raised', 'success')
-    empty()
+    /* Emptied, and the kept copy cleared: it is a requisition now. */
+    await raised()
     setDraft(BLANK)
     setOpen(false)
     onRaised()
@@ -338,6 +352,22 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
             </div>
           ) : (
             <>
+              {/* A kept basket re-priced on the way back in: what moved, and what came out. */}
+              {restored && (restoredMoved.length > 0 || restored.dropped.length > 0) && (
+                <div role="status">
+                  <Callout kind="warning" icon={<AlertTriangle size={16} />}>
+                    {restoredMoved.length > 0 && <>{RESTORED_MOVED} </>}
+                    {restored.dropped.length > 0 && (
+                      <>Taken out because {restored.dropped.length === 1 ? 'it is' : 'they are'} no longer sold in {basket.currency || 'this currency'}: {restored.dropped.join(', ')}.</>
+                    )}
+                  </Callout>
+                </div>
+              )}
+              {keepError && (
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+                  Your basket could not be kept just now, so it may not be here next time: {keepError}
+                </div>
+              )}
               {/* What is in it */}
               <div style={{ background: 'white', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
                 {groupBySelection(basket.lines).map((g, gi) => g.selectionId ? (() => {
@@ -349,7 +379,7 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
                         parts={g.lines.map(l => ({ key: l.product_id, name: l.name, seller: l.seller, quantity: l.quantity, lineTotal: round2(l.quantity * l.unit_price) }))}
                         total={round2(g.lines.reduce((n, l) => n + round2(l.quantity * l.unit_price), 0))}
                         fmt={n => money(n, basket.currency)}
-                        block={bundleBlockOf(g.selectionId!)}
+                        block={bundleView(g.selectionId!)}
                         editable={meta ? {
                           selectionId: g.selectionId!, templateId: meta.templateId, choices: meta.choices,
                           quantity: meta.quantity, currency: meta.currency,
@@ -361,7 +391,10 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
                   )
                 })() : g.lines.map((l) => (
                   <div key={l.product_id} id={lineId(l.product_id)} tabIndex={-1}
-                    aria-describedby={moved.some(c => c.product_id === l.product_id) ? `${lineId(l.product_id)}-moved` : undefined}
+                    aria-describedby={[
+                      marked.some(c => c.product_id === l.product_id) ? `${lineId(l.product_id)}-moved` : '',
+                      l.stock_note ? `${lineId(l.product_id)}-stock` : '',
+                    ].filter(Boolean).join(' ') || undefined}
                     style={{ padding: '12px', borderTop: gi ? '1px solid var(--border-light)' : 'none' }}>
                   <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
                     <div style={{ width: 48, height: 48, borderRadius: 'var(--radius)', overflow: 'hidden', background: 'var(--bg-alt)', flexShrink: 0 }}>
@@ -399,9 +432,20 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
                     </button>
                   </div>
                   {(() => {
-                    const c = moved.find(m => m.product_id === l.product_id)
+                    const c = marked.find(m => m.product_id === l.product_id)
                     return c ? <MovedNote id={`${lineId(l.product_id)}-moved`} change={c} shows={shows}
                       fmt={n => money(n, basket.currency)} /> : null
+                  })()}
+                  {(() => {
+                    const f = lineFlag(l)
+                    if (!f) return null
+                    return (
+                      <StockFlag id={`${lineId(l.product_id)}-stock`} note={f.note} name={l.name} from="the requisition"
+                        style={{ marginTop: '8px', paddingLeft: '60px' }}
+                        canAccept={f.actions.includes('accept') && !!l.id} busy={busy || accepting === l.id}
+                        problem={flagProblem && flagProblem.id === l.id ? flagProblem.text : null}
+                        onAccept={() => { void accept(l) }} onRemove={() => remove(l.product_id)} />
+                    )
                   })()}
                   {offLine(l) && (
                     <OffContractLine line={l} rule={rule} attempted={attempted} busy={busy} field={field} wanting={wanting} label={label}
@@ -486,6 +530,10 @@ export function RequisitionPanel({ onRaised, onQuoteRequested }: {
             {me && !me.can_raise ? (
               <div style={{ fontSize: 'var(--text-xs)', color: 'var(--warning)' }}>
                 Your role on this account cannot raise a requisition. Ask a colleague who can, or an administrator to move you to a role that raises.
+              </div>
+            ) : flagged ? (
+              <div role="status" style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', fontWeight: 600 }}>
+                {flagged}
               </div>
             ) : moved.length > 0 ? (
               <div role="status" style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', fontWeight: 600 }}>

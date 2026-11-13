@@ -18,6 +18,9 @@ import {
 import type { Refund, RefundReason, RefundThreshold } from '../../lib/refunds'
 import { day } from '../../lib/enterprise'
 import { useAccountMoney } from './money'
+import { groupBySelection } from '../../lib/bundles'
+import { loadRequisitionBundleParts } from '../../lib/bundleBasketRepo'
+import { useBundleNames } from '../bundles/useBundleNames'
 
 /* Refunds, from the account that paid rather than the person who clicked.
  *
@@ -247,6 +250,9 @@ function Detail({ refund, book }: { refund: Refund; book: RefundBook }) {
 interface Refundable {
   order_ref: string; product_id: string; item: string; category_id: string | null
   partner_id: string | null; seller: string; first_party: boolean; amount: number
+  /* The configured bundle this part was bought as, if any: the picker groups
+     a bundle's parts under its name. A refund is still per part, at its price. */
+  bundle_selection_id: string | null
 }
 
 function AskForRefund({ policy, thresholds, accountId, company, currency, onClose, onDone }: {
@@ -268,6 +274,8 @@ function AskForRefund({ policy, thresholds, accountId, company, currency, onClos
   const [evidence, setEvidence] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const [busy, setBusy] = useState(false)
+  /* A bundle's parts under the bundle's name, as in the basket. */
+  const bundleName = useBundleNames(options ?? [])
 
   /* What a business can claim against is what it was invoiced for. Reading the
      invoice lines rather than an orders table means the list can never offer
@@ -285,6 +293,10 @@ function AskForRefund({ policy, thresholds, accountId, company, currency, onClos
       const taken = new Set(((claimed.data ?? []) as { order_ref: string; product_id: string }[])
         .map(r => `${r.order_ref}::${r.product_id}`))
 
+      const lines = ((lineRes.data ?? []) as { invoice_id: string; requisition_id: string | null }[])
+        .filter(l => invoices.has(l.invoice_id))
+      const bundleOf = await loadRequisitionBundleParts(lines.map(l => l.requisition_id ?? ''))
+
       const rows: Refundable[] = []
       for (const l of (lineRes.data ?? []) as {
         id: string; invoice_id: string; description: string; seller: string
@@ -300,6 +312,7 @@ function AskForRefund({ policy, thresholds, accountId, company, currency, onClos
           order_ref: ref, product_id: p?.id ?? l.id, item: l.description,
           category_id: p?.category_id ?? null, partner_id: l.partner_id,
           seller: l.seller, first_party: !l.partner_id, amount: Number(l.amount),
+          bundle_selection_id: (l.requisition_id && p ? bundleOf.get(`${l.requisition_id}::${p.id}`) : null) ?? null,
         })
       }
       setOptions(rows)
@@ -359,11 +372,16 @@ function AskForRefund({ policy, thresholds, accountId, company, currency, onClos
           <FormField label="What it is about" required
                      hint="Everything this account has been invoiced for, minus anything already claimed">
             <Select value={pick} onChange={e => setPick(e.target.value)}>
-              {options.map(o => (
-                <option key={`${o.order_ref}::${o.product_id}`} value={`${o.order_ref}::${o.product_id}`}>
-                  {o.item} — {money(o.amount)} · {o.seller}
-                </option>
-              ))}
+              {groupBySelection(options).map(g => {
+                const items = g.lines.map(o => (
+                  <option key={`${o.order_ref}::${o.product_id}`} value={`${o.order_ref}::${o.product_id}`}>
+                    {o.item} — {money(o.amount)} · {o.seller}
+                  </option>
+                ))
+                return g.selectionId
+                  ? <optgroup key={`b-${g.selectionId}`} label={`Bundle: ${bundleName(g.selectionId)}`}>{items}</optgroup>
+                  : items
+              })}
             </Select>
           </FormField>
 
