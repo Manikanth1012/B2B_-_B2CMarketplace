@@ -7,8 +7,9 @@
  *     `z_one_requisition_per_selection` refuses it on a second;
  *   - a part that is not on sale blocks the bundle: a throwaway template whose
  *     option is the occupancy sensor (SKU-5004, paused since 20260805040000
- *     while its supplier is late) cannot be configured with it. The product is
- *     only read; its stock and status are never touched;
+ *     while its supplier is late) cannot go on sale, so no buyer can configure
+ *     it; with that option taken out it goes on sale and configures. The
+ *     product is only read; its stock and status are never touched;
  *   - the night's helpers are not callable through the API by anybody signed
  *     in: `delete_unused_bundle_selections`, `subscription_renewal_price`,
  *     `run_nightly` (revoked from authenticated; only pg_cron runs them).
@@ -145,9 +146,10 @@ beforeAll(async () => {
   pausedReady = (p as { status?: string } | null)?.status === 'paused'
 
   if (pausedReady) {
-    /* A throwaway enterprise template: sensors (the live one by default, the
-       paused one offered beside it) and a gateway. Two fillable parts, so it
-       can go on sale; the paused option is what a buyer must not get. */
+    /* A throwaway enterprise template, left in draft: sensors (the live one by
+       default, the paused one offered beside it) and a gateway. The database
+       will not put it on sale while the paused option is in it — that is the
+       first test — and puts it on sale once the option is taken out. */
     const r = await saveTemplate(
       { name: `${MARKER} Paused part kit`, description: 'Integration test template.', image: null,
         status: 'draft', audiences: ['enterprise'], discount_pct: 6 },
@@ -161,8 +163,6 @@ beforeAll(async () => {
     if (!r.ok) throw new Error(`the throwaway template was not saved: ${r.error}`)
     templateId = r.value
     made.templates.add(templateId)
-    const pub = await setTemplateStatus(templateId, 'live')
-    if (!pub.ok) throw new Error(`the throwaway template did not go on sale: ${pub.error}`)
     const { data: slots } = await supabase.from('bundle_slots').select('*').eq('template_id', templateId).order('sort_order')
     const s = (slots ?? []) as BundleSlot[]
     sensorSlot = s.find(x => x.label === 'Sensors')?.id ?? ''
@@ -245,27 +245,37 @@ describe('one configured bundle, one live requisition', () => {
 })
 
 describe('a part that is not on sale blocks the bundle', () => {
-  it('will not configure the throwaway template with the paused sensor', async (ctx) => {
+  /* A buyer can only configure a template that is on sale, and the database
+     will not put one on sale while a part it offers is paused. So a paused
+     part is stopped before any buyer sees it. (A part paused after the
+     template went on sale is refused by `price_bundle` when configured; this
+     file never pauses a live product to show that.) */
+  it('will not put the throwaway template on sale while it offers the paused sensor', async (ctx) => {
     skipUnlessApplied(ctx)
     if (!pausedReady) {
       console.warn(`Skipped: ${PAUSED} is not paused on this database, and this test never pauses a product.`)
       ctx.skip()
     }
-    await as(BUYER)
-    const r = await configureBundle(templateId, {
-      [sensorSlot]: [{ product_id: PAUSED, quantity: 1 }],
-      [gatewaySlot]: [{ product_id: GATEWAY, quantity: 1 }],
-    }, book.account!.currency, 1)
-    expect(r.ok, 'a bundle with a paused part was configured').toBe(false)
-    if (!r.ok) expect(r.error).toMatch(/is not on sale at the moment, so it cannot be part of the bundle/)
-    /* Nothing was written for it. */
-    const { data } = await supabase.from('bundle_selections').select('id').eq('template_id', templateId)
-    expect(data ?? []).toEqual([])
+    await as(OPERATOR)
+    const pub = await setTemplateStatus(templateId, 'live')
+    expect(pub.ok, 'a template offering a paused part went on sale').toBe(false)
+    if (!pub.ok) expect(pub.error).toMatch(/not on sale to everyone the bundle is for: Nimbus Occupancy sensor/)
+    const { data } = await supabase.from('bundle_templates').select('status').eq('id', templateId).single()
+    expect((data as { status: string } | null)?.status).toBe('draft')
   }, 60000)
 
-  it('configures the same template with the live sensor, so it is the paused part that blocked it', async (ctx) => {
+  it('goes on sale once the paused sensor is taken out, and configures with the live sensor', async (ctx) => {
     skipUnlessApplied(ctx)
     if (!pausedReady) ctx.skip()
+    await as(OPERATOR)
+    const { data: gone, error: dErr } = await supabase.from('bundle_options').delete()
+      .eq('slot_id', sensorSlot).eq('product_id', PAUSED).select('product_id')
+    expect(dErr?.message ?? null).toBeNull()
+    expect((gone ?? []).length).toBe(1)
+    const pub = await setTemplateStatus(templateId, 'live')
+    expect(pub.ok, pub.ok ? '' : pub.error).toBe(true)
+
+    await as(BUYER)
     const r = await configureBundle(templateId, {
       [sensorSlot]: [{ product_id: SENSOR, quantity: 1 }],
       [gatewaySlot]: [{ product_id: GATEWAY, quantity: 1 }],
