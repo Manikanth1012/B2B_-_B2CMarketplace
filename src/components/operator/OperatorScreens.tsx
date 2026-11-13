@@ -18,6 +18,7 @@ const OperatorBillTemplates = lazy(() => import('./OperatorBillTemplates').then(
 const OperatorMarkets = lazy(() => import('./OperatorMarkets').then(m => ({ default: m.OperatorMarkets })))
 const OperatorKnowledge = lazy(() => import('./OperatorKnowledge').then(m => ({ default: m.OperatorKnowledge })))
 const OperatorChannels = lazy(() => import('./OperatorChannels').then(m => ({ default: m.OperatorChannels })))
+const OperatorJobs = lazy(() => import('./OperatorJobs').then(m => ({ default: m.OperatorJobs })))
 const OperatorRoles = lazy(() => import('./OperatorRoles').then(m => ({ default: m.OperatorRoles })))
 const OperatorAudit = lazy(() => import('./OperatorAudit').then(m => ({ default: m.OperatorAudit })))
 const OperatorShelves = lazy(() => import('./OperatorShelves').then(m => ({ default: m.OperatorShelves })))
@@ -75,6 +76,7 @@ export function OperatorScreens({ view, focus, onNavigate, onSetView }: {
       {view === 'op-markets' && <OperatorMarkets />}
       {view === 'op-notifications' && <OperatorNotifications />}
       {view === 'op-channels' && <OperatorChannels />}
+      {view === 'op-jobs' && <OperatorJobs />}
       {view === 'op-roles' && <OperatorRoles />}
       {view === 'op-shelves' && <OperatorShelves />}
       {view === 'op-reviews' && <OperatorReviews />}

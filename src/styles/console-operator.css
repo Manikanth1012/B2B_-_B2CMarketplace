@@ -87,3 +87,16 @@
 }
 .op-quick__link:hover { border-color: var(--blue); background: var(--bg-alt); }
 .op-quick__link:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+/* Scheduled jobs: one card per night, a row per job. */
+.op-jobs { display: flex; flex-direction: column; gap: 16px; }
+.op-jobs__health { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: var(--text-sm); color: var(--text); margin: 0; }
+.op-jobs__note { font-size: var(--text-sm); color: var(--text-secondary); margin: 0; }
+.op-jobs__error { padding: 12px 14px; border-radius: var(--radius); background: var(--danger-bg); color: var(--danger); font-size: var(--text-sm); }
+.op-jobs__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.op-jobs__row { display: grid; grid-template-columns: minmax(150px, 220px) 80px 70px 1fr; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--border); font-size: var(--text-sm); }
+.op-jobs__row:first-child { border-top: 0; }
+.op-jobs__name { font-weight: 600; text-transform: capitalize; }
+.op-jobs__ms { color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.op-jobs__summary { color: var(--text-secondary); overflow-wrap: anywhere; }
+@media (max-width: 767px) { .op-jobs__row { grid-template-columns: 1fr auto; } .op-jobs__ms { text-align: right; } .op-jobs__summary { grid-column: 1 / -1; } }

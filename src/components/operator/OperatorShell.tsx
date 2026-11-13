@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Building2, Users, Package, DollarSign, Warehouse, Ticket,
   Shield, Code, Megaphone, Tag, TrendingUp, Settings,
   Search, ChevronDown, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store, Wallet as WalletIcon, MessageSquareWarning, RotateCcw, Gift, Scale, BookText, Radio, Receipt, LibraryBig, Globe,
-  User, KeyRound, Monitor, Smartphone, Layers, FileText, PackageSearch, Landmark, FileSignature, CalendarClock, MessagesSquare, BookMarked } from 'lucide-react'
+  User, KeyRound, Monitor, Smartphone, Layers, FileText, PackageSearch, Landmark, FileSignature, CalendarClock, MessagesSquare, BookMarked, Clock } from 'lucide-react'
 import type { OperatorView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
 import { AccountMenu } from '../AccountMenu'
@@ -103,6 +103,7 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
       { id: 'op-banners', label: 'Storefront Banners', icon: <Megaphone size={18} /> },
       { id: 'op-notifications', label: 'Notifications', icon: <BellIcon size={18} /> },
       { id: 'op-channels', label: 'Channels', icon: <Radio size={18} /> },
+      { id: 'op-jobs', label: 'Scheduled jobs', icon: <Clock size={18} /> },
     ]
   },
   {

@@ -15,6 +15,7 @@ export type OperatorView =
   | 'op-promotions'
   | 'op-banners'
   | 'op-channels'
+  | 'op-jobs'
   | 'op-notifications'
   | 'op-roles'
   | 'op-audit'
