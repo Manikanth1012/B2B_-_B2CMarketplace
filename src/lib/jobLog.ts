@@ -138,6 +138,11 @@ export function summarise(job: string, result: unknown): string {
       const n = count(o, 'deleted')
       return n === null ? 'Done' : n === 0 ? 'No unused bundle selections' : `${plural(n, 'unused bundle selection')} deleted`
     }
+    case 'baskets':
+      return join([
+        c('flagged', n => `${plural(n, 'basket line')} flagged`),
+        c('cleared', n => `${plural(n, 'untouched basket')} cleared`),
+      ], 'No baskets to flag or clear')
     default:
       return 'Done'
   }

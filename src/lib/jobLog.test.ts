@@ -82,6 +82,13 @@ describe('summarise', () => {
     expect(summarise('bundle selections', { deleted: 1 })).toBe('1 unused bundle selection deleted')
     expect(summarise('bundle selections', { deleted: 0 })).toBe('No unused bundle selections')
   })
+  it('baskets', () => {
+    expect(summarise('baskets', { ran_on: '2026-11-13', flagged: 3, cleared: 2, cleared_baskets: 1, cleared_carts: 1 }))
+      .toBe('3 basket lines flagged, 2 untouched baskets cleared')
+    expect(summarise('baskets', { flagged: 1, cleared: 0 })).toBe('1 basket line flagged')
+    expect(summarise('baskets', { flagged: 0, cleared: 0 })).toBe('No baskets to flag or clear')
+    expect(summarise('baskets', {})).toBe('Done')
+  })
   it('skips keys that are missing', () => {
     expect(summarise('payments', {})).toBe('Done')
     expect(summarise('enterprise subscriptions', { renewed: [{}] })).toBe('1 renewed')
