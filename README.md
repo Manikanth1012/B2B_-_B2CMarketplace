@@ -90,8 +90,8 @@ at the end, so a failure leaves nothing half-applied. Each has a structural test
 (`*.migration.test.ts`) that runs without a database.
 
 Since `20261112600000` the database looks after itself every night. pg_cron runs
-`public.run_nightly()` at 00:30 UTC, with five jobs, each run separately so one failure
-does not stop the rest:
+`public.run_nightly()` at 00:30 UTC, with eight jobs (since `20261113200000`), each
+run separately so one failure does not stop the rest:
 
 | Job | What it does |
 |---|---|
@@ -99,9 +99,13 @@ does not stop the rest:
 | enterprise subscriptions | Renews an active auto-renew subscription for a year under an agreement in force; ends one that is not renewing once its date has passed |
 | subscriptions | Renews Aventa's own shopper subscriptions |
 | documents | A seller document past its expiry stops counting as accepted, and renewal is requested |
+| payments | A payment nobody answered for 15 minutes expires, and the unpaid orders behind it go (`expire_stale_payments`) |
+| bundle selections | Deletes a priced bundle whose hold ended more than 7 days ago and that no basket, requisition, order or subscription uses |
+| baskets | Checks every basket line against stock again and flags it where it no longer fits; clears baskets untouched for 90 days |
 | settlements | Closes statements left open after their period, settles every missed month oldest first, then runs today |
 
-Each outcome is written to `scheduled_job_log`, which the operator can read. To run
+Each outcome is written to `scheduled_job_log`, which the operator reads on the
+**Scheduled jobs** screen (Platform group). To run
 the night by hand: `select public.run_nightly();` in the SQL editor. The app cannot
 call it, because only the scheduler (`is_scheduler()`) or the operator may.
 `src/lib/nightly.integration.test.ts` checks that the last night ran and that
@@ -401,6 +405,16 @@ On Business Accounts, the status chips filter with `inBand` and the summary card
 - On a multi-seller desk quote, each seller proposes its price for its own lines, privately from the buyer. A seller reads its lines only through `my_desk_quote_lines`, never the desk's quoted price.
 - The requisition drawer re-checks prices on Raise.
 - Approvals have tests, and the dialog Close button is 44px.
+
+**Loose ends II (spec 11).** Migrations `20261113100000` and `20261113200000`.
+
+- **Scheduled jobs** (`op-jobs`): the last 14 nights from `scheduled_job_log`, a health line (danger when the night has not run for 26 hours), each job's result in words and its full error when it failed.
+- **Baskets are kept.** The business requisition basket lives in the database (`requisition_baskets`, `requisition_basket_lines`), one per buyer, on any device. It is written only through `save_requisition_basket`, `clear_requisition_basket` and `accept_basket_flag`, saved about 400 ms after each change, re-read when the window regains focus and before Raise, and deleted once a requisition is raised. Before the migration is applied the app keeps it in memory, as it used to.
+- **Flag and cap.** When a listing is paused or its stock runs short, triggers on `products` and `operator_inventory` flag every cart and basket line holding it: "Only 3 left — we reduced this from 5" (quantity cut) or "No longer available". Checkout and Raise are blocked, on screen and in the database, until the buyer accepts or removes the line. A bundle part is never cut; the whole bundle is blocked. Only the buyer clears a flag.
+- **Baskets** (`op-baskets`, Commerce group): business and shopper baskets, Pending (changed within 7 days) or Abandoned, with lines, value, stock flags and a **Send reminder** (in-app, at most once a day). Operators never edit or delete a basket.
+- **A bundle is bought whole.** `settle_payment_attempt` fails a payment, charging nothing, when a bundle on it is not complete across that payment's orders or was already bought. A configured bundle may be on one live requisition only. A business buyer may configure a bundle in any currency its market takes.
+- **Bundle renewals.** A monthly bundle part renews at the bundle price for 12 months (`subscriptions.bundle_price_until`), then at the published price, never below the seller's floor. Checkout and the configurator say so.
+- Refunds and the operator's order views group bundle lines under the bundle's name. The bundle shelf cache is kept per signed-in user, so switching accounts never shows another buyer's prices.
 
 **Shared components** live in `src/components/ui/`, are class-based, and are styled by `src/styles/ui.css` (imported in `src/main.tsx` after `global.css`).
 
