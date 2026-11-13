@@ -126,3 +126,32 @@
 .op-baskets__actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .op-baskets__sent { margin: 8px 0 0; color: var(--success); font-size: var(--text-sm); font-weight: 600; }
 .op-baskets__refused { margin: 8px 0 0; color: var(--danger); font-size: var(--text-sm); font-weight: 600; }
+
+/* Risk (op-risk): held orders, flagged orders, account scores, rules and bands. */
+.op-risk { display: flex; flex-direction: column; gap: 16px; }
+.op-risk__note { font-size: var(--text-sm); color: var(--text-secondary); margin: 0; }
+.op-risk__error { padding: 12px 14px; border-radius: var(--radius); background: var(--danger-bg); color: var(--danger); font-size: var(--text-sm); }
+.op-risk__tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 12px; flex-wrap: wrap; }
+.op-risk__tab {
+  min-height: 44px; padding: 0 16px; border: 0; border-bottom: 3px solid transparent; background: none;
+  color: var(--text-secondary); font-size: var(--text-sm); font-weight: 600; cursor: pointer;
+}
+.op-risk__tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--text); text-decoration: underline; text-underline-offset: 4px; }
+.op-risk__filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.op-risk__filter {
+  min-height: 44px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--border);
+  background: white; color: var(--text); font-size: var(--text-sm); font-weight: 600; cursor: pointer;
+}
+.op-risk__filter[aria-pressed="true"] { background: var(--text); color: white; border-color: var(--text); }
+.op-risk__btn { min-height: 44px; min-width: 44px; }
+.op-risk__sub { font-size: var(--text-xs); color: var(--text-secondary); }
+.op-risk__actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.op-risk__sent { margin: 8px 0; color: var(--success); font-size: var(--text-sm); font-weight: 600; }
+.op-risk__refused { margin: 8px 0; color: var(--danger); font-size: var(--text-sm); font-weight: 600; }
+.op-risk__section { margin-bottom: 24px; }
+.op-risk__h { font-size: var(--text-base); font-weight: 700; margin: 0 0 8px; }
+.op-risk__toggle { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; min-width: 44px; cursor: pointer; }
+.op-risk__toggle input { width: 24px; height: 24px; }
+.op-risk__thresh { display: inline-flex; align-items: center; gap: 6px; }
+.op-risk__bands { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-top: 12px; }
+.op-risk__changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; font-size: var(--text-sm); }

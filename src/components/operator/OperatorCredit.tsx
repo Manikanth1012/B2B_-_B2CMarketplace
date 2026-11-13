@@ -5,6 +5,9 @@ import {
   Modal, FormField, TextArea, fmtInt,
 } from './shared'
 import { Callout } from '../OnboardingJourney'
+import { StatusBadge } from '../ui/StatusBadge'
+import { accountBands } from '../../lib/riskRepo'
+import { bandTone } from '../../lib/risk'
 import { loadCreditBook, releaseHold } from '../../lib/creditRepo'
 import type { CreditBook } from '../../lib/creditRepo'
 import {
@@ -168,6 +171,9 @@ function Held({ book, onRelease }: { book: CreditBook; onRelease: (id: string) =
 /* -------------------------------------------------------------- who owes us -- */
 
 function Buyers({ book, today }: { book: CreditBook; today: string }) {
+  /* Risk bands by business account id; empty until the risk migration is applied. */
+  const [risk, setRisk] = useState<Awaited<ReturnType<typeof accountBands>>>(new Map())
+  useEffect(() => { void accountBands('business').then(setRisk) }, [])
   const { fmtIn } = useMarket()
   const rows = useMemo(
     () => reviewQueue(book.positions, book.assessments, today),
@@ -191,6 +197,11 @@ function Buyers({ book, today }: { book: CreditBook; today: string }) {
                 <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
                   {p.account_id}
                 </div>
+                {risk.has(p.account_id) && (
+                  <div style={{ marginTop: '3px' }}>
+                    <StatusBadge tone={bandTone(risk.get(p.account_id)!.band)}>Risk: {risk.get(p.account_id)!.band}</StatusBadge>
+                  </div>
+                )}
                 {p.deposit_held > 0 && (
                   <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
                     {fmtIn(p.deposit_held, p.currency)} deposit held

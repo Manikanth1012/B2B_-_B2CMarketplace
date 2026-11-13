@@ -278,7 +278,7 @@ export function OrdersView() {
                     </>
                   ) : (
                     <>
-                      <Clock size={14} aria-hidden="true" /> {order.status}
+                      <Clock size={14} aria-hidden="true" /> {order.status === 'held' ? 'Being checked' : order.status}
                     </>
                   )}
                 </div>
@@ -351,7 +351,7 @@ export function OrdersView() {
    not go as planned, so it stays amber here, as it was before. */
 function OrderStatus({ order }: { order: Order }) {
   const tone = order.failed ? 'danger' : order.status === 'refunded' ? 'warning' : statusTone(order.status)
-  return <StatusBadge tone={tone}>{order.status}</StatusBadge>
+  return <StatusBadge tone={tone}>{order.status === 'held' ? 'Being checked' : order.status}</StatusBadge>
 }
 
 /* What the network has actually been asked, and what it said back.

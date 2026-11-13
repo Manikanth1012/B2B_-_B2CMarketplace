@@ -21,6 +21,7 @@ const OperatorChannels = lazy(() => import('./OperatorChannels').then(m => ({ de
 const OperatorJobs = lazy(() => import('./OperatorJobs').then(m => ({ default: m.OperatorJobs })))
 const OperatorRoles = lazy(() => import('./OperatorRoles').then(m => ({ default: m.OperatorRoles })))
 const OperatorAudit = lazy(() => import('./OperatorAudit').then(m => ({ default: m.OperatorAudit })))
+const OperatorRisk = lazy(() => import('./OperatorRisk').then(m => ({ default: m.OperatorRisk })))
 const OperatorShelves = lazy(() => import('./OperatorShelves').then(m => ({ default: m.OperatorShelves })))
 const OperatorNotes = lazy(() => import('./OperatorNotes').then(m => ({ default: m.OperatorNotes })))
 const OperatorOrders = lazy(() => import('./OperatorOrders').then(m => ({ default: m.OperatorOrders })))
@@ -96,6 +97,7 @@ export function OperatorScreens({ view, focus, onNavigate, onSetView }: {
       {view === 'op-ledger' && <OperatorLedger />}
       {view === 'op-feedback' && <OperatorContentFeedback />}
       {view === 'op-audit' && <OperatorAudit />}
+      {view === 'op-risk' && <OperatorRisk />}
       {view === 'op-kb' && <OperatorKnowledge />}
       {/* No feedbackAs: the operator is the queue. */}
     </>

@@ -89,6 +89,13 @@ describe('summarise', () => {
       .toBe('Nothing to invoice')
   })
 
+  it('risk', () => {
+    expect(summarise('risk', { ran_on: '2026-11-13', scored: 40, review: 3, high: 1 }))
+      .toBe('40 accounts scored, 3 to review, 1 high')
+    expect(summarise('risk', { scored: 0, review: 0, high: 0 })).toBe('No accounts to score')
+    expect(summarise('risk', {})).toBe('Done')
+  })
+
   it('baskets', () => {
     expect(summarise('baskets', { ran_on: '2026-11-13', flagged: 3, cleared: 2, cleared_baskets: 1, cleared_carts: 1 }))
       .toBe('3 basket lines flagged, 2 untouched baskets cleared')
