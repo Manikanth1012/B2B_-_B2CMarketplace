@@ -33,6 +33,7 @@ import { addBundleToBasket, removeBundleFromBasket } from './bundleLines'
 import { fromKept, mergeSaved, fellOff, lineToSave } from './baskets'
 import {
   loadRequisitionBasket, saveRequisitionBasket, clearRequisitionBasket, acceptBasketFlag,
+  keepBasketOnLeave, watchLeaveToken,
 } from './basketRepo'
 import { onUserChange } from './authRepo'
 import { recheck } from './requisitionRecheck'
@@ -267,6 +268,31 @@ export function RequisitionProvider({ children }: { children: ReactNode }) {
       if (enabled.current && dirty.current) void flush()
     }
   }, [loadFirst, show, flush])
+
+  /* Leaving the page. Hidden (another tab, the window minimised, the phone
+     locked): what is waiting is kept now, the ordinary way. Closed or
+     navigated away: there is no time for that, so it goes as a request the
+     browser finishes after the page has gone. Either way the last change is
+     not lost to the 400 ms wait. */
+  useEffect(() => {
+    const stopToken = watchLeaveToken()
+    const onHidden = () => {
+      if (document.visibilityState === 'hidden' && enabled.current && dirty.current) void flush()
+    }
+    const onLeave = () => {
+      if (!enabled.current || !dirty.current) return
+      stopTimer()
+      const sent = live.current
+      if (keepBasketOnLeave(sent.currency, sent.lines)) dirty.current = false
+    }
+    document.addEventListener('visibilitychange', onHidden)
+    window.addEventListener('pagehide', onLeave)
+    return () => {
+      stopToken()
+      document.removeEventListener('visibilitychange', onHidden)
+      window.removeEventListener('pagehide', onLeave)
+    }
+  }, [flush])
 
   useEffect(() => {
     const onFocus = () => { void reload() }

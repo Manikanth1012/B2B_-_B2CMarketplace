@@ -8,12 +8,14 @@ import type { RequisitionState } from './RequisitionContext'
 
 vi.mock('./supabase', () => ({ supabase: {} }))
 
-const repo = vi.hoisted(() => ({ load: vi.fn(), save: vi.fn(), clear: vi.fn(), accept: vi.fn(), recheck: vi.fn() }))
+const repo = vi.hoisted(() => ({ load: vi.fn(), save: vi.fn(), clear: vi.fn(), accept: vi.fn(), recheck: vi.fn(), leave: vi.fn() }))
 vi.mock('./basketRepo', () => ({
   loadRequisitionBasket: () => repo.load(),
   saveRequisitionBasket: (c: string, l: unknown[]) => repo.save(c, l),
   clearRequisitionBasket: () => repo.clear(),
   acceptBasketFlag: (k: string, id: string) => repo.accept(k, id),
+  keepBasketOnLeave: (c: string, l: unknown[]) => repo.leave(c, l),
+  watchLeaveToken: () => () => {},
 }))
 vi.mock('./authRepo', () => ({
   onUserChange: (cb: (id: string | null) => void) => { queueMicrotask(() => cb('U-1')); return () => {} },
@@ -77,6 +79,49 @@ describe('the kept requisition basket', () => {
     expect(repo.save.mock.calls[0][0]).toBe('INR')
     await waitFor(() => expect(state.basket.lines[0].stock_note).toBe('No longer available'))
     expect(state.basket.lines[0].id).toBe('L-9')
+  })
+
+  it('keeps a change at once when the page is closed, without waiting out the 400 ms', async () => {
+    repo.load.mockResolvedValue({ ok: true, value: null })
+    repo.leave.mockReturnValue(true)
+    mount()
+    await waitFor(() => expect(repo.load).toHaveBeenCalled())
+    await act(async () => { await Promise.resolve() })
+    act(() => { state.add(ITEM, 'INR', 1) })
+    act(() => { window.dispatchEvent(new Event('pagehide')) })
+    expect(repo.leave).toHaveBeenCalledTimes(1)
+    expect(repo.leave.mock.calls[0][0]).toBe('INR')
+    expect((repo.leave.mock.calls[0][1] as { product_id: string }[]).map(l => l.product_id)).toEqual(['SKU-2'])
+    /* Sent once: the ordinary save does not follow it. */
+    await new Promise(r => setTimeout(r, 600))
+    expect(repo.save).not.toHaveBeenCalled()
+  })
+
+  it('keeps a change at once when the page is hidden', async () => {
+    repo.load.mockResolvedValue({ ok: true, value: null })
+    repo.save.mockResolvedValue({ ok: true, value: basketOf([kept({ id: 'L-9', product_id: 'SKU-2', name: 'Sensor', quantity: 1, unit_price: 50 })]) })
+    mount()
+    await waitFor(() => expect(repo.load).toHaveBeenCalled())
+    await act(async () => { await Promise.resolve() })
+    act(() => { state.add(ITEM, 'INR', 1) })
+    const was = Object.getOwnPropertyDescriptor(document, 'visibilityState')
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })
+    try {
+      await act(async () => { document.dispatchEvent(new Event('visibilitychange')) })
+      expect(repo.save).toHaveBeenCalledTimes(1)
+    } finally {
+      if (was) Object.defineProperty(document, 'visibilityState', was)
+      else delete (document as unknown as Record<string, unknown>).visibilityState
+    }
+    expect(repo.leave).not.toHaveBeenCalled()
+  })
+
+  it('sends nothing on leaving when nothing changed', async () => {
+    repo.load.mockResolvedValue({ ok: true, value: basketOf([kept()]) })
+    mount()
+    await waitFor(() => expect(state.basket.lines).toHaveLength(1))
+    act(() => { window.dispatchEvent(new Event('pagehide')) })
+    expect(repo.leave).not.toHaveBeenCalled()
   })
 
   it('reads the basket again on focus and shows a flag written since', async () => {

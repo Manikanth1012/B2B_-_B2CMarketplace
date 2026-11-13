@@ -11,7 +11,7 @@
  */
 import { supabase } from './supabase'
 import type { BasketLine } from './requisitionBasket'
-import { lineToSave } from './baskets'
+import { lineToSave, cartUnitPrice } from './baskets'
 import type { KeptBasket, KeptLine } from './baskets'
 
 export type Kept<T> = { ok: true; value: T } | { ok: false; missing: boolean; error: string }
@@ -53,6 +53,42 @@ export async function loadRequisitionBasket(): Promise<Kept<KeptBasket | null>> 
     return { ok: true, value: (data as unknown as KeptBasket | null) ?? null }
   } catch (e) {
     return fail(e)
+  }
+}
+
+/* ------------------------------------------------- keeping on leaving -- */
+
+/* The signed-in session's token, held so a save can go out as the page is
+   being closed, when there is no time left to ask for it. */
+let leaveToken: string | null = null
+
+/** Follow the session's token for `keepBasketOnLeave`. Returns the unsubscribe. */
+export function watchLeaveToken(): () => void {
+  void supabase.auth.getSession().then(r => { leaveToken = r.data.session?.access_token ?? null }, () => {})
+  const { data } = supabase.auth.onAuthStateChange((_e, session) => { leaveToken = session?.access_token ?? null })
+  return () => data.subscription.unsubscribe()
+}
+
+/**
+ * The same save as `saveRequisitionBasket`, sent as the tab closes: a
+ * `keepalive` request, which the browser finishes after the page has gone.
+ * Nothing comes back to read. Returns false when it could not be sent (no
+ * session, or no keepalive in this browser), so the caller knows it was lost.
+ */
+export function keepBasketOnLeave(currency: string, lines: readonly BasketLine[]): boolean {
+  const url = import.meta.env.VITE_SUPABASE_URL as string | undefined
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+  if (!leaveToken || !url || !key || typeof fetch !== 'function') return false
+  try {
+    void fetch(`${url}/rest/v1/rpc/save_requisition_basket`, {
+      method: 'POST',
+      keepalive: true,
+      headers: { 'Content-Type': 'application/json', apikey: key, Authorization: `Bearer ${leaveToken}` },
+      body: JSON.stringify({ p_currency: currency || null, p_lines: lines.map(lineToSave) }),
+    }).catch(() => {})
+    return true
+  } catch {
+    return false
   }
 }
 
@@ -185,8 +221,7 @@ export async function loadWatchedBaskets(): Promise<Kept<WatchedBaskets>> {
       }
     }
 
-    /* Each line priced in its owner's money: the product_prices row for that
-       currency, else the listing's base price when the base is in it. */
+    /* Each line priced as checkout would charge it (cartUnitPrice). */
     const rows = (cart.data ?? []) as Record<string, unknown>[]
     const ids = [...new Set(rows.map(r => String(r.product_id)))]
     const prices = new Map<string, number>()
@@ -194,16 +229,25 @@ export async function loadWatchedBaskets(): Promise<Kept<WatchedBaskets>> {
       const pp = await supabase.from('product_prices').select('product_id, currency, price').in('product_id', ids)
       for (const r of (pp.data ?? []) as Record<string, unknown>[]) prices.set(`${r.product_id}|${r.currency}`, Number(r.price))
     }
+    /* A bundle part is charged at its selection's price, not the list. */
+    const selIds = [...new Set(rows.map(r => str(r.bundle_selection_id)).filter((x): x is string => !!x))]
+    const bundlePrices = new Map<string, number>()
+    if (selIds.length) {
+      const bl = await supabase.from('bundle_selection_lines').select('selection_id, product_id, unit_price').in('selection_id', selIds)
+      for (const r of (bl.data ?? []) as Record<string, unknown>[]) bundlePrices.set(`${r.selection_id}|${r.product_id}`, Number(r.unit_price))
+    }
     const cartLines: ShopperCartLine[] = rows.map(r => {
       const product = (r.product ?? null) as Record<string, unknown> | null
       const owner = r.user_id ? shoppers.get(String(r.user_id)) : undefined
       const cur = owner?.currency ?? str(product?.currency) ?? null
-      const own = cur ? prices.get(`${r.product_id}|${cur}`) : undefined
+      const own = cur ? prices.get(`${r.product_id}|${cur}`) ?? null : null
       const base = product && str(product.currency) === cur ? num(product.price) : null
+      const sel = str(r.bundle_selection_id)
+      const bundle = sel ? bundlePrices.get(`${sel}|${r.product_id}`) ?? null : null
       return {
         id: String(r.id), user_id: str(r.user_id), product_id: String(r.product_id),
         name: String(product?.name ?? r.product_id), quantity: Number(r.quantity),
-        unit_price: own ?? base, stock_note: str(r.stock_note), was_quantity: num(r.was_quantity),
+        unit_price: cartUnitPrice({ bundle, own, base }), stock_note: str(r.stock_note), was_quantity: num(r.was_quantity),
         bundle_selection_id: str(r.bundle_selection_id), saved: !!r.saved,
         updated_at: str(r.updated_at), created_at: str(r.created_at),
       }
