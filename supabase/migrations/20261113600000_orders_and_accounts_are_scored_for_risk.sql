@@ -29,7 +29,12 @@
  *      operator guards (latest copies), and a new guard for everybody else,
  *      refuse a status, stage or failed change while it is held, except
  *      inside `decide_held_order`, which releases it (`placed`) or cancels
- *      it (`cancelled`, one approved refund per line).
+ *      it (`cancelled`: its pushes to the order manager cancelled, its
+ *      monthly parts stopped, one approved refund per line sharing out the
+ *      order's total). Nothing is sent to the order manager for a held or
+ *      cancelled order (`com_send`, `com_retry`, latest copies). Only settle
+ *      puts an order on hold, a fraud-cancelled order stays cancelled for
+ *      anyone but the operator, and an order is decided once.
  *
  *   5. `refresh_account_risk(as_of)`: every shopper and every business
  *      account scored into `account_risk`. The night's tenth job (`risk`,
@@ -710,7 +715,10 @@ begin
           on conflict (order_id) do update
             set score = excluded.score, band = excluded.band, reasons = excluded.reasons, scored_at = excluded.scored_at;
           if v_s ->> 'band' = 'hold' then
+            /* The one write allowed to put an order on hold. */
+            perform set_config('aventa.risk_decision', 'on', true);
             update public.orders set status = 'held' where id = v_o.id and status = 'placed';
+            perform set_config('aventa.risk_decision', 'off', true);
             v_held := v_held || v_o.order_ref::text;
           end if;
         exception when others then
@@ -925,18 +933,42 @@ begin
   return new;
 end $$;
 
-/* Everybody else (a buyer, the schedule, a data fix): the same refusal. The
-   seller and the operator have theirs above. */
+/* For everybody, the seller and the operator included:
+     - an order becomes `held` only through its payment's score (settle sets
+       the session flag around that one update), never by a direct write, or a
+       buyer could re-hold a fraud-cancelled order and have it released;
+     - an order the marketplace cancelled after a fraud review keeps its
+       status for anyone but the operator, or a buyer could move a refunded
+       order back to placed and have it shipped.
+   And for everybody else (a buyer, the schedule, a data fix), the refusal the
+   seller and operator guards above make for a held order, with its total
+   frozen too. */
 create or replace function public.guard_held_order()
 returns trigger language plpgsql security definer set search_path = public as $$
+<<gh>>
+declare
+  v_flag text := coalesce(current_setting('aventa.risk_decision', true), '');
 begin
+  if new.status = 'held' and old.status is distinct from 'held' and v_flag <> 'on' then
+    raise exception '% cannot be put on hold by hand. An order is held only by the check made when it is paid for.',
+      old.order_ref;
+  end if;
+
+  if new.status is distinct from old.status
+     and public.current_persona() is distinct from 'operator'
+     and v_flag <> 'on'
+     and exists (select 1 from public.order_risk r where r.order_id = old.id and r.decision = 'cancelled') then
+    raise exception '% was cancelled by the marketplace and stays cancelled.', old.order_ref;
+  end if;
+
   if public.current_persona() in ('partner', 'operator') then return new; end if;
 
   if old.status = 'held'
      and (new.status is distinct from old.status
           or new.stage is distinct from old.stage
-          or new.failed is distinct from old.failed)
-     and coalesce(current_setting('aventa.risk_decision', true), '') <> 'on' then
+          or new.failed is distinct from old.failed
+          or new.total is distinct from old.total)
+     and v_flag <> 'on' then
     raise exception '% is being checked by the marketplace, so it cannot be moved until that check is done.',
       old.order_ref;
   end if;
@@ -951,10 +983,16 @@ create trigger z_guard_held_order before update on public.orders
 
 /* ========================================== 7. deciding a held order === */
 
-/* Release: back to `placed`, and the seller sees it. Cancel: `cancelled`,
-   and one approved refund per line for what the line cost, paid from the
-   Refunds screen like any other. Both need a note. The session flag lets
-   the guards above pass this move, and only this one. */
+/* Release: back to `placed`, and the seller sees it. Cancel: `cancelled`;
+   the order's pushes to the order manager are cancelled and its monthly
+   parts stopped (as a failed payment's are: never charged, deleted; charged,
+   cancelled with auto-renew off); and one approved refund per line, paid
+   from the Refunds screen like any other. The refunds share out what the
+   order was paid (its total, frozen while held) by the lines' weight, the
+   last line taking the rounding, so they sum to the total exactly whatever
+   the lines say now: a buyer can edit their own lines. Both need a note, and
+   an order is decided once. The session flag lets the guards pass this
+   move, and only this one. */
 create or replace function public.decide_held_order(p_order_ref text, p_decision text, p_note text)
 returns jsonb language plpgsql security definer set search_path = public as $$
 <<dh>>
@@ -965,6 +1003,15 @@ declare
   v_n       integer := 0;
   v_total   numeric := 0;
   v_status  text;
+  v_prior   text;
+  l         record;
+  v_weight  numeric;
+  v_lines   integer;
+  v_left    numeric;
+  v_k       integer := 0;
+  v_amt     numeric;
+  v_com     integer := 0;
+  v_subs    integer := 0;
 begin
   if public.current_persona() is distinct from 'operator' then
     raise exception 'Only the marketplace decides a held order.';
@@ -983,6 +1030,10 @@ begin
   if o.status is distinct from 'held' then
     raise exception '% is not held (it is %), so there is nothing to decide.', o.order_ref, coalesce(o.status, 'without a status');
   end if;
+  select r.decision into v_prior from public.order_risk r where r.order_id = o.id;
+  if v_prior is not null then
+    raise exception '% was already % by the marketplace. A held order is decided once.', o.order_ref, v_prior;
+  end if;
 
   v_by := public.risk_operator_name();
 
@@ -994,24 +1045,69 @@ begin
     update public.orders x set status = 'cancelled' where x.id = o.id;
     v_status := 'cancelled';
 
-    insert into public.refunds
-      (id, order_ref, product_id, item, category_id, partner_id, seller, first_party,
-       customer, buyer_type, user_id, amount, currency, reason, detail,
-       requested, decider, sla_due, state, decided_on, decided_by, decision_note)
-    select format('RFN-FR-%s-%s', regexp_replace(o.order_ref, '^ORD-', ''), l.n),
-           o.order_ref, l.product_id, l.product_name, l.category_id, l.partner_id, l.seller,
-           l.partner_id is null,
-           coalesce(nullif(trim(o.buyer_name), ''), 'Customer'), 'consumer', o.user_id, l.amount, o.currency,
-           'cancelled', 'Cancelled by the marketplace after a fraud review.',
-           current_date, 'marketplace', current_date, 'approved', current_date, v_by, 'Cancelled after a fraud review: ' || v_note
-      from (select i.product_id, i.product_name, p.category_id, p.partner_id,
-                   coalesce(p.seller, 'Aventa Telecom') as seller,
-                   round(i.price * i.quantity, 2) as amount,
-                   row_number() over (order by i.product_id, i.id) as n
-              from public.order_items i
-              left join public.products p on p.id = i.product_id
-             where i.order_id = o.id and round(i.price * i.quantity, 2) > 0) l;
-    get diagnostics v_n = row_count;
+    /* Nothing more goes to the network for it. */
+    with stopped as (
+      update public.com_order c
+         set state = 'cancelled', next_attempt_at = null,
+             note = 'Cancelled by the marketplace after a fraud review.'
+       where c.order_ref = o.order_ref and c.state not in ('completed', 'cancelled')
+      returning c.id
+    )
+    insert into public.com_event (id, com_order, kind, state, detail)
+    select s.id || '-FR', s.id, 'state-change', 'cancelled', 'Cancelled by the marketplace after a fraud review.'
+      from stopped s
+    on conflict (id) do nothing;
+    get diagnostics v_com = row_count;
+
+    /* Nor is anything renewed for it. */
+    delete from public.subscriptions sb
+     where sb.ref = o.order_ref
+       and sb.user_id is not distinct from o.user_id
+       and not exists (select 1 from public.subscription_charge sc where sc.subscription_id = sb.id);
+    get diagnostics v_subs = row_count;
+    update public.subscriptions sb
+       set status = 'cancelled', auto_renew = false
+     where sb.ref = o.order_ref
+       and sb.user_id is not distinct from o.user_id
+       and sb.status = 'active';
+
+    /* What was paid, shared out by the lines' weight. */
+    select coalesce(sum(i.price * i.quantity), 0), count(*) into v_weight, v_lines
+      from public.order_items i
+     where i.order_id = o.id and i.price * i.quantity > 0;
+    v_left := round(coalesce(o.total, 0), 2);
+
+    for l in
+      select i.product_id, i.product_name, p.category_id, p.partner_id,
+             coalesce(p.seller, 'Aventa Telecom') as seller,
+             i.price * i.quantity as weight
+        from public.order_items i
+        left join public.products p on p.id = i.product_id
+       where i.order_id = o.id and i.price * i.quantity > 0
+       order by i.product_id, i.id
+    loop
+      v_k := v_k + 1;
+      if v_k = v_lines then
+        v_amt := v_left;
+      else
+        v_amt := least(round(round(coalesce(o.total, 0), 2) * l.weight / v_weight, 2), v_left);
+      end if;
+      continue when v_amt <= 0;
+
+      insert into public.refunds
+        (id, order_ref, product_id, item, category_id, partner_id, seller, first_party,
+         customer, buyer_type, user_id, amount, currency, reason, detail,
+         requested, decider, sla_due, state, decided_on, decided_by, decision_note)
+      values
+        (format('RFN-FR-%s-%s', regexp_replace(o.order_ref, '^ORD-', ''), v_k),
+         o.order_ref, l.product_id, l.product_name, l.category_id, l.partner_id, l.seller,
+         l.partner_id is null,
+         coalesce(nullif(trim(o.buyer_name), ''), 'Customer'), 'consumer', o.user_id, v_amt, o.currency,
+         'cancelled', 'Cancelled by the marketplace after a fraud review.',
+         current_date, 'marketplace', current_date, 'approved', current_date, v_by, 'Cancelled after a fraud review: ' || v_note);
+      v_n := v_n + 1;
+      v_left := v_left - v_amt;
+    end loop;
 
     select coalesce(sum(f.amount), 0) into v_total
       from public.refunds f where f.order_ref = o.order_ref and f.id like 'RFN-FR-%';
@@ -1026,7 +1122,8 @@ begin
         decided_at = excluded.decided_at, note = excluded.note;
 
   return jsonb_build_object('order_ref', o.order_ref, 'status', v_status,
-                            'refunds', v_n, 'refunded', v_total, 'currency', o.currency);
+                            'refunds', v_n, 'refunded', v_total, 'currency', o.currency,
+                            'pushes_cancelled', v_com, 'subscriptions_removed', v_subs);
 end $$;
 
 comment on function public.decide_held_order(text, text, text) is
@@ -1034,6 +1131,122 @@ comment on function public.decide_held_order(text, text, text) is
 
 revoke all on function public.decide_held_order(text, text, text) from public, anon;
 grant execute on function public.decide_held_order(text, text, text) to authenticated;
+
+/* ============================= 7b. not provisioned while held or cancelled === */
+
+/* A line the network fulfils is queued as it is written, before the payment
+   settles, so a held order's eSIM is already waiting at the order manager's
+   door. `com_send`, copied from 20260807480000 (its latest definition).
+   Changed only: nothing is sent for an order that is held or cancelled. Same
+   signature, so the grant is unchanged. */
+create or replace function public.com_send(p_id text, p_now timestamptz default now())
+returns jsonb language plpgsql security definer set search_path to 'public' as $$
+declare
+  c    public.com_order;
+  sys  public.com_system;
+  gaps text[];
+  body jsonb;
+  wait int;
+begin
+  select * into c from public.com_order where id = p_id;
+  if c.id is null then return jsonb_build_object('ok', false, 'why', 'No such push.'); end if;
+  if c.state in ('completed', 'cancelled') then
+    return jsonb_build_object('ok', true, 'state', c.state, 'already', true);
+  end if;
+  if exists (select 1 from public.orders o where o.order_ref = c.order_ref and o.status in ('held', 'cancelled')) then
+    return jsonb_build_object('ok', false, 'state', c.state, 'why',
+      'The order is held or cancelled by the marketplace, so nothing is sent to the order manager for it.');
+  end if;
+
+  select * into sys from public.com_system where id = c.system_id;
+
+  /* A required characteristic that resolved to nothing will resolve to nothing
+     on the next attempt too. Retrying it spends the budget and buries the
+     reason under four identical timeouts. */
+  gaps := public.com_missing(c.order_item_id);
+  if array_length(gaps, 1) > 0 then
+    update public.com_order set
+      state = 'rejected', attempts = attempts + 1, last_attempt_at = p_now,
+      next_attempt_at = null,
+      failure_code = 'TMF-400',
+      failure_reason = format('%s rejected the order: %s could not be supplied. This is not retried — the field will be empty next time too.',
+                              sys.name, array_to_string(gaps, '; '))
+     where id = p_id;
+    insert into public.com_event (id, com_order, kind, state, detail)
+    values (format('%s-R%s', p_id, c.attempts + 1), p_id, 'rejected', 'rejected',
+            array_to_string(gaps, '; '));
+    return jsonb_build_object('ok', false, 'state', 'rejected', 'missing', gaps);
+  end if;
+
+  body := public.com_payload(c.order_item_id);
+
+  /* Transport. This is the failure retries exist for. */
+  if sys.status = 'down' then
+    wait := sys.backoff_seconds * power(2, least(c.attempts, 6))::int;
+    if c.attempts + 1 >= sys.max_attempts then
+      update public.com_order set
+        state = 'failed', attempts = attempts + 1, last_attempt_at = p_now, next_attempt_at = null,
+        payload = body, failure_code = 'TRANSPORT',
+        failure_reason = format('%s did not answer on any of %s attempts. The order is not provisioned and needs a human.',
+                                sys.name, sys.max_attempts)
+       where id = p_id;
+      insert into public.com_event (id, com_order, kind, state, detail)
+      values (format('%s-F%s', p_id, c.attempts + 1), p_id, 'failed', 'failed',
+              format('Given up after %s attempts.', sys.max_attempts));
+      return jsonb_build_object('ok', false, 'state', 'failed');
+    end if;
+    update public.com_order set
+      attempts = attempts + 1, last_attempt_at = p_now,
+      next_attempt_at = p_now + make_interval(secs => wait),
+      payload = body, failure_code = 'TRANSPORT',
+      failure_reason = format('%s is not answering. Retrying in %s seconds.', sys.name, wait)
+     where id = p_id;
+    insert into public.com_event (id, com_order, kind, state, detail)
+    values (format('%s-T%s', p_id, c.attempts + 1), p_id, 'retry', 'queued',
+            format('No answer. Attempt %s of %s; next in %ss.', c.attempts + 1, sys.max_attempts, wait));
+    return jsonb_build_object('ok', false, 'state', 'queued', 'retry_in', wait);
+  end if;
+
+  /* Accepted. Note what this is not: the service is not on yet. */
+  update public.com_order set
+    state = 'acknowledged', attempts = attempts + 1, last_attempt_at = p_now,
+    next_attempt_at = null, sent_at = coalesce(sent_at, p_now), acknowledged_at = p_now,
+    payload = body,
+    com_order_id = 'PO-' || upper(substr(md5(p_id), 1, 10)),
+    failure_code = null, failure_reason = null
+   where id = p_id;
+
+  insert into public.com_event (id, com_order, kind, state, detail, payload)
+  values (format('%s-A%s', p_id, c.attempts + 1), p_id, 'acknowledged', 'acknowledged',
+          format('%s accepted the order.', sys.name), body)
+  on conflict (id) do nothing;
+
+  return jsonb_build_object('ok', true, 'state', 'acknowledged',
+                            'com_order_id', 'PO-' || upper(substr(md5(p_id), 1, 10)));
+end $$;
+
+/* `com_retry`, copied from 20260807480000 (its latest definition). Changed
+   only: a held or cancelled order's pushes are not retried. */
+create or replace function public.com_retry(p_now timestamptz default now())
+returns jsonb language plpgsql security definer set search_path to 'public' as $$
+declare c record; tried int := 0; ok int := 0; res jsonb;
+begin
+  if current_persona() is distinct from 'operator' then
+    raise exception 'Only the marketplace retries a push to the order manager.';
+  end if;
+  for c in
+    select id from public.com_order
+     where state = 'queued' and coalesce(next_attempt_at, p_now) <= p_now
+       and not exists (select 1 from public.orders o
+                        where o.order_ref = com_order.order_ref and o.status in ('held', 'cancelled'))
+     order by created_at
+  loop
+    res := public.com_send(c.id, p_now);
+    tried := tried + 1;
+    if (res ->> 'ok')::boolean then ok := ok + 1; end if;
+  end loop;
+  return jsonb_build_object('ok', true, 'tried', tried, 'accepted', ok);
+end $$;
 
 /* =================================================== 8. tuning rules === */
 
@@ -1223,7 +1436,7 @@ begin
         jsonb_build_object('kind', 'prose', 'heading', 'What this screen shows',
           'text', 'Every shopper order is scored when its payment goes through, and every shopper and business account is scored each night. A score is the sum of the points of the rules that fired, and every score lists those rules. Orders scoring 40 or more are flagged for review; 70 or more are held. Accounts scoring 40 or more are in review; 70 or more are high risk. Business orders are never held: approvals and the credit hold already gate them, but their account''s score is shown.'),
         jsonb_build_object('kind', 'prose', 'heading', 'Held orders',
-          'text', 'A held order has been paid for, but its seller cannot see it and nothing can move it. The buyer is told only "We''re checking this order — usually within a few hours." Release puts it back to placed and the seller sees it as a new order. Cancel and refund cancels it and raises one approved refund per line, which is paid from the Refunds screen like any other. Both need a note, which is kept with the decision.'),
+          'text', 'A held order has been paid for, but its seller cannot see it and nothing can move it. The buyer is told only "We''re checking this order — usually within a few hours." Release puts it back to placed and the seller sees it as a new order. Cancel and refund cancels it, stops anything still to be sent to the network for it and any monthly part from renewing, and raises one approved refund per line, together what the order was paid, which is paid from the Refunds screen like any other. Both need a note, which is kept with the decision, and an order is decided once. The note on a cancel is also written on each refund after "Cancelled after a fraud review:", and the buyer and the seller both read it there, so write it for them: never name a rule or a score.'),
         jsonb_build_object('kind', 'prose', 'heading', 'Flagged orders and accounts',
           'text', 'Flagged lists the orders in the review band from the last 30 days: they went through, and are worth a look. Accounts lists every account by score with the rules that fired; Rescore now scores them all again straight away instead of waiting for the night.'),
         jsonb_build_object('kind', 'prose', 'heading', 'Rules and bands',
@@ -1275,6 +1488,10 @@ declare
   v_small   numeric;
   v_sum     numeric;
   v_settle  text := 'public.settle_payment_attempt(text,text,text,text,text,integer,numeric,text)';
+  v_sys     text;
+  v_com     text;
+  v_line    uuid;
+  v_subp    record;
 begin
   if not public.is_scheduler() then
     raise exception 'This session (%) is not one the schedule runs as, so the dry run below would be refused.', session_user;
@@ -1599,9 +1816,62 @@ begin
     if v_n <> 1 then raise exception 'the seller cannot see an order the marketplace released'; end if;
     reset role;
 
-    /* Cancelled: one approved refund per line, together the order. */
+    /* Nobody puts an order on hold by hand, not even their own. */
+    perform set_config('request.jwt.claims', json_build_object('sub', v_user)::text, true);
+    begin
+      update public.orders o set status = 'held' where o.id = v_low;
+      raise exception 'a buyer put their own order on hold';
+    exception when raise_exception then
+      if sqlerrm not like '%cannot be put on hold by hand%' then raise; end if;
+    end;
+
+    /* The order to cancel has an eSIM push waiting at the order manager and a
+       monthly part that has never been charged; and one of its lines has been
+       rewritten to 3000 since it was paid. */
+    perform set_config('request.jwt.claims', null, true);
+    select s.id into v_sys from public.com_system s order by s.id limit 1;
+    if v_sys is null then raise exception 'no order manager to check a cancelled push against'; end if;
+    select i.id into v_line from public.order_items i where i.order_id = v_cancel and i.product_id = v_sim.id;
+    insert into public.com_order
+      (id, order_ref, order_item_id, system_id, market, product_id, product_name, fulfil, quantity,
+       state, correlation_id, next_attempt_at)
+    values ('COM-SELFCHECK-RISK-C', 'ORD-SELFCHECK-RISK-C', v_line, v_sys, v_mkt, v_sim.id, v_sim.name, 'esim', 2,
+            'queued', 'COM-SELFCHECK-RISK-C-1', now())
+    on conflict (order_item_id) do nothing;
+    select c.id into v_com from public.com_order c where c.order_item_id = v_line;
+    update public.com_order c set state = 'queued', next_attempt_at = now() where c.id = v_com;
+
+    select p.id, p.name into v_subp
+      from public.products p
+     where not exists (select 1 from public.subscriptions s
+                        where s.user_id = v_user and s.product_id = p.id and s.status = 'active')
+     order by p.id
+     limit 1;
+    insert into public.subscriptions
+      (product_id, product_name, status, auto_renew, next_renewal, price, currency, ref, cycle, user_id)
+    values (v_subp.id, v_subp.name, 'active', true, current_date + 30, 30, v_cur,
+            'ORD-SELFCHECK-RISK-C', 'Monthly', v_user);
+
+    update public.order_items i set price = 3000 where i.id = v_line;
+
+    /* While it is held, nothing is sent for it. */
     perform set_config('request.jwt.claims', json_build_object('sub', v_op)::text, true);
+    v_res := public.com_send(v_com);
+    if (v_res ->> 'ok')::boolean
+       or (select c.state from public.com_order c where c.id = v_com) is distinct from 'queued' then
+      raise exception 'a held order''s eSIM was sent to the order manager (%)', v_res;
+    end if;
+
+    /* Cancelled: the push cancelled, the monthly part gone, and one approved
+       refund per line sharing out what was paid, not what the lines say now. */
     v_res := public.decide_held_order('ORD-SELFCHECK-RISK-C', 'cancel', 'Self-check: the card holder did not place it.');
+    if (select c.state from public.com_order c where c.id = v_com) is distinct from 'cancelled'
+       or not exists (select 1 from public.com_event e where e.com_order = v_com and e.id = v_com || '-FR') then
+      raise exception 'cancelling did not stop the eSIM push (%)', v_res;
+    end if;
+    if exists (select 1 from public.subscriptions s where s.ref = 'ORD-SELFCHECK-RISK-C') then
+      raise exception 'cancelling left the order''s monthly part to renew (%)', v_res;
+    end if;
     if (select o.status from public.orders o where o.id = v_cancel) is distinct from 'cancelled' then
       raise exception 'a cancelled held order is not cancelled (%)', v_res;
     end if;
@@ -1618,6 +1888,27 @@ begin
     if (select r.decision from public.order_risk r where r.order_id = v_cancel) is distinct from 'cancelled' then
       raise exception 'the cancellation was not recorded';
     end if;
+
+    /* A cancelled order stays cancelled: the buyer cannot move it back, and
+       one put back on hold (only the flag can) is not decided again. */
+    perform set_config('request.jwt.claims', json_build_object('sub', v_user)::text, true);
+    begin
+      update public.orders o set status = 'placed' where o.id = v_cancel;
+      raise exception 'a buyer moved a fraud-cancelled order back to placed';
+    exception when raise_exception then
+      if sqlerrm not like '%stays cancelled%' then raise; end if;
+    end;
+    perform set_config('request.jwt.claims', null, true);
+    perform set_config('aventa.risk_decision', 'on', true);
+    update public.orders o set status = 'held' where o.id = v_cancel;
+    perform set_config('aventa.risk_decision', 'off', true);
+    perform set_config('request.jwt.claims', json_build_object('sub', v_op)::text, true);
+    begin
+      perform public.decide_held_order('ORD-SELFCHECK-RISK-C', 'release', 'Self-check: twice');
+      raise exception 'a fraud-cancelled order was decided a second time';
+    exception when raise_exception then
+      if sqlerrm not like '%A held order is decided once.%' then raise; end if;
+    end;
 
     /* A rule and the bands tuned, checked as the screen checks, and audited. */
     v_res := public.update_risk_rule('o-burst', 20, true, 4);

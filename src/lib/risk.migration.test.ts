@@ -13,6 +13,7 @@ const bundle = read('20261113100000_a_bundle_is_bought_whole.sql')
 const billing = read('20261113400000_a_business_is_invoiced_for_what_it_ordered.sql')
 const fulfil = read('20260804160000_a_guard_that_asks_who_you_are_has_to_handle_nobody.sql')
 const opEdit = read('20260807500000_the_marketplace_could_read_every_order_and_move_none.sql')
+const network = read('20260807480000_the_marketplace_sold_the_network_and_never_told_it.sql')
 const policies = read('20260804150000_the_seller_order_policy_must_not_ask_a_question_that_asks_it_back.sql')
 
 /** The text of one function, from `create or replace function` to the end of
@@ -170,7 +171,6 @@ describe('risk scoring, as a migration', () => {
     expect(s).toContain("'cancelled', 'cancelled by the marketplace after a fraud review.',")
     expect(s).toContain("current_date, 'marketplace', current_date, 'approved', current_date, v_by, 'cancelled after a fraud review: ' || v_note")
     expect(s).toContain("'consumer'")
-    expect(s).toContain('round(i.price * i.quantity, 2)')
     expect(s).toContain('o.user_id')
     expect(s).toContain('o.currency')
     expect(s).toContain('on conflict (order_id) do update')
@@ -207,9 +207,73 @@ describe('risk scoring, as a migration', () => {
       expect(cut(now, held, ' end if;')).toBe(squash(fn(src, name)))
     }
     const g = squash(fn(risk, 'guard_held_order'))
+    expect(g).toContain("v_flag text := coalesce(current_setting('aventa.risk_decision', true), '');")
     expect(g).toContain("if public.current_persona() in ('partner', 'operator') then return new; end if;")
-    expect(g).toContain("coalesce(current_setting('aventa.risk_decision', true), '') <> 'on'")
+    expect(g).toContain('or new.total is distinct from old.total) and v_flag <> \'on\' then')
     expect(risk).toContain('create trigger z_guard_held_order before update on public.orders')
+  })
+})
+
+describe('risk scoring, review fix round 1', () => {
+  it('1. a cancel stops the order\'s pushes to the network and its monthly parts', () => {
+    const s = squash(fn(risk, 'decide_held_order'))
+    expect(s).toContain("update public.com_order c set state = 'cancelled', next_attempt_at = null")
+    expect(s).toContain("where c.order_ref = o.order_ref and c.state not in ('completed', 'cancelled') returning c.id")
+    expect(s).toContain("select s.id || '-fr', s.id, 'state-change', 'cancelled'")
+    expect(s).toContain('delete from public.subscriptions sb where sb.ref = o.order_ref and sb.user_id is not distinct from o.user_id and not exists (select 1 from public.subscription_charge sc where sc.subscription_id = sb.id);')
+    expect(s).toContain("set status = 'cancelled', auto_renew = false")
+  })
+
+  it('1. nothing is sent or retried for a held or cancelled order (latest copies, that check added)', () => {
+    const was = (name: string) => squash(fn(network, name))
+    const send = squash(fn(risk, 'com_send'))
+    expect(send).toContain("if exists (select 1 from public.orders o where o.order_ref = c.order_ref and o.status in ('held', 'cancelled')) then")
+    expect(cut(send, ' if exists (select 1 from public.orders o where o.order_ref = c.order_ref', ' end if;')).toBe(was('com_send'))
+    const retry = squash(fn(risk, 'com_retry'))
+    const added = " and not exists (select 1 from public.orders o where o.order_ref = com_order.order_ref and o.status in ('held', 'cancelled'))"
+    expect(retry).toContain(added)
+    expect(retry.replace(added, '')).toBe(was('com_retry'))
+  })
+
+  it('2. the refunds share out the order\'s total by weight, never the raw line sum', () => {
+    const s = squash(fn(risk, 'decide_held_order'))
+    expect(s).toContain('v_left := round(coalesce(o.total, 0), 2);')
+    expect(s).toContain('if v_k = v_lines then v_amt := v_left;')
+    expect(s).toContain('v_amt := least(round(round(coalesce(o.total, 0), 2) * l.weight / v_weight, 2), v_left);')
+    expect(s).toContain('continue when v_amt <= 0;')
+    expect(s).toContain('v_left := v_left - v_amt;')
+    expect(s).not.toContain('round(i.price * i.quantity, 2) as amount')
+  })
+
+  it('3. held only by settle, a fraud-cancelled order stays cancelled, and an order is decided once', () => {
+    const g = squash(fn(risk, 'guard_held_order'))
+    expect(g).toContain("if new.status = 'held' and old.status is distinct from 'held' and v_flag <> 'on' then")
+    expect(g).toContain("public.current_persona() is distinct from 'operator' and v_flag <> 'on' and exists (select 1 from public.order_risk r where r.order_id = old.id and r.decision = 'cancelled')")
+    // both rules come before the step aside for the seller and the operator
+    expect(g.indexOf("v_flag <> 'on' then raise exception '% cannot be put on hold by hand"))
+      .toBeLessThan(g.indexOf("if public.current_persona() in ('partner', 'operator')"))
+    expect(g.indexOf("stays cancelled")).toBeLessThan(g.indexOf("if public.current_persona() in ('partner', 'operator')"))
+    const settle = squash(fn(risk, 'settle_payment_attempt'))
+    expect(settle).toContain("perform set_config('aventa.risk_decision', 'on', true); update public.orders set status = 'held' where id = v_o.id and status = 'placed'; perform set_config('aventa.risk_decision', 'off', true);")
+    const d = squash(fn(risk, 'decide_held_order'))
+    expect(d).toContain('select r.decision into v_prior from public.order_risk r where r.order_id = o.id; if v_prior is not null then')
+  })
+
+  it('4. the help says the cancel note reaches the buyer and the seller', () => {
+    expect(risk).toContain('the buyer and the seller both read it there')
+    expect(risk).toContain('never name a rule or a score')
+  })
+
+  it('exercises fixes 1 to 3 in the rolled-back self-check', () => {
+    const last = risk.slice(risk.lastIndexOf('do $$'))
+    expect(last).toContain('v_res := public.com_send(v_com);')
+    expect(squash(last)).toContain("is distinct from 'cancelled' or not exists (select 1 from public.com_event e")
+    expect(last).toContain("if exists (select 1 from public.subscriptions s where s.ref = 'ord-selfcheck-risk-c') then")
+    expect(last).toContain('update public.order_items i set price = 3000 where i.id = v_line;')
+    expect(last).toContain('if v_n <> 2 or v_sum <> 75 then')
+    expect(last).toContain("'%cannot be put on hold by hand%'")
+    expect(last).toContain("'%stays cancelled%'")
+    expect(last).toContain("'%a held order is decided once.%'")
   })
 
   it('adds `risk` to the night after invoices, and changes nothing else in run_nightly', () => {
