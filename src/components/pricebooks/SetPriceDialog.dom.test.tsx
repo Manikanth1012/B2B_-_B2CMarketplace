@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type { AccountPrice } from '../../lib/accountPrices'
+import { chooseOption } from '../ui/Dropdown.testing'
 
 /* No database here: CI has no Supabase keys, and supabase.ts throws without them. */
 vi.mock('../../lib/supabase', () => ({ supabase: {} }))
@@ -41,7 +42,7 @@ function open(prices: AccountPrice[] = []) {
 describe('SetPriceDialog', () => {
   it('says a price under the floor is refused, in the database\'s words, and will not submit', async () => {
     open()
-    fireEvent.change(screen.getByLabelText(/Listing/), { target: { value: 'SKU-4006' } })
+    chooseOption(screen.getByLabelText(/Listing/), 'SKU-4006')
     await screen.findByText(/Published today ₹23,999.00/)
     const input = screen.getByLabelText(/Account price/)
     fireEvent.change(input, { target: { value: '19000' } })
@@ -58,7 +59,7 @@ describe('SetPriceDialog', () => {
   it('submits a price between floor and published, and shows the database\'s refusal as a sentence', async () => {
     repo.setAccountPrice.mockResolvedValue({ ok: false, error: 'Price books are not set up on this database yet, so nothing was changed.' })
     open()
-    fireEvent.change(screen.getByLabelText(/Listing/), { target: { value: 'SKU-4006' } })
+    chooseOption(screen.getByLabelText(/Listing/), 'SKU-4006')
     await screen.findByText(/Published today/)
     fireEvent.change(screen.getByLabelText(/Account price/), { target: { value: '21999' } })
     const submit = screen.getByRole('button', { name: 'Set the price' }) as HTMLButtonElement
@@ -71,7 +72,7 @@ describe('SetPriceDialog', () => {
 
   it('says before submit that a bounded price inside an open-ended one ends it for good', async () => {
     open([price({})])
-    fireEvent.change(screen.getByLabelText(/Listing/), { target: { value: 'SKU-4006' } })
+    chooseOption(screen.getByLabelText(/Listing/), 'SKU-4006')
     await screen.findByText(/Published today/)
     fireEvent.change(screen.getByLabelText(/Ends on/), { target: { value: '2026-11-30' } })
     expect(screen.getByText(/AP-1004 .* ends on 11 Nov 2026\. It does not come back when the new price ends on 30 Nov 2026: from 01 Dec 2026/)).toBeTruthy()

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { AccountPrice } from '../../lib/accountPrices'
+import { chooseOption } from '../ui/Dropdown.testing'
 
 /* No database here: CI has no Supabase keys, and supabase.ts throws without them. */
 vi.mock('../../lib/supabase', () => ({ supabase: {} }))
@@ -47,9 +48,10 @@ describe('OperatorPriceBooks', () => {
   it('a late answer for the account picked before never fills the table of the one shown', async () => {
     render(<OperatorPriceBooks />)
     const pick = await screen.findByLabelText('Account')
+    fireEvent.click(pick) // the accounts are options of the open list
     await screen.findByRole('option', { name: /SmartBuild Ltd/ })
-    fireEvent.change(pick, { target: { value: 'ENT-1' } })
-    fireEvent.change(pick, { target: { value: 'ENT-2' } })
+    chooseOption(pick, 'ENT-1')
+    chooseOption(pick, 'ENT-2')
     await act(async () => { gates.get('ENT-2')?.(undefined) })
     expect(await screen.findByText(/AP-ACME/)).toBeTruthy()
     await act(async () => { gates.get('ENT-1')?.(undefined) })
@@ -60,8 +62,9 @@ describe('OperatorPriceBooks', () => {
   it('shows the charged figure held at the floor, in the price\'s own money', async () => {
     render(<OperatorPriceBooks />)
     const pick = await screen.findByLabelText('Account')
+    fireEvent.click(pick) // the accounts are options of the open list
     await screen.findByRole('option', { name: /SmartBuild Ltd/ })
-    fireEvent.change(pick, { target: { value: 'ENT-1' } })
+    chooseOption(pick, 'ENT-1')
     await act(async () => { gates.get('ENT-1')?.(undefined) })
     expect(await screen.findByText('held at floor')).toBeTruthy()
     expect(screen.queryByText(/CONVERTED/)).toBeNull()

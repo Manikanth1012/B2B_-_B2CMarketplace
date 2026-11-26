@@ -3,6 +3,7 @@ import { StatusBadge } from '../ui/StatusBadge'
 import { statusTone } from '../../lib/consoleTone'
 import { Dialog } from '../ui/Dialog'
 import { Spinner } from '../ui/Spinner'
+import { Dropdown } from '../ui/Dropdown'
 
 export function fmtMoney(n: number): string {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -404,8 +405,12 @@ export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
   return <textarea {...props} className={inputClass(props.className)} />
 }
 
+/* A custom dropdown (ui/Dropdown) with the same props a native <select>
+   took: value/defaultValue, onChange reading e.target.value, disabled, id,
+   aria-*, style, className and <option>/<optgroup> children. Dropdown adds
+   the .c-input class itself. */
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={inputClass(props.className)} />
+  return <Dropdown {...props} />
 }
 
 export function Btn({ variant = 'primary', size = 'md', loading, icon, children, className, disabled, ...props }: {
