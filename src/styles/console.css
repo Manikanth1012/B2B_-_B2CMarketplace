@@ -101,7 +101,7 @@ textarea.c-input { resize: vertical; min-height: 88px; height: auto; padding: 10
 /* ---------- Button (design system v2) ----------
    One system: primary = indigo fill; secondary = white + control border;
    tertiary = text only; danger = white with red text and border, and solid red
-   only inside a dialog (.c-modal, [role=dialog]) where it confirms a
+   only for the confirm action in a dialog footer (.ui-dialog__foot) where it confirms a
    destructive act. 40px, sm 32px, 6px radius. */
 .c-btn {
   border-radius: var(--radius); border: 1px solid transparent;
@@ -110,7 +110,7 @@ textarea.c-input { resize: vertical; min-height: 88px; height: auto; padding: 10
   padding: 0 16px; font-size: var(--text-sm); height: var(--control-h); min-height: var(--control-h);
   transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
-.c-btn:focus-visible { outline: 2px solid transparent; box-shadow: var(--focus-ring); border-color: var(--indigo-600); }
+.c-btn:focus-visible { outline: 2px solid var(--focus-color); outline-offset: 2px; }
 /* A small button is the one that appears four-at-a-time in a table cell. */
 .c-btn--sm { padding: 0 10px; font-size: var(--text-xs); height: var(--control-h-sm); min-height: var(--control-h-sm); }
 .c-btn--icon { width: var(--control-h); padding: 0; }
@@ -127,16 +127,19 @@ textarea.c-input { resize: vertical; min-height: 88px; height: auto; padding: 10
 .c-btn--danger { background: var(--surface); color: var(--danger); border-color: var(--danger); }
 .c-btn--danger:hover:not(:disabled) { background: var(--danger-bg); }
 .c-btn--danger:active:not(:disabled) { background: var(--danger-border); }
-.c-modal .c-btn--danger, [role="dialog"] .c-btn--danger { background: var(--danger); color: #fff; }
-.c-modal .c-btn--danger:hover:not(:disabled), [role="dialog"] .c-btn--danger:hover:not(:disabled) { background: #912018; }
+.ui-dialog__foot .c-btn--danger { background: var(--danger); color: #fff; }
+.ui-dialog__foot .c-btn--danger:hover:not(:disabled) { background: #912018; }
 .c-btn--success { background: var(--surface); color: var(--success); border-color: var(--success); }
 .c-btn--success:hover:not(:disabled) { background: var(--success-bg); }
-.c-modal .c-btn--success, [role="dialog"] .c-btn--success { background: var(--success); color: #fff; }
-.c-modal .c-btn--success:hover:not(:disabled), [role="dialog"] .c-btn--success:hover:not(:disabled) { background: #166534; }
+.ui-dialog__foot .c-btn--success { background: var(--success); color: #fff; }
+.ui-dialog__foot .c-btn--success:hover:not(:disabled) { background: #166534; }
+/* Solid dialog actions stay solid while pressed (the outline variant tints on :active). */
+.ui-dialog__foot .c-btn--danger:active:not(:disabled) { background: #7A1A13; }
+.ui-dialog__foot .c-btn--success:active:not(:disabled) { background: #14532D; }
 /* Disabled is grey on grey with readable text, not the live colour at half opacity. */
 .c-btn:disabled, .c-btn--danger:disabled, .c-btn--success:disabled,
-.c-modal .c-btn--danger:disabled, [role="dialog"] .c-btn--danger:disabled,
-.c-modal .c-btn--success:disabled, [role="dialog"] .c-btn--success:disabled {
+.ui-dialog__foot .c-btn--danger:disabled,
+.ui-dialog__foot .c-btn--success:disabled {
   background: var(--slate-100); color: var(--text-secondary);
   border-color: var(--slate-200); cursor: not-allowed;
 }

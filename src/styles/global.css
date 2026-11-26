@@ -22,6 +22,8 @@
   --indigo-50: #EEF2FF;           /* selected row / option */
   --teal-700: #0F766E;            /* positive signals — 5.47:1 on white, 5.10 on canvas */
   --focus-ring: 0 0 0 3px rgba(79,70,229,0.18);
+  /* Keyboard focus outline colour. Dark containers (ui.css) redefine it as --accent-on-dark. */
+  --focus-color: #4F46E5;
   /* Accents on dark grounds (ink, navy, the hero gradient): indigo-600 is only 2.98:1 on ink-900. */
   --accent-on-dark: #A5B4FC;      /* text and icons on ink/navy/hero gradient — see contrast.test.ts */
   --accent-on-dark-2: #5EEAD4;    /* light teal, gradient end for large type on dark */
@@ -254,7 +256,7 @@ input[type="radio"]:checked {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Ccircle cx='6' cy='6' r='2.5' fill='%23fff'/%3E%3C/svg%3E");
 }
 input[type="checkbox"]:focus-visible, input[type="radio"]:focus-visible {
-  outline: 2px solid transparent; border-color: var(--indigo-600); box-shadow: var(--focus-ring);
+  outline: 2px solid var(--focus-color); outline-offset: 2px;
 }
 input[type="checkbox"]:disabled, input[type="radio"]:disabled {
   background-color: var(--slate-100); border-color: var(--slate-300); cursor: not-allowed;
@@ -333,17 +335,17 @@ select[multiple], select[size]:not([size="1"]) {
   border: 1px solid transparent;
   cursor: pointer;
 }
-.btn:focus-visible { box-shadow: var(--focus-ring); }
+.btn:focus-visible { outline: 2px solid var(--focus-color); outline-offset: 2px; }
 
 .btn-primary { background: var(--indigo-600); color: white; }
-.btn-primary:hover { background: var(--indigo-700); }
+.btn-primary:hover:not(:disabled) { background: var(--indigo-700); }
 
 .btn-secondary {
   background: var(--surface);
   color: var(--text);
   border-color: var(--control-border);
 }
-.btn-secondary:hover {
+.btn-secondary:hover:not(:disabled) {
   background: var(--slate-100);
   border-color: var(--slate-500);
 }
@@ -352,7 +354,7 @@ select[multiple], select[size]:not([size="1"]) {
   color: var(--indigo-700);
   padding: 0 var(--space-3);
 }
-.btn-ghost:hover { background: var(--indigo-50); }
+.btn-ghost:hover:not(:disabled) { background: var(--indigo-50); }
 
 .btn-lg {
   min-height: 48px;
