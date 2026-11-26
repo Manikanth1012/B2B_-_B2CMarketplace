@@ -8,7 +8,7 @@
 
 import { supabase } from './supabase'
 import type { CategoryPolicy, PolicyRuleRow } from './catalogue'
-import type { CategoryRow, ListingRow, SellerRow, MatrixRow, RuleLevel } from './shelfPolicy'
+import type { CategoryRow, ListingRow, SellerRow, MatrixRow, RuleLevel, RuleForm } from './shelfPolicy'
 
 const num = <T,>(row: T, keys: string[]): T => {
   const out = { ...row } as Record<string, unknown>
@@ -84,11 +84,51 @@ export async function setLevel(
   return error ? { ok: false, why: error.message } : { ok: true }
 }
 
-export async function saveRule(
-  rule: Partial<PolicyRuleRow> & { id: string },
-): Promise<{ ok: boolean; why?: string }> {
-  const { error } = await supabase.from('policy_rules').upsert(rule)
+/* ------------------------------------------------------------ the rule book -- */
+
+type Done = { ok: boolean; why?: string }
+
+/** A new rule, written as a draft: it applies nowhere until a shelf takes it on and it is activated. */
+export async function createRule(id: string, form: RuleForm, sortOrder: number): Promise<Done> {
+  const { error } = await supabase.from('policy_rules').insert({
+    id, name: form.name.trim(), descr: form.descr.trim(), check_by: form.check_by, basis: form.basis,
+    owner: form.owner.trim(), evidence: form.evidence.trim() || null, blocks: form.blocks, appeal: form.appeal,
+    status: 'draft', locked: null, note: null, added: new Date().toISOString().slice(0, 10), sort_order: sortOrder,
+  })
   return error ? { ok: false, why: error.message } : { ok: true }
+}
+
+/** A rule's wording and settings. Its id, status and lock are not changed here. */
+export async function updateRule(id: string, form: RuleForm): Promise<Done> {
+  const { error } = await supabase.from('policy_rules').update({
+    name: form.name.trim(), descr: form.descr.trim(), check_by: form.check_by, basis: form.basis,
+    owner: form.owner.trim(), evidence: form.evidence.trim() || null, blocks: form.blocks, appeal: form.appeal,
+  }).eq('id', id)
+  return error ? { ok: false, why: error.message } : { ok: true }
+}
+
+/** Publish a draft, or bring a retired rule back (as a draft is, on no shelf until one takes it). */
+export async function setRuleStatus(id: string, status: 'active' | 'draft'): Promise<Done> {
+  const { error } = await supabase.from('policy_rules').update({ status }).eq('id', id)
+  return error ? { ok: false, why: error.message } : { ok: true }
+}
+
+/** Retire a rule: off every shelf first, so nothing is judged against it any more, then marked retired. */
+export async function retireRule(id: string): Promise<Done> {
+  const off = await supabase.from('category_policy_rules').delete().eq('rule_id', id)
+  if (off.error) return { ok: false, why: off.error.message }
+  const { error } = await supabase.from('policy_rules').update({ status: 'retired' }).eq('id', id)
+  return error ? { ok: false, why: error.message } : { ok: true }
+}
+
+/** Delete a rule nothing refers to. The database refuses one a shelf or a seller's evidence still names. */
+export async function deleteRule(id: string): Promise<Done> {
+  const { error } = await supabase.from('policy_rules').delete().eq('id', id)
+  if (!error) return { ok: true }
+  if (error.code === '23503' || /foreign key/i.test(error.message)) {
+    return { ok: false, why: 'Seller evidence or a shelf still refers to this rule, so it cannot be deleted. Retire it instead.' }
+  }
+  return { ok: false, why: error.message }
 }
 
 /** Open or close a shelf to buyers. The reason is not optional when closing. */

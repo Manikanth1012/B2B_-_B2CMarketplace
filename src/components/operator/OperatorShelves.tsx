@@ -1,16 +1,16 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { ShieldCheck, TriangleAlert, Lock, Unlock, Layers } from 'lucide-react'
-import { SectionCard, EmptyState, Btn, StatusPill, Table, Td, toast, FormField, TextInput, TextArea, Select } from './shared'
+import { SectionCard, EmptyState, Btn, StatusPill, Table, Td, toast, FormField, TextInput, TextArea, Select, Modal } from './shared'
 import { Callout } from '../OnboardingJourney'
-import { loadShelfBook, savePolicy, setLevel, setOpen } from '../../lib/shelfPolicyRepo'
+import { loadShelfBook, savePolicy, setLevel, setOpen, createRule, updateRule, setRuleStatus, retireRule, deleteRule } from '../../lib/shelfPolicyRepo'
 import type { ShelfBook } from '../../lib/shelfPolicyRepo'
 import {
   occupancy, barImpact, capImpact, barLine, reviewLine, returnsLine, capLine,
   shelfWarnings, levelOf, reachOf, ruleLine, matrixProblems, ruleCoverage, levelImpact,
-  LEVEL_LABEL,
+  LEVEL_LABEL, nextRuleId, ruleFormProblem, ruleActions, RULE_BASES,
 } from '../../lib/shelfPolicy'
-import type { RuleLevel } from '../../lib/shelfPolicy'
-import type { CategoryPolicy } from '../../lib/catalogue'
+import type { RuleLevel, RuleForm } from '../../lib/shelfPolicy'
+import type { CategoryPolicy, PolicyRuleRow } from '../../lib/catalogue'
 
 /* What may go on each shelf, from whom, and how much.
  *
@@ -91,7 +91,7 @@ export function OperatorShelves() {
       {tab === 'shelves' && (
         <Shelves book={book} editing={editing} setEditing={setEditing} onChanged={reload} />
       )}
-      {tab === 'rules' && <RuleBook book={book} />}
+      {tab === 'rules' && <RuleBook book={book} onChanged={reload} />}
       {tab === 'matrix' && <Matrix book={book} onChanged={reload} />}
     </div>
   )
@@ -350,14 +350,44 @@ function PolicyEditor({ book, policy, categoryName, onDone }: {
 
 /* --------------------------------------------------------------- rule book -- */
 
-function RuleBook({ book }: { book: ShelfBook }) {
+type RuleDialog =
+  | { kind: 'form'; rule: PolicyRuleRow | null }
+  | { kind: 'retire' | 'delete'; rule: PolicyRuleRow }
+
+const CHECK_LABEL: Record<PolicyRuleRow['check_by'], string> = {
+  auto: 'The platform, itself', doc: 'Against a document', extern: 'An external service', manual: 'A person',
+}
+
+const formOf = (r: PolicyRuleRow | null): RuleForm => ({
+  name: r?.name ?? '', descr: r?.descr ?? '', check_by: r?.check_by ?? 'manual', basis: r?.basis ?? 'Regulatory',
+  owner: r?.owner ?? '', evidence: r?.evidence ?? '', blocks: r?.blocks ?? true,
+  appeal: (r as (PolicyRuleRow & { appeal?: boolean }) | null)?.appeal ?? true,
+})
+
+function RuleBook({ book, onChanged }: { book: ShelfBook; onChanged: () => Promise<void> }) {
+  const [dialog, setDialog] = useState<RuleDialog | null>(null)
+  const [busy, setBusy] = useState<string | null>(null)
+  const nameOf = (id: string) => book.categories.find(c => c.id === id)?.name ?? id
+
+  const act = async (key: string, run: () => Promise<{ ok: boolean; why?: string }>, said: string) => {
+    setBusy(key)
+    const res = await run()
+    setBusy(null)
+    if (!res.ok) { toast(res.why ?? 'That did not save', 'error'); return }
+    toast(said)
+    setDialog(null)
+    await onChanged()
+  }
+
   return (
     <SectionCard title="The rule book"
-                 subtitle="What every listing is checked against, who owns each rule, and what proves it.">
-      <Table headers={['Rule', 'How it is checked', 'Rests on', 'Owner', 'Evidence', 'Reaches', 'State']}>
+                 subtitle="What every listing is checked against, who owns each rule, and what proves it. A new rule starts as a draft: put it on a shelf under Which rule, which shelf, then activate it."
+                 action={<Btn size="sm" onClick={() => setDialog({ kind: 'form', rule: null })}>Add a rule</Btn>}>
+      <Table headers={['Rule', 'How it is checked', 'Rests on', 'Owner', 'Evidence', 'Reaches', 'State', '']}>
         {book.rules.map(r => {
           const reach = reachOf(book.matrix, r.id)
-          const nameOf = (id: string) => book.categories.find(c => c.id === id)?.name ?? id
+          const applied = reach.enforced.length + reach.warned.length
+          const can = ruleActions(r, applied)
           return (
             <tr key={r.id}>
               <Td style={{ maxWidth: '30ch' }}>
@@ -366,44 +396,186 @@ function RuleBook({ book }: { book: ShelfBook }) {
                   {r.descr}
                 </div>
               </Td>
-              <Td>
-                <span style={{ fontSize: 'var(--text-xs)' }}>
-                  {r.check_by === 'auto' ? 'The platform, itself'
-                    : r.check_by === 'doc' ? 'Against a document'
-                    : r.check_by === 'extern' ? 'An external service' : 'A person'}
-                </span>
-              </Td>
+              <Td>{CHECK_LABEL[r.check_by]}</Td>
               <Td>{r.basis}</Td>
               <Td>{r.owner}</Td>
-              <Td style={{ maxWidth: '24ch' }}>
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                  {r.evidence ?? '—'}
-                </span>
-              </Td>
+              <Td style={{ maxWidth: '24ch', color: 'var(--text-secondary)' }}>{r.evidence ?? '—'}</Td>
               <Td style={{ maxWidth: '26ch' }}>
-                {reach.enforced.length === 0 && reach.warned.length === 0
-                  ? <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>Nowhere</span>
+                {applied === 0
+                  ? <span style={{ color: 'var(--text-tertiary)' }}>Nowhere</span>
                   : (
-                    <span style={{ fontSize: 'var(--text-xs)' }}>
-                      {reach.enforced.length > 0 && <>Blocks on {reach.enforced.map(nameOf).join(', ')}</>}
-                      {reach.enforced.length > 0 && reach.warned.length > 0 && <br />}
+                    <>
+                      {reach.enforced.length > 0 && <div>Blocks on {reach.enforced.map(nameOf).join(', ')}</div>}
                       {reach.warned.length > 0 && (
-                        <span style={{ color: 'var(--text-tertiary)' }}>Flags on {reach.warned.map(nameOf).join(', ')}</span>
+                        <div style={{ color: 'var(--text-secondary)' }}>Flags on {reach.warned.map(nameOf).join(', ')}</div>
                       )}
-                    </span>
+                    </>
                   )}
               </Td>
               <Td>
                 <StatusPill status={r.status === 'active' ? 'healthy' : 'draft'} label={r.status} />
                 {!r.blocks && (
-                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px' }}>advisory</div>
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>advisory</div>
                 )}
+                {r.locked && (
+                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }} title={r.locked}>locked</div>
+                )}
+              </Td>
+              <Td>
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <Btn variant="secondary" size="sm" onClick={() => setDialog({ kind: 'form', rule: r })}
+                       aria-label={`Edit ${r.name}`}>Edit</Btn>
+                  {can.activate && (
+                    <Btn variant="secondary" size="sm" disabled={busy === r.id}
+                         onClick={() => void act(r.id, () => setRuleStatus(r.id, 'active'), `${r.name} is active.`)}
+                         aria-label={`Activate ${r.name}`}>Activate</Btn>
+                  )}
+                  {can.reinstate && (
+                    <Btn variant="secondary" size="sm" disabled={busy === r.id}
+                         onClick={() => void act(r.id, () => setRuleStatus(r.id, 'draft'), `${r.name} is back as a draft. Put it on a shelf, then activate it.`)}
+                         aria-label={`Reinstate ${r.name}`}>Reinstate</Btn>
+                  )}
+                  {can.retire && (
+                    <Btn variant="secondary" size="sm" onClick={() => setDialog({ kind: 'retire', rule: r })}
+                         aria-label={`Retire ${r.name}`}>Retire</Btn>
+                  )}
+                  {can.remove && (
+                    <Btn variant="danger" size="sm" onClick={() => setDialog({ kind: 'delete', rule: r })}
+                         aria-label={`Delete ${r.name}`}>Delete</Btn>
+                  )}
+                </div>
               </Td>
             </tr>
           )
         })}
       </Table>
+
+      {dialog?.kind === 'form' && (
+        <RuleFormDialog rule={dialog.rule} book={book} busy={busy === 'form'}
+          onClose={() => setDialog(null)}
+          onSave={(form) => {
+            const isNew = dialog.rule === null
+            const problem = ruleFormProblem(form, isNew)
+            if (problem) { toast(problem, 'error'); return }
+            if (isNew) {
+              const id = nextRuleId(book.rules)
+              const sort = book.rules.reduce((n, r) => Math.max(n, r.sort_order), 0) + 1
+              void act('form', () => createRule(id, form, sort), `${form.name.trim()} added as a draft (${id}).`)
+            } else {
+              const editing = dialog.rule as PolicyRuleRow
+              void act('form', () => updateRule(editing.id, form), `${form.name.trim()} saved.`)
+            }
+          }} />
+      )}
+
+      {dialog?.kind === 'retire' && (
+        <RetireDialog rule={dialog.rule} shelves={[...reachOf(book.matrix, dialog.rule.id).enforced, ...reachOf(book.matrix, dialog.rule.id).warned].map(nameOf)}
+          busy={busy === 'retire'} onClose={() => setDialog(null)}
+          onRetire={() => { const r = dialog.rule; void act('retire', () => retireRule(r.id), `${r.name} retired.`) }} />
+      )}
+
+      {dialog?.kind === 'delete' && (
+        <Modal open onClose={() => setDialog(null)} title={`Delete ${dialog.rule.name}?`}
+          footer={<>
+            <Btn variant="secondary" onClick={() => setDialog(null)}>Cancel</Btn>
+            <Btn variant="danger" disabled={busy === 'delete'}
+                 onClick={() => { const r = dialog.rule; void act('delete', () => deleteRule(r.id), `${r.name} deleted.`) }}>
+              {busy === 'delete' ? 'Deleting…' : 'Delete for good'}
+            </Btn>
+          </>}>
+          <p style={{ fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
+            This removes {dialog.rule.id} from the rule book permanently. No shelf applies it. If a seller&rsquo;s
+            evidence still names it, the database will refuse, and you can retire it instead.
+          </p>
+        </Modal>
+      )}
     </SectionCard>
+  )
+}
+
+function RetireDialog({ rule, shelves, busy, onClose, onRetire }: {
+  rule: PolicyRuleRow
+  shelves: string[]
+  busy: boolean
+  onClose: () => void
+  onRetire: () => void
+}) {
+  return (
+    <Modal open onClose={onClose} title={`Retire ${rule.name}?`}
+      footer={<>
+        <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+        <Btn variant="danger" disabled={busy} onClick={onRetire}>{busy ? 'Retiring…' : 'Retire the rule'}</Btn>
+      </>}>
+      <p style={{ fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
+        {shelves.length > 0
+          ? <>It comes off {shelves.join(', ')}, and new listings there stop being checked against it. </>
+          : <>No shelf applies it now. </>}
+        The rule stays in the book, marked retired, because past review decisions refer to it. You can reinstate it later.
+      </p>
+    </Modal>
+  )
+}
+
+function RuleFormDialog({ rule, book, busy, onClose, onSave }: {
+  rule: PolicyRuleRow | null
+  book: ShelfBook
+  busy: boolean
+  onClose: () => void
+  onSave: (form: RuleForm) => void
+}) {
+  const [form, setForm] = useState<RuleForm>(() => formOf(rule))
+  const set = <K extends keyof RuleForm>(k: K, v: RuleForm[K]) => setForm(f => ({ ...f, [k]: v }))
+  /* The platform checks only what code was written for; such a rule keeps its method. */
+  const fixedMethod = rule !== null && rule.check_by === 'auto'
+  const title = rule === null ? `Add a rule (${nextRuleId(book.rules)})` : `Edit ${rule.name}`
+  return (
+    <Modal open onClose={onClose} title={title}
+      footer={<>
+        <Btn variant="secondary" onClick={onClose}>Cancel</Btn>
+        <Btn disabled={busy} onClick={() => onSave(form)}>{busy ? 'Saving…' : rule === null ? 'Add as a draft' : 'Save'}</Btn>
+      </>}>
+      <FormField label="Name" required>
+        <TextInput id="rule-name" value={form.name} onChange={e => set('name', e.target.value)} maxLength={80} />
+      </FormField>
+      <FormField label="What it requires" required hint="One sentence a seller can act on.">
+        <TextArea id="rule-descr" value={form.descr} onChange={e => set('descr', e.target.value)} rows={3} />
+      </FormField>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0 14px' }}>
+        <FormField label="How it is checked" hint={fixedMethod ? 'Checked by code; the method cannot change.' : undefined}>
+          <Select id="rule-check" value={form.check_by} disabled={fixedMethod}
+                  onChange={e => set('check_by', e.target.value as RuleForm['check_by'])}>
+            {fixedMethod && <option value="auto">{CHECK_LABEL.auto}</option>}
+            <option value="manual">{CHECK_LABEL.manual}</option>
+            <option value="doc">{CHECK_LABEL.doc}</option>
+            <option value="extern">{CHECK_LABEL.extern}</option>
+          </Select>
+        </FormField>
+        <FormField label="Rests on">
+          <Select id="rule-basis" value={form.basis} onChange={e => set('basis', e.target.value)}>
+            {RULE_BASES.map(b => <option key={b} value={b}>{b}</option>)}
+          </Select>
+        </FormField>
+        <FormField label="Owner" required hint="The team a seller can appeal to.">
+          <TextInput id="rule-owner" value={form.owner} onChange={e => set('owner', e.target.value)} />
+        </FormField>
+      </div>
+      <FormField label="Evidence" hint={form.check_by === 'doc' ? 'Required: the document that satisfies it.' : 'What satisfies it, if anything.'}>
+        <TextInput id="rule-evidence" value={form.evidence} onChange={e => set('evidence', e.target.value)} />
+      </FormField>
+      <div style={{ display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: 'var(--text-sm)' }}>
+        <label style={{ display: 'flex', gap: '8px', alignItems: 'center', minHeight: '44px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={form.blocks} onChange={e => set('blocks', e.target.checked)} />
+          Blocks a listing that fails it (otherwise advisory)
+        </label>
+        <label style={{ display: 'flex', gap: '8px', alignItems: 'center', minHeight: '44px', cursor: 'pointer' }}>
+          <input type="checkbox" checked={form.appeal} onChange={e => set('appeal', e.target.checked)} />
+          A seller may appeal it
+        </label>
+      </div>
+      {rule?.locked && (
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '8px' }}>Locked: {rule.locked}</p>
+      )}
+    </Modal>
   )
 }
 
