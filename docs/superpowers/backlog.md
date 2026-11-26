@@ -126,9 +126,17 @@ Built on branch `invoices-and-recent-trade`. Spec `docs/superpowers/specs/2026-1
 Migrations `20261113400000` (billing run, ninth nightly job `invoices`) and `20261113500000` (demo orders Aug–Nov
 2026, invoiced by the run) — **to be applied by the user, in that order**; `invoicing.integration.test.ts` skips until then.
 Still open:
-- [ ] Business subscriptions are not billed by the run; their recurring invoices on file stop at July 2026.
-- [ ] Nothing moves an invoice from open to overdue after its due date (as before).
+- [x] Business subscriptions are not billed by the run; their recurring invoices on file stop at July 2026. Done in spec 14.
+- [x] Nothing moves an invoice from open to overdue after its due date (as before). Done in spec 14.
 - [ ] Seller settlement lines and ledger postings are not written for the new orders.
+
+## Spec 14 — subscription billing and overdue invoices (2026-11-26)
+
+Merged. Migration `20261126100000` (applied 2026-11-26). Spec `docs/superpowers/specs/2026-11-26-subscription-billing-and-overdue-design.md`.
+Still open:
+- [ ] No proration: a subscription added after its month's invoice was raised is not billed for that month.
+- [ ] A backfill applied late would miss November (not an issue now).
+- [ ] Seller settlement lines and ledger postings are not written for the new orders or subscriptions (spec 15).
 
 ## Spec 13 — fraud and risk scoring (2026-11-13)
 

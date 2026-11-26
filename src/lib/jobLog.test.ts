@@ -89,6 +89,19 @@ describe('summarise', () => {
       .toBe('Nothing to invoice')
   })
 
+  it('invoices, as run_invoicing reports them', () => {
+    const night = (orders: number, subs: number, overdue: number) => ({
+      ran_on: '2026-12-01',
+      orders: { ran_on: '2026-12-01', period: 'Nov 2026', invoices: orders, orders: 7, lines: 9, skipped: [] },
+      subscriptions: { ran_on: '2026-12-01', period: 'Nov 2026', invoices: subs, subscriptions: 12, skipped: [] },
+      overdue: { ran_on: '2026-12-01', overdue },
+    })
+    expect(summarise('invoices', night(3, 6, 2))).toBe('3 order invoices, 6 subscription invoices, 2 now overdue')
+    expect(summarise('invoices', night(1, 1, 0))).toBe('1 order invoice, 1 subscription invoice')
+    expect(summarise('invoices', night(0, 0, 4))).toBe('4 now overdue')
+    expect(summarise('invoices', night(0, 0, 0))).toBe('Nothing to invoice')
+  })
+
   it('risk', () => {
     expect(summarise('risk', { ran_on: '2026-11-13', scored: 40, review: 3, high: 1 }))
       .toBe('40 accounts scored, 3 to review, 1 high')
