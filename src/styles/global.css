@@ -168,6 +168,32 @@ input, select, textarea {
   font-size: inherit;
 }
 
+/* Every dropdown, wherever it is drawn: a thin chevron in place of the
+   browser's own, with room kept for it so text never runs under it. The
+   `!important`s are deliberate: many selects carry an inline `padding` or
+   `background` shorthand that would otherwise wipe the chevron or its room. */
+select {
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 12px center !important;
+  background-size: 16px 16px !important;
+  padding-right: 38px !important;
+  text-overflow: ellipsis;
+}
+select:hover:not(:disabled) { border-color: var(--text-tertiary); }
+select:disabled { cursor: not-allowed; opacity: 0.75; }
+select[multiple], select[size]:not([size="1"]) {
+  background-image: none !important;
+  padding-right: 12px !important;
+}
+/* Forced colours drop background images, so the browser draws its own arrow there. */
+@media (forced-colors: active) {
+  select { -webkit-appearance: auto; appearance: auto; background-image: none !important; padding-right: revert !important; }
+}
+
 /* ---------- Utility ---------- */
 .container {
   max-width: var(--max-width);
