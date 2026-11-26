@@ -27,6 +27,8 @@ import { BundleGroup } from './bundles/BundleGroup'
 import { basketSink } from './bundles/sinks'
 import { bundlesChanged } from './bundles/events'
 import { StockFlag } from './StockFlag'
+import { heldRefs } from '../lib/riskRepo'
+import { HELD_FOR_BUYER } from '../lib/risk'
 import { lineFlag, blockedSentence, stockBlock } from '../lib/baskets'
 
 /* One icon per rail, so the list reads at a glance rather than as six identical
@@ -181,6 +183,8 @@ export function Checkout({ cartItems, onClearCart, onComplete, onAcceptFlag, onR
      the second would leave the shopper charged for half a purchase with no way
      to tell which half. Held outside `handleSubmit` because the provider's
      answer arrives later, and a refusal has to be able to take them back. */
+  /* True when an order just placed is being checked before it goes on. */
+  const [heldOrder, setHeldOrder] = useState(false)
   const [placed, setPlaced] = useState<{ id: string; ref: string }[]>([])
 
   /* The orders go, and the monthly subscriptions written with them: they were
@@ -348,7 +352,9 @@ export function Checkout({ cartItems, onClearCart, onComplete, onAcceptFlag, onR
     setAway(null)
     if (a.state === 'succeeded') {
       await onClearCart()
-      setOrderRef(placed.map(o => o.ref).join(' · '))
+      const refs = placed.map(o => o.ref)
+      setOrderRef(refs.join(' · '))
+      setHeldOrder((await heldRefs(refs)).length > 0)
       setPlaced([])
       setStep('confirm')
       return
@@ -421,6 +427,9 @@ export function Checkout({ cartItems, onClearCart, onComplete, onAcceptFlag, onR
           <p style={{ fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--brand-accent-dark)', marginBottom: '24px' }}>
             {orderRef}
           </p>
+          {heldOrder && (
+            <p role="status" style={{ color: 'var(--text)', fontWeight: 600, marginBottom: '16px' }}>{HELD_FOR_BUYER}</p>
+          )}
           <p style={{ color: 'var(--text-secondary)', marginBottom: '32px' }}>
             We've sent a confirmation to {email}. Digital services will activate immediately, and physical items will ship within 2-3 business days.
           </p>

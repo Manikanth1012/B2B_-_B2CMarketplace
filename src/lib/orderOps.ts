@@ -139,6 +139,7 @@ export function nextStage(o: Pick<OrderRow, 'stage' | 'stages'>): string | null 
 
 export const STATUS_TONE: Record<string, string> = {
   placed: 'pending',
+  held: 'pending',
   processing: 'current',
   shipped: 'current',
   'in-transit': 'current',

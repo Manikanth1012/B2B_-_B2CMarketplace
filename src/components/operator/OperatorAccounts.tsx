@@ -5,6 +5,9 @@ import {
 import { Pager, usePaging } from '../Pager'
 import { StatCard, SectionCard, Table, Td, StatusPill, Btn, EmptyState, fmtInt } from './shared'
 import { Callout } from '../OnboardingJourney'
+import { StatusBadge } from '../ui/StatusBadge'
+import { accountBands } from '../../lib/riskRepo'
+import { bandTone } from '../../lib/risk'
 import { useMarket } from '../../lib/MarketContext'
 import { loadAccountBook } from '../../lib/accountsRepo'
 import type { AccountBook } from '../../lib/accountsRepo'
@@ -55,6 +58,9 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
   const [openId, setOpenId] = useState<string | null>(null)
 
   const reload = useCallback(async () => setBook(await loadAccountBook()), [])
+  /* Risk bands by business account id; empty until the risk migration is applied. */
+  const [risk, setRisk] = useState<Awaited<ReturnType<typeof accountBands>>>(new Map())
+  useEffect(() => { void accountBands('business').then(setRisk) }, [])
   useEffect(() => { void reload() }, [reload])
 
   const accounts = book?.accounts ?? []
@@ -220,7 +226,16 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
                           {a.id} · {a.segment}{a.industry ? ` · ${a.industry}` : ''}
                         </div>
                       </Td>
-                      <Td>{a.market}</Td>
+                      <Td>
+                        {a.market}
+                        {risk.has(a.id) && (
+                          <div style={{ marginTop: '3px' }}>
+                            <StatusBadge tone={bandTone(risk.get(a.id)!.band)}>
+                              Risk: {risk.get(a.id)!.band}
+                            </StatusBadge>
+                          </div>
+                        )}
+                      </Td>
                       <Td>{a.terms}</Td>
                       <Td>
                         {c ? (

@@ -148,6 +148,12 @@ export function summarise(job: string, result: unknown): string {
         c('invoices', n => `${plural(n, 'invoice')} raised`),
         c('orders', n => `${plural(n, 'order')} billed`),
       ], 'Nothing to invoice')
+    case 'risk': {
+      const n = count(o, 'scored')
+      if (n === null) return 'Done'
+      if (n === 0) return 'No accounts to score'
+      return `${plural(n, 'account')} scored, ${count(o, 'review') ?? 0} to review, ${count(o, 'high') ?? 0} high`
+    }
     default:
       return 'Done'
   }

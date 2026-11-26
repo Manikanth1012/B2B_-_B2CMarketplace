@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Building2, Users, Package, DollarSign, Warehouse, Ticket,
   Shield, Code, Megaphone, Tag, TrendingUp, Settings,
   Search, ChevronDown, Bell as BellIcon, LogOut, Menu, X, BookOpen, Store, Wallet as WalletIcon, MessageSquareWarning, RotateCcw, Gift, Scale, BookText, Radio, Receipt, LibraryBig, Globe,
-  User, KeyRound, Monitor, Smartphone, Layers, FileText, PackageSearch, Landmark, FileSignature, CalendarClock, MessagesSquare, BookMarked, Clock, ShoppingBasket } from 'lucide-react'
+  User, KeyRound, Monitor, Smartphone, Layers, FileText, PackageSearch, Landmark, FileSignature, CalendarClock, MessagesSquare, BookMarked, Clock, ShoppingBasket, ShieldAlert } from 'lucide-react'
 import type { OperatorView } from '../../types/view'
 import { ContextualHelp } from '../ContextualHelp'
 import { AccountMenu } from '../AccountMenu'
@@ -118,6 +118,7 @@ const NAV_SECTIONS: { label: string; items: NavItem[] }[] = [
       { id: 'op-feedback', label: 'Content Feedback', icon: <MessageSquareWarning size={18} /> },
       { id: 'op-roles', label: 'Roles & Users', icon: <Shield size={18} /> },
       { id: 'op-audit', label: 'Audit Trail', icon: <Settings size={18} /> },
+      { id: 'op-risk', label: 'Risk', icon: <ShieldAlert size={18} /> },
       /* One entry, not two. "Knowledge base" was the reading screen and "Manage
          content" the authoring one, so checking what an article looked like
          meant leaving the editor. They are three tabs of one screen now. */

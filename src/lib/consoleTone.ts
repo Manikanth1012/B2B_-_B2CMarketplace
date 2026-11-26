@@ -25,7 +25,7 @@ const TONES: Record<string, Tone> = {
      yet is waiting too. `refunded` is the money back, which is the outcome
      asked for; `partial` is final but mixed, so it informs rather than
      celebrates. */
-  placed: 'info', processing: 'info', shipped: 'info', 'in-transit': 'info',
+  placed: 'info', held: 'warning', processing: 'info', shipped: 'info', 'in-transit': 'info',
   'partly-failed': 'danger', refunded: 'success', cancelled: 'danger',
   requested: 'warning', declined: 'danger', partial: 'info',
   paid: 'success', overdue: 'danger',

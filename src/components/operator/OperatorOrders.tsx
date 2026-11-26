@@ -6,6 +6,9 @@ import {
 } from './shared'
 import { Callout } from '../OnboardingJourney'
 import { Pager, usePaging } from '../Pager'
+import { StatusBadge } from '../ui/StatusBadge'
+import { orderScores } from '../../lib/riskRepo'
+import { bandTone } from '../../lib/risk'
 import { loadOrderBook, advance, stepBack, failOrder, unfail, setTracking, removeOrder } from '../../lib/orderOpsRepo'
 import type { OrderBook } from '../../lib/orderOpsRepo'
 import {
@@ -217,6 +220,14 @@ function Register({ book, today, onOpen }: {
   const page = usePaging(found)
   /* A configured bundle's parts read as one item under its name. */
   const bundleName = useBundleNames(book.lines)
+  /* The risk score of the orders on this page; nothing until the risk migration is applied. */
+  const [scores, setScores] = useState<Awaited<ReturnType<typeof orderScores>>>(new Map())
+  const pageIds = page.rows.map(o => o.id).join(',')
+  useEffect(() => {
+    let live = true
+    void orderScores(pageIds ? pageIds.split(',') : []).then(m => { if (live) setScores(m) })
+    return () => { live = false }
+  }, [pageIds])
   const statuses = [...new Set(book.orders.map(o => o.status))].sort()
 
   return (
@@ -275,6 +286,11 @@ function Register({ book, today, onOpen }: {
                     <Td right><strong>{fmtIn(o.total, o.currency)}</strong></Td>
                     <Td>
                       <StatusPill status={STATUS_TONE[o.status] ?? 'draft'} label={o.status} />
+                      {scores.has(o.id) && (
+                        <div style={{ marginTop: '3px' }}>
+                          <StatusBadge tone={bandTone(scores.get(o.id)!.band)}>Risk {scores.get(o.id)!.score}</StatusBadge>
+                        </div>
+                      )}
                       <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
                         showing “{showing(o)}”
                       </div>
