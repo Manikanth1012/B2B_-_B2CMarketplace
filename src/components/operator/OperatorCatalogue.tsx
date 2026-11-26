@@ -320,20 +320,26 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
 
       {tab === 'catalogue' && (
         <SectionCard title="Live catalogue" subtitle={`${catalogue.length} shown`}>
-          <div style={{ padding: '13px 20px', display: 'flex', gap: '9px', flexWrap: 'wrap', borderBottom: '1px solid var(--border-light)' }}>
-            <div style={{ position: 'relative', flex: '1 1 240px', maxWidth: '340px' }}>
-              <Search size={14} style={{ position: 'absolute', left: '9px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-              <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search listing, SKU or seller"
-                     style={{ width: '100%', padding: '7px 10px 7px 30px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', fontSize: 'var(--text-xs)', outline: 'none', color: 'var(--text)' }} />
+          {/* One row: the search takes what is left, each filter a fixed width,
+              wrapping only when the screen is too narrow for all three. */}
+          <div style={{ padding: '13px 20px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', borderBottom: '1px solid var(--border-light)' }}>
+            <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 0 }}>
+              <Search size={16} aria-hidden="true" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)', pointerEvents: 'none' }} />
+              <TextInput value={search} onChange={e => setSearch(e.target.value)} placeholder="Search listing, SKU or seller"
+                         aria-label="Search listing, SKU or seller" style={{ paddingLeft: '36px' }} />
             </div>
-            <Select value={catFilter} onChange={e => setCatFilter(e.target.value)} style={{ fontSize: 'var(--text-xs)', padding: '6px 9px' }}>
-              <option value="">Every marketplace</option>
-              {snap.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </Select>
-            <Select value={stateFilter} onChange={e => setStateFilter(e.target.value)} style={{ fontSize: 'var(--text-xs)', padding: '6px 9px' }}>
-              <option value="">Every state</option>
-              {['live', 'pending', 'rejected', 'suspended'].map(s => <option key={s} value={s}>{s}</option>)}
-            </Select>
+            <div style={{ flex: '0 1 220px', minWidth: '180px' }}>
+              <Select value={catFilter} onChange={e => setCatFilter(e.target.value)} aria-label="Marketplace">
+                <option value="">Every marketplace</option>
+                {snap.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
+            </div>
+            <div style={{ flex: '0 1 180px', minWidth: '150px' }}>
+              <Select value={stateFilter} onChange={e => setStateFilter(e.target.value)} aria-label="State">
+                <option value="">Every state</option>
+                {['live', 'pending', 'rejected', 'suspended'].map(s => <option key={s} value={s}>{s}</option>)}
+              </Select>
+            </div>
           </div>
           <ProductTable products={catalogue} snap={snap} onOpen={setOpenProduct} heroOf={heroOf} catName={catName} />
         </SectionCard>
