@@ -68,7 +68,7 @@ export function OperatorRisk() {
       {!problem && !book && <p role="status" className="op-risk__note">Loading risk…</p>}
 
       {book && (
-        <BentoCard as="article" headingLevel={2} title={TAB_LABEL[tab]}>
+        <BentoCard as="article" headingLevel={2} title={tab === 'flagged' ? 'Flagged and decided' : TAB_LABEL[tab]}>
           <div role="tablist" aria-label="Risk" className="op-risk__tabs">
             {(Object.keys(TAB_LABEL) as Tab[]).map(t => (
               <button key={t} type="button" role="tab" id={`op-risk-tab-${t}`} aria-selected={tab === t}
@@ -186,11 +186,13 @@ function HeldTab({ rows, fmt, onSaid, onChanged }: {
 /* ---------------------------------------------------------------- flagged -- */
 
 function FlaggedTab({ rows, fmt }: { rows: FlaggedRow[]; fmt: (n: number, c: string) => string }) {
-  if (rows.length === 0) return <EmptyState icon={<ShieldAlert size={28} />} message="No order was flagged for review in the last 30 days." />
+  if (rows.length === 0) return <EmptyState icon={<ShieldAlert size={28} />} message="No order was flagged or decided in the last 30 days." />
   return (
     <>
-      <p className="op-risk__sub">Orders scored for review (not held) in the last 30 days.</p>
-      <Table headers={['Order', 'Buyer', { label: 'Amount', align: 'right' }, { label: 'Score', align: 'right' }, 'Why', 'Scored', 'Order status']}>
+      <p className="op-risk__sub">
+        Orders scored for review in the last 30 days, and orders that were held and have since been decided, with the decision.
+      </p>
+      <Table headers={['Order', 'Buyer', { label: 'Amount', align: 'right' }, { label: 'Score', align: 'right' }, 'Why', 'Scored', 'Order status', 'Decision']}>
         {rows.map(r => (
           <tr key={r.order_ref}>
             <Td><strong style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>{r.order_ref}</strong></Td>
@@ -200,6 +202,17 @@ function FlaggedTab({ rows, fmt }: { rows: FlaggedRow[]; fmt: (n: number, c: str
             <Td style={{ maxWidth: '40ch' }}>{reasonsLine(r.reasons)}</Td>
             <Td>{fmtDateTime(r.scored_at)}</Td>
             <Td>{r.status}</Td>
+            <Td style={{ maxWidth: '36ch' }}>
+              {r.decision ? (
+                <>
+                  <strong>{r.decision === 'released' ? 'Released' : 'Cancelled and refunded'}</strong>
+                  <div className="op-risk__sub">
+                    {r.decided_by ?? 'Marketplace'}{r.decided_at ? ` · ${fmtDateTime(r.decided_at)}` : ''}
+                  </div>
+                  {r.note && <div className="op-risk__sub">{r.note}</div>}
+                </>
+              ) : <span className="op-risk__sub">Not held</span>}
+            </Td>
           </tr>
         ))}
       </Table>

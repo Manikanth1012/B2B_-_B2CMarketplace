@@ -36,7 +36,13 @@ export interface HeldRow {
   reasons: RiskReason[]
   scored_at: string
 }
-export interface FlaggedRow extends HeldRow { status: string; decision: string | null }
+export interface FlaggedRow extends HeldRow {
+  status: string
+  decision: string | null
+  decided_by: string | null
+  decided_at: string | null
+  note: string | null
+}
 export interface AccountRiskRow {
   kind: 'shopper' | 'business'
   id: string
@@ -87,10 +93,13 @@ const toRow = (s: Rec, o: Rec): FlaggedRow => ({
   scored_at: String(s.scored_at),
   status: String(o.status ?? ''),
   decision: s.decision === null || s.decision === undefined ? null : String(s.decision),
+  decided_by: s.decided_by === null || s.decided_by === undefined ? null : String(s.decided_by),
+  decided_at: s.decided_at === null || s.decided_at === undefined ? null : String(s.decided_at),
+  note: s.note === null || s.note === undefined ? null : String(s.note),
 })
 
 const ORDER_COLS = 'id, order_ref, buyer_name, total, currency, status'
-const SCORE_COLS = 'order_id, score, band, reasons, scored_at, decision'
+const SCORE_COLS = 'order_id, score, band, reasons, scored_at, decision, decided_by, decided_at, note'
 
 /** Everything the Risk screen shows. Orders are joined to their scores here, with no foreign-key embed. */
 export async function loadRiskBook(now: Date = new Date()): Promise<Kept<RiskBook>> {
@@ -98,7 +107,7 @@ export async function loadRiskBook(now: Date = new Date()): Promise<Kept<RiskBoo
     const since = new Date(now.getTime() - 30 * 86_400_000).toISOString()
     const [heldOrders, flaggedScores, accounts, rules, settings, changes, profiles, companies] = await Promise.all([
       supabase.from('orders').select(ORDER_COLS).eq('status', 'held'),
-      supabase.from('order_risk').select(SCORE_COLS).eq('band', 'review').gte('scored_at', since)
+      supabase.from('order_risk').select(SCORE_COLS).or('band.eq.review,and(band.eq.hold,decision.not.is.null)').gte('scored_at', since)
         .order('scored_at', { ascending: false }),
       supabase.from('account_risk').select('kind, id, score, band, reasons, scored_at').order('score', { ascending: false }),
       supabase.from('risk_rules').select('id, applies, label, points, enabled, threshold, unit, sort_order').order('sort_order'),

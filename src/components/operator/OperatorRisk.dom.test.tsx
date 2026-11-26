@@ -25,7 +25,12 @@ const BOOK = () => ({
     reasons: [{ rule: 'new-account', label: 'New account', points: 20 }, { rule: 'big', label: 'Large order', points: 60 }],
     scored_at: '2026-11-13T08:00:00Z',
   }],
-  flagged: [],
+  flagged: [{
+    order_ref: 'ORD-0900', buyer: 'Dev Patel', total: 900, currency: 'INR', score: 85, band: 'hold' as const,
+    reasons: [{ rule: 'big', label: 'Large order', points: 60 }], scored_at: '2026-11-10T08:00:00Z',
+    status: 'cancelled', decision: 'cancelled', decided_by: 'Anika Sharma', decided_at: '2026-11-10T09:00:00Z',
+    note: 'Card holder could not be reached',
+  }],
   accounts: [
     { kind: 'shopper' as const, id: 'u1', name: 'Asha', score: 45, band: 'review' as const, reasons: [], scored_at: '2026-11-13T00:30:00Z' },
     { kind: 'business' as const, id: 'ENT-1', name: 'Acme Logistics', score: 75, band: 'high' as const, reasons: [], scored_at: '2026-11-13T00:30:00Z' },
@@ -56,6 +61,19 @@ describe('OperatorRisk', () => {
     expect(repo.decide).toHaveBeenCalledWith('ORD-1001', 'release', 'Spoke to the buyer')
     expect((await screen.findByRole('status')).textContent).toMatch(/ORD-1001 was released/)
     expect(screen.queryByText('Priya Raman')).toBeNull()
+  })
+
+  it('keeps a decided hold visible with its decision, who, when and the note', async () => {
+    repo.load.mockResolvedValue({ ok: true, value: BOOK() })
+    const user = userEvent.setup()
+    render(<OperatorRisk />)
+    await user.click(await screen.findByRole('tab', { name: /Flagged/ }))
+    const row = screen.getByText('ORD-0900').closest('tr')!
+    expect(within(row).getByText('Cancelled and refunded')).toBeTruthy()
+    expect(within(row).getByText(/Anika Sharma/)).toBeTruthy()
+    expect(within(row).getByText('Card holder could not be reached')).toBeTruthy()
+    expect(within(row).getByText('Large order +60')).toBeTruthy()
+    expect(within(row).getByText('85')).toBeTruthy()
   })
 
   it('needs a note, and says the cancel note is shown to the buyer and seller', async () => {
