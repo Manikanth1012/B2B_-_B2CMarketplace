@@ -363,3 +363,75 @@ export function levelImpact(
      not carry, so it does not guess. */
   return { known: false, why: `${rule.name} is checked against the listing itself, one at a time.` }
 }
+
+/* ------------------------------------------------------------ the rule book -- */
+
+/** What the operator fills in to write or change a rule. */
+export interface RuleForm {
+  name: string
+  descr: string
+  check_by: 'auto' | 'doc' | 'manual' | 'extern'
+  basis: string
+  owner: string
+  evidence: string
+  blocks: boolean
+  appeal: boolean
+}
+
+export const RULE_BASES = ['Regulatory', 'Commercial', 'Trust and safety', 'Operational'] as const
+
+/** The next free `PR-nn` id, two digits at least. */
+export function nextRuleId(rules: readonly { id: string }[]): string {
+  const top = rules.reduce((n, r) => {
+    const m = /^PR-(\d+)$/.exec(r.id)
+    return m ? Math.max(n, Number(m[1])) : n
+  }, 0)
+  return `PR-${String(top + 1).padStart(2, '0')}`
+}
+
+/**
+ * Why a rule cannot be saved as written, or null. `isNew` because a rule the
+ * platform checks by itself needs code behind it: a new one could only ever be
+ * a promise nothing keeps, so it is offered for existing rules only.
+ */
+export function ruleFormProblem(form: RuleForm, isNew: boolean): string | null {
+  if (!form.name.trim()) return 'Give the rule a name.'
+  if (form.name.trim().length > 80) return 'Keep the name under 80 characters; the description carries the detail.'
+  if (form.descr.trim().length < 10) return 'Say what the rule requires, in a sentence a seller can act on.'
+  if (!form.owner.trim()) return 'Say who owns the rule — the team a seller can appeal to.'
+  if (!(RULE_BASES as readonly string[]).includes(form.basis)) return 'Choose what the rule rests on.'
+  if (isNew && form.check_by === 'auto') {
+    return 'A rule the platform checks by itself needs code behind it. Write it as checked by a person, a document or an external service.'
+  }
+  if (form.check_by === 'doc' && !form.evidence.trim()) return 'A rule checked against a document has to say which document.'
+  return null
+}
+
+export interface RuleActions {
+  edit: boolean
+  activate: boolean
+  retire: boolean
+  reinstate: boolean
+  remove: boolean
+  /** Why retiring or deleting is not offered, when it is not. */
+  why: string | null
+}
+
+/**
+ * What may be done to a rule from the rule book. A rule is retired rather than
+ * deleted once anything could refer to it; only a draft or retired rule that no
+ * shelf applies may be deleted (the database refuses the rest anyway, because
+ * seller evidence may refer to it).
+ */
+export function ruleActions(rule: PolicyRuleRow, appliedOn: number): RuleActions {
+  const locked = !!rule.locked
+  const why = locked ? `Locked: ${rule.locked}` : null
+  return {
+    edit: true,
+    activate: rule.status === 'draft',
+    retire: rule.status !== 'retired' && !locked,
+    reinstate: rule.status === 'retired',
+    remove: !locked && rule.status !== 'active' && appliedOn === 0,
+    why,
+  }
+}

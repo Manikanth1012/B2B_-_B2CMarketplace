@@ -4,8 +4,9 @@ import {
   barLine, reviewLine, returnsLine, capLine, shelfWarnings,
   levelOf, reachOf, ruleLine, matrixProblems, ruleCoverage, levelImpact,
   LEVEL_LABEL,
+  nextRuleId, ruleFormProblem, ruleActions,
 } from './shelfPolicy'
-import type { CategoryRow, ListingRow, SellerRow, MatrixRow } from './shelfPolicy'
+import type { CategoryRow, ListingRow, SellerRow, MatrixRow, RuleForm } from './shelfPolicy'
 import type { CategoryPolicy, PolicyRuleRow } from './catalogue'
 
 const pol = (over: Partial<CategoryPolicy> = {}): CategoryPolicy => ({
@@ -333,5 +334,46 @@ describe('LEVEL_LABEL', () => {
     expect(LEVEL_LABEL.off).toBe('Not applied')
     expect(LEVEL_LABEL.warn).toMatch(/reviewer/)
     expect(LEVEL_LABEL.enforce).toMatch(/Blocks/)
+  })
+})
+
+describe('the rule book', () => {
+  const form = (over: Partial<RuleForm> = {}): RuleForm => ({
+    name: 'Battery transport', descr: 'Lithium batteries ship only with a UN38.3 test summary.',
+    check_by: 'doc', basis: 'Regulatory', owner: 'Compliance', evidence: 'UN38.3 test summary',
+    blocks: true, appeal: true, ...over,
+  })
+  const rule = (over: Partial<PolicyRuleRow> = {}): PolicyRuleRow => ({
+    id: 'PR-01', name: 'Rule', descr: 'A rule.', check_by: 'manual', basis: 'Regulatory', owner: 'Legal',
+    evidence: null, blocks: true, status: 'active', locked: null, sort_order: 1, ...over,
+  })
+
+  it('numbers the next rule after the highest PR id', () => {
+    expect(nextRuleId([{ id: 'PR-01' }, { id: 'PR-11' }, { id: 'X-99' }])).toBe('PR-12')
+    expect(nextRuleId([])).toBe('PR-01')
+  })
+
+  it('accepts a complete rule and refuses what is missing', () => {
+    expect(ruleFormProblem(form(), true)).toBeNull()
+    expect(ruleFormProblem(form({ name: ' ' }), true)).toMatch(/name/)
+    expect(ruleFormProblem(form({ descr: 'short' }), true)).toMatch(/requires/)
+    expect(ruleFormProblem(form({ owner: '' }), true)).toMatch(/owns/)
+    expect(ruleFormProblem(form({ basis: 'Vibes' }), true)).toMatch(/rests on/)
+    expect(ruleFormProblem(form({ evidence: '' }), true)).toMatch(/which document/)
+  })
+
+  it('never lets a new rule claim the platform checks it by itself, but lets an existing one keep it', () => {
+    expect(ruleFormProblem(form({ check_by: 'auto', evidence: '' }), true)).toMatch(/needs code/)
+    expect(ruleFormProblem(form({ check_by: 'auto', evidence: '' }), false)).toBeNull()
+  })
+
+  it('retires rather than deletes, and never touches a locked rule', () => {
+    expect(ruleActions(rule(), 3)).toMatchObject({ retire: true, remove: false, activate: false, reinstate: false })
+    expect(ruleActions(rule({ status: 'draft' }), 0)).toMatchObject({ activate: true, retire: true, remove: true })
+    expect(ruleActions(rule({ status: 'draft' }), 1)).toMatchObject({ remove: false })
+    expect(ruleActions(rule({ status: 'retired' }), 0)).toMatchObject({ reinstate: true, retire: false, remove: true })
+    const locked = ruleActions(rule({ locked: 'Required by law in every market.' }), 2)
+    expect(locked).toMatchObject({ retire: false, remove: false, edit: true })
+    expect(locked.why).toMatch(/Locked/)
   })
 })
