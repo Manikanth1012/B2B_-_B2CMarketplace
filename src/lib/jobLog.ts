@@ -143,11 +143,26 @@ export function summarise(job: string, result: unknown): string {
         c('flagged', n => `${plural(n, 'basket line')} flagged`),
         c('cleared', n => `${plural(n, 'untouched basket')} cleared`),
       ], 'No baskets to flag or clear')
-    case 'invoices':
+    case 'invoices': {
+      /* Since 20261126100000 the job is run_invoicing: {orders, subscriptions,
+         overdue}, each the result of its own function. Before, it was
+         bill_account_orders alone: {invoices, orders}. */
+      const orders = obj(o.orders), subs = obj(o.subscriptions), overdue = obj(o.overdue)
+      if (orders || subs || overdue) {
+        const n = orders ? count(orders, 'invoices') : null
+        const m = subs ? count(subs, 'invoices') : null
+        const k = overdue ? count(overdue, 'overdue') : null
+        return join([
+          n === null ? null : plural(n, 'order invoice'),
+          m === null ? null : plural(m, 'subscription invoice'),
+          k === null ? null : `${k} now overdue`,
+        ], 'Nothing to invoice')
+      }
       return join([
         c('invoices', n => `${plural(n, 'invoice')} raised`),
         c('orders', n => `${plural(n, 'order')} billed`),
       ], 'Nothing to invoice')
+    }
     case 'risk': {
       const n = count(o, 'scored')
       if (n === null) return 'Done'
