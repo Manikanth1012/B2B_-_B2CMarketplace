@@ -36,7 +36,7 @@ screens already show recurring invoices and the `overdue` status.
 
 ## 3. Effects to expect
 
-Credit exposure counts open and overdue the same, so it does not move. The Dunning screen and the account's own
+Credit exposure counts open and overdue the same, so the sweep does not move it; the backfilled October invoices, left open, do add to each account's exposure (SmartBuild stays over its limit, which the credit tests rely on). The Dunning screen and the account's own
 invoice list will show the swept invoices as overdue.
 
 ## 4. Testing
