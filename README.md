@@ -439,6 +439,10 @@ On Business Accounts, the status chips filter with `inBand` and the summary card
 - The buyer sees only "We're checking this order — usually within a few hours." No score and no rule is ever shown to a buyer or a seller.
 - Account scores are refreshed by the nightly `risk` job and feed back into order scores (Account in review, Account high risk).
 
+**Rule book editing (2026-11-26).** On Shelves & Rules → Rule book the operator can add a rule (it starts as a draft, applies nowhere until a shelf takes it on, then **Activate**), edit any rule, **Retire** one (it comes off every shelf first and stays in the book, because past review decisions refer to it; **Reinstate** brings it back as a draft) and delete an unused draft or retired rule. Locked rules can be edited but never retired or deleted; rules the platform checks by itself keep that method. No migration: the operator could already write `policy_rules`.
+
+**Small UI fixes (2026-11-26).** Every dropdown has one look (thin chevron, room kept for it); console inputs use 8px corners; the Catalogue filters sit on one line; the Content feedback table uses one type size per row with right-aligned tabular figures. The full modernization (spec 16, design system v2, then waves for the shell, operator, partner/enterprise, storefront and charts) is in progress on branch `design-system-v2`.
+
 **Subscription billing and overdue invoices (spec 14).** Migration `20261126100000`.
 
 - Each business account is invoiced on the 1st for last month's subscriptions: one `-S` invoice per account and currency (`INV-2007-202609-INR-S`), kind recurring, a line per subscription that is active or suspended and started by month end, tax and terms as for orders. Billing starts with August 2026.
