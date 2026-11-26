@@ -32,6 +32,9 @@
  *   delete from enterprise_requisitions where id like 'REQ-D26%';
  *   delete from bundle_selections where id like 'BS-D26%';
  *
+ * Each order is split into parts (one per seller, as every order has been
+ * since 20260810000000), and its status is the one its parts give.
+ *
  * Nothing here touches settlement, the ledger or stock: seller statements are
  * built from their own records, and the months they cover are left as they
  * are. A seeded SmartBuild requisition would be held on credit as it is
@@ -210,10 +213,21 @@ begin
        r.account_id, r.id, r.raised_by, r.cost_centre, r.po_ref, v_cur, a.market, v_rate)
     on conflict (id) do nothing;
 
+    /* One part per seller, as every order is split since 20260810000000;
+       the order's status is restated from its parts. */
+    insert into public.order_part (id, order_id, seller, partner_id, kind, state, sort_order)
+    select format('%s-%s', v_ref, x.k), v_oid, x.seller, x.partner_id, 'shipped',
+           case r.ord_status when 'delivered' then 'delivered' when 'in transit' then 'in transit' else 'placed' end, x.k
+      from (select d.seller, max(d.partner_id) as partner_id, dense_rank() over (order by d.seller) as k
+              from d_priced d where d.req = r.id group by d.seller) x
+    on conflict (order_id, seller, kind) do nothing;
+
     insert into public.order_items
       (id, order_id, product_id, product_name, price, quantity, fulfil, status, user_id, part_id, bundle_selection_id)
     select md5(v_ref || '-' || d.n)::uuid, v_oid, d.product_id, d.name, d.unit, d.quantity, 'shipped',
-           case when r.ord_stage >= 4 then 'delivered' else 'placed' end, null, format('%s-%s', v_ref, d.n), v_sel
+           case when r.ord_stage >= 4 then 'delivered' else 'placed' end, null,
+           (select pt.id from public.order_part pt where pt.order_id = v_oid and pt.seller = d.seller and pt.kind = 'shipped'),
+           v_sel
       from d_priced d where d.req = r.id
     on conflict (id) do nothing;
 
@@ -261,7 +275,7 @@ begin
       raise notice 'Shopper % is not on this database; % skipped.', s.buyer, s.ref;
       continue;
     end if;
-    select pr.id, pr.name, pr.seller, pp.price into p
+    select pr.id, pr.name, pr.seller, pr.partner_id, pp.price into p
       from public.products pr join public.product_prices pp on pp.product_id = pr.id and pp.currency = s.cur
      where pr.id = s.sku;
     if p.id is null then raise exception '% has no % price', s.sku, s.cur; end if;
@@ -281,6 +295,11 @@ begin
        array['Ordered', 'Confirmed', 'Dispatched', 'In transit', 'Delivered'], s.uid,
        s.cur, s.market, v_rate, replace(s.ref, 'ORD-', 'PAY-'))
     on conflict (id) do nothing;
+
+    insert into public.order_part (id, order_id, seller, partner_id, kind, state, sort_order)
+    values (s.ref || '-1', v_oid, p.seller, p.partner_id, 'shipped',
+            case s.status when 'delivered' then 'delivered' when 'in transit' then 'in transit' else 'placed' end, 1)
+    on conflict (order_id, seller, kind) do nothing;
 
     insert into public.order_items
       (id, order_id, product_id, product_name, price, quantity, fulfil, status, user_id, part_id)
@@ -359,6 +378,14 @@ begin
 
   select count(*) into v_n from public.orders o where o.order_ref like 'ORD-D26%' and o.account_id is null;
   if v_n > 9 then raise exception '% shopper orders, more than the 9 seeded', v_n; end if;
+
+  /* Every line on a part, and every order's status the one its parts give. */
+  select string_agg(o.order_ref, ', ') into v_bad
+    from public.orders o
+   where o.order_ref like 'ORD-D26%'
+     and (exists (select 1 from public.order_items i where i.order_id = o.id and i.part_id is null)
+          or o.status is distinct from public.order_state_from_parts(o.id));
+  if v_bad is not null then raise exception 'orders with a line on no part, or a status their parts do not give: %', v_bad; end if;
 end $$;
 
 commit;
