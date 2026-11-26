@@ -22,6 +22,11 @@
   --indigo-50: #EEF2FF;           /* selected row / option */
   --teal-700: #0F766E;            /* positive signals — 5.47:1 on white, 5.10 on canvas */
   --focus-ring: 0 0 0 3px rgba(79,70,229,0.18);
+  /* Accents on dark grounds (ink, navy, the hero gradient): indigo-600 is only 2.98:1 on ink-900. */
+  --accent-on-dark: #A5B4FC;      /* text and icons on ink/navy/hero gradient — see contrast.test.ts */
+  --accent-on-dark-2: #5EEAD4;    /* light teal, gradient end for large type on dark */
+  --indigo-tint-on-dark: rgba(165,180,252,0.14);
+  --indigo-line-on-dark: rgba(165,180,252,0.35);
 
   /* ---- v1 palette names, re-pointed ---- */
   --brand-navy: #0B1220;

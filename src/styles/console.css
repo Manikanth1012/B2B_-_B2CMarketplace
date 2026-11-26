@@ -85,7 +85,7 @@ textarea.c-input { resize: vertical; min-height: 88px; }
 /* The outline is transparent, not none, and only on focus: forced-colors mode
    drops the box-shadow but repaints this outline, so only the focused field
    shows one there. */
-.c-input:focus { border-color: var(--electric); box-shadow: 0 0 0 3px rgba(22, 139, 255, 0.25); outline: 2px solid transparent; }
+.c-input:focus { border-color: var(--electric); box-shadow: var(--focus-ring); outline: 2px solid transparent; }
 .c-input:disabled { background: var(--bg-alt); color: var(--text-secondary); cursor: not-allowed; }
 
 /* ---------- Button ---------- */
@@ -100,8 +100,8 @@ textarea.c-input { resize: vertical; min-height: 88px; }
 .c-btn--sm { padding: 6px 10px; font-size: var(--text-xs); min-height: 32px; }
 .c-btn--primary { background: var(--brand-navy); color: #fff; }
 .c-btn--primary:hover:not(:disabled) { background: #0B2A57; }
-.c-btn--accent { background: var(--cyan); color: var(--brand-navy); }
-.c-btn--accent:hover:not(:disabled) { background: #3ED8E8; }
+.c-btn--accent { background: var(--cyan); color: var(--text-inverse); }
+.c-btn--accent:hover:not(:disabled) { background: var(--indigo-700); }
 .c-btn--secondary { background: #fff; color: var(--text); border-color: var(--border-strong); }
 .c-btn--secondary:hover:not(:disabled) { background: var(--bg-alt); }
 .c-btn--danger { background: var(--danger); color: #fff; }

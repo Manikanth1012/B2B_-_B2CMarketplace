@@ -39,7 +39,13 @@ const PAIRS: [fg: string, bg: string, min: number][] = [
   ['brand-accent-dark', 'bg-alt', 4.5],
   ['blue', 'bg-card', 4.5],
   ['blue', 'bg-alt', 4.5],
-  ['text-inverse', 'cyan', 4.5],         // primary button label (v2: white on indigo)
+  ['text-inverse', 'cyan', 4.5],         // primary button label (v2: white on indigo; was brand-navy on cyan)
+  ['text-inverse', 'indigo-700', 4.5],  // .btn-cyan / .c-btn--accent hover
+  /* Dark-surface accents: hero eyebrow, ui-link--light, bento eyebrow, promo CTA, login icon,
+     sidebar active icon and focus outline, hero headline accent (large type, 3:1) */
+  ['accent-on-dark', 'ink-900', 4.5], ['accent-on-dark', 'brand-navy', 4.5], ['accent-on-dark', 'brand-navy-dark', 4.5],
+  ['accent-on-dark', 'brand-navy-light', 4.5], ['accent-on-dark', 'ink-800', 4.5],
+  ['accent-on-dark-2', 'ink-900', 3], ['accent-on-dark-2', 'brand-navy-light', 3],
   ['text-inverse', 'brand-navy', 4.5],
   ['text-inverse', 'brand-navy-dark', 4.5],
   ['success', 'bg-card', 4.5],
@@ -79,6 +85,10 @@ describe('design tokens', () => {
     expect(contrast(tokens[fg], tokens[bg])).toBeGreaterThanOrEqual(min)
   })
 
+  it('the hero gradient end stop still carries the light accents', () => {
+    expect(contrast(tokens['accent-on-dark'], '#312E81')).toBeGreaterThanOrEqual(4.5)
+    expect(contrast(tokens['accent-on-dark-2'], '#312E81')).toBeGreaterThanOrEqual(3)
+  })
   it('carries the v2 palette and keeps the old names pointed at it', () => {
     expect(tokens['ink-900']).toBe('#0B1220')
     expect(tokens['indigo-600']).toBe('#4F46E5')

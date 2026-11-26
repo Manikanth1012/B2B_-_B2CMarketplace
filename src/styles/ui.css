@@ -5,8 +5,8 @@
 :focus-visible { outline: 2px solid var(--electric); outline-offset: 2px; }
 
 /* ---------- Buttons ---------- */
-.btn-cyan { background: var(--cyan); color: var(--brand-navy); }
-.btn-cyan:hover { background: #3ED8E8; transform: translateY(-1px); box-shadow: 0 8px 24px -6px rgba(18, 205, 224, 0.55); }
+.btn-cyan { background: var(--cyan); color: var(--text-inverse); }
+.btn-cyan:hover { background: var(--indigo-700); transform: translateY(-1px); }
 .btn-outline-light { background: rgba(255, 255, 255, 0.04); color: #fff; border-color: rgba(255, 255, 255, 0.5); }
 .btn-outline-light:hover { background: rgba(255, 255, 255, 0.12); border-color: #fff; }
 
@@ -18,7 +18,7 @@
   font-size: var(--text-sm); font-weight: 600; color: var(--blue);
 }
 .ui-link:hover { text-decoration: underline; }
-.ui-link--light { color: var(--cyan); }
+.ui-link--light { color: var(--accent-on-dark); }
 
 /* ---------- Section header ---------- */
 .ui-section { padding-block: 28px; }
@@ -73,7 +73,7 @@
   .bento-card--image::after { background: rgba(3,19,43,0.78); }
 }
 .bento-card__body { position: relative; z-index: 1; display: flex; flex-direction: column; gap: 8px; height: 100%; }
-.bento-card__eyebrow { font-size: var(--text-sm); font-weight: 600; color: var(--cyan); }
+.bento-card__eyebrow { font-size: var(--text-sm); font-weight: 600; color: var(--accent-on-dark); }
 .bento-card--light .bento-card__eyebrow { color: var(--blue); }
 .bento-card__title { font-size: var(--text-xl); font-weight: 800; line-height: 1.2; letter-spacing: -0.01em; }
 .bento-card__text { font-size: var(--text-sm); line-height: 1.5; color: rgba(255,255,255,0.86); }
@@ -216,7 +216,7 @@
 }
 .site-search input { flex: 1; min-width: 0; border: none; outline: none; background: transparent; color: #fff; font-size: var(--text-sm); }
 .site-search input::placeholder { color: rgba(255, 255, 255, 0.72); }
-.site-search:focus-within { border-color: var(--cyan); }
+.site-search:focus-within { border-color: var(--accent-on-dark); }
 /* The copy inside the mobile menu only exists for phones. */
 .site-search--menu { display: none; }
 /* 1024–1199px: the full nav, the search and the market picker overran the bar
@@ -277,11 +277,11 @@
 .hero-main .bento-card__body > :not(.hero-art) { position: relative; z-index: 1; }
 .hero-eyebrow {
   align-self: flex-start; display: inline-flex; align-items: center; gap: 8px; padding: 6px 14px;
-  border-radius: var(--radius-full); border: 1px solid rgba(18, 205, 224, 0.35); background: rgba(18, 205, 224, 0.12);
-  color: var(--cyan); font-size: var(--text-sm); font-weight: 600;
+  border-radius: var(--radius-full); border: 1px solid var(--indigo-line-on-dark); background: var(--indigo-tint-on-dark);
+  color: var(--accent-on-dark); font-size: var(--text-sm); font-weight: 600;
 }
 .hero-title { font-size: clamp(2rem, 3.3vw, 3.25rem); font-weight: 800; line-height: 1.05; letter-spacing: -0.025em; }
-.hero-title__accent { background: var(--grad-cyan); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero-title__accent { background: linear-gradient(90deg, var(--accent-on-dark) 0%, var(--accent-on-dark-2) 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
 /* The gradient is painted through transparent text; forced-colors drops the gradient and would leave the headline invisible. */
 @media (forced-colors: active) {
   .hero-title__accent { background: none; color: CanvasText; -webkit-text-fill-color: CanvasText; }
@@ -372,7 +372,7 @@
   border: 1px solid var(--border-strong); border-radius: var(--radius-full); background: var(--bg-card); color: var(--text-tertiary);
 }
 .listing__search input { flex: 1; border: none; outline: none; background: transparent; color: var(--text); font-size: var(--text-sm); min-width: 0; }
-.listing__search:focus-within { border-color: var(--electric); box-shadow: 0 0 0 2px rgba(22, 139, 255, 0.2); }
+.listing__search:focus-within { border-color: var(--electric); box-shadow: var(--focus-ring); }
 .listing__sort { display: inline-flex; align-items: center; gap: 8px; font-size: var(--text-sm); color: var(--text-secondary); }
 .listing__sort select { height: 40px; padding: 0 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-full); background: var(--bg-card); color: var(--text); font-size: var(--text-sm); }
 .listing__count { font-size: var(--text-sm); color: var(--text-secondary); margin-left: auto; }

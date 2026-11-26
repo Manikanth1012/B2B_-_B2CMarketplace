@@ -68,7 +68,7 @@ export function PromoStrip({ slides, onNavigate }: {
                 control, and a button inside a button is invalid and unreachable. */}
             <span style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px', marginTop: '6px',
-              fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--brand-accent-light, #4FD1D1)',
+              fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--accent-on-dark)',
             }}>
               {banner.cta} <ArrowRight size={14} />
             </span>
