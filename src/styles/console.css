@@ -77,8 +77,8 @@
 
 .c-input {
   width: 100%; min-height: 44px; padding: 10px 12px;
-  border-radius: var(--radius-md); border: 1px solid var(--border-strong);
-  background: #fff; font-size: var(--text-sm); color: var(--text);
+  border-radius: var(--radius); border: 1px solid var(--border-strong);
+  background-color: #fff; font-size: var(--text-sm); color: var(--text);
   outline: none;
 }
 textarea.c-input { resize: vertical; min-height: 88px; }
