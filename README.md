@@ -102,7 +102,7 @@ run separately so one failure does not stop the rest:
 | payments | A payment nobody answered for 15 minutes expires, and the unpaid orders behind it go (`expire_stale_payments`) |
 | bundle selections | Deletes a priced bundle whose hold ended more than 7 days ago and that no basket, requisition, order or subscription uses |
 | baskets | Checks every basket line against stock again and flags it where it no longer fits; clears baskets untouched for 90 days |
-| invoices | On the 1st, invoices each business account for last month's delivered orders, one line per order line carrying its requisition (`bill_account_orders`) |
+| invoices | On the 1st, invoices each business account for last month's delivered orders, one line per order line carrying its requisition (`bill_account_orders`), then for last month's subscriptions (`bill_account_subscriptions`), then marks open invoices past their due date overdue (`mark_overdue_invoices`); all three run as `run_invoicing` |
 | risk | Refreshes every shopper's and business's account risk score (`refresh_account_risk`) |
 | settlements | Closes statements left open after their period, settles every missed month oldest first, then runs today |
 
@@ -438,6 +438,12 @@ On Business Accounts, the status chips filter with `inBand` and the summary card
 - An order is scored when its payment settles. A Hold order is held: sellers cannot see it, and it is frozen (no fulfilment, no edits) until the operator chooses Release or Cancel and refund, with a note. A cancel refunds the buyer in full.
 - The buyer sees only "We're checking this order — usually within a few hours." No score and no rule is ever shown to a buyer or a seller.
 - Account scores are refreshed by the nightly `risk` job and feed back into order scores (Account in review, Account high risk).
+
+**Subscription billing and overdue invoices (spec 14).** Migration `20261126100000`.
+
+- Each business account is invoiced on the 1st for last month's subscriptions: one `-S` invoice per account and currency (`INV-2007-202609-INR-S`), kind recurring, a line per subscription that is active or suspended and started by month end, tax and terms as for orders. Billing starts with August 2026.
+- Backfilled for August to October: August and September are paid; October is left open, so it adds to the account's credit exposure.
+- The overdue sweep moves every open invoice past its due date to overdue and never back; the run is `run_invoicing`, the nightly `invoices` job.
 - The Risk screen has four tabs: Held, Flagged and decided, Accounts, Rules.
 - Scores, reasons, rules and bands are the operator's alone (row-level security); nobody else can read them.
 
