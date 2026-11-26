@@ -139,6 +139,12 @@ Still open:
 - [ ] The Flagged list's 30-day window counts from when the order was scored, not when it was decided.
 - [ ] No device, IP or address-reputation signals; the rules use only what the marketplace already records.
 - [ ] A scoring fault leaves no trace on the order, and one bad account stops the whole nightly rescore.
+Follow-up migration recommended by the final review (2026-11-26), in this order:
+- [ ] **Important:** a buyer can delete their own held order (`owner_delete_orders`; `guard_order_delete` passes non-operators), and `order_risk` cascades with it — the order leaves the Held queue with no record. Refuse a non-operator delete of an order that is held or scored; consider `on delete restrict`.
+- [ ] **Important (older hole):** a consumer can update their own `orders` rows — e.g. `awaiting_payment` → `placed` without paying or being scored, or a new `shipping_address` after release. A buyer should change status only through `settle_payment_attempt`, and not the address or lines once the order leaves `awaiting_payment`.
+- [ ] A shopper who has changed market leaves a held order stuck (`guard_order_currency` refuses release and cancel).
+- [ ] Catch a fault per account in `refresh_account_risk` so one bad account cannot fail the whole job.
+- [ ] Smaller: the checkout confirmation still says digital services activate immediately under the held notice; Accounts/Credit show the raw band ("low") and shopper rows show none; Advance/Fail buttons show on a held order (the database refuses them); an undecided earlier hold counts as an earlier order for "First order"; sellers can see refunds (and the cancel note) on an order they never saw.
 
 ## Spec 11 — loose ends II (2026-11-13)
 
