@@ -39,8 +39,7 @@ const PAIRS: [fg: string, bg: string, min: number][] = [
   ['brand-accent-dark', 'bg-alt', 4.5],
   ['blue', 'bg-card', 4.5],
   ['blue', 'bg-alt', 4.5],
-  ['brand-navy', 'cyan', 4.5],          // primary button label
-  ['cyan', 'brand-navy', 4.5],          // links and eyebrows on dark cards
+  ['text-inverse', 'cyan', 4.5],         // primary button label (v2: white on indigo)
   ['text-inverse', 'brand-navy', 4.5],
   ['text-inverse', 'brand-navy-dark', 4.5],
   ['success', 'bg-card', 4.5],
@@ -51,6 +50,19 @@ const PAIRS: [fg: string, bg: string, min: number][] = [
   ['warning', 'warning-bg', 4.5],
   ['danger', 'danger-bg', 4.5],
   ['info', 'info-bg', 4.5],
+  /* Tokens v2 pairs */
+  ['ink-800', 'surface', 4.5], ['ink-800', 'canvas', 4.5], ['ink-800', 'indigo-50', 4.5],
+  ['slate-600', 'surface', 4.5], ['slate-600', 'canvas', 4.5], ['slate-600', 'indigo-50', 4.5],
+  ['slate-500', 'surface', 4.5], ['slate-500', 'canvas', 4.5], ['slate-500', 'indigo-50', 4.5], ['slate-500', 'slate-100', 4.5],
+  ['slate-500', 'success-bg', 4.5], ['slate-500', 'warning-bg', 4.5], ['slate-500', 'danger-bg', 4.5], ['slate-500', 'info-bg', 4.5],
+  ['indigo-600', 'surface', 4.5], ['indigo-600', 'canvas', 4.5], ['indigo-600', 'indigo-50', 4.5],
+  ['indigo-700', 'surface', 4.5], ['indigo-700', 'canvas', 4.5], ['indigo-700', 'indigo-50', 4.5],
+  ['surface', 'indigo-600', 4.5], ['surface', 'indigo-700', 4.5], ['surface', 'ink-900', 4.5],
+  ['teal-700', 'surface', 4.5], ['teal-700', 'canvas', 4.5],
+  ['control-border', 'surface', 3], ['control-border', 'canvas', 3],
+  ['indigo-600', 'canvas', 3],          // focus ring on the page ground
+  ['indigo-600', 'surface', 3],         // focus ring on a card
+  ['success', 'canvas', 4.5], ['warning', 'canvas', 4.5], ['danger', 'canvas', 4.5], ['info', 'canvas', 4.5],
   ['electric', 'bg-card', 3],           // focus ring: a UI glyph, not text
   ['border-strong', 'bg-card', 3],      // form-control boundary (WCAG 1.4.11)
   ['border-strong', 'bg-alt', 3],
@@ -67,11 +79,21 @@ describe('design tokens', () => {
     expect(contrast(tokens[fg], tokens[bg])).toBeGreaterThanOrEqual(min)
   })
 
-  it('carries the Aventa palette', () => {
-    expect(tokens['brand-navy']).toBe('#061B3A')
-    expect(tokens['brand-navy-dark']).toBe('#03132B')
-    expect(tokens['cyan']).toBe('#12CDE0')
-    expect(tokens['bg-alt']).toBe('#F4F7FC')
+  it('carries the v2 palette and keeps the old names pointed at it', () => {
+    expect(tokens['ink-900']).toBe('#0B1220')
+    expect(tokens['indigo-600']).toBe('#4F46E5')
+    expect(tokens['canvas']).toBe('#F5F7FA')
+    expect(tokens['brand-navy']).toBe(tokens['ink-900'])
+    expect(tokens['cyan']).toBe(tokens['indigo-600'])
+    expect(tokens['bg-alt']).toBe(tokens['canvas'])
+    expect(tokens['text']).toBe(tokens['ink-800'])
+  })
+  it('defines density, shadow and motion tokens and a reduced-motion rule', () => {
+    for (const t of ['--control-h: 40px', '--control-h-sm: 32px', '--head-h: 40px', '--row-h: 48px', '--row-action: 32px',
+      '--shadow-card', '--shadow-popover', '--shadow-modal', '--dur-fast: 150ms', '--dur: 200ms', '--ease']) {
+      expect(css, t).toContain(t)
+    }
+    expect(css).toMatch(/prefers-reduced-motion: reduce\)\s*\{\s*:root\s*\{[^}]*--dur: 0ms/)
   })
 })
 
