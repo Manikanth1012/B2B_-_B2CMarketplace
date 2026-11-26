@@ -27,6 +27,10 @@ const STATE_INK: Record<FeedbackState, string> = {
   actioned: 'var(--success)', declined: 'var(--text-tertiary)',
 }
 
+
+/* Figures in a column line up digit for digit. */
+const NUM: React.CSSProperties = { fontVariantNumeric: 'tabular-nums' }
+
 export function OperatorContentFeedback() {
   const [items, setItems] = useState<Feedback[] | null>(null)
   const [titles, setTitles] = useState<Record<string, string>>({})
@@ -141,26 +145,27 @@ export function OperatorContentFeedback() {
         {/* Paged rather than `.slice(0, 12)`, which dropped the thirteenth
             worst-performing piece of content off the end of a table headed
             "which content is failing" and said nothing about having done it. */}
-        <><Table headers={['Content', 'Type', 'Responses', 'Complaints', 'Helpful', 'Read by', 'Commonest complaint', 'Open']}>
+        <><Table headers={['Content', 'Type', { label: 'Responses', align: 'right' }, { label: 'Complaints', align: 'right' }, { label: 'Helpful', align: 'right' }, 'Read by', 'Commonest complaint', { label: 'Open', align: 'right' }]}>
+          {/* One type size across the row (the table's own), so every cell sits
+              on the same line; secondary columns are told apart by colour, not
+              by shrinking them. Figures are tabular so the columns line up. */}
           {page.rows.map(s => (
             <tr key={`${s.surface}-${s.ref}`}>
               <Td>
-                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>{nameOf(s.ref)}</div>
-                <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{s.ref}</div>
+                <div style={{ fontWeight: 700 }}>{nameOf(s.ref)}</div>
+                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>{s.ref}</div>
               </Td>
-              <Td><span style={{ fontSize: '11px' }}>{SURFACE_LABEL[s.surface]}</span></Td>
-              <Td right>{s.total}</Td>
-              <Td right>
+              <Td>{SURFACE_LABEL[s.surface]}</Td>
+              <Td right style={NUM}>{s.total}</Td>
+              <Td right style={NUM}>
                 <span style={{ fontWeight: 700, color: s.unhelpful > 1 ? 'var(--danger)' : 'var(--text)' }}>{s.unhelpful}</span>
               </Td>
-              <Td right>{s.helpfulPct === null ? '—' : `${s.helpfulPct}%`}</Td>
-              <Td><span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{s.personas.join(', ')}</span></Td>
-              <Td>
-                <span style={{ fontSize: '10px', color: s.topReason ? 'var(--text-secondary)' : 'var(--text-tertiary)' }}>
-                  {s.topReason ? REASONS[s.topReason].label : 'None'}
-                </span>
+              <Td right style={NUM}>{s.helpfulPct === null ? '—' : `${s.helpfulPct}%`}</Td>
+              <Td style={{ color: 'var(--text-secondary)' }}>{s.personas.join(', ')}</Td>
+              <Td style={{ color: s.topReason ? 'var(--text-secondary)' : 'var(--text-tertiary)' }}>
+                {s.topReason ? REASONS[s.topReason].label : 'None'}
               </Td>
-              <Td right>{s.awaiting === 0 ? '—' : s.awaiting}</Td>
+              <Td right style={NUM}>{s.awaiting === 0 ? '—' : s.awaiting}</Td>
             </tr>
           ))}
         </Table>
