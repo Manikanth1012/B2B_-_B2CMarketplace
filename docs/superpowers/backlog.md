@@ -100,7 +100,7 @@ Also worth considering:
 - [ ] RFQ broadcast: one need, several sellers bid (M)
 - [ ] Escrow-style order protection (M)
 - [ ] Automated KYB and sanctions screening in onboarding (M, needs a vendor)
-- [ ] Fraud and risk scoring on orders and accounts (M) — designed 2026-11-13, spec 13 (`docs/superpowers/specs/2026-11-13-fraud-and-risk-scoring-design.md`)
+- [x] Fraud and risk scoring on orders and accounts (M) — done, spec 13 (`docs/superpowers/specs/2026-11-13-fraud-and-risk-scoring-design.md`), migration `20261113600000` applied 2026-11-26
 - [ ] **Omnichannel notifications and customer care (M–L, needs providers)** — asked 2026-11-13. Today: five notification kinds (in-app, email, push, SMS, WhatsApp) and six configured providers (Route Mobile, Twilio, SES, SendGrid, FCM, Meta) on the Channels screen, but no server-side sender, so nothing is actually delivered, and support tickets are in-app only. Wanted: more kinds (USSD menus, Viber, RCS, Telegram, voice), real delivery through an Edge Function with provider keys, and inbound messages that open and answer tickets.
 - [ ] TM Forum standard APIs (TMF620 catalogue, TMF648 quote, TMF650 partnership) (M)
 - [ ] Channel / reseller sales with reseller commissions (L)
@@ -129,6 +129,16 @@ Still open:
 - [ ] Business subscriptions are not billed by the run; their recurring invoices on file stop at July 2026.
 - [ ] Nothing moves an invoice from open to overdue after its due date (as before).
 - [ ] Seller settlement lines and ledger postings are not written for the new orders.
+
+## Spec 13 — fraud and risk scoring (2026-11-13)
+
+Built on branch `fraud-risk-scoring`. Migration `20261113600000` (applied 2026-11-26; tenth nightly job `risk`).
+Still open:
+- [ ] A held order that a seller's order manager had already acknowledged is cancelled only on our side; the push is not recalled.
+- [ ] A buyer can still edit an order's total or lines between placing it and the hold; a cancel refunds up to `orders.total`, which can differ from what was paid (tax, bundle price).
+- [ ] The Flagged list's 30-day window counts from when the order was scored, not when it was decided.
+- [ ] No device, IP or address-reputation signals; the rules use only what the marketplace already records.
+- [ ] A scoring fault leaves no trace on the order, and one bad account stops the whole nightly rescore.
 
 ## Spec 11 — loose ends II (2026-11-13)
 

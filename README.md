@@ -90,7 +90,7 @@ at the end, so a failure leaves nothing half-applied. Each has a structural test
 (`*.migration.test.ts`) that runs without a database.
 
 Since `20261112600000` the database looks after itself every night. pg_cron runs
-`public.run_nightly()` at 00:30 UTC, with nine jobs (since `20261113400000`), each
+`public.run_nightly()` at 00:30 UTC, with ten jobs (since `20261113600000`), each
 run separately so one failure does not stop the rest:
 
 | Job | What it does |
@@ -103,6 +103,7 @@ run separately so one failure does not stop the rest:
 | bundle selections | Deletes a priced bundle whose hold ended more than 7 days ago and that no basket, requisition, order or subscription uses |
 | baskets | Checks every basket line against stock again and flags it where it no longer fits; clears baskets untouched for 90 days |
 | invoices | On the 1st, invoices each business account for last month's delivered orders, one line per order line carrying its requisition (`bill_account_orders`) |
+| risk | Refreshes every shopper's and business's account risk score (`refresh_account_risk`) |
 | settlements | Closes statements left open after their period, settles every missed month oldest first, then runs today |
 
 Each outcome is written to `scheduled_job_log`, which the operator reads on the
@@ -429,6 +430,16 @@ On Business Accounts, the status chips filter with `inBand` and the summary card
 
 - A business is invoiced monthly for what was delivered: one invoice per account and currency (`INV-2007-202609-INR`), a line per order line with its requisition and cost centre, net of tax, tax at the market rate or nil with the reason for reverse charge, due after the account's terms. Orders carry their invoice. The refund form groups a bundle's parts because each line names its requisition.
 - Demo trade for Aug–Nov 2026: 19 business requisitions and orders (two configured bundles) invoiced by the run (Aug and Sep paid, Oct open, Nov waiting for 1 Dec), and 9 shopper orders. Every row is marked `REQ-D26…` / `ORD-D26…`; the migration header has the SQL that removes them.
+
+**Fraud and risk scoring (spec 13).** Migration `20261113600000`.
+
+- Seventeen rules, eleven for orders and six for accounts, each with points, an on/off switch and (where it has one) a threshold. The operator tunes them on the Risk screen; every change is logged with who and when.
+- Bands are editable and start at 40 and 70: an order scoring 40 or more is Review, 70 or more is Hold; an account is Review from 40 and High from 70.
+- An order is scored when its payment settles. A Hold order is held: sellers cannot see it, and it is frozen (no fulfilment, no edits) until the operator chooses Release or Cancel and refund, with a note. A cancel refunds the buyer in full.
+- The buyer sees only "We're checking this order — usually within a few hours." No score and no rule is ever shown to a buyer or a seller.
+- Account scores are refreshed by the nightly `risk` job and feed back into order scores (Account in review, Account high risk).
+- The Risk screen has four tabs: Held, Flagged and decided, Accounts, Rules.
+- Scores, reasons, rules and bands are the operator's alone (row-level security); nobody else can read them.
 
 **Shared components** live in `src/components/ui/`, are class-based, and are styled by `src/styles/ui.css` (imported in `src/main.tsx` after `global.css`).
 
