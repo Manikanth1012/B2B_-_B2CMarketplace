@@ -3,10 +3,13 @@
    come only from tokens in global.css, which contrast.test.ts holds to AA. */
 
 :focus-visible { outline: 2px solid var(--electric); outline-offset: 2px; }
+/* Dark grounds: indigo-600 is 2.98:1 on ink-900, so focus there uses --accent-on-dark. */
+.site-header :focus-visible, .site-footer :focus-visible, .bento-card--dark :focus-visible, .bento-card--image :focus-visible,
+.cpe-side :focus-visible, .op-sidebar :focus-visible, .hero-main :focus-visible, .promo-tile :focus-visible { outline-color: var(--accent-on-dark); }
 
 /* ---------- Buttons ---------- */
-.btn-cyan { background: var(--cyan); color: var(--text-inverse); }
-.btn-cyan:hover { background: var(--indigo-700); transform: translateY(-1px); }
+.btn-cyan { background: var(--indigo-600); color: var(--text-inverse); }
+.btn-cyan:hover { background: var(--indigo-700); }
 .btn-outline-light { background: rgba(255, 255, 255, 0.04); color: #fff; border-color: rgba(255, 255, 255, 0.5); }
 .btn-outline-light:hover { background: rgba(255, 255, 255, 0.12); border-color: #fff; }
 
@@ -408,3 +411,29 @@
 .trust-tile .photo-tile__body { gap: 4px; padding: 12px 16px 14px; }
 .trust-tile .photo-tile__title { font-size: var(--text-sm); }
 .trust-tile .photo-tile__text { font-size: var(--text-xs); }
+
+/* ---------- Toggle and Spinner (design system v2) ---------- */
+.ui-toggle { display: inline-flex; align-items: center; gap: 10px; }
+.ui-toggle__track {
+  position: relative; flex: none; width: 34px; height: 20px; padding: 0; border-radius: 10px;
+  border: 1px solid var(--control-border); background: var(--slate-200); cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.ui-toggle__thumb {
+  position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--control-border); transition: transform var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.ui-toggle__track[aria-checked="true"] { background: var(--indigo-600); border-color: var(--indigo-600); }
+.ui-toggle__track[aria-checked="true"] .ui-toggle__thumb { transform: translateX(14px); background: #fff; }
+.ui-toggle__track:focus-visible { outline: 2px solid transparent; border-color: var(--indigo-600); box-shadow: var(--focus-ring); }
+.ui-toggle__track:disabled { cursor: not-allowed; opacity: 0.55; }
+.ui-toggle__label { font-size: var(--text-sm); color: var(--text); cursor: pointer; }
+@media (forced-colors: active) {
+  .ui-toggle__track { border-color: ButtonText; }
+  .ui-toggle__track[aria-checked="true"] { background: Highlight; border-color: Highlight; }
+  .ui-toggle__thumb { background: ButtonText; }
+  .ui-toggle__track[aria-checked="true"] .ui-toggle__thumb { background: HighlightText; }
+}
+.ui-spinner { flex: none; animation: ui-spin 800ms linear infinite; }
+@keyframes ui-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ui-spinner { animation: none; } }

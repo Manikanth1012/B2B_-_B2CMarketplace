@@ -74,50 +74,74 @@
 .c-field__label { display: block; font-size: var(--text-sm); font-weight: 600; color: var(--text); margin-bottom: 6px; }
 .c-field__req { color: var(--danger); }
 .c-field__hint { font-size: var(--text-xs); color: var(--text-secondary); margin-top: 4px; }
+/* Error text under a field: --danger is 6.57:1 on white. Pair with aria-invalid="true" on the input. */
+.c-field__error { font-size: var(--text-xs); color: var(--danger); margin-top: 4px; display: block; }
 
 .c-input {
-  width: 100%; min-height: 44px; padding: 10px 12px;
-  border-radius: var(--radius); border: 1px solid var(--border-strong);
-  background-color: #fff; font-size: var(--text-sm); color: var(--text);
-  outline: none;
+  width: 100%; height: var(--control-h); min-height: var(--control-h); padding: 0 12px;
+  border-radius: var(--radius); border: 1px solid var(--control-border);
+  background-color: var(--surface); font-size: var(--text-sm); color: var(--text);
+  outline: none; transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
-textarea.c-input { resize: vertical; min-height: 88px; }
+.c-input::placeholder { color: var(--text-tertiary); }
+.c-input:hover:not(:disabled):not(:focus) { border-color: var(--slate-500); }
+textarea.c-input { resize: vertical; min-height: 88px; height: auto; padding: 10px 12px; }
 /* The outline is transparent, not none, and only on focus: forced-colors mode
    drops the box-shadow but repaints this outline, so only the focused field
    shows one there. */
-.c-input:focus { border-color: var(--electric); box-shadow: var(--focus-ring); outline: 2px solid transparent; }
-.c-input:disabled { background: var(--bg-alt); color: var(--text-secondary); cursor: not-allowed; }
+.c-input:focus { border-color: var(--indigo-600); box-shadow: var(--focus-ring); outline: 2px solid transparent; }
+.c-input:disabled { background: var(--slate-100); color: var(--text-secondary); cursor: not-allowed; }
+.c-input[aria-invalid="true"] { border-color: var(--danger); }
+.c-input[aria-invalid="true"]:focus { border-color: var(--danger); box-shadow: 0 0 0 3px rgba(180,35,24,0.16); }
+/* Search field: wrap the input and an icon in .c-search; the icon sits in the left padding. */
+.c-search { position: relative; display: block; }
+.c-search > svg, .c-search__icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--slate-500); pointer-events: none; }
+.c-search > .c-input, .c-input--search { padding-left: 36px; }
 
-/* ---------- Button ---------- */
+/* ---------- Button (design system v2) ----------
+   One system: primary = indigo fill; secondary = white + control border;
+   tertiary = text only; danger = white with red text and border, and solid red
+   only inside a dialog (.c-modal, [role=dialog]) where it confirms a
+   destructive act. 40px, sm 32px, 6px radius. */
 .c-btn {
-  border-radius: var(--radius-full); border: 1px solid transparent;
+  border-radius: var(--radius); border: 1px solid transparent;
   font-weight: 600; cursor: pointer; white-space: nowrap;
-  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
-  padding: 10px 16px; font-size: var(--text-sm); min-height: 40px;
-  transition: background 150ms ease, box-shadow 150ms ease;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 0 16px; font-size: var(--text-sm); height: var(--control-h); min-height: var(--control-h);
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
+.c-btn:focus-visible { outline: 2px solid transparent; box-shadow: var(--focus-ring); border-color: var(--indigo-600); }
 /* A small button is the one that appears four-at-a-time in a table cell. */
-.c-btn--sm { padding: 6px 10px; font-size: var(--text-xs); min-height: 32px; }
-.c-btn--primary { background: var(--brand-navy); color: #fff; }
-.c-btn--primary:hover:not(:disabled) { background: #0B2A57; }
-.c-btn--accent { background: var(--cyan); color: var(--text-inverse); }
-.c-btn--accent:hover:not(:disabled) { background: var(--indigo-700); }
-.c-btn--secondary { background: #fff; color: var(--text); border-color: var(--border-strong); }
-.c-btn--secondary:hover:not(:disabled) { background: var(--bg-alt); }
-.c-btn--danger { background: var(--danger); color: #fff; }
-.c-btn--danger:hover:not(:disabled) { box-shadow: 0 0 0 3px var(--danger-bg); }
-.c-btn--success { background: var(--success); color: #fff; }
-.c-btn--success:hover:not(:disabled) { box-shadow: 0 0 0 3px var(--success-bg); }
+.c-btn--sm { padding: 0 10px; font-size: var(--text-xs); height: var(--control-h-sm); min-height: var(--control-h-sm); }
+.c-btn--icon { width: var(--control-h); padding: 0; }
+.c-btn--icon.c-btn--sm { width: var(--control-h-sm); }
+.c-btn--primary, .c-btn--accent { background: var(--indigo-600); color: #fff; }
+.c-btn--primary:hover:not(:disabled), .c-btn--accent:hover:not(:disabled) { background: var(--indigo-700); }
+.c-btn--primary:active:not(:disabled), .c-btn--accent:active:not(:disabled) { background: #3730A3; }
+.c-btn--secondary { background: var(--surface); color: var(--text); border-color: var(--control-border); }
+.c-btn--secondary:hover:not(:disabled) { background: var(--slate-100); border-color: var(--slate-500); }
+.c-btn--secondary:active:not(:disabled) { background: var(--slate-200); }
+.c-btn--tertiary { background: transparent; color: var(--indigo-700); }
+.c-btn--tertiary:hover:not(:disabled) { background: var(--indigo-50); }
+.c-btn--tertiary:active:not(:disabled) { background: #E0E7FF; }
+.c-btn--danger { background: var(--surface); color: var(--danger); border-color: var(--danger); }
+.c-btn--danger:hover:not(:disabled) { background: var(--danger-bg); }
+.c-btn--danger:active:not(:disabled) { background: var(--danger-border); }
+.c-modal .c-btn--danger, [role="dialog"] .c-btn--danger { background: var(--danger); color: #fff; }
+.c-modal .c-btn--danger:hover:not(:disabled), [role="dialog"] .c-btn--danger:hover:not(:disabled) { background: #912018; }
+.c-btn--success { background: var(--surface); color: var(--success); border-color: var(--success); }
+.c-btn--success:hover:not(:disabled) { background: var(--success-bg); }
+.c-modal .c-btn--success, [role="dialog"] .c-btn--success { background: var(--success); color: #fff; }
+.c-modal .c-btn--success:hover:not(:disabled), [role="dialog"] .c-btn--success:hover:not(:disabled) { background: #166534; }
 /* Disabled is grey on grey with readable text, not the live colour at half opacity. */
-.c-btn:disabled {
-  background: var(--gray-100); color: var(--text-secondary);
-  border-color: var(--border); cursor: not-allowed;
+.c-btn:disabled, .c-btn--danger:disabled, .c-btn--success:disabled,
+.c-modal .c-btn--danger:disabled, [role="dialog"] .c-btn--danger:disabled,
+.c-modal .c-btn--success:disabled, [role="dialog"] .c-btn--success:disabled {
+  background: var(--slate-100); color: var(--text-secondary);
+  border-color: var(--slate-200); cursor: not-allowed;
 }
-/* Danger and success keep their tone when disabled, so a disabled Delete still
-   reads as Delete and not as a disabled primary. Text is the tone colour on its
-   own tint: --danger on --danger-bg is 4.55:1, --success on --success-bg 4.64:1. */
-.c-btn--danger:disabled { background: var(--danger-bg); color: var(--danger); border-color: rgba(202, 35, 35, 0.35); }
-.c-btn--success:disabled { background: var(--success-bg); color: var(--success); border-color: rgba(17, 127, 58, 0.35); }
+.c-btn--tertiary:disabled { background: transparent; border-color: transparent; }
+.c-btn[aria-busy="true"] { cursor: progress; }
 
 @media (prefers-reduced-motion: reduce) {
   .c-btn { transition: none; }

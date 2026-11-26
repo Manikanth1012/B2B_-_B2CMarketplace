@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useId } from 'react'
 import { StatusBadge } from '../ui/StatusBadge'
 import { statusTone } from '../../lib/consoleTone'
 import { Dialog } from '../ui/Dialog'
+import { Spinner } from '../ui/Spinner'
 
 export function fmtMoney(n: number): string {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -407,10 +408,14 @@ export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
   return <select {...props} className={inputClass(props.className)} />
 }
 
-export function Btn({ variant = 'primary', size = 'md', children, className, ...props }: {
+export function Btn({ variant = 'primary', size = 'md', loading, icon, children, className, disabled, ...props }: {
   /* `accent` is the cyan call to action: one per screen, for its main step. */
-  variant?: 'primary' | 'secondary' | 'danger' | 'success' | 'accent'
+  variant?: 'primary' | 'secondary' | 'tertiary' | 'danger' | 'success' | 'accent'
   size?: 'sm' | 'md'
+  /* Shows a spinner beside the label, sets aria-busy and disables the button. */
+  loading?: boolean
+  /* A square icon-only button; give it an aria-label. */
+  icon?: boolean
   children: React.ReactNode
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   /* A small button is the one that appears four-at-a-time in a table cell,
@@ -423,9 +428,10 @@ export function Btn({ variant = 'primary', size = 'md', children, className, ...
      out as "Duplica / te", which reads as two words and makes the button two
      rows tall. Icon and text are laid out there too, rather than by each caller
      wrapping them in a flex. */
-  const classes = ['c-btn', `c-btn--${variant}`, size === 'sm' && 'c-btn--sm', className].filter(Boolean).join(' ')
+  const classes = ['c-btn', `c-btn--${variant}`, size === 'sm' && 'c-btn--sm', icon && 'c-btn--icon', className].filter(Boolean).join(' ')
   return (
-    <button {...props} className={classes}>
+    <button {...props} className={classes} disabled={disabled || loading} aria-busy={loading || undefined}>
+      {loading && <Spinner size={size === 'sm' ? 12 : 14} />}
       {children}
     </button>
   )

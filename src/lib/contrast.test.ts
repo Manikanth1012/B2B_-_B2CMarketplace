@@ -85,6 +85,14 @@ describe('design tokens', () => {
     expect(contrast(tokens[fg], tokens[bg])).toBeGreaterThanOrEqual(min)
   })
 
+  it('keyboard focus on dark grounds uses --accent-on-dark, which clears 3:1 on every dark container ground', () => {
+    for (const bg of ['ink-900', 'brand-navy', 'brand-navy-dark', 'brand-navy-light', 'ink-800']) {
+      expect(contrast(tokens['accent-on-dark'], tokens[bg]), bg).toBeGreaterThanOrEqual(3)
+    }
+    expect(contrast(tokens['accent-on-dark'], '#312E81')).toBeGreaterThanOrEqual(3)
+    /* The plain indigo ring is what fails there. */
+    expect(contrast(tokens['indigo-600'], tokens['ink-900'])).toBeLessThan(3)
+  })
   it('the hero gradient end stop still carries the light accents', () => {
     expect(contrast(tokens['accent-on-dark'], '#312E81')).toBeGreaterThanOrEqual(4.5)
     expect(contrast(tokens['accent-on-dark-2'], '#312E81')).toBeGreaterThanOrEqual(3)
