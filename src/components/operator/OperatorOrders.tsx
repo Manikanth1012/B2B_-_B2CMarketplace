@@ -14,7 +14,7 @@ import type { OrderBook } from '../../lib/orderOpsRepo'
 import {
   buyerKind, BUYER_LABEL, contactLine, showing, atEnd, ageInDays, problemsFor,
   exceptionQueue, linesCharged, canAdvance, searchOrders, rollup,
-  STATUS_TONE, SEVERITY_LABEL, FROZEN_REASON,
+  STATUS_TONE, SEVERITY_LABEL, FROZEN_REASON, HELD_FOR_REVIEW,
 } from '../../lib/orderOps'
 import type { OrderRow, Severity } from '../../lib/orderOps'
 import { STATE_LABEL as COM_LABEL, STATE_TONE as COM_TONE } from '../../lib/com'
@@ -333,6 +333,7 @@ function OrderDetail({ order, book, today, onClose, onChanged }: {
   const pushes = book.pushes.filter(p => p.order_ref === order.order_ref)
   const problems = problemsFor(order, book.lines, book.pushes, today)
   const forward = canAdvance(order, book.pushes)
+  const held = order.status === 'held'
   const charged = linesCharged(lines)
 
   const run = async (fn: () => Promise<{ ok: boolean; why?: string; to?: string }>, good: string) => {
@@ -432,11 +433,16 @@ function OrderDetail({ order, book, today, onClose, onChanged }: {
       </p>
 
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        <Btn size="sm" disabled={busy || !forward.ok}
-             title={forward.ok ? `Move it to “${forward.to}”` : forward.reason}
-             onClick={() => void run(() => advance(order), 'Moved on.')}>
-          {forward.ok ? `Move to “${forward.to}”` : 'Cannot move on'}
-        </Btn>
+        {/* A held order is frozen until the Risk screen decides it (the database
+            refuses the move anyway), so neither moving it on nor failing it is
+            offered. */}
+        {!held && (
+          <Btn size="sm" disabled={busy || !forward.ok}
+               title={forward.ok ? `Move it to “${forward.to}”` : forward.reason}
+               onClick={() => void run(() => advance(order), 'Moved on.')}>
+            {forward.ok ? `Move to “${forward.to}”` : 'Cannot move on'}
+          </Btn>
+        )}
         <Btn size="sm" variant="secondary" disabled={busy || order.stage === 0}
              onClick={() => void run(() => stepBack(order), 'Stepped back.')}>Step back</Btn>
         {order.failed
@@ -445,7 +451,7 @@ function OrderDetail({ order, book, today, onClose, onChanged }: {
                  onClick={() => void run(() => unfail(order), 'Failure reversed. The reason is kept.')}>
               Reverse the failure
             </Btn>
-          : <Btn size="sm" variant="secondary" disabled={busy} onClick={() => setFailing(true)}>Fail it</Btn>}
+          : !held && <Btn size="sm" variant="secondary" disabled={busy} onClick={() => setFailing(true)}>Fail it</Btn>}
         <Btn size="sm" variant="secondary" disabled={busy} onClick={() => setTracking2(true)}>
           {order.tracking_ref ? 'Change tracking' : 'Add tracking'}
         </Btn>
@@ -462,9 +468,9 @@ function OrderDetail({ order, book, today, onClose, onChanged }: {
         )}
       </div>
 
-      {!forward.ok && (
+      {(held || !forward.ok) && (
         <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '8px', lineHeight: 1.6 }}>
-          {forward.reason}
+          {held ? HELD_FOR_REVIEW : !forward.ok && forward.reason}
         </div>
       )}
 
