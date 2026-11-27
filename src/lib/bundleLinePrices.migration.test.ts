@@ -21,10 +21,15 @@ describe('20261127300000_a_bundle_line_carries_its_price', () => {
     expect(sql).toMatch(/new\.unit_price > v_price/)
     expect(sql).toMatch(/before insert or update of unit_price, component_id on public\.product_components/)
   })
-  it('checks once per statement that fully priced bundles add up to their price', () => {
+  it('checks once per statement, on insert, update (both sides) and delete, that fully priced bundles add up', () => {
     expect(sql).toMatch(/after insert on public\.product_components\s+referencing new table as changed\s+for each statement/)
-    expect(sql).toMatch(/after update on public\.product_components\s+referencing new table as changed\s+for each statement/)
-    expect(sql).toMatch(/having bool_and\(c\.unit_price is not null\)/)
+    expect(sql).toMatch(/after update on public\.product_components\s+referencing old table as gone new table as changed\s+for each statement/)
+    expect(sql).toMatch(/after delete on public\.product_components\s+referencing old table as gone\s+for each statement/)
+    expect(sql).toMatch(/after update on public\.products\s+referencing old table as gone new table as changed\s+for each statement/)
+    expect(sql).toMatch(/having bool_and\(l\.unit_price is not null\)/)
+  })
+  it('lets only the marketplace price a bundle line by line', () => {
+    expect(sql).toMatch(/auth\.uid\(\) is not null and coalesce\(public\.current_persona\(\), ''\) <> 'operator'/)
   })
   it('gives no existing bundle a price, and dry-runs its guards in rolled-back blocks', () => {
     /* Every write to product_components sits inside the self-check, after `do $$`. */

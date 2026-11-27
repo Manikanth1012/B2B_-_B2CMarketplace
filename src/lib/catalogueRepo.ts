@@ -336,6 +336,12 @@ export async function composePack(
        to settle. */
     partner_id: null, seller: 'Aventa Telecom', comm: 0,
     price: composition.price,
+    /* The price band has been required since 20260731130000 (floor ≤ price ≤
+       list, both NOT NULL with no default), so a pack written without it was
+       refused outright. The operator set this price itself, so it is also the
+       floor; the parts bought separately are the list price. */
+    floor_price: composition.price,
+    list_price: Math.max(composition.price, composition.listTotal),
     /* What the same components cost bought separately, so the saving shown on
        the product page is arithmetic rather than marketing. */
     was_price: composition.listTotal,
@@ -459,6 +465,10 @@ export async function createBundle(
     const p = products.find(x => x.id === c.productId)!
     return n + p.price * c.quantity
   }, 0).toFixed(2)
+  const floorTotal = round2(draft.components.reduce((n, c) => {
+    const p = products.find(x => x.id === c.productId)!
+    return n + Number(p.floor_price ?? p.price) * c.quantity
+  }, 0))
 
   /* Priced line by line: every product carries its own bundle price, checked
      here against the seller's floor as read now (the database checks it again),
@@ -492,6 +502,11 @@ export async function createBundle(
     id, category_id: draft.categoryId, sub_category: draft.subCategory || 'Bundles',
     name: draft.name, partner_id: null, seller: 'Aventa Telecom',
     price: bundlePrice, was_price: partsTotal, cost: 0,
+    /* The price band (required since 20260731130000, no default): a bundle's
+       floor is what its sellers agreed to, the parts' floors added up, never
+       above its own price; its list price is the parts bought separately. */
+    floor_price: Math.min(bundlePrice, floorTotal),
+    list_price: Math.max(bundlePrice, partsTotal),
     model: draft.model, fulfil: draft.fulfil,
     /* A first-party bundle that recurs bills monthly, which is what `model =
        'monthly'` meant before the period was a column of its own. The operator's

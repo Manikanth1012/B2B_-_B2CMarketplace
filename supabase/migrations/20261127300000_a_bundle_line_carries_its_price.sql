@@ -47,6 +47,14 @@ begin
   if new.unit_price is null then
     return new;
   end if;
+  /* Only the marketplace prices a bundle line by line. A seller's own bundle is
+     priced as a whole: a seller who could split it would move the price onto
+     whichever of its products carries the lowest commission. Sessions with no
+     signed-in user (migrations, the SQL editor) are the operator's own. */
+  if auth.uid() is not null and coalesce(public.current_persona(), '') <> 'operator' then
+    raise exception 'Only the marketplace sets a price per line inside a bundle'
+      using errcode = '42501';
+  end if;
   select p.price, p.floor_price, p.name into v_price, v_floor, v_name
     from public.products p where p.id = new.component_id;
   if not found then
@@ -70,44 +78,102 @@ create trigger bundle_line_price_band
 
 /* ----------------------------------- the lines add up to the bundle price - */
 
-create or replace function public.guard_bundle_lines_total()
-returns trigger
+/* The check itself, for a set of bundles: every bundle whose lines all carry a
+   price must cost those lines added up. Bundles with no lines left, or with
+   any unpriced line, are priced as a whole and pass. */
+create or replace function public.check_bundle_lines_total(p_bundles text[])
+returns void
 language plpgsql
 set search_path = public
 as $$
-<<t>>
+<<c>>
 declare
   v_bad text;
 begin
+  if p_bundles is null or cardinality(p_bundles) = 0 then
+    return;
+  end if;
   select string_agg(format('%s (lines %s, price %s)', x.bundle_id, x.lines_total, x.price), ', ')
     into v_bad
   from (
-    select c.bundle_id, round(sum(c.quantity * c.unit_price), 2) as lines_total, b.price
-      from public.product_components c
-      join public.products b on b.id = c.bundle_id
-     where c.bundle_id in (select distinct n.bundle_id from changed n)
-     group by c.bundle_id, b.price
-    having bool_and(c.unit_price is not null)
+    select l.bundle_id, round(sum(l.quantity * l.unit_price), 2) as lines_total, b.price
+      from public.product_components l
+      join public.products b on b.id = l.bundle_id
+     where l.bundle_id = any (p_bundles)
+     group by l.bundle_id, b.price
+    having bool_and(l.unit_price is not null)
   ) x
   where abs(x.lines_total - x.price) > 0.01;
   if v_bad is not null then
     raise exception 'A bundle priced line by line must cost its lines added up: %', v_bad
       using errcode = '23514';
   end if;
+end c $$;
+
+/* A trigger with transition tables may name one event only, and only the
+   tables that event has, so each event gets its own small function. */
+create or replace function public.guard_bundle_lines_after_insert()
+returns trigger language plpgsql set search_path = public as $$
+<<i>>
+begin
+  perform public.check_bundle_lines_total(array(select distinct n.bundle_id from changed n));
   return null;
-end t $$;
+end i $$;
+
+create or replace function public.guard_bundle_lines_after_update()
+returns trigger language plpgsql set search_path = public as $$
+<<u>>
+begin
+  /* Both sides: a line moved to another bundle changes the old one too. */
+  perform public.check_bundle_lines_total(array(
+    select n.bundle_id from changed n union select o.bundle_id from gone o));
+  return null;
+end u $$;
+
+create or replace function public.guard_bundle_lines_after_delete()
+returns trigger language plpgsql set search_path = public as $$
+<<d>>
+begin
+  perform public.check_bundle_lines_total(array(select distinct o.bundle_id from gone o));
+  return null;
+end d $$;
+
+drop function if exists public.guard_bundle_lines_total();
 
 drop trigger if exists bundle_lines_total_on_insert on public.product_components;
 create trigger bundle_lines_total_on_insert
   after insert on public.product_components
   referencing new table as changed
-  for each statement execute function public.guard_bundle_lines_total();
+  for each statement execute function public.guard_bundle_lines_after_insert();
 
 drop trigger if exists bundle_lines_total_on_update on public.product_components;
 create trigger bundle_lines_total_on_update
   after update on public.product_components
-  referencing new table as changed
-  for each statement execute function public.guard_bundle_lines_total();
+  referencing old table as gone new table as changed
+  for each statement execute function public.guard_bundle_lines_after_update();
+
+drop trigger if exists bundle_lines_total_on_delete on public.product_components;
+create trigger bundle_lines_total_on_delete
+  after delete on public.product_components
+  referencing old table as gone
+  for each statement execute function public.guard_bundle_lines_after_delete();
+
+/* And from the other side: a bundle whose lines are priced cannot have its own
+   price changed away from them. */
+create or replace function public.guard_bundle_price_matches_lines()
+returns trigger language plpgsql set search_path = public as $$
+<<p>>
+begin
+  perform public.check_bundle_lines_total(array(
+    select n.id from changed n join gone o on o.id = n.id where n.price is distinct from o.price));
+  return null;
+end p $$;
+
+drop trigger if exists bundle_price_matches_lines on public.products;
+create trigger bundle_price_matches_lines
+  after update on public.products
+  referencing old table as gone new table as changed
+  for each statement execute function public.guard_bundle_price_matches_lines();
 
 /* ------------------------------------------------------------ self-check - */
 
@@ -126,8 +192,12 @@ begin
   end if;
   if (select count(*) from pg_trigger
        where tgrelid = 'public.product_components'::regclass
-         and tgname in ('bundle_line_price_band', 'bundle_lines_total_on_insert', 'bundle_lines_total_on_update')
-         and not tgisinternal) <> 3 then
+         and tgname in ('bundle_line_price_band', 'bundle_lines_total_on_insert',
+                        'bundle_lines_total_on_update', 'bundle_lines_total_on_delete')
+         and not tgisinternal) <> 4
+     or not exists (select 1 from pg_trigger
+                     where tgrelid = 'public.products'::regclass
+                       and tgname = 'bundle_price_matches_lines' and not tgisinternal) then
     raise exception 'the bundle line triggers are not all in place';
   end if;
 
@@ -157,14 +227,28 @@ begin
     null;
   end;
 
-  /* Dry run 2: a line at its floor is accepted on its own, and a bundle whose
-     every line is priced must add up — set them all to their floors, which
-     almost never equals the bundle price, and expect the total check to refuse
-     it. Either way the block is rolled back. */
+  /* Dry run 2: one line at exactly its seller's floor is accepted (the other
+     lines are still unpriced, so the bundle is still priced as a whole). Any
+     error here fails the migration; the ZZ999 rolls the change back. */
   begin
-    update public.product_components c set unit_price = p.floor_price
+    update public.product_components set unit_price = v_floor
+     where bundle_id = v_bundle and component_id = v_part;
+    raise exception using errcode = 'ZZ999', message = 'dry run';
+  exception when sqlstate 'ZZ999' then
+    null;
+  end;
+
+  /* Dry run 3: every line priced at its normal price adds up to the parts
+     bought separately, which is more than the bundle costs, so the total check
+     must refuse it. */
+  begin
+    update public.product_components c set unit_price = p.price
       from public.products p
-     where p.id = c.component_id and c.bundle_id = v_bundle and p.floor_price > 0;
+     where p.id = c.component_id and c.bundle_id = v_bundle;
+    if abs((select round(sum(c.quantity * c.unit_price), 2) from public.product_components c where c.bundle_id = v_bundle)
+           - (select b.price from public.products b where b.id = v_bundle)) > 0.01 then
+      raise exception 'a bundle whose lines do not add up to its price was accepted (%)', v_bundle;
+    end if;
     raise exception using errcode = 'ZZ999', message = 'dry run';
   exception
     when check_violation then null;

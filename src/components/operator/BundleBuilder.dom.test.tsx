@@ -70,9 +70,8 @@ describe('Compose a bundle, priced line by line', () => {
     await user.clear(sn)
     await user.type(sn, '7')
     expect(sn.getAttribute('aria-invalid')).toBe('true')
-    const alert = screen.getByRole('alert')
-    expect(alert.textContent).toMatch(/no lower than \$7\.19/)
-    expect(sn.getAttribute('aria-describedby')).toBe(alert.id)
+    const described = document.getElementById(sn.getAttribute('aria-describedby') ?? '')
+    expect(described?.textContent).toMatch(/no lower than \$7\.19/)
     expect((screen.getByRole('button', { name: 'Create and publish' }) as HTMLButtonElement).disabled).toBe(true)
   })
 

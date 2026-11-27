@@ -275,6 +275,7 @@ textarea.c-input { resize: vertical; min-height: 88px; height: auto; padding: 10
 .bundle-line__err { grid-column: 2 / -1; font-size: var(--text-xs); color: var(--danger); }
 @media (max-width: 640px) {
   .bundle-line { grid-template-columns: 64px 1fr 32px; }
+  .bundle-line__remove { grid-column: 3; grid-row: 1; }
   .bundle-line__price { grid-column: 2; }
   .bundle-line__total { grid-column: 2; text-align: left; }
 }

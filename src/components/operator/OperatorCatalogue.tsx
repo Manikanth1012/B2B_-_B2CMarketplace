@@ -1207,6 +1207,8 @@ export function BundleBuilder({ snap, onClose, onCreate }: {
   const setUnit = (productId: string, value: string) =>
     setPicked(list => list.map(x => x.productId === productId ? { ...x, unitPrice: value } : x))
   const applyPct = () => {
+    /* An empty field is not 0%: it would quietly put every line back. */
+    if (pctOff.trim() === '') return
     const pct = Number(pctOff)
     if (!Number.isFinite(pct)) return
     setPicked(list => list.map(x => {
@@ -1287,7 +1289,9 @@ export function BundleBuilder({ snap, onClose, onCreate }: {
                     <span className="bundle-line__total">{unit !== null ? `$${fmtMoney(unit * pk.quantity)}` : '—'}</span>
                     <button type="button" className="bundle-line__remove" aria-label={`Remove ${p.name}`}
                             onClick={() => setPicked(list => list.filter(x => x.productId !== pk.productId))}><X size={14} /></button>
-                    {err && <div id={errId} className="bundle-line__err" role="alert">{err}</div>}
+                    {/* Tied to the field by aria-describedby and aria-invalid rather
+                        than announced: an alert would speak on every keystroke. */}
+                    {err && <div id={errId} className="bundle-line__err">{err}</div>}
                   </div>
                 )
               })}
