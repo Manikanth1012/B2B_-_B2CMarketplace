@@ -194,13 +194,21 @@ describe('RowActions', () => {
     await userEvent.keyboard('{Escape}')
     expect(onClose).toHaveBeenCalledTimes(1)
 
-    /* Tab from the last focusable control in the dialog comes back round inside it. */
-    const panel = edit.closest('[role="dialog"]') as HTMLElement
-    const focusables = [...panel.querySelectorAll<HTMLElement>('button:not([disabled])')]
-    focusables[focusables.length - 1].focus()
-    await userEvent.tab()
-    expect(panel.contains(document.activeElement)).toBe(true)
-    expect(document.activeElement).not.toBe(document.body)
+    /* Tab from the last row action comes back round to the dialog's first control.
+       jsdom has no layout, so the trap's visibility check (getClientRects) is
+       stubbed to see every control; otherwise it would focus the panel and the
+       assertion would pass with no wrap logic at all. */
+    const rects = vi.spyOn(Element.prototype, 'getClientRects').mockReturnValue([{}] as unknown as DOMRectList)
+    try {
+      const panel = edit.closest('[role="dialog"]') as HTMLElement
+      const focusables = [...panel.querySelectorAll<HTMLElement>('button:not([disabled])')]
+      expect(focusables[focusables.length - 1]).toBe(edit)
+      edit.focus()
+      await userEvent.tab()
+      expect(document.activeElement).toBe(focusables[0])
+    } finally {
+      rects.mockRestore()
+    }
   })
 
   it('closes on a press outside', async () => {
