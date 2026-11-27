@@ -76,7 +76,7 @@ describe('a retail customer, at the API rather than the screen', () => {
   it('cannot put one in an order either', async () => {
     const { data: order } = await supabase.from('orders')
       .insert({
-        order_ref: `ORD-TEST-${Date.now()}`, status: 'placed', total: 249, subtotal: 249,
+        order_ref: `ORD-TEST-${Date.now()}`, status: 'awaiting_payment', total: 249, subtotal: 249,
         tax: 0, discount: 0, payment_method: 'card', buyer_name: 'Test',
         buyer_email: CONSUMER.email, shipping_address: {},
       }).select('id').maybeSingle()
