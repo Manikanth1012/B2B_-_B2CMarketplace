@@ -81,8 +81,9 @@ export interface JobFilters {
 
 export const ALL_JOBS = 'all'
 
-/** How many runs the repo reads: 90 nights of ten jobs, with room for retries. */
-export const JOB_LOG_LIMIT = 2000
+/* Supabase caps a response at 1000 rows by default (max_rows), whatever .limit asks, so
+   the cap is 1000: 90 nights of ten jobs is about 900, and the capped note is honest. */
+export const JOB_LOG_LIMIT = 1000
 
 /** With no date bound the screen shows this many of the newest nights. */
 export const DEFAULT_NIGHTS = 14

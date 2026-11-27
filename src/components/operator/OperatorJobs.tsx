@@ -62,7 +62,7 @@ export function OperatorJobs() {
       {rows && all.length > 0 && (
         <FilterBar ariaLabel="Job filters" summary={<>
           {filterSummary(list)}
-          {!bounded && matched.length > list.length && ` · the newest ${DEFAULT_NIGHTS} nights; set a date range for more`}
+          {!bounded && matched.length > list.length && ` · the newest ${DEFAULT_NIGHTS} matching nights; set a date range for more`}
           {capped && ` · the log is capped, showing the newest ${rows?.length} runs`}
         </>}>
           <DateRangeFilter from={filters.from} to={filters.to} onChange={r => set(r)}

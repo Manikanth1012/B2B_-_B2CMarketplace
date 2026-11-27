@@ -93,7 +93,7 @@ describe('OperatorJobs', () => {
       })
       load.mockResolvedValue({ ok: true, value: many })
       render(<OperatorJobs />)
-      expect(await screen.findByText(/14 nights · 14 runs · the newest 14 nights/)).toBeTruthy()
+      expect(await screen.findByText(/14 nights · 14 runs · the newest 14 matching nights/)).toBeTruthy()
       fireEvent.click(screen.getByRole('button', { name: '7 nights' }))
       expect(screen.getByText('7 nights · 7 runs')).toBeTruthy()
     })
