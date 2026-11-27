@@ -43,20 +43,41 @@ async function open(ref: string) {
 }
 
 describe('OperatorOrders, a held order', () => {
-  it('offers neither "Move to" nor "Fail it", and says why', async () => {
-    book.value = { orders: [order('ORD-H', 'held')], lines: [line('O-ORD-H')], pushes: [] }
-    const dialog = await open('ORD-H')
-    expect(within(dialog).queryByRole('button', { name: /^Move to/ })).toBeNull()
-    expect(within(dialog).queryByRole('button', { name: 'Cannot move on' })).toBeNull()
-    expect(within(dialog).queryByRole('button', { name: 'Fail it' })).toBeNull()
+  const noMoves = (dialog: HTMLElement) => {
+    for (const name of [/^Move to/, 'Cannot move on', 'Step back', 'Fail it', 'Reverse the failure']) {
+      expect(within(dialog).queryByRole('button', { name }), `${name} is offered on a held order`).toBeNull()
+    }
     expect(within(dialog).getByText(/Held for a fraud review\. Release it or cancel it on the Risk screen/)).toBeTruthy()
+  }
+
+  it('offers no move (on, back, fail), and says why', async () => {
+    book.value = { orders: [{ ...order('ORD-H', 'held'), stage: 1 }], lines: [line('O-ORD-H')], pushes: [] }
+    noMoves(await open('ORD-H'))
   })
 
-  it('still offers both on an order that is not held', async () => {
-    book.value = { orders: [order('ORD-P', 'placed')], lines: [line('O-ORD-P')], pushes: [] }
+  it('does not offer to reverse a failure on a held order either', async () => {
+    book.value = {
+      orders: [{ ...order('ORD-HF', 'held'), failed: true, failed_reason: 'Card declined' }],
+      lines: [line('O-ORD-HF')], pushes: [],
+    }
+    noMoves(await open('ORD-HF'))
+  })
+
+  it('still offers them on an order that is not held', async () => {
+    book.value = { orders: [{ ...order('ORD-P', 'placed'), stage: 1 }], lines: [line('O-ORD-P')], pushes: [] }
     const dialog = await open('ORD-P')
     expect(within(dialog).getByRole('button', { name: /^Move to/ })).toBeTruthy()
+    expect(within(dialog).getByRole('button', { name: 'Step back' })).toBeTruthy()
     expect(within(dialog).getByRole('button', { name: 'Fail it' })).toBeTruthy()
     expect(within(dialog).queryByText(/Held for a fraud review/)).toBeNull()
+  })
+
+  it('still offers to reverse a failure on an order that is not held', async () => {
+    book.value = {
+      orders: [{ ...order('ORD-F', 'failed'), failed: true, failed_reason: 'Card declined' }],
+      lines: [line('O-ORD-F')], pushes: [],
+    }
+    const dialog = await open('ORD-F')
+    expect(within(dialog).getByRole('button', { name: 'Reverse the failure' })).toBeTruthy()
   })
 })

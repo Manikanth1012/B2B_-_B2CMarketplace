@@ -71,7 +71,15 @@ describe('orders are records once paid, as a migration', () => {
     expect(squash(loop)).toContain(`create policy "owner_insert_%1$s" on public.%1$i for insert to authenticated with check (user_id = auth.uid() and current_persona() = 'consumer')$f$, t);`)
     const flat = squash(head)
     expect(flat).toContain('drop policy if exists "owner_insert_orders" on public.orders;')
-    expect(flat).toContain(`create policy "owner_insert_orders" on public.orders for insert to authenticated with check (user_id = auth.uid() and current_persona() = 'consumer' and status = 'awaiting_payment' and account_id is null);`)
+    expect(flat).toContain(`create policy "owner_insert_orders" on public.orders for insert to authenticated with check (user_id = auth.uid() and current_persona() = 'consumer' and status = 'awaiting_payment' and account_id is null and (payment_ref is null or exists (select 1 from public.payment_attempts pa where pa.reference = orders.payment_ref and pa.user_id = auth.uid() and pa.state = 'initiated')));`)
+    /* Checkout starts the attempt before it writes the orders that carry it. */
+    const checkout = readFileSync(new URL('../components/Checkout.tsx', import.meta.url), 'utf8')
+    const started = checkout.indexOf('const started = await startPayment(')
+    const written = checkout.indexOf("await supabase.from('orders').insert(")
+    expect(started).toBeGreaterThan(0)
+    expect(written).toBeGreaterThan(started)
+    expect(checkout.slice(written, written + 400)).toContain('payment_ref: reference,')
+    expect(checkout.slice(started, written)).toContain('reference,')
     expect(flat).toContain('drop policy if exists "owner_insert_order_items" on public.order_items;')
     expect(flat).toContain(`create policy "owner_insert_order_items" on public.order_items for insert to authenticated with check (user_id = auth.uid() and current_persona() = 'consumer' and exists (select 1 from public.orders o where o.id = order_items.order_id and o.user_id = auth.uid() and o.status = 'awaiting_payment'));`)
   })
@@ -184,9 +192,14 @@ describe('orders are records once paid, as a migration', () => {
       "a shopper added a line to somebody else''s order",
       'a shopper added a line to their own placed order',
       'the marker orders_are_records() is missing',
+      "a shopper hung an order on somebody else''s payment",
+      'a shopper could not write their own unpaid order on their own open payment',
     ]) expect(check).toContain(s)
-    /* The three refusals are row-level security's own, not some other guard's. */
-    expect(check.match(/exception when insufficient_privilege then/g)?.length).toBe(3)
+    /* The four refusals are row-level security's own, not some other guard's. */
+    expect(check.match(/exception when insufficient_privilege then/g)?.length).toBe(4)
+    /* The planted fault is looked for among the failures, not counted as the only one. */
+    expect(check).not.toContain("(v_res ->> 'failed')::integer is distinct from 1")
+    expect(check).toContain("x.value ->> 'id' = v_biz")
     /* The fault is made and unmade inside the rolled-back block. */
     expect(check).toContain('create or replace function public.zz_selfcheck_oi_fault()')
     expect(check).toContain('drop function public.zz_selfcheck_oi_fault();')

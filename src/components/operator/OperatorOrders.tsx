@@ -434,8 +434,8 @@ function OrderDetail({ order, book, today, onClose, onChanged }: {
 
       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
         {/* A held order is frozen until the Risk screen decides it (the database
-            refuses the move anyway), so neither moving it on nor failing it is
-            offered. */}
+            refuses each of these anyway), so it is not moved on, stepped back,
+            failed or un-failed from here. */}
         {!held && (
           <Btn size="sm" disabled={busy || !forward.ok}
                title={forward.ok ? `Move it to “${forward.to}”` : forward.reason}
@@ -443,15 +443,17 @@ function OrderDetail({ order, book, today, onClose, onChanged }: {
             {forward.ok ? `Move to “${forward.to}”` : 'Cannot move on'}
           </Btn>
         )}
-        <Btn size="sm" variant="secondary" disabled={busy || order.stage === 0}
-             onClick={() => void run(() => stepBack(order), 'Stepped back.')}>Step back</Btn>
-        {order.failed
+        {!held && (
+          <Btn size="sm" variant="secondary" disabled={busy || order.stage === 0}
+               onClick={() => void run(() => stepBack(order), 'Stepped back.')}>Step back</Btn>
+        )}
+        {held ? null : order.failed
           ? <Btn size="sm" variant="secondary" disabled={busy}
                  title="The reason stays on the record — a failure that was investigated and reversed is still worth reading about."
                  onClick={() => void run(() => unfail(order), 'Failure reversed. The reason is kept.')}>
               Reverse the failure
             </Btn>
-          : !held && <Btn size="sm" variant="secondary" disabled={busy} onClick={() => setFailing(true)}>Fail it</Btn>}
+          : <Btn size="sm" variant="secondary" disabled={busy} onClick={() => setFailing(true)}>Fail it</Btn>}
         <Btn size="sm" variant="secondary" disabled={busy} onClick={() => setTracking2(true)}>
           {order.tracking_ref ? 'Change tracking' : 'Add tracking'}
         </Btn>

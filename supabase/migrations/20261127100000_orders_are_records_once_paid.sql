@@ -33,7 +33,9 @@
  *   2b. An order is created unpaid. `owner_insert_orders` (latest copy, the
  *      20260729130300 loop) now also asks for `status = 'awaiting_payment'`
  *      and no account: a shopper could write a `placed` or `delivered` order
- *      with no payment behind it. `owner_insert_order_items` now also asks
+ *      with no payment behind it; an order that names a payment must name
+ *      the shopper's own, still `initiated` (checkout starts it first).
+ *      `owner_insert_order_items` now also asks
  *      that the line's order is the shopper's own and still awaiting payment:
  *      it never asked whose order it was. Checkout writes exactly that (its
  *      orders unpaid, then their lines). Business orders, payments, seeds and
@@ -74,11 +76,23 @@ drop policy if exists "owner_delete_order_items" on public.order_items;
    latest definitions) with one condition each added. The order_items check
    reads orders under the shopper's own row-level security, which lets them
    see their own orders; no orders policy reads order_items back, so the
-   check does not recurse. */
+   check does not recurse.
+   An order that names a payment names the shopper's own, still open: checkout
+   starts the attempt first (`startPayment`, as the shopper, `initiated`) and
+   then writes its orders carrying that reference, which is what settle later
+   places. Without this a shopper could hang an order on somebody else's
+   payment. The attempt is read under the shopper's own row-level security
+   (`owner_read_payment_attempts`: their own), whose policies read wallets,
+   not orders. */
 drop policy if exists "owner_insert_orders" on public.orders;
 create policy "owner_insert_orders" on public.orders for insert to authenticated
   with check (user_id = auth.uid() and current_persona() = 'consumer'
-              and status = 'awaiting_payment' and account_id is null);
+              and status = 'awaiting_payment' and account_id is null
+              and (payment_ref is null
+                   or exists (select 1 from public.payment_attempts pa
+                               where pa.reference = orders.payment_ref
+                                 and pa.user_id = auth.uid()
+                                 and pa.state = 'initiated')));
 
 drop policy if exists "owner_insert_order_items" on public.order_items;
 create policy "owner_insert_order_items" on public.order_items for insert to authenticated
@@ -717,8 +731,30 @@ begin
        now(), to_char(current_date, 'DD Mon YYYY'), null, 'device', false, 0, v_stages,
        v_op, null, v_cur, v_mkt, v_taxr, jsonb_build_object('line1', 'Self-check'), null);
 
+    /* Two open payments: the shopper's own, and somebody else's. */
+    insert into public.payment_attempts
+      (id, reference, user_id, purpose, amount, currency, method_id, market_code, order_ref, state)
+    values
+      ('PA-SELFCHECK-OI-MINE', 'PAY-SELFCHECK-OI-MINE', v_user, 'order', 10, v_cur, 'card', v_mkt,
+       'ORD-SELFCHECK-OI-NEW', 'initiated'),
+      ('PA-SELFCHECK-OI-THEIRS', 'PAY-SELFCHECK-OI-THEIRS', v_op, 'order', 10, v_cur, 'card', v_mkt,
+       'ORD-SELFCHECK-OI-ELSE', 'initiated');
+
     perform set_config('request.jwt.claims', json_build_object('sub', v_user, 'role', 'authenticated')::text, true);
     set local role authenticated;
+
+    begin
+      insert into public.orders
+        (id, order_ref, status, total, subtotal, tax, discount, payment_method, buyer_name,
+         seller, failed, stage, stages, user_id, currency, market, tax_rate, shipping_address, payment_ref)
+      values
+        (gen_random_uuid(), 'ORD-SELFCHECK-OI-ONTHEIRS', 'awaiting_payment', 10, 10, 0, 0, 'card', 'Self-check',
+         null, false, 0, v_stages, v_user, v_cur, v_mkt, v_taxr, jsonb_build_object('line1', 'Self-check'),
+         'PAY-SELFCHECK-OI-THEIRS');
+      raise exception 'a shopper hung an order on somebody else''s payment';
+    exception when insufficient_privilege then
+      null;
+    end;
 
     begin
       insert into public.orders
@@ -735,13 +771,14 @@ begin
     begin
       insert into public.orders
         (id, order_ref, status, total, subtotal, tax, discount, payment_method, buyer_name,
-         seller, failed, stage, stages, user_id, currency, market, tax_rate, shipping_address)
+         seller, failed, stage, stages, user_id, currency, market, tax_rate, shipping_address, payment_ref)
       values
         (v_new, 'ORD-SELFCHECK-OI-NEW', 'awaiting_payment', 10, 10, 0, 0, 'card', 'Self-check',
-         null, false, 0, v_stages, v_user, v_cur, v_mkt, v_taxr, jsonb_build_object('line1', 'Self-check'));
+         null, false, 0, v_stages, v_user, v_cur, v_mkt, v_taxr, jsonb_build_object('line1', 'Self-check'),
+         'PAY-SELFCHECK-OI-MINE');
     exception when others then
       reset role;
-      raise exception 'a shopper could not write their own unpaid order: %', sqlerrm;
+      raise exception 'a shopper could not write their own unpaid order on their own open payment: %', sqlerrm;
     end;
 
     begin
@@ -773,7 +810,8 @@ begin
     if (select count(*) from public.order_items i where i.order_id = v_new) <> 1
        or exists (select 1 from public.order_items i where i.order_id = v_else)
        or (select count(*) from public.order_items i where i.order_id = v_placed) <> 1
-       or exists (select 1 from public.orders o where o.order_ref = 'ORD-SELFCHECK-OI-PAIDBYNOBODY') then
+       or exists (select 1 from public.orders o
+                   where o.order_ref in ('ORD-SELFCHECK-OI-PAIDBYNOBODY', 'ORD-SELFCHECK-OI-ONTHEIRS')) then
       raise exception 'a refused shopper insert wrote something, or an allowed one did not';
     end if;
 
@@ -838,17 +876,19 @@ begin
     exception when others then
       raise exception 'one bad account failed the rescore: %', sqlerrm;
     end;
-    if (v_res ->> 'failed')::integer is distinct from 1
-       or jsonb_array_length(v_res -> 'failures') <> 1
-       or (v_res -> 'failures' -> 0 ->> 'kind') is distinct from 'business'
-       or (v_res -> 'failures' -> 0 ->> 'id') is distinct from v_biz
-       or (v_res -> 'failures' -> 0 ->> 'reason') not like 'self-check fault on%' then
+    /* The planted fault is reported; any real one tonight may be too, so the
+       count is at least one rather than exactly one. */
+    if coalesce((v_res ->> 'failed')::integer, 0) < 1
+       or not exists (select 1 from jsonb_array_elements(v_res -> 'failures') x(value)
+                       where x.value ->> 'kind' = 'business'
+                         and x.value ->> 'id' = v_biz
+                         and x.value ->> 'reason' like 'self-check fault on%') then
       raise exception 'one bad account failed the rescore, or was not reported (%)', v_res;
     end if;
     select count(*) into v_n from public.enterprise_accounts;
-    if (v_res ->> 'scored')::integer < v_n - 1 then
-      raise exception 'one bad account failed the rescore: % scored, and there are % other businesses alone',
-        v_res ->> 'scored', v_n - 1;
+    if (v_res ->> 'scored')::integer + (v_res ->> 'failed')::integer < v_n then
+      raise exception 'one bad account failed the rescore: % scored and % failed, and there are % businesses alone',
+        v_res ->> 'scored', v_res ->> 'failed', v_n;
     end if;
     drop trigger zz_selfcheck_oi_fault on public.account_risk;
     drop function public.zz_selfcheck_oi_fault();
