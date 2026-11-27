@@ -545,6 +545,12 @@ export interface RowAction {
   disabled?: boolean
   loading?: boolean
   icon?: React.ReactNode
+  /** A stable identity for the action. Set it whenever an action can appear or
+      disappear while others stay (Approve gone once approved): without it the
+      buttons are keyed by position, so focus left on slot one would then sit on
+      whatever moved into it, and a second Enter would fire that instead. A
+      label that toggles (Journey / Hide) keeps one `id` so its focus survives. */
+  id?: string
 }
 
 /**
@@ -577,7 +583,7 @@ export function RowActions({ actions, max = 2, label }: {
   return (
     <div className="c-row-actions">
       {inline.map((a, i) => (
-        <Btn key={i} size="sm" variant={a.variant ?? 'tertiary'} disabled={a.disabled} loading={a.loading}
+        <Btn key={a.id ?? `#${i}`} size="sm" variant={a.variant ?? 'tertiary'} disabled={a.disabled} loading={a.loading}
           onClick={e => { e.stopPropagation(); a.onClick() }} onKeyDown={keepFromRow}>
           {a.icon}{a.label}
         </Btn>
