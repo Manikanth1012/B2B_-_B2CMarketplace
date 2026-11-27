@@ -150,6 +150,12 @@ Direction A "Midnight & Indigo", balanced density (40px controls, 48px rows), to
 upgraded shared components (buttons, inputs, checkbox/radio, Toggle, custom Dropdown behind `Select` with search,
 Table with sort and sticky header, dot-and-text status, KPI variants, callouts and toasts, Dialog, Drawer, Tabs,
 Skeleton), the `/design-system` reference page and a guardrail test (`UPDATE_GUARDRAIL=1` only lowers it).
+
+**Re-themed 2026-11-27 to the 6D Technologies brand** (user: "design system should be taken from 6dtechnologies.com — colours and styles"), branch `theme-6d`, no migration:
+token values only (names kept, `indigo-*` now hold the navy) — navy `#0A2D72` primary, deep navy `#081F52` chrome, orange
+`--orange-500/600/700` (`#EE743B` fill only; `#B54A18` accent buttons, white label 5.31:1), `#F4A57E`/`#FADBC5` on dark,
+teal `#20776D`, text `#1D1729`/`#4A4752`/`#6C6A72`, surfaces `#F4F2F9`/`#E4E0EE`, 4px controls, Poppins.
+`.c-btn--accent` / `.btn-cyan` are the orange CTA; `.c-btn--primary` stays navy.
 Next waves (each visual only): 2 console shell and navigation; 3 operator screens; 4 partner and enterprise
 consoles; 5 shopper storefront; 6 charts. In wave 3 and after, apply the user's screenshot fixes everywhere:
 filter bars on one line at one height (a shared filter bar), tables with one type size per row and right-aligned

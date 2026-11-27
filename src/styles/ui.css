@@ -9,8 +9,8 @@
 .rw-toast, .av-toast { --focus-color: var(--accent-on-dark); }
 
 /* ---------- Buttons ---------- */
-.btn-cyan { background: var(--indigo-600); color: var(--text-inverse); }
-.btn-cyan:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--indigo-700); }
+.btn-cyan { background: var(--orange-600); color: var(--text-inverse); }
+.btn-cyan:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--orange-700); }
 .btn-cyan:disabled { background: var(--slate-100); color: var(--text-secondary); border-color: var(--slate-200); cursor: not-allowed; }
 .btn-outline-light { background: rgba(255, 255, 255, 0.04); color: #fff; border-color: rgba(255, 255, 255, 0.5); }
 .btn-outline-light:hover:not(:disabled) { background: rgba(255, 255, 255, 0.12); border-color: #fff; }

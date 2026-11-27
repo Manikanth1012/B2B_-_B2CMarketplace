@@ -214,7 +214,7 @@ function Pill({ state }: { state: HeldNumber['state'] }) {
   const colour = tone === 'active' ? { bg: '#DCFCE7', fg: '#15803D' }
     : tone === 'pending' ? { bg: '#FEF3C7', fg: '#92400E' }
     : tone === 'paused' ? { bg: '#FEF3C7', fg: '#92400E' }
-    : { bg: '#F1F5F9', fg: '#475569' }
+    : { bg: 'var(--slate-100)', fg: 'var(--slate-600)' }
   return (
     <span style={{
       padding: '2px 10px', borderRadius: '999px', fontSize: 'var(--text-xs)', fontWeight: 700,
