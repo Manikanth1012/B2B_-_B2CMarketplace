@@ -17,6 +17,7 @@ the standing rule applies — reuse shared components, add to them rather than s
 | 6 | A field and its button on one row line up: `FormField` gets a `compact` (no bottom margin) mode and an inline `FieldRow`; buttons next to inputs are the 40px size, not `sm`. | `FormField`, new `FieldRow` |
 | 7 | One type size per table row; secondary text by colour (`--slate-600`), never by shrinking below 12px. | every table |
 | 8 | Page header pattern: title, one-line description, primary action right; tabs use the shared `Tabs`. | every screen |
+| 9 | KPI cards: never several currencies joined into one value. The headline is the largest currency (or a converted total marked "≈ in USD" only where rates are already loaded); other currencies are a compact list below (code left, amount right, tabular); a one-line context at the foot. Cards in a row share one height, the label and value sit at the same place, one value size. Counts carry a short status line instead of a bare number. (User screenshot: the Credit screen's "Owed and committed" card.) | `KpiCard` (`breakdown` prop), every KPI row |
 
 ## Dashboards and charts
 
