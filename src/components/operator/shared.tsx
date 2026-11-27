@@ -4,6 +4,7 @@ import { statusTone } from '../../lib/consoleTone'
 import { Dialog } from '../ui/Dialog'
 import { Spinner } from '../ui/Spinner'
 import { Dropdown } from '../ui/Dropdown'
+import { ChevronDown, ChevronUp, ChevronsUpDown, CheckCircle2, XCircle, Info } from 'lucide-react'
 
 export function fmtMoney(n: number): string {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -132,7 +133,8 @@ export function StatCard({ label, value, sublabel, color }: { label: string; val
  * it takes the alignment of the cells underneath it, read off the first row —
  * see `alignmentsFrom` below.
  */
-export type Header = string | { label: string; align: 'left' | 'right' }
+export type HeaderSort = { active: boolean; dir: 'asc' | 'desc'; onSort: () => void }
+export type Header = string | { label: string; align?: 'left' | 'right'; sort?: HeaderSort }
 
 const headerLabel = (h: Header): string => (typeof h === 'string' ? h : h.label)
 
@@ -219,9 +221,23 @@ export function Table({ headers, children }: { headers: Header[]; children: Reac
       }}>
         <thead>
           <tr>
-            {headers.map((h, i) => (
-              <th key={i} style={{ textAlign: typeof h === 'string' ? fromCells[i] : h.align }}>{headerLabel(h)}</th>
-            ))}
+            {headers.map((h, i) => {
+              const align = typeof h === 'string' ? fromCells[i] : (h.align ?? fromCells[i])
+              const sort = typeof h === 'string' ? undefined : h.sort
+              return (
+                <th key={i} style={{ textAlign: align }}
+                  aria-sort={sort ? (sort.active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}>
+                  {sort ? (
+                    <button type="button" className="c-table__sort" onClick={sort.onSort}>
+                      {headerLabel(h)}
+                      <span className="c-table__sort-ind" aria-hidden="true">
+                        {sort.active && sort.dir === 'desc' ? <ChevronDown size={12} /> : sort.active ? <ChevronUp size={12} /> : <ChevronsUpDown size={12} />}
+                      </span>
+                    </button>
+                  ) : headerLabel(h)}
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>{children}</tbody>
@@ -244,10 +260,23 @@ export function Table({ headers, children }: { headers: Header[]; children: Reac
  * Edit and Delete buttons. A cell that has been given a width has been told it
  * must wrap, so it does.
  */
+/**
+ * A body row that can be selected. Optional: plain `<tr>` rows keep working.
+ * `selected` sets `aria-selected` and the highlight; other props pass through.
+ */
+export function TableRow({ selected, children, ...rest }: React.HTMLAttributes<HTMLTableRowElement> & { selected?: boolean }) {
+  return (
+    <tr {...rest} aria-selected={selected || undefined}
+      className={`${selected ? 'c-tr--selected ' : ''}${rest.className ?? ''}`.trim() || undefined}>
+      {children}
+    </tr>
+  )
+}
+
 export function Td({ children, right, style }: { children: React.ReactNode; right?: boolean; style?: React.CSSProperties }) {
   const bounded = style !== undefined && ('maxWidth' in style || 'width' in style)
   return (
-    <td className="c-td" style={{
+    <td className={right ? 'c-td c-td--num' : 'c-td'} style={{
       textAlign: right ? 'right' : 'left',
       ...(right && !bounded
         ? { whiteSpace: 'nowrap' as const }
@@ -301,11 +330,13 @@ export function Id({ children }: { children: string }) {
    `LTX-RDX-1101-260802075150876` are over it and wrap at their separators. */
 const SHORT_ID = 18
 
-export function EmptyState({ message, icon }: { message: string; icon?: React.ReactNode }) {
+export function EmptyState({ message, icon, title, action }: { message: string; icon?: React.ReactNode; title?: string; action?: React.ReactNode }) {
   return (
     <div className="c-empty">
       {icon && <div className="c-empty__icon" aria-hidden="true">{icon}</div>}
+      {title && <div className="c-empty__title">{title}</div>}
       {message}
+      {action && <div className="c-empty__action">{action}</div>}
     </div>
   )
 }
@@ -490,16 +521,13 @@ export function ToastHost() {
   }, [])
 
   return (
-    <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 2000, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+    <div className="toast-host">
       {toasts.map(t => (
-        <div key={t.id} style={{
-          padding: '12px 20px', borderRadius: 'var(--radius-md)',
-          background: t.kind === 'error' ? 'var(--danger)' : t.kind === 'info' ? 'var(--info)' : 'var(--success)',
-          color: 'white', fontSize: 'var(--text-sm)', fontWeight: 600,
-          boxShadow: 'var(--shadow-lg)',
-          animation: 'slideIn 200ms ease',
-        }}>
-          {t.message}
+        <div key={t.id} className={`toast toast--${t.kind}`} role={t.kind === 'error' ? 'alert' : 'status'}>
+          <span className="toast__icon" aria-hidden="true">
+            {t.kind === 'error' ? <XCircle size={16} /> : t.kind === 'info' ? <Info size={16} /> : <CheckCircle2 size={16} />}
+          </span>
+          <span>{t.message}</span>
         </div>
       ))}
     </div>

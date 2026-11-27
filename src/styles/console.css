@@ -38,26 +38,50 @@
 /* ---------- Table ---------- */
 .c-table-wrap { overflow-x: auto; }
 .c-table { width: 100%; border-collapse: collapse; table-layout: auto; font-size: var(--text-table); min-width: min-content; }
-.c-table thead tr { background: var(--bg-alt); border-bottom: 1px solid var(--border-light); }
+.c-table thead tr { background: var(--slate-100); border-bottom: 1px solid var(--slate-200); }
 .c-table th {
-  padding: 10px var(--cell-pad, 10px);
-  font-size: 12px; font-weight: 600; color: var(--text-secondary); line-height: 1.25;
+  height: var(--head-h); padding: 0 var(--cell-pad, 10px);
+  font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--slate-600); line-height: 1.25; text-align: left;
   /* A header may wrap between its words, never inside one. */
   overflow-wrap: normal; word-break: keep-all;
+  /* Sticks to the nearest scrolling ancestor (a wrap or panel with a max-height);
+     with none, it simply stays where it is. The band is painted on the th so rows
+     slide under it. */
+  position: sticky; top: 0; z-index: 1; background: var(--slate-100);
 }
+.c-table th[aria-sort] { color: var(--ink-800); }
+.c-table__sort {
+  all: unset; box-sizing: border-box; display: inline-flex; align-items: center; gap: 4px;
+  min-height: 32px; cursor: pointer; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit;
+  border-radius: var(--radius);
+}
+.c-table__sort:hover { color: var(--ink-900); }
+.c-table__sort:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-color, rgba(79,70,229,.18)); }
+.c-table__sort-ind { display: inline-flex; flex-direction: column; line-height: 0; opacity: .45; }
+.c-table__sort-ind svg { display: block; }
+th[aria-sort="ascending"] .c-table__sort-ind, th[aria-sort="descending"] .c-table__sort-ind { opacity: 1; color: var(--indigo-700); }
 /* A row that carries its own highlight (an overdue or focused row sets an inline
    background on the <tr>) keeps it under the pointer: the hover paints the cells,
    which would cover the row's colour. Those rows have a style attribute. */
-.c-table tbody tr:not([style*="background"]):hover > td { background: var(--bg-alt); }
-.c-td { padding: 12px var(--cell-pad, 10px); border-bottom: 1px solid var(--border-light); color: var(--text); vertical-align: middle; }
+.c-table tbody tr:not([style*="background"]):hover > td { background: var(--slate-100); }
+.c-table tbody tr.c-tr--selected > td, .c-table tbody tr[aria-selected="true"] > td { background: var(--indigo-50); }
+.c-table tbody tr.c-tr--selected > td:first-child, .c-table tbody tr[aria-selected="true"] > td:first-child { box-shadow: inset 3px 0 0 var(--indigo-600); }
+.c-td {
+  height: var(--row-h); padding: 8px var(--cell-pad, 10px); border-bottom: 1px solid var(--slate-100);
+  color: var(--ink-800); vertical-align: middle;
+}
+.c-td--num { font-variant-numeric: tabular-nums; }
 
 /* ---------- Empty state ---------- */
-.c-empty { padding: 40px 20px; text-align: center; color: var(--text-secondary); font-size: var(--text-sm); }
+.c-empty { padding: 40px 20px; text-align: center; color: var(--slate-600); font-size: var(--text-sm); line-height: 1.5; }
 .c-empty__icon {
-  width: 48px; height: 48px; border-radius: 50%; margin: 0 auto 12px;
+  width: 40px; height: 40px; border-radius: var(--radius-md); margin: 0 auto 12px;
   display: flex; align-items: center; justify-content: center;
-  background: var(--bg-alt); color: var(--text-secondary);
+  background: var(--slate-100); color: var(--slate-500);
 }
+.c-empty__title { font-size: var(--text-base); font-weight: 600; color: var(--ink-800); margin-bottom: 4px; }
+.c-empty__action { margin-top: 16px; }
 
 /* ---------- Modal ---------- */
 .c-modal {
