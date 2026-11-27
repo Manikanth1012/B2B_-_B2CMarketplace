@@ -4,6 +4,8 @@
 
 import { supabase } from './supabase'
 import { canApprove, canReject, checkBundlePrice, bundleView } from './catalogue'
+import { checkBundleLines } from './pricing'
+import { round2 } from './money'
 import type {
   ProductRow, Submission, ProductRule, Component, Media, CategoryPolicy, PolicyRuleRow,
 } from './catalogue'
@@ -420,7 +422,10 @@ export interface BundleDraft {
   price: number
   model: string
   fulfil: string
-  components: { productId: string; quantity: number; note: string }[]
+  /* `unitPrice` is the price of one unit inside the bundle, set per product by
+     the operator (between the seller's floor and the normal price). When every
+     component carries one, the bundle price is those lines added up. */
+  components: { productId: string; quantity: number; note: string; unitPrice?: number }[]
 }
 
 /**
@@ -455,14 +460,38 @@ export async function createBundle(
     return n + p.price * c.quantity
   }, 0).toFixed(2)
 
-  const priced = checkBundlePrice(draft.price, partsTotal)
+  /* Priced line by line: every product carries its own bundle price, checked
+     here against the seller's floor as read now (the database checks it again),
+     and the bundle price is the lines added up. */
+  const lined = draft.components.filter(c => c.unitPrice !== undefined).length
+  if (lined > 0 && lined < draft.components.length) {
+    return { ok: false, reason: 'Every product in the bundle needs its own price.' }
+  }
+  let bundlePrice = draft.price
+  if (lined > 0) {
+    const verdict = checkBundleLines(draft.components.map(c => {
+      const p = products.find(x => x.id === c.productId)!
+      return {
+        productId: p.id, name: p.name, quantity: c.quantity,
+        price: Number(p.price), floor_price: Number(p.floor_price ?? p.price), unitPrice: Number(c.unitPrice),
+      }
+    }))
+    if (!verdict.ok) {
+      const firstBad = Object.entries(verdict.lineErrors)[0]
+      const named = firstBad ? `${products.find(p => p.id === firstBad[0])?.name ?? firstBad[0]}: ${firstBad[1]}` : null
+      return { ok: false, reason: named ?? verdict.reason ?? 'The bundle prices cannot stand.' }
+    }
+    bundlePrice = verdict.total
+  }
+
+  const priced = checkBundlePrice(bundlePrice, partsTotal)
   if (!priced.ok) return priced
 
   const id = `SKU-B${Date.now().toString(36).slice(-5).toUpperCase()}`
   const { error: insErr } = await supabase.from('products').insert({
     id, category_id: draft.categoryId, sub_category: draft.subCategory || 'Bundles',
     name: draft.name, partner_id: null, seller: 'Aventa Telecom',
-    price: draft.price, was_price: partsTotal, cost: 0,
+    price: bundlePrice, was_price: partsTotal, cost: 0,
     model: draft.model, fulfil: draft.fulfil,
     /* A first-party bundle that recurs bills monthly, which is what `model =
        'monthly'` meant before the period was a column of its own. The operator's
@@ -480,6 +509,7 @@ export async function createBundle(
     draft.components.map((c, i) => ({
       bundle_id: id, component_id: c.productId, quantity: c.quantity,
       note: c.note || null, sort_order: i + 1,
+      ...(c.unitPrice !== undefined ? { unit_price: round2(Number(c.unitPrice)) } : {}),
     })),
   )
   if (compErr) {
@@ -509,7 +539,7 @@ export async function createBundle(
     check_note: 'Bundle composed by the operator from live listings',
     submitted_by: actor, submitted_at: new Date().toISOString(),
     reviewed_by: actor, reviewed_at: new Date().toISOString(),
-    decision_reason: `Composed from ${draft.components.length} live listings, priced $${(partsTotal - draft.price).toFixed(2)} below the parts.`,
+    decision_reason: `Composed from ${draft.components.length} live listings, priced $${(partsTotal - bundlePrice).toFixed(2)} below the parts.`,
     version: 1, sort_order: 500,
   })
 

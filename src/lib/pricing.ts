@@ -201,3 +201,65 @@ export function checkBundleAgainstFloors(
   }
   return { ok: true, room }
 }
+
+/* ------------------------------------------------ bundle line prices --- */
+
+/** One product in a bundle with the price the operator sets for it inside the bundle. */
+export interface BundleLine extends BundleComponent {
+  /** The price of one unit inside the bundle; `NaN` while the field is empty or unreadable. */
+  unitPrice: number
+}
+
+export interface BundleLinesVerdict {
+  ok: boolean
+  /** Per product: why its bundle price cannot stand, if it cannot. */
+  lineErrors: Record<string, string>
+  /** One sentence for the whole bundle, when something is wrong. */
+  reason: string | null
+  /** The bundle price: the lines added up. */
+  total: number
+  partsTotal: number
+  saving: number
+  savingPct: number
+}
+
+/**
+ * Whether each product's price inside a bundle is one the operator may set: no
+ * lower than its seller's floor (the least the seller agreed to accept), no
+ * higher than its normal price, and the bundle as a whole cheaper than the
+ * parts bought separately. The bundle price is the lines added up — each
+ * seller's share is then exactly its line, not a guess apportioned later.
+ */
+export function checkBundleLines(lines: readonly BundleLine[]): BundleLinesVerdict {
+  const lineErrors: Record<string, string> = {}
+  for (const l of lines) {
+    if (!Number.isFinite(l.unitPrice) || l.unitPrice <= 0) {
+      lineErrors[l.productId] = 'Set a price.'
+    } else if (round2(l.unitPrice) < round2(l.floor_price)) {
+      lineErrors[l.productId] = `The seller agreed to go no lower than $${l.floor_price.toFixed(2)}.`
+    } else if (round2(l.unitPrice) > round2(l.price)) {
+      lineErrors[l.productId] = `More than its normal price of $${l.price.toFixed(2)}.`
+    }
+  }
+  const partsTotal = round2(lines.reduce((n, l) => n + l.price * l.quantity, 0))
+  const total = round2(lines.reduce(
+    (n, l) => n + (Number.isFinite(l.unitPrice) ? round2(l.unitPrice) : 0) * l.quantity, 0))
+  const saving = round2(Math.max(0, partsTotal - total))
+  const savingPct = partsTotal === 0 ? 0 : Math.round((saving / partsTotal) * 1000) / 10
+  const bad = Object.keys(lineErrors).length
+  const reason =
+    bad > 0 ? (bad === 1 ? 'One product has a price that cannot stand.' : `${bad} products have prices that cannot stand.`)
+    : lines.length > 0 && total >= partsTotal
+      ? `At $${total.toFixed(2)} this costs the same as buying the parts separately. Lower at least one price.`
+      : null
+  return { ok: reason === null && lines.length > 0, lineErrors, reason, total, partsTotal, saving, savingPct }
+}
+
+/**
+ * The bundle price of one unit at `pct` per cent off its normal price, never
+ * below the seller's floor — "Apply % off to all" fills every line with this.
+ */
+export function percentOffLine(line: Pick<BundleComponent, 'price' | 'floor_price'>, pct: number): number {
+  const p = Math.min(100, Math.max(0, pct))
+  return round2(Math.max(line.floor_price, line.price * (1 - p / 100)))
+}
