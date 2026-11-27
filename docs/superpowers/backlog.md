@@ -137,7 +137,11 @@ Spec `docs/superpowers/specs/2026-11-27-alignment-sweep-and-dashboards-design.md
   `RowActions` (2 inline + "More" menu, `ui/Menu`), `FilterBar`, `DateRangeFilter`, `FormField compact` + `FieldRow`,
   `PageHeader`, `KpiCard breakdown/status` + `KpiRow`, `ui/charts` (Column/Bar/Line/Area/Donut/Sparkline, 6D palette
   `--chart-1..6`, `categoryColour`), `/design-system` sections.
-- [ ] Scheduled jobs filters (date range, job, status, failures only), then the other log screens.
+- [x] Part 2, filters (merged): Scheduled jobs (date range with 7/14/30 quick picks ending at the newest night, job,
+  status; default = newest 14 nights; reads up to 90 days, capped at Supabase's 1000-row response), audit trail and
+  notifications log (local-day date ranges, `src/lib/localDay.ts`), dunning, settlement statements, tickets.
+  Job filter is single-choice (no shared multi-select yet); "Failures only" = Status: Failed. No date filter yet on
+  dunning, settlements, tickets.
 - [ ] Operator screens in four groups; dashboards (operator, partner, enterprise); partner/enterprise screens; storefront.
 - Deferred minors: Donut has no keyboard focus (hidden table covers screen readers); a Menu whose items are all
   disabled looks dead; `Td clamp` hover title only for plain-string children; menu arrow keys bubble to the row.
