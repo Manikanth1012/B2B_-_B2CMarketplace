@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useState } from 'react'
 
 vi.mock('../../lib/supabase', () => ({ supabase: {} }))
 
@@ -322,5 +323,20 @@ describe('KpiCard breakdown and KpiRow (rule 9)', () => {
     const { container } = render(<KpiRow label="Headline figures"><KpiCard label="A" value="1" /><KpiCard label="B" value="2" /></KpiRow>)
     expect(screen.getByRole('group', { name: 'Headline figures' })).toBeTruthy()
     expect(container.querySelectorAll('.kpi-row > .kpi-card')).toHaveLength(2)
+  })
+})
+
+describe('RowActions focus', () => {
+  it('keeps keyboard focus on an action whose label toggles when it is activated', async () => {
+    function Toggler() {
+      const [open, setOpen] = useState(false)
+      return <RowActions actions={[{ label: open ? 'Hide' : 'Journey', onClick: () => setOpen(o => !o) }]} />
+    }
+    render(<Toggler />)
+    const btn = screen.getByRole('button', { name: 'Journey' })
+    btn.focus()
+    await userEvent.keyboard('{Enter}')
+    const after = screen.getByRole('button', { name: 'Hide' })
+    expect(document.activeElement).toBe(after)
   })
 })

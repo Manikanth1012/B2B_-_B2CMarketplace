@@ -11,12 +11,15 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-  Search, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, FileText,
+  ChevronLeft, ChevronRight, FileText,
   CircleCheck as CheckCircle, CircleAlert as AlertCircle, Circle, Clock, TriangleAlert, Plus,
 } from 'lucide-react'
 import {
-  SectionCard, EmptyState, Btn, Modal, FormField, TextArea, toast, fmtDate, fmtMoney, fmtInt,
+  SectionCard, EmptyState, Btn, Modal, FormField, TextArea, Select, toast, fmtDate, fmtMoney, fmtInt,
+  PageHeader, FilterBar, Table, TableRow, Td,
 } from './shared'
+import { Tabs } from '../ui/Tabs'
+import { KpiCard, KpiRow } from '../ui/KpiCard'
 import { Callout } from '../OnboardingJourney'
 import { EvidenceLink } from '../EvidenceLink'
 import { PartnerMarkets } from './PartnerMarkets'
@@ -117,6 +120,14 @@ export function OperatorPartners({ focus = null }: { focus?: string | null } = {
     return { ...f, [key]: list.includes(value) ? list.filter(v => v !== value) : [...list, value] }
   })
 
+  const sortHeader = (label: string, col: SortKey) => ({
+    label,
+    sort: {
+      active: sort.key === col, dir: sort.dir,
+      onSort: () => setSort({ key: col, dir: sort.key === col && sort.dir === 'asc' ? 'desc' : 'asc' }),
+    },
+  })
+
   const handleMove = async (to: PartnerStatus, reason: string) => {
     if (!partner) return
     const res = await movePartner({ partnerId: partner.id, to, reason, actor: 'Marketplace onboarding desk' })
@@ -137,12 +148,9 @@ export function OperatorPartners({ focus = null }: { focus?: string | null } = {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div>
-        <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Sellers</h1>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-          {rows.length} on record · {rows.reduce((n, r) => n + r.liveListings, 0)} live listings between them
-        </p>
-      </div>
+      <PageHeader
+        title="Sellers"
+        description={`${rows.length} on record · ${rows.reduce((n, r) => n + r.liveListings, 0)} live listings between them`} />
 
       {dirError && <Callout tone="danger" title="Some of this screen did not load">{dirError}</Callout>}
 
@@ -175,25 +183,13 @@ export function OperatorPartners({ focus = null }: { focus?: string | null } = {
           ? `${pageOf.total} of ${rows.length} match · showing ${pageOf.from}–${pageOf.to}`
           : `Showing ${pageOf.from}–${pageOf.to} of ${pageOf.total}`}
         action={filtering
-          ? <button onClick={() => setFilters(EMPTY_FILTERS)} style={{
-              fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--brand-navy)',
-              background: 'none', border: 'none', cursor: 'pointer',
-            }}>Clear filters</button>
+          ? <Btn variant="tertiary" size="sm" onClick={() => setFilters(EMPTY_FILTERS)}>Clear filters</Btn>
           : undefined}
       >
         <div style={{ padding: '14px 20px', display: 'flex', flexDirection: 'column', gap: '11px', borderBottom: '1px solid var(--border-light)' }}>
-          <div style={{ position: 'relative', maxWidth: '380px' }}>
-            <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-            <input
-              value={filters.search}
-              onChange={e => setFilters(f => ({ ...f, search: e.target.value }))}
-              placeholder="Search name, id, type, country or contact"
-              style={{
-                width: '100%', padding: '8px 12px 8px 32px', borderRadius: 'var(--radius)',
-                border: '1px solid var(--border)', fontSize: 'var(--text-sm)', outline: 'none', color: 'var(--text)',
-              }}
-            />
-          </div>
+          <FilterBar ariaLabel="Search sellers"
+            search={{ value: filters.search, onChange: v => setFilters(f => ({ ...f, search: v })),
+              placeholder: 'Search name, id, type, country or contact', ariaLabel: 'Search sellers' }} />
 
           <ChipRow label="Marketplace"
                    options={catBuckets.map(b => ({ value: b.key, label: `${b.label} (${b.count})` }))}
@@ -206,70 +202,50 @@ export function OperatorPartners({ focus = null }: { focus?: string | null } = {
         {pageOf.items.length === 0 ? (
           <EmptyState message="No seller matches those filters" />
         ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 'max(860px, min-content)' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                  <SortHead label="Seller"       col="name"     sort={sort} onSort={setSort} />
-                  <Head label="Marketplaces" />
-                  <SortHead label="Tier"         col="tier"     sort={sort} onSort={setSort} />
-                  <Head label="Settlement plan" />
-                  <SortHead label="Listings"     col="listings" sort={sort} onSort={setSort} right />
-                  <SortHead label="Onboarding"   col="progress" sort={sort} onSort={setSort} />
-                  <SortHead label="State"        col="status"   sort={sort} onSort={setSort} />
-                </tr>
-              </thead>
-              <tbody>
-                {pageOf.items.map(r => {
-                  const t = tierOf(r.tier_id)
-                  return (
-                    <tr key={r.id}
-                        onClick={() => { setSelected(r.id); setTab('overview') }}
-                        style={{
-                          borderBottom: '1px solid var(--border-light)', cursor: 'pointer',
-                          background: r.id === selected ? 'var(--info-bg)' : 'transparent',
-                        }}>
-                      <Cell>
-                        <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text)' }}>{r.name}</div>
-                        <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{r.id} · {r.type} · {r.country}</div>
-                      </Cell>
-                      <Cell>
-                        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                          {r.categories.length === 0
-                            ? <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>None</span>
-                            : r.categories.map(c => (
-                                <span key={c} style={{
-                                  fontSize: '10px', fontWeight: 600, padding: '1px 7px',
-                                  borderRadius: 'var(--radius-full)', background: 'var(--bg-alt)',
-                                  border: '1px solid var(--border)', color: 'var(--text-secondary)',
-                                }}>{catName(c)}</span>
-                              ))}
-                        </div>
-                      </Cell>
-                      <Cell>
-                        {t && <TierBadge tier={t} />}
-                      </Cell>
-                      <Cell>
-                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                          {r.planName ?? <span style={{ color: 'var(--text-tertiary)' }}>Not assigned</span>}
-                        </div>
-                      </Cell>
-                      <Cell right>
-                        <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>{r.liveListings}</span>
-                        <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}> / {r.listings}</span>
-                      </Cell>
-                      <Cell>
-                        <GateProgress cleared={r.clearedGates} total={r.totalGates} at={r.currentGate} />
-                      </Cell>
-                      <Cell>
-                        <span style={{ fontSize: '11px', fontWeight: 700, color: STATUS_INK[r.status] }}>{r.status}</span>
-                      </Cell>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
+          <Table headers={[
+            sortHeader('Seller', 'name'), 'Marketplaces', sortHeader('Tier', 'tier'), 'Settlement plan',
+            sortHeader('Listings', 'listings'), sortHeader('Onboarding', 'progress'), sortHeader('State', 'status'),
+          ]}>
+            {pageOf.items.map(r => {
+              const t = tierOf(r.tier_id)
+              return (
+                <TableRow key={r.id} selected={r.id === selected} style={{ cursor: 'pointer' }}
+                  onClick={() => { setSelected(r.id); setTab('overview') }}>
+                  <Td>
+                    <div style={{ fontWeight: 700, color: 'var(--text)' }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={r.name}>{r.name}</span></div>
+                    <div style={{ color: 'var(--slate-600)' }}>{r.id} · {r.type} · {r.country}</div>
+                  </Td>
+                  <Td>
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                      {r.categories.length === 0
+                        ? <span style={{ color: 'var(--slate-600)' }}>None</span>
+                        : r.categories.map(c => (
+                            <span key={c} style={{
+                              fontSize: 'var(--text-xs)', fontWeight: 600, padding: '1px 7px',
+                              borderRadius: 'var(--radius-full)', background: 'var(--bg-alt)',
+                              border: '1px solid var(--border)', color: 'var(--text-secondary)',
+                            }}>{catName(c)}</span>
+                          ))}
+                    </div>
+                  </Td>
+                  <Td kind="status">{t && <TierBadge tier={t} />}</Td>
+                  <Td clamp>
+                    {r.planName ?? <span style={{ color: 'var(--slate-600)' }}>Not assigned</span>}
+                  </Td>
+                  <Td kind="num">
+                    <span style={{ fontWeight: 700 }}>{r.liveListings}</span>
+                    <span style={{ color: 'var(--slate-600)' }}> / {r.listings}</span>
+                  </Td>
+                  <Td nowrap>
+                    <GateProgress cleared={r.clearedGates} total={r.totalGates} at={r.currentGate} />
+                  </Td>
+                  <Td kind="status">
+                    <span style={{ fontWeight: 700, color: STATUS_INK[r.status] }}>{r.status}</span>
+                  </Td>
+                </TableRow>
+              )
+            })}
+          </Table>
         )}
 
         {pageOf.pages > 1 && (
@@ -324,29 +300,22 @@ export function OperatorPartners({ focus = null }: { focus?: string | null } = {
           title={partner.name}
           subtitle={`${partner.id} · ${partner.type} · ${partner.country} · ${partner.contact}${partner.email ? ` <${partner.email}>` : ''}`}
           action={
-            <button onClick={() => { setSelected(null); setDetail(null) }} style={{
-              fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--text-tertiary)',
-              background: 'none', border: 'none', cursor: 'pointer',
-            }}>Close</button>
+            <Btn variant="tertiary" size="sm" onClick={() => { setSelected(null); setDetail(null) }}>Close</Btn>
           }
         >
-          <div style={{ display: 'flex', gap: '4px', padding: '10px 20px 0', flexWrap: 'wrap', borderBottom: '1px solid var(--border-light)' }}>
-            {TABS.map(t => (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{
-                padding: '7px 13px', cursor: 'pointer', background: 'none', border: 'none',
-                fontSize: 'var(--text-xs)', fontWeight: 700,
-                color: tab === t.id ? 'var(--brand-navy)' : 'var(--text-tertiary)',
-                borderBottom: `2px solid ${tab === t.id ? 'var(--brand-navy)' : 'transparent'}`,
-              }}>
-                {t.label}
-                {t.id === 'documents' && detail && <Count n={detail.documents.length + detail.evidence.filter(e => e.document).length} />}
-                {t.id === 'bills' && detail && <Count n={detail.statements.length} />}
-                {t.id === 'listings' && detail && <Count n={detail.listings.length} />}
-              </button>
-            ))}
+          <div style={{ padding: '10px 20px 0', borderBottom: '1px solid var(--border-light)' }}>
+            <Tabs ariaLabel="Seller record" panelIdPrefix="seller-panel-" value={tab} onChange={id => setTab(id as Tab)}
+              tabs={TABS.map(t => ({
+                id: t.id, label: t.label,
+                count: !detail ? undefined
+                  : t.id === 'documents' ? detail.documents.length + detail.evidence.filter(e => e.document).length
+                  : t.id === 'bills' ? detail.statements.length
+                  : t.id === 'listings' ? detail.listings.length
+                  : undefined,
+              }))} />
           </div>
 
-          <div style={{ padding: '18px 20px' }}>
+          <div role="tabpanel" id={`seller-panel-${tab}`} style={{ padding: '18px 20px' }}>
             {detail?.loadError && <Callout tone="danger" title="Part of this record did not load">{detail.loadError}</Callout>}
 
             {tab === 'overview' && (
@@ -501,7 +470,7 @@ function PlanBody({ plan, catName, othersOnPlan }: {
           </div>
         ))}
       </div>
-      <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', margin: 0 }}>
+      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: 0 }}>
         {next && `The rate ${next.tier.rate < opening ? 'falls' : 'rises'} to ${next.tier.rate}% at $${fmtMoney(next.tier.from)} of cumulative gross value. `}
         {othersOnPlan > 0 && `${othersOnPlan} other seller${othersOnPlan === 1 ? ' is' : 's are'} on the same schedule — editing it edits theirs too.`}
       </p>
@@ -549,7 +518,7 @@ function Categories({ detail, categories, catName, onChanged }: {
         <Btn size="sm" onClick={() => setAdding(true)} disabled={busy}><Plus size={13} /> Add a category</Btn>
       )}>
       <div style={{ padding: '12px 20px' }}>
-        <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', margin: 0 }}>
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: 0 }}>
           {addable.length === 0
             ? 'Nothing left to add.'
             : `Adding one opens an application, not a marketplace: ${addable.map(c => c.name).join(', ')}. It lands unapproved with its evidence outstanding, and opens when the rules that category enforces are satisfied.`}
@@ -605,13 +574,13 @@ function Categories({ detail, categories, catName, onChanged }: {
             }}>
               <span style={{ fontSize: 'var(--text-sm)', fontWeight: 800, color: 'var(--text)' }}>{catName(a.category_id)}</span>
               <span style={{
-                fontSize: '10px', fontWeight: 700, padding: '2px 9px', borderRadius: 'var(--radius-full)',
+                fontSize: 'var(--text-xs)', fontWeight: 700, padding: '2px 9px', borderRadius: 'var(--radius-full)',
                 background: 'white',
                 color: tone === 'success' ? 'var(--success)' : tone === 'danger' ? 'var(--danger)' : 'var(--warning)',
               }}>
                 {!readiness.approved ? 'Not approved' : readiness.clear ? 'Open' : 'Approved — action needed'}
               </span>
-              <span style={{ flex: 1, fontSize: '11px', color: 'var(--text-secondary)', minWidth: '180px' }}>
+              <span style={{ flex: 1, fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', minWidth: '180px' }}>
                 {readiness.satisfied} of {readiness.total} rules satisfied
                 {a.approved_at && ` · approved ${fmtDate(a.approved_at)}${a.approved_by ? ` by ${a.approved_by}` : ''}`}
               </span>
@@ -738,10 +707,9 @@ function AddCategoryDialog({ partnerName, partnerStatus, addable, approvals, cat
         </Callout>
 
         <FormField label="Category" required>
-          <select value={categoryId} onChange={e => setCategoryId(e.target.value)}
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: 'var(--radius)', border: '1px solid var(--border)', fontSize: 'var(--text-sm)' }}>
+          <Select value={categoryId} onChange={e => setCategoryId(e.target.value)}>
             {addable.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
+          </Select>
         </FormField>
 
         <FormField label="Why" required hint="Recorded against the seller and kept in the audit trail.">
@@ -815,13 +783,13 @@ function EvidenceRow({ e, rule, first, today }: {
           {rule?.name ?? e.rule_id}
           <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}> · {e.rule_id}</span>
         </div>
-        {rule && <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '1px' }}>{rule.descr}</div>}
-        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '3px' }}>
+        {rule && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '1px' }}>{rule.descr}</div>}
+        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: '3px' }}>
           {EVIDENCE_MEANING[e.state]}
           {e.note && ` ${e.note}`}
         </div>
         {e.document && (
-          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '3px' }}>
+          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '3px' }}>
             {e.document}{e.kind ? ` · ${e.kind} ${e.size}` : ''}
             {e.expires_on && (
               <span style={{ color: expired ? 'var(--danger)' : 'var(--text-tertiary)', fontWeight: expired ? 700 : 400 }}>
@@ -832,8 +800,8 @@ function EvidenceRow({ e, rule, first, today }: {
         )}
       </div>
       <div style={{ flexShrink: 0, textAlign: 'right' }}>
-        {rule && <div style={{ fontSize: '10px', fontWeight: 700, color: 'var(--text-secondary)' }}>{rule.owner}</div>}
-        {rule && <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{CHECK_LABEL[rule.check_by]}</div>}
+        {rule && <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text-secondary)' }}>{rule.owner}</div>}
+        {rule && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{CHECK_LABEL[rule.check_by]}</div>}
       </div>
     </div>
   )
@@ -858,36 +826,29 @@ function Listings({ detail, catName }: { detail: PartnerDetail; catName: (id: st
       <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: '0 0 10px' }}>
         {breakdown.map(b => `${b.count} ${b.label.toLowerCase()}`).join(' · ')}
       </p>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 'max(520px, min-content)' }}>
-          <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
-            <Head label="Listing" /><Head label="Marketplace" /><Head label="Price" right /><Head label="Stock" /><Head label="State" />
-          </tr></thead>
-          <tbody>
-            {detail.listings.map(l => {
-              const state = listingState(l.status)
-              return (
-                <tr key={l.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                  <Cell>
-                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>{l.name}</div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{l.id}</div>
-                  </Cell>
-                  <Cell><span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{catName(l.category_id)}</span></Cell>
-                  <Cell right><span style={{ fontSize: 'var(--text-xs)' }}>${fmtMoney(l.price)}</span></Cell>
-                  <Cell><span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{l.stock}</span></Cell>
-                  <Cell>
-                    <div style={{ fontSize: '11px', fontWeight: 700,
-                      color: l.status === 'live' ? 'var(--success)' : l.status === 'pending' ? 'var(--warning)' : 'var(--danger)' }}>
-                      {state.label}
-                    </div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', maxWidth: '210px' }}>{state.meaning}</div>
-                  </Cell>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
+      <Table headers={['Listing', 'Marketplace', 'Price', 'Stock', 'State']}>
+        {detail.listings.map(l => {
+          const state = listingState(l.status)
+          return (
+            <tr key={l.id}>
+              <Td>
+                <div style={{ fontWeight: 700 }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={l.name}>{l.name}</span></div>
+                <div style={{ color: 'var(--slate-600)' }}>{l.id}</div>
+              </Td>
+              <Td nowrap>{catName(l.category_id)}</Td>
+              <Td kind="num">${fmtMoney(l.price)}</Td>
+              <Td kind="status">{l.stock}</Td>
+              <Td>
+                <div style={{ fontWeight: 700,
+                  color: l.status === 'live' ? 'var(--success)' : l.status === 'pending' ? 'var(--warning)' : 'var(--danger)' }}>
+                  {state.label}
+                </div>
+                <div style={{ color: 'var(--slate-600)', maxWidth: '210px' }}>{state.meaning}</div>
+              </Td>
+            </tr>
+          )
+        })}
+      </Table>
     </div>
   )
 }
@@ -962,7 +923,7 @@ function DocRow({ name, meta, warn, doc }: {
       }}><FileText size={14} /></span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text)' }}>{name}</div>
-        <div style={{ fontSize: '10px', color: warn ? 'var(--danger)' : 'var(--text-tertiary)' }}>
+        <div style={{ fontSize: 'var(--text-xs)', color: warn ? 'var(--danger)' : 'var(--text-tertiary)' }}>
           {warn ? `${meta} · ${warn}` : meta}
         </div>
       </div>
@@ -986,51 +947,45 @@ function Bills({ detail }: { detail: PartnerDetail }) {
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '14px' }}>
-        <Stat label="Gross billed" value={`$${fmtMoney(total('gross'))}`} sub={`${detail.statements.length} periods`} />
-        <Stat label="Marketplace commission" value={`$${fmtMoney(total('commission'))}`}
-              sub={detail.plan ? `${detail.plan.base_rate}% on the ${detail.plan.name} plan` : 'No plan'} />
-        <Stat label="Settled to the seller" value={`$${fmtMoney(total('net'))}`}
-              sub={`${fmtInt(detail.statements.reduce((n, s) => n + s.order_count, 0))} orders`} />
+      <div style={{ marginBottom: '14px' }}>
+        <KpiRow label="Billing summary">
+          <KpiCard variant="money" label="Gross billed" value={`$${fmtMoney(total('gross'))}`} unit="USD"
+            context={`${detail.statements.length} periods`} />
+          <KpiCard variant="money" label="Marketplace commission" value={`$${fmtMoney(total('commission'))}`} unit="USD"
+            context={detail.plan ? `${detail.plan.base_rate}% on the ${detail.plan.name} plan` : 'No plan'} />
+          <KpiCard variant="money" label="Settled to the seller" value={`$${fmtMoney(total('net'))}`} unit="USD"
+            context={`${fmtInt(detail.statements.reduce((n, s) => n + s.order_count, 0))} orders`} />
+        </KpiRow>
       </div>
 
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 'max(760px, min-content)' }}>
-          <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
-            <Head label="Period" /><Head label="Orders" right /><Head label="Gross" right />
-            <Head label="Commission" right /><Head label="Fees" right /><Head label="Refunds" right />
-            <Head label="Net paid" right /><Head label="State" />
-          </tr></thead>
-          <tbody>
-            {detail.statements.map(s => (
-              <tr key={s.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                <Cell>
-                  <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>{s.period}</div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{s.id}</div>
-                </Cell>
-                <Cell right><span style={{ fontSize: 'var(--text-xs)' }}>{fmtInt(s.order_count)}</span></Cell>
-                <Cell right><span style={{ fontSize: 'var(--text-xs)' }}>${fmtMoney(s.gross)}</span></Cell>
-                <Cell right>
-                  <span style={{ fontSize: 'var(--text-xs)' }}>−${fmtMoney(s.commission)}</span>
-                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{s.commission_rate}%</div>
-                </Cell>
-                <Cell right><span style={{ fontSize: 'var(--text-xs)' }}>{s.fees > 0 ? `−$${fmtMoney(s.fees)}` : '—'}</span></Cell>
-                <Cell right><span style={{ fontSize: 'var(--text-xs)' }}>{s.refunds > 0 ? `−$${fmtMoney(s.refunds)}` : '—'}</span></Cell>
-                <Cell right><span style={{ fontSize: 'var(--text-xs)', fontWeight: 800 }}>${fmtMoney(s.net)}</span></Cell>
-                <Cell>
-                  <div style={{ fontSize: '11px', fontWeight: 700,
-                    color: s.status === 'paid' ? 'var(--success)' : s.status === 'approved' ? 'var(--info)' : 'var(--warning)' }}>
-                    {s.status}
-                  </div>
-                  {s.disputed && <div style={{ fontSize: '10px', color: 'var(--danger)', fontWeight: 700 }}>Disputed</div>}
-                  {s.approved_by && <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{s.approved_by}</div>}
-                </Cell>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p style={{ fontSize: '10px', color: 'var(--text-tertiary)', margin: '10px 0 0' }}>
+      <Table headers={['Period', 'Orders', 'Gross', 'Commission', 'Fees', 'Refunds', 'Net paid', 'State']}>
+        {detail.statements.map(s => (
+          <tr key={s.id}>
+            <Td kind="id">
+              <div style={{ fontWeight: 700 }}>{s.period}</div>
+              <div style={{ color: 'var(--slate-600)' }}>{s.id}</div>
+            </Td>
+            <Td kind="num">{fmtInt(s.order_count)}</Td>
+            <Td kind="num">${fmtMoney(s.gross)}</Td>
+            <Td kind="num">
+              −${fmtMoney(s.commission)}
+              <div style={{ color: 'var(--slate-600)' }}>{s.commission_rate}%</div>
+            </Td>
+            <Td kind="num">{s.fees > 0 ? `−$${fmtMoney(s.fees)}` : '—'}</Td>
+            <Td kind="num">{s.refunds > 0 ? `−$${fmtMoney(s.refunds)}` : '—'}</Td>
+            <Td kind="num"><span style={{ fontWeight: 800 }}>${fmtMoney(s.net)}</span></Td>
+            <Td kind="status">
+              <div style={{ fontWeight: 700,
+                color: s.status === 'paid' ? 'var(--success)' : s.status === 'approved' ? 'var(--info)' : 'var(--warning)' }}>
+                {s.status}
+              </div>
+              {s.disputed && <div style={{ color: 'var(--danger)', fontWeight: 700 }}>Disputed</div>}
+              {s.approved_by && <div style={{ color: 'var(--slate-600)' }}>{s.approved_by}</div>}
+            </Td>
+          </tr>
+        ))}
+      </Table>
+      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: '10px 0 0' }}>
         Gross less commission, fees, withholding and refunds is what was paid. The rate on each row is the
         rate on the plan the seller counter-signed at the agreements gate.
       </p>
@@ -1059,7 +1014,7 @@ function History({ detail }: { detail: PartnerDetail }) {
               {e.from_status ? `${e.from_status} → ${e.to_status}` : `Opened as ${e.to_status}`}
             </div>
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: '2px' }}>{e.reason}</div>
-            <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{e.actor} · {fmtDate(e.at)}</div>
+            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>{e.actor} · {fmtDate(e.at)}</div>
           </div>
         </li>
       ))}
@@ -1125,7 +1080,7 @@ function ChipRow({ label, options, selected, onToggle }: {
 }) {
   return (
     <div style={{ display: 'flex', gap: '7px', alignItems: 'center', flexWrap: 'wrap' }}>
-      <span style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-tertiary)', minWidth: '86px' }}>
+      <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-tertiary)', minWidth: '86px' }}>
         {label}
       </span>
       {options.map(o => {
@@ -1133,7 +1088,7 @@ function ChipRow({ label, options, selected, onToggle }: {
         return (
           <button key={o.value} onClick={() => onToggle(o.value)} style={{
             padding: '3px 11px', borderRadius: 'var(--radius-full)', cursor: 'pointer',
-            fontSize: '11px', fontWeight: 600,
+            fontSize: 'var(--text-xs)', fontWeight: 600,
             border: `1px solid ${on ? (o.colour ?? 'var(--brand-navy)') : 'var(--border)'}`,
             background: on ? (o.colour ?? 'var(--brand-navy)') : 'white',
             color: on ? 'white' : 'var(--text-secondary)',
@@ -1153,7 +1108,7 @@ function TierBadge({ tier }: { tier: Tier }) {
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: '5px', padding: '2px 9px 2px 6px',
       borderRadius: 'var(--radius-full)', background: 'var(--bg-alt)', border: '1px solid var(--border)',
-      fontSize: '10px', fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap',
+      fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap',
     }}>
       <span aria-hidden style={{ width: 8, height: 8, borderRadius: '50%', background: tier.colour, flexShrink: 0 }} />
       {tier.name}
@@ -1162,75 +1117,31 @@ function TierBadge({ tier }: { tier: Tier }) {
 }
 
 function GateProgress({ cleared, total, at }: { cleared: number; total: number; at: string | null }) {
-  if (total === 0) return <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>No record</span>
+  if (total === 0) return <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>No record</span>
   const done = cleared === total
   return (
     <div style={{ minWidth: '120px' }}>
       <div style={{ display: 'flex', gap: '2px', marginBottom: '3px' }}>
         {Array.from({ length: total }, (_, i) => (
           <span key={i} style={{
-            flex: 1, height: '4px', borderRadius: '2px',
+            flex: 1, height: '4px', borderRadius: 'var(--radius-sm)',
             background: i < cleared ? 'var(--success)' : 'var(--border)',
           }} />
         ))}
       </div>
-      <div style={{ fontSize: '10px', color: done ? 'var(--text-tertiary)' : 'var(--info)' }}>
+      <div style={{ fontSize: 'var(--text-xs)', color: done ? 'var(--text-tertiary)' : 'var(--info)' }}>
         {done ? 'Complete' : `${cleared}/${total} · ${at ?? 'not started'}`}
       </div>
     </div>
   )
 }
 
-function Head({ label, right }: { label: string; right?: boolean }) {
-  return (
-    <th style={{
-      textAlign: right ? 'right' : 'left', padding: '9px 12px', fontSize: '10px', fontWeight: 700,
-      textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-tertiary)', whiteSpace: 'nowrap',
-    }}>{label}</th>
-  )
-}
-
-function SortHead({ label, col, sort, onSort, right }: {
-  label: string; col: SortKey; right?: boolean
-  sort: { key: SortKey; dir: 'asc' | 'desc' }
-  onSort: (s: { key: SortKey; dir: 'asc' | 'desc' }) => void
-}) {
-  const active = sort.key === col
-  return (
-    <th style={{ textAlign: right ? 'right' : 'left', padding: 0 }}>
-      <button
-        onClick={() => onSort({ key: col, dir: active && sort.dir === 'asc' ? 'desc' : 'asc' })}
-        aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
-        style={{
-          width: '100%', padding: '9px 12px', background: 'none', border: 'none', cursor: 'pointer',
-          display: 'flex', alignItems: 'center', gap: '3px', justifyContent: right ? 'flex-end' : 'flex-start',
-          fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
-          color: active ? 'var(--text)' : 'var(--text-tertiary)', whiteSpace: 'nowrap',
-        }}>
-        {label}
-        {active && (sort.dir === 'asc' ? <ChevronUp size={11} /> : <ChevronDown size={11} />)}
-      </button>
-    </th>
-  )
-}
-
-function Cell({ children, right }: { children: React.ReactNode; right?: boolean }) {
-  return <td style={{ padding: '9px 12px', textAlign: right ? 'right' : 'left', verticalAlign: 'top' }}>{children}</td>
-}
-
-function Count({ n }: { n: number }) {
-  return <span style={{
-    marginLeft: '5px', fontSize: '10px', fontWeight: 700, padding: '0 5px',
-    borderRadius: 'var(--radius-full)', background: 'var(--bg-alt)', color: 'var(--text-tertiary)',
-  }}>{n}</span>
-}
-
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div style={{ padding: '11px 13px', borderRadius: 'var(--radius-md)', background: 'var(--bg-alt)', border: '1px solid var(--border)' }}>
-      <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-tertiary)' }}>{label}</div>
+      <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-tertiary)' }}>{label}</div>
       <div style={{ fontSize: 'var(--text-lg)', fontWeight: 800, color: 'var(--text)', marginTop: '2px' }}>{value}</div>
-      {sub && <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{sub}</div>}
+      {sub && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{sub}</div>}
     </div>
   )
 }

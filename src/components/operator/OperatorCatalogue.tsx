@@ -9,13 +9,15 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-  Search, Package, TriangleAlert, CircleCheck as CheckCircle, CircleAlert as AlertCircle,
+  Package, TriangleAlert, CircleCheck as CheckCircle, CircleAlert as AlertCircle,
   Circle, Clock, Layers, MessageSquareWarning, Plus, X, Radio, Minus,
 } from 'lucide-react'
 import {
   SectionCard, EmptyState, Btn, Modal, FormField, TextArea, TextInput, Select,
-  toast, fmtMoney, fmtDate,
+  toast, fmtMoney, fmtDate, PageHeader, FilterBar, Table, Td,
 } from './shared'
+import { Tabs } from '../ui/Tabs'
+import { KpiCard, KpiRow } from '../ui/KpiCard'
 import { Callout } from '../OnboardingJourney'
 import {
   loadCatalogue, approveListing, rejectListing, raiseQuery, publishFirstParty,
@@ -127,19 +129,13 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Catalogue</h1>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            {stats.waiting} awaiting review · {stats.live} live across {snap.categories.length} marketplaces ·{' '}
-            {firstParty.filter(p => p.status === 'live').length} sold first party
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+      <PageHeader
+        title="Catalogue"
+        description={`${stats.waiting} awaiting review · ${stats.live} live across ${snap.categories.length} marketplaces · ${firstParty.filter(p => p.status === 'live').length} sold first party`}
+        actions={<>
           <Btn variant="secondary" onClick={() => setPackOpen(true)}><Radio size={14} /> Compose an operator pack</Btn>
           <Btn onClick={() => setBundleOpen(true)}><Plus size={14} /> Compose a bundle</Btn>
-        </div>
-      </div>
+        </>} />
 
       {snap.loadError && <Callout tone="danger" title="Some of this screen did not load">{snap.loadError}</Callout>}
 
@@ -151,36 +147,28 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
         </Callout>
       )}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
-        <Stat label="Awaiting review" value={String(stats.waiting)}
-              sub={`${stats.flagged} need a policy or certification check`} ink="var(--warning)" />
-        <Stat label="Median time waiting"
-              value={stats.medianAgeDays === null ? 'Nothing waiting' : `${stats.medianAgeDays} days`}
-              sub="Target is one working day"
-              ink={stats.medianAgeDays !== null && stats.medianAgeDays > 1 ? 'var(--danger)' : 'var(--text)'} />
-        <Stat label="Approval rate"
-              value={stats.approvalRate === null ? 'Nothing decided' : `${stats.approvalRate}%`}
-              sub={`${stats.rejected} refused, mostly for missing evidence`} />
-        <Stat label="Live listings" value={String(stats.live)}
-              sub={`${stats.suspended} suspended with their seller`} ink="var(--success)" />
-      </div>
+      <KpiRow label="Catalogue summary">
+        <KpiCard variant="ops" label="Awaiting review" value={String(stats.waiting)} tone="warning"
+          status={`${stats.flagged} need a policy or certification check`} />
+        <KpiCard variant={stats.medianAgeDays !== null && stats.medianAgeDays > 1 ? 'risk' : 'ops'} label="Median time waiting"
+          value={stats.medianAgeDays === null ? 'Nothing waiting' : `${stats.medianAgeDays} days`}
+          status="Target is one working day" />
+        <KpiCard variant="ops" label="Approval rate"
+          value={stats.approvalRate === null ? 'Nothing decided' : `${stats.approvalRate}%`}
+          status={`${stats.rejected} refused, mostly for missing evidence`} />
+        <KpiCard variant="ops" label="Live listings" value={String(stats.live)} tone="success"
+          status={`${stats.suspended} suspended with their seller`} />
+      </KpiRow>
 
-      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-        {([
-          ['queue', `Review queue (${queue.length + changeQueue.length})`],
-          ['catalogue', `Live catalogue (${snap.products.length})`],
-          ['firstparty', `First party (${firstParty.length})`],
-          ['rules', `Dependencies (${snap.rules.length})`],
-        ] as [Tab, string][]).map(([id, label]) => (
-          <button key={id} onClick={() => setTab(id)} style={{
-            padding: '8px 15px', borderRadius: 'var(--radius)', cursor: 'pointer',
-            fontSize: 'var(--text-sm)', fontWeight: 600, border: '1px solid var(--border)',
-            background: tab === id ? 'var(--brand-navy)' : 'white',
-            color: tab === id ? 'white' : 'var(--text-secondary)',
-          }}>{label}</button>
-        ))}
-      </div>
+      <Tabs ariaLabel="Catalogue sections" panelIdPrefix="cat-panel-" value={tab} onChange={id => setTab(id as Tab)}
+        tabs={[
+          { id: 'queue', label: 'Review queue', count: queue.length + changeQueue.length },
+          { id: 'catalogue', label: 'Live catalogue', count: snap.products.length },
+          { id: 'firstparty', label: 'First party', count: firstParty.length },
+          { id: 'rules', label: 'Dependencies', count: snap.rules.length },
+        ]} />
 
+      <div role="tabpanel" id={`cat-panel-${tab}`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {tab === 'queue' && (
         <SectionCard title="Review queue" subtitle="Decisions are visible to the seller with the reason you give">
           {queue.length === 0 ? <EmptyState message="Nothing is waiting" /> : (
@@ -198,7 +186,7 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
                       <div style={{ flex: 1, minWidth: '240px' }}>
                         <div style={{ display: 'flex', gap: '7px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '4px' }}>
                           <Pill ink={r.ink} bg={r.bg}>{r.label}</Pill>
-                          <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
                             {catName(p.category_id)} · submitted {fmtDate(s.submitted_at)}
                             {s.submitted_at && ` · ${daysAgo(s.submitted_at, today)} in queue`}
                           </span>
@@ -218,7 +206,7 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
                           </div>
                         )}
                         {q.length > 0 && (
-                          <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '5px' }}>
+                          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '5px' }}>
                             {q.length} quer{q.length === 1 ? 'y' : 'ies'} with the seller — {q[0].subject}
                             {q[0].status === 'overdue' && <strong style={{ color: 'var(--danger)' }}> (overdue)</strong>}
                           </div>
@@ -226,13 +214,13 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0 }}>
                         <div style={{ fontSize: 'var(--text-lg)', fontWeight: 800 }}>${fmtMoney(p.price)}</div>
-                        <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
                           {p.model === 'monthly' ? 'per month' : 'one-off'}
                         </div>
                       </div>
                     </div>
                     <div style={{ display: 'flex', gap: '7px', marginTop: '11px', flexWrap: 'wrap', alignItems: 'center' }}>
-                      <span style={{ flex: 1, fontSize: '11px', color: 'var(--text-tertiary)', minWidth: '180px' }}>
+                      <span style={{ flex: 1, fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', minWidth: '180px' }}>
                         {verdict.ok ? 'The seller is told the reason either way.' : 'Approve is disabled on a stated policy breach.'}
                       </span>
                       <Btn variant="secondary" size="sm" onClick={() => setOpenProduct(p.id)}>Full review</Btn>
@@ -266,7 +254,7 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
                   <div style={{ display: 'flex', gap: '13px', alignItems: 'flex-start', flexWrap: 'wrap' }}>
                     <Thumb url={p ? heroOf(p.id) : null} />
                     <div style={{ flex: 1, minWidth: '260px' }}>
-                      <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginBottom: '3px' }}>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginBottom: '3px' }}>
                         version {v.version} · proposed {fmtDate(v.submitted_at.slice(0, 10))}
                         {v.submitted_by ? ` by ${v.submitted_by}` : ''}
                       </div>
@@ -305,7 +293,7 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '7px', marginTop: '11px', flexWrap: 'wrap', alignItems: 'center' }}>
-                    <span style={{ flex: 1, fontSize: '11px', color: 'var(--text-tertiary)', minWidth: '180px' }}>
+                    <span style={{ flex: 1, fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', minWidth: '180px' }}>
                       Approving applies the proposed fields to the listing. The seller is told the reason either way.
                     </span>
                     <Btn variant="danger" size="sm" onClick={() => setRule({ v, mode: 'reject' })}>Refuse</Btn>
@@ -320,26 +308,18 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
 
       {tab === 'catalogue' && (
         <SectionCard title="Live catalogue" subtitle={`${catalogue.length} shown`}>
-          {/* One row: the search takes what is left, each filter a fixed width,
-              wrapping only when the screen is too narrow for all three. */}
-          <div style={{ padding: '13px 20px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center', borderBottom: '1px solid var(--border-light)' }}>
-            <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 0 }}>
-              <Search size={16} aria-hidden="true" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)', pointerEvents: 'none' }} />
-              <TextInput value={search} onChange={e => setSearch(e.target.value)} placeholder="Search listing, SKU or seller"
-                         aria-label="Search listing, SKU or seller" style={{ paddingLeft: '36px' }} />
-            </div>
-            <div style={{ flex: '0 1 220px', minWidth: '180px' }}>
+          <div style={{ padding: '13px 20px', borderBottom: '1px solid var(--border-light)' }}>
+            <FilterBar ariaLabel="Filter the catalogue"
+              search={{ value: search, onChange: setSearch, placeholder: 'Search listing, SKU or seller', ariaLabel: 'Search listing, SKU or seller' }}>
               <Select value={catFilter} onChange={e => setCatFilter(e.target.value)} aria-label="Marketplace">
                 <option value="">Every marketplace</option>
                 {snap.categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </Select>
-            </div>
-            <div style={{ flex: '0 1 180px', minWidth: '150px' }}>
               <Select value={stateFilter} onChange={e => setStateFilter(e.target.value)} aria-label="State">
                 <option value="">Every state</option>
                 {['live', 'pending', 'rejected', 'suspended'].map(s => <option key={s} value={s}>{s}</option>)}
               </Select>
-            </div>
+            </FilterBar>
           </div>
           <ProductTable products={catalogue} snap={snap} onOpen={setOpenProduct} heroOf={heroOf} catName={catName} />
         </SectionCard>
@@ -383,12 +363,12 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
                               style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--brand-navy)', minWidth: '160px', textAlign: 'left' }}>
                         {p.name}
                       </button>
-                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', flex: 1, minWidth: '180px' }}>
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', flex: 1, minWidth: '180px' }}>
                         {line.quantity > 1 ? `${line.quantity} × ` : ''}{line.name_at} ({line.telco_id})
                       </span>
-                      <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>rate card ${fmtMoney(card)}</span>
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>rate card ${fmtMoney(card)}</span>
                       <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>sells at ${fmtMoney(p.price)}</span>
-                      <span style={{ fontSize: '10px', fontWeight: 700, minWidth: '92px', textAlign: 'right',
+                      <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, minWidth: '92px', textAlign: 'right',
                                      color: delta < 0 ? 'var(--success)' : delta > 0 ? 'var(--warning)' : 'var(--text-tertiary)' }}>
                         {delta === 0 ? 'at rate card' : delta < 0 ? `${fmtMoney(Math.abs(delta))} discount` : `${fmtMoney(delta)} uplift`}
                       </span>
@@ -418,7 +398,7 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
                     <Thumb url={heroOf(p.id)} size={32} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>{p.name}</div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{p.id} · {catName(p.category_id)} · ${fmtMoney(p.price)}</div>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{p.id} · {catName(p.category_id)} · ${fmtMoney(p.price)}</div>
                     </div>
                     <Btn size="sm" onClick={() => act(() => publishFirstParty({ productId: p.id, actor: ACTOR }), `${p.name} is live`)}>Publish</Btn>
                   </div>
@@ -441,14 +421,14 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
                       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', padding: '10px 13px', background: 'var(--bg-alt)', flexWrap: 'wrap' }}>
                         <Layers size={15} style={{ color: 'var(--text-tertiary)' }} />
                         <button onClick={() => setOpenProduct(b.id)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--brand-navy)' }}>{b.name}</button>
-                        <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
                           sold by {b.seller} · {sellers.length} seller{sellers.length === 1 ? '' : 's'} inside
                         </span>
                         <span style={{ marginLeft: 'auto', fontSize: 'var(--text-sm)', fontWeight: 800 }}>${fmtMoney(b.price)}</span>
-                        <span style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700 }}>saves ${fmtMoney(v.saving)} ({v.savingPct}%)</span>
+                        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--success)', fontWeight: 700 }}>saves ${fmtMoney(v.saving)} ({v.savingPct}%)</span>
                       </div>
                       {v.unavailable.length > 0 && (
-                        <div style={{ padding: '8px 13px', background: 'var(--danger-bg)', fontSize: '11px', color: 'var(--danger)' }}>
+                        <div style={{ padding: '8px 13px', background: 'var(--danger-bg)', fontSize: 'var(--text-xs)', color: 'var(--danger)' }}>
                           Cannot be fulfilled: {v.unavailable.map(u => u.name).join(', ')} {v.unavailable.length === 1 ? 'is' : 'are'} not on sale.
                         </div>
                       )}
@@ -459,7 +439,7 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
                             <span style={{ flex: 1, minWidth: '160px' }}>
                               {part.component.name}
                               <span style={{ color: 'var(--text-tertiary)' }}> · {part.component.seller}</span>
-                              {part.note && <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{part.note}</div>}
+                              {part.note && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{part.note}</div>}
                             </span>
                             <span style={{ color: 'var(--text-secondary)' }}>${fmtMoney(part.lineTotal)}</span>
                           </div>
@@ -479,6 +459,7 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
       )}
 
       {tab === 'rules' && <DependencyRules snap={snap} catName={catName} onOpen={setOpenProduct} />}
+      </div>
 
       {openProduct && productOf(openProduct) && (
         <ProductInspector
@@ -573,65 +554,56 @@ function ProductTable({ products, snap, onOpen, heroOf, catName }: {
   const page = usePaging(products, { resetKey: `${products.length}:${products[0]?.id ?? ''}` })
   if (products.length === 0) return <EmptyState message="No listing matches that" />
   return (
-    <div style={{ overflowX: 'auto' }}>
-      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 'max(820px, min-content)' }}>
-        <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
-          {['Listing', 'Marketplace', 'Seller', 'Price', 'Commission', 'Rules', 'State'].map(h => (
-            <th key={h} style={{
-              textAlign: ['Price', 'Commission'].includes(h) ? 'right' : 'left', padding: '9px 12px',
-              fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em',
-              color: 'var(--text-tertiary)', whiteSpace: 'nowrap',
-            }}>{h}</th>
-          ))}
-        </tr></thead>
-        <tbody>
-          {page.rows.map(p => {
-            const plan = snap.plans.find(pl => pl.id === snap.partners.find(x => x.id === p.partner_id)?.plan_id)
-            const split = splitOf(p, plan?.base_rate ?? null)
-            const r = rulesFor(p.id, snap.rules)
-            const isBundle = snap.components.some(c => c.bundle_id === p.id)
-            return (
-              <tr key={p.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                <td style={{ padding: '8px 12px' }}>
-                  <div style={{ display: 'flex', gap: '9px', alignItems: 'center' }}>
-                    <Thumb url={heroOf(p.id)} size={30} />
-                    <div>
-                      <button onClick={() => onOpen(p.id)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--brand-navy)' }}>
+    <>
+      <Table headers={['Listing', 'Marketplace', 'Seller', 'Price', 'Commission', 'Rules', 'State']}>
+        {page.rows.map(p => {
+          const plan = snap.plans.find(pl => pl.id === snap.partners.find(x => x.id === p.partner_id)?.plan_id)
+          const split = splitOf(p, plan?.base_rate ?? null)
+          const r = rulesFor(p.id, snap.rules)
+          const isBundle = snap.components.some(c => c.bundle_id === p.id)
+          return (
+            <tr key={p.id}>
+              <Td>
+                <div style={{ display: 'flex', gap: '9px', alignItems: 'center' }}>
+                  <Thumb url={heroOf(p.id)} size={30} />
+                  <div>
+                    <span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={p.name}>
+                      <button onClick={() => onOpen(p.id)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', fontWeight: 700, color: 'var(--brand-navy)' }}>
                         {p.name}
-                        {isBundle && <span style={{ marginLeft: '5px', fontSize: '9px', padding: '1px 5px', borderRadius: '3px', background: 'var(--info-bg)', color: 'var(--info)' }}>BUNDLE</span>}
                       </button>
-                      <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{p.id} · {p.sub_category}</div>
-                    </div>
+                      {isBundle && <span style={{ marginLeft: '5px', fontSize: 'var(--text-xs)', padding: '1px 5px', borderRadius: 'var(--radius)', background: 'var(--info-bg)', color: 'var(--info)' }}>BUNDLE</span>}
+                    </span>
+                    <div style={{ color: 'var(--slate-600)' }}>{p.id} · {p.sub_category}</div>
                   </div>
-                </td>
-                <td style={{ padding: '8px 12px', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{catName(p.category_id)}</td>
-                <td style={{ padding: '8px 12px', fontSize: 'var(--text-xs)' }}>
-                  {p.seller}
-                  {p.partner_id === null && <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>first party</div>}
-                </td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', fontSize: 'var(--text-xs)' }}>${fmtMoney(p.price)}</td>
-                <td style={{ padding: '8px 12px', textAlign: 'right', fontSize: 'var(--text-xs)' }}>
-                  {split.firstParty ? <span style={{ color: 'var(--text-tertiary)' }}>—</span> : (
-                    <>
-                      {plan?.base_rate ?? p.comm}%
-                      <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>${fmtMoney(split.commission)}</div>
-                    </>
-                  )}
-                </td>
-                <td style={{ padding: '8px 12px', fontSize: 'var(--text-xs)', color: r.blocking > 0 ? 'var(--text)' : 'var(--text-tertiary)' }}>
-                  {r.blocking > 0 ? `${r.blocking} block` : '—'}
-                  {r.worksWith.length > 0 && <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{r.worksWith.length} advice</div>}
-                </td>
-                <td style={{ padding: '8px 12px' }}>
-                  <span style={{ fontSize: '11px', fontWeight: 700, color: STATUS_INK[p.status] ?? 'var(--text)' }}>{p.status}</span>
-                </td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
+                </div>
+              </Td>
+              <Td clamp>{catName(p.category_id)}</Td>
+              <Td>
+                <span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={p.seller}>{p.seller}</span>
+                {p.partner_id === null && <div style={{ color: 'var(--slate-600)' }}>first party</div>}
+              </Td>
+              <Td kind="num">${fmtMoney(p.price)}</Td>
+              <Td kind="num">
+                {split.firstParty ? <span style={{ color: 'var(--slate-600)' }}>—</span> : (
+                  <>
+                    {plan?.base_rate ?? p.comm}%
+                    <div style={{ color: 'var(--slate-600)' }}>${fmtMoney(split.commission)}</div>
+                  </>
+                )}
+              </Td>
+              <Td nowrap>
+                <span style={{ color: r.blocking > 0 ? 'var(--text)' : 'var(--slate-600)' }}>{r.blocking > 0 ? `${r.blocking} block` : '—'}</span>
+                {r.worksWith.length > 0 && <div style={{ color: 'var(--slate-600)' }}>{r.worksWith.length} advice</div>}
+              </Td>
+              <Td kind="status">
+                <span style={{ fontWeight: 700, color: STATUS_INK[p.status] ?? 'var(--text)' }}>{p.status}</span>
+              </Td>
+            </tr>
+          )
+        })}
+      </Table>
       <Pager page={page} noun="listings" />
-    </div>
+    </>
   )
 }
 
@@ -656,41 +628,34 @@ function DependencyRules({ snap, catName, onOpen }: {
           the old rule stands.
         </Callout>
       </div>
-      <div style={{ overflowX: 'auto', marginTop: '12px' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 'max(780px, min-content)' }}>
-          <thead><tr style={{ borderBottom: '1px solid var(--border)' }}>
-            {['Product', 'Marketplace', 'Relationship', 'Against', 'Enforced'].map(h => (
-              <th key={h} style={{ textAlign: 'left', padding: '9px 12px', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-tertiary)' }}>{h}</th>
-            ))}
-          </tr></thead>
-          <tbody>
-            {[...snap.rules].sort((a, b) => a.product_id.localeCompare(b.product_id) || a.sort_order - b.sort_order).map(r => {
-              const p = snap.products.find(x => x.id === r.product_id)
-              if (!p) return null
-              return (
-                <tr key={r.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                  <td style={{ padding: '9px 12px' }}>
-                    <button onClick={() => onOpen(p.id)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--brand-navy)' }}>{p.name}</button>
-                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{p.id}</div>
-                  </td>
-                  <td style={{ padding: '9px 12px', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{catName(p.category_id)}</td>
-                  <td style={{ padding: '9px 12px', maxWidth: '300px' }}>
-                    <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>{LABEL[r.kind]}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{r.why}</div>
-                  </td>
-                  <td style={{ padding: '9px 12px', fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
-                    {r.targets.map(t => snap.products.find(x => x.id === t)?.name ?? t).join(r.kind === 'requires' ? ' or ' : ', ')}
-                  </td>
-                  <td style={{ padding: '9px 12px' }}>
-                    <span style={{ fontSize: '11px', fontWeight: 700, color: r.kind === 'works_with' ? 'var(--text-tertiary)' : 'var(--info)' }}>
-                      {r.kind === 'works_with' ? 'Advice only' : 'Blocks the order'}
-                    </span>
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+      <div style={{ marginTop: '12px' }}>
+        <Table headers={['Product', 'Marketplace', 'Relationship', 'Against', 'Enforced']}>
+          {[...snap.rules].sort((a, b) => a.product_id.localeCompare(b.product_id) || a.sort_order - b.sort_order).map(r => {
+            const p = snap.products.find(x => x.id === r.product_id)
+            if (!p) return null
+            return (
+              <tr key={r.id}>
+                <Td>
+                  <span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={p.name}><button onClick={() => onOpen(p.id)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', fontWeight: 700, color: 'var(--brand-navy)' }}>{p.name}</button></span>
+                  <div style={{ color: 'var(--slate-600)' }}>{p.id}</div>
+                </Td>
+                <Td clamp>{catName(p.category_id)}</Td>
+                <Td style={{ maxWidth: '300px' }}>
+                  <div style={{ fontWeight: 700 }}>{LABEL[r.kind]}</div>
+                  <div style={{ color: 'var(--slate-600)' }}>{r.why}</div>
+                </Td>
+                <Td clamp>
+                  {r.targets.map(t => snap.products.find(x => x.id === t)?.name ?? t).join(r.kind === 'requires' ? ' or ' : ', ')}
+                </Td>
+                <Td kind="status">
+                  <span style={{ fontWeight: 700, color: r.kind === 'works_with' ? 'var(--slate-600)' : 'var(--info)' }}>
+                    {r.kind === 'works_with' ? 'Advice only' : 'Blocks the order'}
+                  </span>
+                </Td>
+              </tr>
+            )
+          })}
+        </Table>
       </div>
     </SectionCard>
   )
@@ -728,8 +693,8 @@ function ProductInspector({ product, snap, today, onClose, catName, onChanged, o
         <div style={{ padding: '16px 20px', borderBottom: '1px solid var(--border)', display: 'flex', gap: '12px', alignItems: 'flex-start', position: 'sticky', top: 0, background: 'white', zIndex: 2 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ display: 'flex', gap: '7px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <span style={{ fontSize: '11px', fontWeight: 700, color: STATUS_INK[product.status] }}>{product.status}</span>
-              <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{catName(product.category_id)} · {product.sub_category}</span>
+              <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: STATUS_INK[product.status] }}>{product.status}</span>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{catName(product.category_id)} · {product.sub_category}</span>
             </div>
             <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 800, margin: '3px 0 0' }}>{product.name}</h3>
             <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
@@ -800,7 +765,7 @@ function ProductInspector({ product, snap, today, onClose, catName, onChanged, o
                     </button>
                   ))}
                 </div>
-                <div style={{ fontSize: '11px', color: media[Math.min(shot, media.length - 1)].alt ? 'var(--text-tertiary)' : 'var(--danger)', marginTop: '5px' }}>
+                <div style={{ fontSize: 'var(--text-xs)', color: media[Math.min(shot, media.length - 1)].alt ? 'var(--text-tertiary)' : 'var(--danger)', marginTop: '5px' }}>
                   {media[Math.min(shot, media.length - 1)].alt
                     ? `Alt text: “${media[Math.min(shot, media.length - 1)].alt}”`
                     : 'No alt text. A screen reader announces this image as nothing at all.'}
@@ -881,8 +846,8 @@ function ProductInspector({ product, snap, today, onClose, catName, onChanged, o
               <>
                 <div style={{ display: 'flex', height: '26px', borderRadius: 'var(--radius-sm)', overflow: 'hidden', marginBottom: '9px' }}>
                   <div style={{ width: `${(split.net / split.gross) * 100}%`, background: 'var(--brand-navy)' }} />
-                  <div style={{ width: `${(split.commission / split.gross) * 100}%`, background: '#5E4B9B' }} />
-                  <div style={{ width: `${(split.fees / split.gross) * 100}%`, background: '#B8A4E8' }} />
+                  <div style={{ width: `${(split.commission / split.gross) * 100}%`, background: 'var(--info)' }} />
+                  <div style={{ width: `${(split.fees / split.gross) * 100}%`, background: 'var(--info-border)' }} />
                 </div>
                 <Facts rows={[
                   ['Sale price', `$${fmtMoney(split.gross)}`],
@@ -904,7 +869,7 @@ function ProductInspector({ product, snap, today, onClose, catName, onChanged, o
                     <span style={{ flex: 1, minWidth: '150px' }}>
                       {part.component.name}
                       <span style={{ color: 'var(--text-tertiary)' }}> · {part.component.seller}</span>
-                      {part.note && <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{part.note}</div>}
+                      {part.note && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{part.note}</div>}
                     </span>
                     <span>${fmtMoney(part.lineTotal)}</span>
                   </div>
@@ -930,7 +895,7 @@ function ProductInspector({ product, snap, today, onClose, catName, onChanged, o
           <section>
             <SubHead>Listing policy — {catName(product.category_id)}</SubHead>
             {policy && (
-              <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', margin: '0 0 9px' }}>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: '0 0 9px' }}>
                 {policy.review} · {policy.auto_publish ? 'auto-publishes on pass' : 'a person decides every listing'} ·
                 {' '}returns {policy.returns_window} · fulfilment within {policy.sla_hours} h ·
                 {' '}up to {policy.max_listings_per_seller} listings per seller
@@ -952,14 +917,14 @@ function ProductInspector({ product, snap, today, onClose, catName, onChanged, o
                     <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>
                       {a.rule.name}
                       <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}> · {a.rule.id}</span>
-                      {a.level === 'warn' && <span style={{ marginLeft: '5px', fontSize: '9px', padding: '1px 5px', borderRadius: '3px', background: 'var(--warning-bg)', color: 'var(--warning)', fontWeight: 700 }}>WARN ONLY</span>}
+                      {a.level === 'warn' && <span style={{ marginLeft: '5px', fontSize: 'var(--text-xs)', padding: '1px 5px', borderRadius: 'var(--radius)', background: 'var(--warning-bg)', color: 'var(--warning)', fontWeight: 700 }}>WARN ONLY</span>}
                     </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '1px' }}>{a.rule.descr}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '3px' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '1px' }}>{a.rule.descr}</div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: '3px' }}>
                       {a.automatic ? a.automatic.detail
                         : `Checked by ${a.rule.owner}${a.rule.evidence ? ` against: ${a.rule.evidence}` : ''}. Nothing here reads it for you.`}
                     </div>
-                    {a.rule.locked && <div style={{ fontSize: '10px', color: 'var(--danger)', marginTop: '3px' }}>{a.rule.locked}</div>}
+                    {a.rule.locked && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', marginTop: '3px' }}>{a.rule.locked}</div>}
                   </div>
                 </div>
               ))}
@@ -982,8 +947,8 @@ function ProductInspector({ product, snap, today, onClose, catName, onChanged, o
                         {r.targets.map(nameOf).join(r.kind === 'requires' ? ' or ' : ', ')}
                       </span>
                     </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{r.why}</div>
-                    <div style={{ fontSize: '10px', color: r.kind === 'works_with' ? 'var(--text-tertiary)' : 'var(--info)', marginTop: '2px', fontWeight: 700 }}>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>{r.why}</div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: r.kind === 'works_with' ? 'var(--text-tertiary)' : 'var(--info)', marginTop: '2px', fontWeight: 700 }}>
                       {r.kind === 'works_with' ? 'Advice only — never blocks an order' : 'Blocks the order'}
                     </div>
                   </div>
@@ -1000,14 +965,14 @@ function ProductInspector({ product, snap, today, onClose, catName, onChanged, o
                   <div key={q.id} style={{ padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', background: q.status === 'overdue' ? 'var(--danger-bg)' : 'white' }}>
                     <div style={{ display: 'flex', gap: '7px', alignItems: 'baseline', flexWrap: 'wrap' }}>
                       <strong style={{ fontSize: 'var(--text-xs)' }}>{q.subject}</strong>
-                      <span style={{ fontSize: '10px', fontWeight: 700, color: q.status === 'overdue' ? 'var(--danger)' : q.status === 'answered' ? 'var(--success)' : 'var(--warning)' }}>{q.status}</span>
-                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>asked {fmtDate(q.asked_on)} by {q.asked_by} · due {fmtDate(q.due_on)}</span>
+                      <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: q.status === 'overdue' ? 'var(--danger)' : q.status === 'answered' ? 'var(--success)' : 'var(--warning)' }}>{q.status}</span>
+                      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>asked {fmtDate(q.asked_on)} by {q.asked_by} · due {fmtDate(q.due_on)}</span>
                     </div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '3px' }}>{q.body}</div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: '3px' }}>{q.body}</div>
                     {q.answer && (
-                      <div style={{ fontSize: '11px', color: 'var(--text)', marginTop: '5px', paddingLeft: '9px', borderLeft: '2px solid var(--success)' }}>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text)', marginTop: '5px', paddingLeft: '9px', borderLeft: '2px solid var(--success)' }}>
                         {q.answer}
-                        <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>answered {fmtDate(q.answered_on)}</div>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>answered {fmtDate(q.answered_on)}</div>
                       </div>
                     )}
                   </div>
@@ -1150,7 +1115,7 @@ function DecideChangeDialog({ version, mode, productName, onClose, onSubmit }: {
         {version.note && <Callout tone="info" title="What the seller says">{version.note}</Callout>}
 
         <div>
-          <div style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', marginBottom: '6px' }}>
+          <div style={{ fontSize: 'var(--text-xs)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-tertiary)', marginBottom: '6px' }}>
             What changes
           </div>
           {diff.map(c => (
@@ -1287,7 +1252,7 @@ function BundleBuilder({ snap, onClose, onCreate }: {
                            style={{ width: '54px', padding: '3px 6px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: 'var(--text-xs)' }} />
                     <div style={{ flex: 1, minWidth: '150px' }}>
                       <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>{p.name}</div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
                         {p.seller}{p.partner_id === null ? ' · first party' : ''} · ${fmtMoney(p.price)} each
                         {p.floor_price !== undefined && (
                           <> · will go to <strong>${fmtMoney(Number(p.floor_price))}</strong>
@@ -1362,7 +1327,7 @@ function BundleBuilder({ snap, onClose, onCreate }: {
               </span>
             </div>
             {room.tightest.length > 0 && (
-              <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '5px' }}>
+              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '5px' }}>
                 Least room: {room.tightest.map(t => `${t.name} ${t.roomPct}%`).join(' · ')}
               </div>
             )}
@@ -1395,7 +1360,7 @@ function BundleBuilder({ snap, onClose, onCreate }: {
               </div>
             </>
           )}
-          {problem && <div style={{ fontSize: '11px', color: 'var(--danger)', marginTop: '6px' }}>{problem}</div>}
+          {problem && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', marginTop: '6px' }}>{problem}</div>}
         </div>
       </div>
     </Modal>
@@ -1421,22 +1386,12 @@ function Pill({ ink, bg, children }: { ink: string; bg: string; children: React.
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 9px',
-      borderRadius: 'var(--radius-full)', fontSize: '10px', fontWeight: 700, background: bg, color: ink,
+      borderRadius: 'var(--radius-full)', fontSize: 'var(--text-xs)', fontWeight: 700, background: bg, color: ink,
     }}>
       {ink === 'var(--danger)' && <TriangleAlert size={11} />}
       {ink === 'var(--warning)' && <Clock size={11} />}
       {children}
     </span>
-  )
-}
-
-function Stat({ label, value, sub, ink }: { label: string; value: string; sub?: string; ink?: string }) {
-  return (
-    <div style={{ padding: '13px 15px', borderRadius: 'var(--radius-md)', background: 'white', border: '1px solid var(--border)' }}>
-      <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-tertiary)' }}>{label}</div>
-      <div style={{ fontSize: 'var(--text-xl)', fontWeight: 800, color: ink ?? 'var(--text)', marginTop: '3px' }}>{value}</div>
-      {sub && <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px' }}>{sub}</div>}
-    </div>
   )
 }
 
@@ -1515,7 +1470,7 @@ function RateCard({ telco, rule, used }: {
             {families.map(fam => (
               <div key={fam}>
                 <div style={{ padding: '6px 12px', background: 'var(--bg-alt)', borderBottom: '1px solid var(--border-light)' }}>
-                  <span style={{ fontSize: '10px', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>{fam}</span>
+                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 800, letterSpacing: '0.03em', textTransform: 'uppercase', color: 'var(--text-secondary)' }}>{fam}</span>
                 </div>
                 {telco.filter(t => t.family === fam).map(t => (
                   <div key={t.id} style={{
@@ -1525,17 +1480,17 @@ function RateCard({ telco, rule, used }: {
                     opacity: sellableHere(t) ? 1 : 0.62,
                   }}>
                     <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, minWidth: '150px' }}>{t.name}</span>
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono, monospace)' }}>{t.id}</span>
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', flex: 1, minWidth: '180px' }}>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono, monospace)' }}>{t.id}</span>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', flex: 1, minWidth: '180px' }}>
                       {sellableHere(t) ? t.spec : withheldNote(t)}
                     </span>
                     {!sellableHere(t) && (
-                      <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--warning)', padding: '1px 6px', borderRadius: 'var(--radius-full)', background: 'var(--warning-bg)' }}>
+                      <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--warning)', padding: '1px 6px', borderRadius: 'var(--radius-full)', background: 'var(--warning-bg)' }}>
                         not this channel
                       </span>
                     )}
                     {inUse.has(t.id) && (
-                      <span style={{ fontSize: '9px', fontWeight: 700, color: 'var(--success)', padding: '1px 6px', borderRadius: 'var(--radius-full)', background: 'var(--success-bg)' }}>in a listing</span>
+                      <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--success)', padding: '1px 6px', borderRadius: 'var(--radius-full)', background: 'var(--success-bg)' }}>in a listing</span>
                     )}
                     <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, minWidth: '104px', textAlign: 'right' }}>
                       {t.rc > 0 && <>${fmtMoney(t.rc)}<span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}> {t.unit}</span></>}
@@ -1544,7 +1499,7 @@ function RateCard({ telco, rule, used }: {
                     </span>
                     {/* The operator's own margin, on the operator's own screen.
                         It is why the composer can floor a discount at cost. */}
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', minWidth: '82px', textAlign: 'right' }}>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', minWidth: '82px', textAlign: 'right' }}>
                       costs ${fmtMoney(t.rc > 0 ? t.cost_rc : t.cost_nrc)}
                     </span>
                   </div>
@@ -1582,14 +1537,14 @@ function PackRow({ product, lines, catName, onOpen }: {
                 style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--brand-navy)' }}>
           {product.name}
         </button>
-        <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+        <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
           {catName(product.category_id)} · {lines.length} rate-card components · first party
         </span>
         <span style={{ marginLeft: 'auto', fontSize: 'var(--text-sm)', fontWeight: 800 }}>
-          ${fmtMoney(product.price)}{recurring ? <span style={{ fontSize: '10px', fontWeight: 400, color: 'var(--text-tertiary)' }}>/mo</span> : ''}
+          ${fmtMoney(product.price)}{recurring ? <span style={{ fontSize: 'var(--text-xs)', fontWeight: 400, color: 'var(--text-tertiary)' }}>/mo</span> : ''}
         </span>
         {saving > 0 && (
-          <span style={{ fontSize: '11px', color: 'var(--success)', fontWeight: 700 }}>saves ${fmtMoney(saving)} ({savingPct}%)</span>
+          <span style={{ fontSize: 'var(--text-xs)', color: 'var(--success)', fontWeight: 700 }}>saves ${fmtMoney(saving)} ({savingPct}%)</span>
         )}
       </div>
       <div>
@@ -1600,7 +1555,7 @@ function PackRow({ product, lines, catName, onOpen }: {
               {l.name_at}
               <span style={{ color: 'var(--text-tertiary)' }}> · {l.telco_id}</span>
               {l.discount > 0 && <span style={{ color: 'var(--warning)' }}> · {l.discount}% off</span>}
-              {l.note && <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{l.note}</div>}
+              {l.note && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{l.note}</div>}
             </span>
             <span style={{ color: 'var(--text-secondary)' }}>${fmtMoney(lineTotal(l))}</span>
           </div>
@@ -1659,7 +1614,7 @@ function PackComposer({ snap, onClose, onCreate }: {
   return (
     <Modal open onClose={onClose} title="Compose an operator pack"
       footer={<>
-        <span style={{ flex: 1, fontSize: '11px', color: 'var(--text-tertiary)' }}>
+        <span style={{ flex: 1, fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
           {picks.length === 0 ? 'Nothing selected.' : `${picks.length} component${picks.length === 1 ? '' : 's'} · $${fmtMoney(composition.price)}${composition.model === 'oneoff' ? ' one-off' : ' a month'}`}
         </span>
         <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
@@ -1711,7 +1666,7 @@ function PackComposer({ snap, onClose, onCreate }: {
                   </div>
                   <div style={{ flex: 1, minWidth: '150px' }}>
                     <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>{l.item.name}</div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
                       {l.item.id} · {l.item.family} · costs ${fmtMoney(l.item.rc > 0 ? l.item.cost_rc : l.item.cost_nrc)}
                     </div>
                   </div>
@@ -1722,7 +1677,7 @@ function PackComposer({ snap, onClose, onCreate }: {
                            onChange={e => setDisc(l.item.id, e.target.value)}
                            aria-label={`Discount on ${l.item.name}, maximum ${l.maxDiscount} percent`}
                            style={{ width: '56px', padding: '3px 6px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: 'var(--text-xs)' }} />
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>% <br />max {l.maxDiscount}</span>
+                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>% <br />max {l.maxDiscount}</span>
                   </div>
                   <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, minWidth: '64px', textAlign: 'right' }}>
                     ${fmtMoney(composition.model === 'oneoff' ? l.nrcNet : l.rcNet)}
@@ -1743,7 +1698,7 @@ function PackComposer({ snap, onClose, onCreate }: {
             <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}> · {sellable.length} items</span>
           </div>
           {offChannel > 0 && (
-            <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', margin: '0 0 6px', lineHeight: 1.45 }}>
+            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: '0 0 6px', lineHeight: 1.45 }}>
               {offChannel} more {offChannel === 1 ? 'item is' : 'items are'} on the operator's rate card and not
               sold through the marketplace — new lines and fixed-line access go through self-care, retail POS and
               CRM, where the identity check and the serviceability check are. They are listed on the rate card
@@ -1761,7 +1716,7 @@ function PackComposer({ snap, onClose, onCreate }: {
             ) : families.map(fam => (
               <div key={fam}>
                 <div style={{ padding: '5px 11px', background: 'var(--bg-alt)', borderBottom: '1px solid var(--border-light)' }}>
-                  <span style={{ fontSize: '10px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--text-secondary)' }}>{fam}</span>
+                  <span style={{ fontSize: 'var(--text-xs)', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--text-secondary)' }}>{fam}</span>
                 </div>
                 {available.filter(t => t.family === fam).map(t => (
                   <button key={t.id}
@@ -1770,11 +1725,11 @@ function PackComposer({ snap, onClose, onCreate }: {
                     <Plus size={12} style={{ color: 'var(--brand-navy)', flexShrink: 0 }} />
                     <span style={{ flex: 1, fontSize: 'var(--text-xs)' }}>
                       {t.name}
-                      <span style={{ display: 'block', fontSize: '10px', color: 'var(--text-tertiary)' }}>{t.spec}</span>
+                      <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{t.spec}</span>
                     </span>
                     <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', textAlign: 'right' }}>
                       {t.rc > 0 ? `$${fmtMoney(t.rc)}` : `$${fmtMoney(t.nrc)}`}
-                      <span style={{ display: 'block', fontSize: '9px', color: 'var(--text-tertiary)' }}>{t.unit}</span>
+                      <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{t.unit}</span>
                     </span>
                   </button>
                 ))}
@@ -1883,11 +1838,11 @@ function AudiencePicker({ product, onChanged }: { product: ProductRow; onChanged
             onChange={() => void toggle(a.id)} style={{ marginTop: 2 }} />
           <span>
             <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text)' }}>{a.label}</span>
-            <span style={{ display: 'block', fontSize: '11px', color: 'var(--text-tertiary)' }}>{a.note}</span>
+            <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{a.note}</span>
           </span>
         </label>
       ))}
-      <p style={{ fontSize: '11px', color: 'var(--text-tertiary)', margin: '5px 0 0' }}>
+      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: '5px 0 0' }}>
         A shelf appears for whoever can buy something on it. Taking the last listing off a
         shelf takes the shelf with it.
       </p>

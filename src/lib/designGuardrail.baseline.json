@@ -1,8 +1,8 @@
 {
   "total": {
-    "fontSize": 403,
-    "hex": 121,
-    "radius": 67
+    "fontSize": 296,
+    "hex": 119,
+    "radius": 61
   },
   "files": {
     "components/AccountView.tsx": {
@@ -175,11 +175,6 @@
       "hex": 0,
       "radius": 0
     },
-    "components/operator/OperatorAccounts.tsx": {
-      "fontSize": 0,
-      "hex": 0,
-      "radius": 1
-    },
     "components/operator/OperatorBanners.tsx": {
       "fontSize": 15,
       "hex": 4,
@@ -189,11 +184,6 @@
       "fontSize": 2,
       "hex": 6,
       "radius": 1
-    },
-    "components/operator/OperatorCatalogue.tsx": {
-      "fontSize": 67,
-      "hex": 2,
-      "radius": 2
     },
     "components/operator/OperatorClearance.tsx": {
       "fontSize": 0,
@@ -270,20 +260,10 @@
       "hex": 0,
       "radius": 0
     },
-    "components/operator/OperatorOnboarding.tsx": {
-      "fontSize": 4,
-      "hex": 0,
-      "radius": 2
-    },
     "components/operator/OperatorOrders.tsx": {
       "fontSize": 9,
       "hex": 0,
       "radius": 0
-    },
-    "components/operator/OperatorPartners.tsx": {
-      "fontSize": 36,
-      "hex": 0,
-      "radius": 1
     },
     "components/operator/OperatorRevenueShare.tsx": {
       "fontSize": 0,
