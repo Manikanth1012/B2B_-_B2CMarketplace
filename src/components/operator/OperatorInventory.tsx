@@ -14,8 +14,10 @@ import type { UnitRollup, Drift } from '../../lib/serials'
 import { useMarket } from '../../lib/MarketContext'
 import {
   SectionCard, Table, Td, StatusPill, EmptyState, fmtInt, fmtDate,
-  Btn, Modal, FormField, TextInput, Select, toast,
+  Btn, Modal, FormField, TextInput, Select, toast, PageHeader, RowActions, FieldRow,
 } from './shared'
+import { Tabs } from '../ui/Tabs'
+import { StatusBadge } from '../ui/StatusBadge'
 
 /* The row shape the ledger reads: a stock line with its product and warehouse
    attached. Before this the table stored a product name, a partner name, a
@@ -119,18 +121,13 @@ export function OperatorInventory() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Inventory &amp; WMS</h1>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            {inventory.length} stock lines across {warehouses.filter(w => w.type !== 'returns').length} fulfilment
-            {' '}locations · {cost(value)} at cost
-          </p>
-        </div>
-        <Btn onClick={() => tab === 'stock' ? setAddModal(true) : setWhAddModal(true)}>
-          {tab === 'stock' ? 'Add stock line' : 'Add warehouse'}
-        </Btn>
-      </div>
+      <PageHeader title="Inventory & WMS"
+        description={`${inventory.length} stock lines across ${warehouses.filter(w => w.type !== 'returns').length} fulfilment locations · ${cost(value)} at cost`}
+        actions={
+          <Btn onClick={() => tab === 'stock' ? setAddModal(true) : setWhAddModal(true)}>
+            {tab === 'stock' ? 'Add stock line' : 'Add warehouse'}
+          </Btn>
+        } />
 
       {loadError && <Callout tone="danger" title="This did not load">{loadError}</Callout>}
 
@@ -143,21 +140,15 @@ export function OperatorInventory() {
         </Callout>
       )}
 
-      <div style={{ display: 'flex', gap: '8px' }}>
-        {[
-          { id: 'stock' as const, label: 'Stock ledger' },
-          { id: 'serials' as const, label: 'Serial numbers' },
-          { id: 'warehouses' as const, label: 'Warehouses' },
-        ].map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            padding: '8px 16px', borderRadius: 'var(--radius)', fontSize: 'var(--text-sm)', fontWeight: 600,
-            background: tab === t.id ? 'var(--brand-navy)' : 'white',
-            color: tab === t.id ? 'white' : 'var(--text-secondary)',
-            border: '1px solid var(--border)', cursor: 'pointer',
-          }}>{t.label}</button>
-        ))}
-      </div>
+      <Tabs ariaLabel="Inventory views" panelIdPrefix="inventory-panel-" value={tab}
+        onChange={id => setTab(id as typeof tab)}
+        tabs={[
+          { id: 'stock', label: 'Stock ledger' },
+          { id: 'serials', label: 'Serial numbers' },
+          { id: 'warehouses', label: 'Warehouses' },
+        ]} />
 
+      <div role="tabpanel" id={`inventory-panel-${tab}`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {/* What needs doing, worst first. A line that is out with 2,000 units
           landing on Friday needs nothing from anybody, and showing it beside one
           that is out with nothing on order teaches people to ignore both. */}
@@ -193,18 +184,18 @@ export function OperatorInventory() {
                 background: a.covered ? 'white' : a.kind === 'out' ? 'var(--danger-bg)' : 'var(--warning-bg)',
               }}>
                 <div style={{ flex: 1, minWidth: '200px' }}>
-                  <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--text)' }}>
+                  <div style={{ fontWeight: 700, color: 'var(--text)' }}>
                     {line.product?.name ?? line.product_id}
                   </div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                  <div className="c-sub">
                     {line.product?.seller ?? '—'} · {line.warehouse?.name ?? line.warehouse_id}
                   </div>
                 </div>
-                <div style={{ fontSize: '11px', color: 'var(--text-secondary)', minWidth: '170px' }}>
+                <div className="c-sub" style={{ minWidth: '170px' }}>
                   {fmtInt(line.available)} available against a reorder point of {fmtInt(line.reorder_point)}
                 </div>
                 <div style={{
-                  fontSize: '11px', fontWeight: 700, minWidth: '190px', textAlign: 'right',
+                  fontWeight: 700, minWidth: '190px', textAlign: 'right',
                   color: a.covered ? 'var(--success)' : 'var(--danger)',
                 }}>
                   {a.covered
@@ -229,19 +220,15 @@ export function OperatorInventory() {
               const badge = d.product.stock as 'in' | 'low' | 'out'
               return (
                 <tr key={d.product.id}>
-                  <Td>{d.product.name}</Td>
-                  <Td>{d.product.seller}</Td>
+                  <Td clamp>{d.product.name}</Td>
+                  <Td clamp>{d.product.seller}</Td>
                   {/* StatusPill's vocabulary is approval states — reusing it here
                       labelled an out-of-stock product "rejected". Stock has its
                       own words. */}
-                  <Td>
-                    <span style={{
-                      padding: '2px 10px', borderRadius: '999px', fontSize: 'var(--text-xs)', fontWeight: 700,
-                      background: badge === 'out' ? '#FEE2E2' : badge === 'low' ? '#FEF3C7' : '#DCFCE7',
-                      color: badge === 'out' ? '#B91C1C' : badge === 'low' ? '#92400E' : '#15803D',
-                    }}>{stockLabel(badge)}</span>
+                  <Td kind="status">
+                    <StatusBadge tone={badge === 'out' ? 'danger' : badge === 'low' ? 'warning' : 'success'}>{stockLabel(badge)}</StatusBadge>
                   </Td>
-                  <Td right style={{ fontWeight: 700 }}>{fmtInt(d.waiting)}</Td>
+                  <Td kind="num" style={{ fontWeight: 700 }}>{fmtInt(d.waiting)}</Td>
                 </tr>
               )
             })}
@@ -256,29 +243,29 @@ export function OperatorInventory() {
           subtitle="Available is on hand minus reserved, computed by the database rather than stored beside them"
         >
           {inventory.length === 0 ? <EmptyState message="No stock lines" /> : (
-            <><Table headers={['Product', 'Seller', 'Warehouse', 'On hand', 'Reserved', 'Available', 'Reorder', 'Inbound', 'Gone out', 'Value', '']}>
+            <><Table headers={['Product', 'Seller', 'Warehouse', 'On hand', 'Reserved', 'Available', 'Reorder', 'Inbound', 'Gone out', 'Value', 'Actions']}>
               {stockPage.rows.map(i => {
                 const badge = stockBadge(i.available, i.reorder_point)
                 return (
                   <tr key={i.id}>
                     <Td>
-                      <div style={{ fontWeight: 600 }}>{i.product?.name ?? i.product_id}</div>
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{i.product_id}</div>
+                      <div style={{ fontWeight: 600 }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={i.product?.name ?? i.product_id}>{i.product?.name ?? i.product_id}</span></div>
+                      <div className="c-sub">{i.product_id}</div>
                     </Td>
-                    <Td>{i.product?.seller ?? '—'}</Td>
-                    <Td>{i.warehouse?.name ?? i.warehouse_id}</Td>
-                    <Td right>{fmtInt(i.on_hand)}</Td>
-                    <Td right>{fmtInt(i.reserved)}</Td>
-                    <Td right style={{
+                    <Td clamp>{i.product?.seller ?? '—'}</Td>
+                    <Td clamp>{i.warehouse?.name ?? i.warehouse_id}</Td>
+                    <Td kind="num">{fmtInt(i.on_hand)}</Td>
+                    <Td kind="num">{fmtInt(i.reserved)}</Td>
+                    <Td kind="num" style={{
                       fontWeight: 700,
                       color: badge === 'out' ? 'var(--danger)' : badge === 'low' ? 'var(--warning)' : 'var(--success)',
                     }}>{fmtInt(i.available)}</Td>
-                    <Td right>{fmtInt(i.reorder_point)}</Td>
-                    <Td right>{i.inbound > 0 ? `${fmtInt(i.inbound)} (${fmtDate(i.inbound_due)})` : '—'}</Td>
+                    <Td kind="num">{fmtInt(i.reorder_point)}</Td>
+                    <Td kind="num">{i.inbound > 0 ? `${fmtInt(i.inbound)} (${fmtDate(i.inbound_due)})` : '—'}</Td>
                     {/* What has left this line, by unit. A stock screen that
                         only shows what is still here cannot answer where the
                         rest went. */}
-                    <Td right style={{ fontSize: 'var(--text-xs)' }}>
+                    <Td kind="num">
                       {(() => {
                         const r = rollups.find(x => x.product_id === i.product_id && x.warehouse_id === i.warehouse_id)
                         if (!r) return '—'
@@ -286,12 +273,12 @@ export function OperatorInventory() {
                         return out === 0 ? '—' : `${fmtInt(out)} on orders`
                       })()}
                     </Td>
-                    <Td right>{cost(lineValue(i))}</Td>
-                    <Td right>
-                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                        <Btn variant="secondary" size="sm" onClick={() => setViewing(i)}>Units</Btn>
-                        <Btn variant="secondary" size="sm" onClick={() => setEditModal(i)}>Edit</Btn>
-                      </div>
+                    <Td kind="num">{cost(lineValue(i))}</Td>
+                    <Td>
+                      <RowActions label={i.product?.name ?? i.product_id} actions={[
+                        { id: 'units', label: 'Units', variant: 'secondary', onClick: () => setViewing(i) },
+                        { id: 'edit', label: 'Edit', variant: 'secondary', onClick: () => setEditModal(i) },
+                      ]} />
                     </Td>
                   </tr>
                 )
@@ -300,7 +287,7 @@ export function OperatorInventory() {
             <div style={{ padding: '0 18px 12px' }}><Pager page={stockPage} noun="stock lines" /></div></>
           )}
           <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border-light)' }}>
-            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: 0 }}>
+            <p className="c-sub" style={{ margin: 0 }}>
               A stock line cannot be deleted from here. Stock does not stop existing because a row was
               removed — a line that should not be sold is taken to zero on hand, which the storefront reads
               as out of stock and which leaves the count auditable.
@@ -323,25 +310,25 @@ export function OperatorInventory() {
       {tab === 'warehouses' && (
         <SectionCard title="Warehouse configuration" subtitle="Type · address · capacity · system link">
           {warehouses.length === 0 ? <EmptyState message="No warehouses configured" /> : (
-            <><Table headers={['Name', 'Type', 'Address', 'Capacity', 'Utilisation', 'Marketplaces served', 'System', 'Sync', 'State', '']}>
+            <><Table headers={['Name', 'Type', 'Address', 'Capacity', 'Utilisation', 'Marketplaces served', 'System', 'Sync', 'State', 'Actions']}>
               {whPage.rows.map(w => (
                 <tr key={w.id}>
-                  <Td>{w.name}</Td>
-                  <Td>{w.type}</Td>
-                  <Td>{w.address}</Td>
-                  <Td right>{fmtInt(w.capacity)}</Td>
-                  <Td right style={{ color: w.utilisation / w.capacity > 0.8 ? 'var(--warning)' : 'var(--text)' }}>
+                  <Td clamp>{w.name}</Td>
+                  <Td nowrap>{w.type}</Td>
+                  <Td clamp>{w.address}</Td>
+                  <Td kind="num">{fmtInt(w.capacity)}</Td>
+                  <Td kind="num" style={{ color: w.utilisation / w.capacity > 0.8 ? 'var(--warning)' : 'var(--text)' }}>
                     {fmtInt(w.utilisation)} ({(w.utilisation / w.capacity * 100).toFixed(0)}%)
                   </Td>
-                  <Td>{w.categories.join(', ') || '—'}</Td>
-                  <Td>{w.system_name || '—'}</Td>
-                  <Td right>{w.sync_mode}</Td>
-                  <Td right><StatusPill status={w.sync_state} /></Td>
-                  <Td right>
-                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                      <Btn variant="secondary" size="sm" onClick={() => setWhModal(w)}>Edit</Btn>
-                      <Btn variant="danger" size="sm" onClick={() => handleDeleteWh(w.id)}>Delete</Btn>
-                    </div>
+                  <Td clamp>{w.categories.join(', ') || '—'}</Td>
+                  <Td clamp>{w.system_name || '—'}</Td>
+                  <Td nowrap>{w.sync_mode}</Td>
+                  <Td kind="status"><StatusPill status={w.sync_state} /></Td>
+                  <Td>
+                    <RowActions label={w.name} actions={[
+                      { id: 'edit', label: 'Edit', variant: 'secondary', onClick: () => setWhModal(w) },
+                      { id: 'delete', label: 'Delete', variant: 'danger', onClick: () => { void handleDeleteWh(w.id) } },
+                    ]} />
                   </Td>
                 </tr>
               ))}
@@ -349,13 +336,15 @@ export function OperatorInventory() {
             <div style={{ padding: '0 18px 12px' }}><Pager page={whPage} noun="warehouses" /></div></>
           )}
           <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border-light)' }}>
-            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: 0 }}>
+            <p className="c-sub" style={{ margin: 0 }}>
               Utilisation is measured in storage slots, not units — it is not the sum of the stock ledger,
               and the two are not expected to agree.
             </p>
           </div>
         </SectionCard>
       )}
+
+      </div>
 
       {viewing && (
         <StockLineDetail
@@ -650,12 +639,12 @@ function WhModal({ wh, onClose, onSaved, nextSort }: {
                   onClick={() => setForm({ ...form, countries: form.countries.filter((_, j) => j !== i) })}>{c} ×</span>
           ))}
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <FieldRow>
           <TextInput value={countryInput} onChange={e => setCountryInput(e.target.value)} placeholder="Add country..." style={{ flex: 1 }} />
-          <Btn variant="secondary" size="sm" onClick={() => {
+          <Btn variant="secondary" onClick={() => {
             if (countryInput.trim()) { setForm({ ...form, countries: [...form.countries, countryInput.trim()] }); setCountryInput('') }
           }}>Add</Btn>
-        </div>
+        </FieldRow>
       </FormField>
     </Modal>
   )
