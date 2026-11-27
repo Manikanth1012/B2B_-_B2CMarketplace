@@ -146,6 +146,18 @@ describe('OperatorRisk', () => {
     await user.click(screen.getByRole('button', { name: 'Rescore now' }))
     expect(repo.rescore).toHaveBeenCalled()
     expect((await screen.findByRole('status')).textContent).toMatch(/2 accounts scored, 1 to review, 1 high/)
+    expect(screen.getByRole('status').textContent).not.toMatch(/could not be scored/)
+  })
+
+  it('says how many accounts a rescore could not score', async () => {
+    repo.load.mockResolvedValue({ ok: true, value: BOOK() })
+    repo.rescore.mockResolvedValue({ ok: true, value: { scored: 2, review: 1, high: 1, failed: 1 } })
+    const user = userEvent.setup()
+    render(<OperatorRisk />)
+    await user.click(await screen.findByRole('tab', { name: /Accounts/ }))
+    await user.click(screen.getByRole('button', { name: 'Rescore now' }))
+    expect((await screen.findByRole('status')).textContent)
+      .toMatch(/2 accounts scored, 1 to review, 1 high\. 1 could not be scored and keep their last score\./)
   })
 
   it('says it is not set up yet before the migration', async () => {

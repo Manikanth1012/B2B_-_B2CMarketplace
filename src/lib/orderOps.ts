@@ -380,6 +380,10 @@ export const FROZEN_REASON =
   'Agreed at checkout. The marketplace moves an order along; it does not rewrite what it cost '
   + 'or who bought it, and a refund is the way to change those.'
 
+/** Why a held order offers no move: it waits for the Risk screen (spec 13). */
+export const HELD_FOR_REVIEW =
+  'Held for a fraud review. Release it or cancel it on the Risk screen; until then it does not move.'
+
 /**
  * Whether the order can be moved on a step, and what stops it.
  *

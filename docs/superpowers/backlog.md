@@ -130,6 +130,19 @@ Still open:
 - [x] Nothing moves an invoice from open to overdue after its due date (as before). Done in spec 14.
 - [ ] Seller settlement lines and ledger postings are not written for the new orders.
 
+## Spec 17 — orders are records once paid, and the risk follow-ups (2026-11-27)
+
+Branch `order-integrity`, migration `20261127100000` — **to be applied by the user**. Spec
+`docs/superpowers/specs/2026-11-27-order-integrity-and-risk-follow-ups-design.md`. A shopper may only create their own
+unpaid order on their own open payment, add lines only to it, never update an order or line, and delete only an
+unpaid, unscored order (checkout's undo); a held order of a shopper who changed market can be released or cancelled;
+one bad account no longer fails the nightly rescore; an earlier held order is not "an earlier order"; held orders
+show no activation promise and no stage moves.
+Still open:
+- [ ] `settle_payment_attempt` should refuse when the orders' total on a reference differs from the attempt amount.
+- [ ] A seller moving an order part does not recalculate the order header (`restate_order` runs as the seller; sellers have no update policy on orders since 20260810000000).
+- [ ] `orderOpsRepo.setLineStatus` has no update policy behind it and no callers — remove or back it with an operator policy.
+
 ## Spec 16 — design system v2, wave 1 of the UI modernization (2026-11-27)
 
 Done — branch `design-system-v2`, no migration. Spec `docs/superpowers/specs/2026-11-26-design-system-v2-design.md`.

@@ -130,7 +130,7 @@ describe('a market that trades in more than one currency', () => {
     const { data: session } = await supabase.auth.getSession()
     const { data, error } = await supabase.from('orders').insert({
       order_ref: `ORD-TEST-${Date.now().toString(36).slice(-6).toUpperCase()}`,
-      seller: 'Kestrel Devices', status: 'placed',
+      seller: 'Kestrel Devices', status: 'awaiting_payment',
       total: 749, subtotal: 645.69, tax: 103.31, discount: 0,
       currency: mine[1], market: home,
       tax_rate: Number(money.markets.find(m => m.code === home)!.tax_rate),
@@ -154,7 +154,7 @@ describe('a market that trades in more than one currency', () => {
     const { data: session } = await supabase.auth.getSession()
     const { data, error } = await supabase.from('orders').insert({
       order_ref: `ORD-TEST-${Date.now().toString(36).slice(-6).toUpperCase()}`,
-      seller: 'Kestrel Devices', status: 'placed',
+      seller: 'Kestrel Devices', status: 'awaiting_payment',
       total: 100, subtotal: 100, tax: 0, discount: 0,
       currency: cur, market: elsewhere.code, tax_rate: Number(elsewhere.tax_rate),
       payment_method: 'card', buyer_name: 'Priya Raman',

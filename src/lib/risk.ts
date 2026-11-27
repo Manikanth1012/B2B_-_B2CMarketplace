@@ -51,6 +51,9 @@ export function reasonsLine(reasons: readonly RiskReason[]): string {
     .join(' \u00b7 ')
 }
 
+/** What each band is called on every screen, never the raw value. */
+export const BAND_LABEL: Record<OrderBand | AccountBand, string> = { low: 'Low', review: 'Review', hold: 'Hold', high: 'High' }
+
 /** Green for low, amber for review, red for hold or high. */
 export function bandTone(band: OrderBand | AccountBand): 'success' | 'warning' | 'danger' {
   if (band === 'low') return 'success'

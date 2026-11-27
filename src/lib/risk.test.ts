@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
-  DEFAULT_ORDER_BANDS, DEFAULT_ACCOUNT_BANDS, HELD_FOR_BUYER,
+  DEFAULT_ORDER_BANDS, DEFAULT_ACCOUNT_BANDS, HELD_FOR_BUYER, BAND_LABEL,
   orderBand, accountBand, reasonsLine, bandTone, ruleEditProblem, bandsProblem,
 } from './risk'
 
@@ -54,6 +54,12 @@ describe('reasonsLine', () => {
     const r = [{ rule: 'a', label: 'A', points: 1 }, { rule: 'b', label: 'B', points: 2 }]
     reasonsLine(r)
     expect(r[0].rule).toBe('a')
+  })
+})
+
+describe('BAND_LABEL', () => {
+  it('names every order and account band in words', () => {
+    expect(BAND_LABEL).toEqual({ low: 'Low', review: 'Review', hold: 'Hold', high: 'High' })
   })
 })
 
