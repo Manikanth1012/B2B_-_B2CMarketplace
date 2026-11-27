@@ -6,8 +6,9 @@ import { supabase } from './supabase'
 import { settle } from './loaded'
 import type { Loaded } from './loaded'
 import type { JobLogRow } from './jobLog'
+import { JOB_LOG_LIMIT } from './jobLog'
 
-const DAYS = 15
+const DAYS = 90
 
 export async function loadJobLog(now: Date = new Date()): Promise<Loaded<JobLogRow[]>> {
   try {
@@ -17,7 +18,7 @@ export async function loadJobLog(now: Date = new Date()): Promise<Loaded<JobLogR
       .select('id, job, ran_on, started_at, finished_at, ok, result, error')
       .gte('ran_on', since)
       .order('started_at', { ascending: false })
-      .limit(1000)
+      .limit(JOB_LOG_LIMIT)
     return settle<JobLogRow[]>((data ?? null) as JobLogRow[] | null, error, [])
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : 'The read failed.' }

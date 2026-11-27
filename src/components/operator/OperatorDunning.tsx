@@ -3,7 +3,7 @@ import { Plus, Trash2, Pencil, ArrowLeft, ArrowUp, ArrowDown, Lock } from 'lucid
 import { supabase } from '../../lib/supabase'
 import {
   SectionCard, Table, Td, StatusPill, EmptyState, fmtDate, Btn, Modal,
-  FormField, TextInput, TextArea, Select, toast, ConfirmDialog, StatCard,
+  FormField, TextInput, TextArea, Select, toast, ConfirmDialog, StatCard, FilterBar,
 } from './shared'
 import { Callout } from '../OnboardingJourney'
 import { Pager, usePaging } from '../Pager'
@@ -115,7 +115,18 @@ function Cases({ book, onChanged }: { book: DunningBook; onChanged: () => Promis
      chased in shillings — but the default should be right more often than not. */
   const reporting = moneyBook.currencies.find(c => c.is_reporting)?.code ?? 'USD'
   const homeMarket = moneyBook.markets.find(m => m.is_default)?.currency ?? reporting
-  const page = usePaging(book.cases)
+  const [q, setQ] = useState('')
+  const [aud, setAud] = useState('all')
+  const [statSel, setStat] = useState('all')
+  const statuses = [...new Set(book.cases.map(c => c.status))].sort()
+  /* A choice that no longer exists after a refetch reads as "All". */
+  const stat = statSel === 'all' || statuses.includes(statSel) ? statSel : 'all'
+  const needle = q.trim().toLowerCase()
+  const shown = book.cases.filter(c =>
+    (aud === 'all' || c.account_type === aud) &&
+    (stat === 'all' || c.status === stat) &&
+    (!needle || c.account_name.toLowerCase().includes(needle) || c.reason.toLowerCase().includes(needle)))
+  const page = usePaging(shown, { resetKey: `${q}:${aud}:${stat}` })
   const [addModal, setAddModal] = useState(false)
   const [promising, setPromising] = useState<Case | null>(null)
   const [newCase, setNewCase] = useState({
@@ -213,7 +224,21 @@ function Cases({ book, onChanged }: { book: DunningBook; onChanged: () => Promis
       <SectionCard title="Dunning cases"
         subtitle="Which ladder a case runs on is resolved from the account, not chosen by a collector"
         action={<Btn size="sm" onClick={() => setAddModal(true)}><Plus size={13} style={{ marginRight: 5 }} />New case</Btn>}>
-        {book.cases.length === 0 ? <EmptyState message="No dunning cases" /> : (
+        {book.cases.length > 0 && (
+          <FilterBar ariaLabel="Case filters"
+            search={{ value: q, onChange: setQ, placeholder: 'Account or reason', ariaLabel: 'Search cases' }}
+            summary={`${shown.length} of ${book.cases.length} cases`}>
+            <Select aria-label="Audience" value={aud} onChange={e => setAud(e.target.value)}>
+              <option value="all">All audiences</option>
+              {AUDIENCES.map(a => <option key={a} value={a}>{AUDIENCE_LABEL[a]}</option>)}
+            </Select>
+            <Select aria-label="Status" value={stat} onChange={e => setStat(e.target.value)}>
+              <option value="all">All statuses</option>
+              {statuses.map(x => <option key={x} value={x}>{x}</option>)}
+            </Select>
+          </FilterBar>
+        )}
+        {book.cases.length === 0 ? <EmptyState message="No dunning cases" /> : shown.length === 0 ? <EmptyState message="No cases match these filters" /> : (
           <Table headers={['Account', 'Audience', 'Amount', 'Age', 'On this ladder', 'Step', 'What happens next', 'Status', '']}>
             {page.rows.map(c => {
               const l = ladderOf(c)

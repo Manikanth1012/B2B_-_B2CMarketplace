@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { SettlementStatement } from '../../types'
-import { SectionCard, Table, Td, StatusPill, EmptyState, fmtDate, Btn, Modal, FormField, TextInput, TextArea, Select, toast, ConfirmDialog } from './shared'
+import { SectionCard, Table, Td, StatusPill, EmptyState, fmtDate, Btn, Modal, FormField, TextInput, TextArea, Select, toast, ConfirmDialog, FilterBar } from './shared'
 import { useMarket } from '../../lib/MarketContext'
 import { byCurrency, formatGroups, money } from '../../lib/money'
 import { payoutFor } from '../../lib/settlement'
@@ -35,6 +35,7 @@ export function OperatorSettlement({ focus = null }: { focus?: string | null } =
   const [statements, setStatements] = useState<SettlementStatement[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('all')
+  const [q, setQ] = useState('')
   const [detailModal, setDetailModal] = useState<SettlementStatement | null>(null)
   const [addModal, setAddModal] = useState(false)
   const [rejectModal, setRejectModal] = useState<SettlementStatement | null>(null)
@@ -49,8 +50,11 @@ export function OperatorSettlement({ focus = null }: { focus?: string | null } =
 
   /* Above the loading guard: `usePaging` is a hook, and a hook below an early
      return runs on some renders and not others. */
-  const filtered = filter === 'all' ? statements : statements.filter(s => s.status === filter)
-  const page = usePaging(filtered, { resetKey: filter })
+  const needle = q.trim().toLowerCase()
+  const filtered = statements.filter(s =>
+    (filter === 'all' || s.status === filter) &&
+    (!needle || s.partner_name.toLowerCase().includes(needle) || s.period.toLowerCase().includes(needle)))
+  const page = usePaging(filtered, { resetKey: `${filter}:${q}` })
 
   /* Once, when the id arrives — reopening it every render would make the modal
      impossible to close. */
@@ -131,14 +135,18 @@ export function OperatorSettlement({ focus = null }: { focus?: string | null } =
       {tab === 'tax' && <WithholdingPositions />}
 
       {tab === 'statements' && <>
-      <div style={{ display: 'flex', gap: '8px' }}>
-        {[{ id: 'all', label: 'All', count: statements.length }, { id: 'pending', label: 'Pending', count: pendingCount }, { id: 'approved', label: 'Approved', count: approvedCount }].map(f => (
-          <button key={f.id} onClick={() => setFilter(f.id)} style={{ padding: '8px 16px', borderRadius: 'var(--radius)', fontSize: 'var(--text-sm)', fontWeight: 600, background: filter === f.id ? 'var(--brand-navy)' : 'white', color: filter === f.id ? 'white' : 'var(--text-secondary)', border: '1px solid var(--border)', cursor: 'pointer' }}>{f.label} ({f.count})</button>
-        ))}
-      </div>
+      <FilterBar ariaLabel="Statement filters"
+        search={{ value: q, onChange: setQ, placeholder: 'Partner or period', ariaLabel: 'Search statements' }}
+        summary={`${filtered.length} of ${statements.length} statements`}>
+        <Select aria-label="Status" value={filter} onChange={e => setFilter(e.target.value)}>
+          <option value="all">All ({statements.length})</option>
+          <option value="pending">Pending ({pendingCount})</option>
+          <option value="approved">Approved ({approvedCount})</option>
+        </Select>
+      </FilterBar>
 
       <SectionCard title="Settlement Statements" subtitle="Gross-to-net deduction stack. A disputed statement cannot be approved.">
-        {filtered.length === 0 ? <EmptyState message="No statements in this filter" /> : (
+        {filtered.length === 0 ? <EmptyState message="No statements match these filters" /> : (
           <Table headers={['Partner', 'Period', 'Gross', 'Commission', 'Fees', 'Refunds', 'Net', 'Orders', 'Status', 'Actions']}>
             {page.rows.map(s => (
               <tr key={s.id}>

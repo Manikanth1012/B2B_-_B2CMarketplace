@@ -64,6 +64,50 @@ export function nights(rows: JobLogRow[]): Night[] {
     })
 }
 
+/** The ten jobs run_nightly runs, by the names the log carries. */
+export const JOB_NAMES = [
+  'agreements', 'enterprise subscriptions', 'subscriptions', 'documents', 'payments',
+  'bundle selections', 'baskets', 'invoices', 'risk', 'settlements',
+] as const
+
+export interface JobFilters {
+  /** `YYYY-MM-DD`, inclusive; empty means no bound. */
+  from: string
+  to: string
+  /** A job name, or 'all'. */
+  job: string
+  status: 'all' | 'ok' | 'failed'
+}
+
+export const ALL_JOBS = 'all'
+
+/* Supabase caps a response at 1000 rows by default (max_rows), whatever .limit asks, so
+   the cap is 1000: 90 nights of ten jobs is about 900, and the capped note is honest. */
+export const JOB_LOG_LIMIT = 1000
+
+/** With no date bound the screen shows this many of the newest nights. */
+export const DEFAULT_NIGHTS = 14
+
+/** Keep the runs that match, and the nights that still have a run. Pure; the order is kept. */
+export function filterNights(list: Night[], f: JobFilters): Night[] {
+  const out: Night[] = []
+  for (const n of list) {
+    if (f.from && n.ranOn < f.from) continue
+    if (f.to && n.ranOn > f.to) continue
+    const jobs = n.jobs.filter(j =>
+      (f.job === ALL_JOBS || j.job === f.job) &&
+      (f.status === 'all' || (f.status === 'ok' ? j.ok : !j.ok)))
+    if (jobs.length > 0) out.push({ ...n, jobs })
+  }
+  return out
+}
+
+/** '12 nights · 87 runs'. */
+export function filterSummary(list: Night[]): string {
+  const runs = list.reduce((t, n) => t + n.jobs.length, 0)
+  return `${list.length} ${list.length === 1 ? 'night' : 'nights'} · ${runs} ${runs === 1 ? 'run' : 'runs'}`
+}
+
 const STALE_MS = 26 * 60 * 60 * 1000
 
 export function health(rows: JobLogRow[], now: Date): { tone: 'success' | 'warning' | 'danger'; says: string } {

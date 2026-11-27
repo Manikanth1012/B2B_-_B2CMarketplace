@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import { CONTENT_FEEDBACK_CATEGORY } from '../../lib/kbRepo'
 import type { OperatorTicket } from '../../types'
-import { SectionCard, Table, Td, StatusPill, PriorityPill, EmptyState, fmtDateTime, Btn, Modal, FormField, TextInput, TextArea, Select, toast, ConfirmDialog } from './shared'
+import { SectionCard, Table, Td, StatusPill, PriorityPill, EmptyState, fmtDateTime, Btn, Modal, FormField, TextInput, TextArea, Select, toast, ConfirmDialog, FilterBar } from './shared'
 import { TriangleAlert as AlertTriangle, Clock } from 'lucide-react'
 import { AttachmentList } from '../AttachmentList'
 import { loadAttachments } from '../../lib/attachmentRepo'
@@ -16,6 +16,9 @@ export function OperatorTickets({ focus = null }: { focus?: string | null } = {}
   const [tickets, setTickets] = useState<OperatorTicket[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('open')
+  const [q, setQ] = useState('')
+  const [prioSel, setPrio] = useState('all')
+  const [catSel, setCat] = useState('all')
   const [selected, setSelected] = useState<OperatorTicket | null>(null)
   /* What the customer sent with the complaint. Loaded when a ticket is opened
      rather than with the queue: most tickets have none, and a request per row
@@ -47,8 +50,18 @@ export function OperatorTickets({ focus = null }: { focus?: string | null } = {}
      the screen the moment `loading` flips. */
   const service = tickets.filter(t => t.category !== CONTENT_FEEDBACK_CATEGORY)
   const inQueue = service
-  const filtered = filter === 'all' ? inQueue : inQueue.filter(t => t.status === filter)
-  const page = usePaging(filtered, { resetKey: filter })
+  const priorities = [...new Set(inQueue.map(t => t.priority))].sort()
+  const categories = [...new Set(inQueue.map(t => t.category))].sort()
+  /* A choice that no longer exists after a refetch reads as "All". */
+  const prio = prioSel === 'all' || priorities.includes(prioSel) ? prioSel : 'all'
+  const cat = catSel === 'all' || categories.includes(catSel) ? catSel : 'all'
+  const needle = q.trim().toLowerCase()
+  const filtered = inQueue.filter(t =>
+    (filter === 'all' || t.status === filter) &&
+    (prio === 'all' || t.priority === prio) &&
+    (cat === 'all' || t.category === cat) &&
+    (!needle || [t.subject, t.opened_by, t.org, t.owner ?? '', t.id].some(v => v.toLowerCase().includes(needle))))
+  const page = usePaging(filtered, { resetKey: `${filter}:${q}:${prio}:${cat}` })
 
   useEffect(() => {
     if (!focus || !tickets.length) return
@@ -191,15 +204,27 @@ export function OperatorTickets({ focus = null }: { focus?: string | null } = {}
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '8px' }}>
-        {[{ id: 'open', label: 'Open', count: inQueue.filter(t => t.status === 'open').length }, { id: 'resolved', label: 'Resolved', count: inQueue.filter(t => t.status === 'resolved').length }, { id: 'all', label: 'All', count: inQueue.length }].map(f => (
-          <button key={f.id} onClick={() => setFilter(f.id)} style={{ padding: '8px 16px', borderRadius: 'var(--radius)', fontSize: 'var(--text-sm)', fontWeight: 600, background: filter === f.id ? 'var(--brand-navy)' : 'white', color: filter === f.id ? 'white' : 'var(--text-secondary)', border: '1px solid var(--border)', cursor: 'pointer' }}>{f.label} ({f.count})</button>
-        ))}
-      </div>
+      <FilterBar ariaLabel="Ticket filters"
+        search={{ value: q, onChange: setQ, placeholder: 'Subject, requester, organisation or owner', ariaLabel: 'Search tickets' }}
+        summary={`${filtered.length} of ${inQueue.length} tickets`}>
+        <Select aria-label="Status" value={filter} onChange={e => setFilter(e.target.value)}>
+          <option value="open">Open ({inQueue.filter(t => t.status === 'open').length})</option>
+          <option value="resolved">Resolved ({inQueue.filter(t => t.status === 'resolved').length})</option>
+          <option value="all">All ({inQueue.length})</option>
+        </Select>
+        <Select aria-label="Priority" value={prio} onChange={e => setPrio(e.target.value)}>
+          <option value="all">All priorities</option>
+          {priorities.map(p => <option key={p} value={p}>{p}</option>)}
+        </Select>
+        <Select aria-label="Category" value={cat} onChange={e => setCat(e.target.value)}>
+          <option value="all">All categories</option>
+          {categories.map(c => <option key={c} value={c}>{c}</option>)}
+        </Select>
+      </FilterBar>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 400px', gap: '20px' }} className="op-grid-2col">
         <SectionCard title="Ticket Queue" subtitle="SLA clock pauses while waiting on customer">
-          {filtered.length === 0 ? <EmptyState message="No tickets in this filter" /> : (
+          {filtered.length === 0 ? <EmptyState message="No tickets match these filters" /> : (
             <Table headers={['Subject', 'Priority', 'Status', 'Owner']}>
               {page.rows.map(t => (
                 <tr key={t.id} onClick={() => { setSelected(t); setAttachments([]); void loadAttachments(t.id).then(setAttachments) }} style={{ cursor: 'pointer', background: selected?.id === t.id ? 'var(--bg-alt)' : 'transparent' }}>

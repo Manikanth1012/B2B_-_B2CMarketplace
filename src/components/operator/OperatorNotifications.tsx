@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Pager, usePaging } from '../Pager'
+import { inLocalRange } from '../../lib/localDay'
 import {
-  Bell, Plus, Pencil, Eye, TriangleAlert as AlertTriangle, Lock, Search,
+  Bell, Plus, Pencil, Eye, TriangleAlert as AlertTriangle, Lock,
 } from 'lucide-react'
 import {
   SectionCard, StatCard, Btn, Modal, FormField, TextInput, TextArea, Select,
-  Table, Td, EmptyState, toast, fmtInt, StatusPill,
+  Table, Td, EmptyState, toast, fmtInt, StatusPill, FilterBar, DateRangeFilter,
 } from './shared'
 import { Callout } from '../OnboardingJourney'
 import {
@@ -1238,12 +1239,14 @@ function HistoryTab({ book }: { book: NotificationBook }) {
   const [kind, setKind] = useState<KindId | 'all'>('all')
   const [state, setState] = useState<LogState | 'all'>('all')
   const [search, setSearch] = useState('')
+  const [range, setRange] = useState({ from: '', to: '' })
   const [open, setOpen] = useState<string | null>(null)
 
-  const rows = filterLog(book.log, { persona, kind, state, search })
+  /* sent_at is a timestamp; the date inputs are days, compared as the operator's local day. */
+  const rows = filterLog(book.log, { persona, kind, state, search }).filter(e => inLocalRange(e.sent_at, range.from, range.to))
   /* The log is the longest table in the console and had no paging at all.
      Any change of filter is a different list, so it goes back to page 1. */
-  const logPage = usePaging(rows, { resetKey: `${persona}:${kind}:${state}:${search}` })
+  const logPage = usePaging(rows, { resetKey: `${persona}:${kind}:${state}:${search}:${range.from}:${range.to}` })
   const problems = notDelivered(book.log)
   const rules = new Map(book.rules.map(r => [r.id, r]))
 
@@ -1256,29 +1259,26 @@ function HistoryTab({ book }: { book: NotificationBook }) {
         </Callout>
       )}
 
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
-        <div style={{ position: 'relative', flex: '1 1 220px' }}>
-          <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-          <TextInput value={search} onChange={e => setSearch(e.target.value)}
-                     placeholder="Subject, recipient or reference" style={{ paddingLeft: '30px' }} />
-        </div>
-        <Select value={persona} onChange={e => setPersona(e.target.value as Persona | 'all')} style={{ width: 'auto' }}>
+      <FilterBar ariaLabel="Message filters"
+        search={{ value: search, onChange: setSearch, placeholder: 'Subject, recipient or reference', ariaLabel: 'Search messages' }}>
+        <DateRangeFilter from={range.from} to={range.to} onChange={setRange} />
+        <Select aria-label="Audience" value={persona} onChange={e => setPersona(e.target.value as Persona | 'all')}>
           <option value="all">Everybody</option>
           {(['operator', 'partner', 'enterprise', 'consumer'] as Persona[]).map(p => (
             <option key={p} value={p}>{PERSONA_LABEL[p]}</option>
           ))}
         </Select>
-        <Select value={kind} onChange={e => setKind(e.target.value as KindId | 'all')} style={{ width: 'auto' }}>
+        <Select aria-label="Channel" value={kind} onChange={e => setKind(e.target.value as KindId | 'all')}>
           <option value="all">Every channel</option>
           {book.kinds.map(k => <option key={k.id} value={k.id}>{k.label}</option>)}
         </Select>
-        <Select value={state} onChange={e => setState(e.target.value as LogState | 'all')} style={{ width: 'auto' }}>
+        <Select aria-label="Outcome" value={state} onChange={e => setState(e.target.value as LogState | 'all')}>
           <option value="all">Any outcome</option>
           {(Object.keys(STATE_LABEL) as LogState[]).map(s => (
             <option key={s} value={s}>{STATE_LABEL[s]}</option>
           ))}
         </Select>
-      </div>
+      </FilterBar>
 
       <SectionCard title={`${rows.length} of ${book.log.length} messages`}
                    subtitle="Nobody edits what was sent. Click a row to read what actually went out.">
