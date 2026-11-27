@@ -1,7 +1,8 @@
-import { useEffect, useId, useRef } from 'react'
+import { useId, useRef } from 'react'
 import type React from 'react'
 import { X } from 'lucide-react'
-import { useFocusTrap, isTopmostTrap } from './useFocusTrap'
+import { useFocusTrap } from './useFocusTrap'
+import { useOverlayDismiss } from './useOverlayDismiss'
 
 /**
  * A modal dialog.
@@ -17,7 +18,7 @@ import { useFocusTrap, isTopmostTrap } from './useFocusTrap'
  * The base `.ui-dialog` rules sit inside `:where()` so a passed class always
  * wins over them.
  */
-export function Dialog({ open, onClose, title, children, footer, wide, labelId, className }: {
+export function Dialog({ open, onClose, title, children, footer, wide, labelId, className, description }: {
   open: boolean
   onClose: () => void
   title: React.ReactNode
@@ -26,51 +27,23 @@ export function Dialog({ open, onClose, title, children, footer, wide, labelId, 
   wide?: boolean          // 920px instead of 560px
   labelId?: string        // optional; otherwise generated with useId
   className?: string
+  description?: React.ReactNode   // quiet line under the title
 }): JSX.Element | null {
   const generated = useId()
   const titleId = labelId ?? `${generated}-title`
   const panel = useRef<HTMLDivElement>(null)
-  const pressedBackdrop = useRef(false)
-
-  const closeRef = useRef(onClose)
-  closeRef.current = onClose
 
   useFocusTrap(panel, open)
-
-  /* Escape is heard on the document, not just the panel, so it still works
-     when focus has fallen to <body> (a focused button that became disabled).
-     Only the topmost trap answers, so a confirm over a modal closes alone. */
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.defaultPrevented || !isTopmostTrap(panel.current)) return
-      closeRef.current()
-      /* Spent here: a listener beneath this dialog (the account menu on
-         window, a drawer on document) must not also close on the same press.
-         stopPropagation keeps it from window; stopImmediatePropagation from a
-         document listener added after this one; preventDefault marks it for
-         any listener that ran earlier or checks defaultPrevented. */
-      e.stopPropagation()
-      e.stopImmediatePropagation()
-      e.preventDefault()
-    }
-    document.addEventListener('keydown', handler)
-    return () => document.removeEventListener('keydown', handler)
-  }, [open])
+  /* Escape on the document and a backdrop that closes only when the press
+     started and ended on it (see useOverlayDismiss). */
+  const backdrop = useOverlayDismiss(panel, open, onClose)
 
   if (!open) return null
 
   const cls = ['ui-dialog', wide && 'ui-dialog--wide', className].filter(Boolean).join(' ')
 
   return (
-    /* Closes only when the press started and ended on the backdrop itself, so
-       selecting text inside and releasing outside does not throw it away. */
-    <div className="ui-dialog-back"
-      onMouseDown={(e) => { pressedBackdrop.current = e.target === e.currentTarget }}
-      onClick={(e) => {
-        if (pressedBackdrop.current && e.target === e.currentTarget) onClose()
-        pressedBackdrop.current = false
-      }}>
+    <div className="ui-dialog-back" {...backdrop}>
       {/* tabIndex -1: a click on plain text inside focuses the panel rather
           than dropping focus to <body>, so the trap and Escape keep working. */}
       <div ref={panel} className={cls} role="dialog" aria-modal="true" aria-labelledby={titleId}
@@ -79,9 +52,12 @@ export function Dialog({ open, onClose, title, children, footer, wide, labelId, 
            ancestor (a row or card) the dialog happens to be rendered in. */
         onClick={(e) => e.stopPropagation()}>
         <div className="ui-dialog__head">
-          <h2 id={titleId} className="ui-dialog__title">{title}</h2>
+          <div className="ui-dialog__heading">
+            <h2 id={titleId} className="ui-dialog__title">{title}</h2>
+            {description && <p className="ui-dialog__desc">{description}</p>}
+          </div>
           <button type="button" className="ui-dialog__close" onClick={onClose} aria-label="Close">
-            <X size={20} aria-hidden="true" />
+            <X size={18} aria-hidden="true" />
           </button>
         </div>
         <div className="ui-dialog__body">
