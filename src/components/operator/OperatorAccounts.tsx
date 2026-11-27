@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import {
-  Building2, Users, Check, Clock, TriangleAlert as AlertTriangle, Inbox, Search,
+  Check, Clock, TriangleAlert as AlertTriangle, Inbox,
 } from 'lucide-react'
 import { Pager, usePaging } from '../Pager'
-import { StatCard, SectionCard, Table, Td, StatusPill, Btn, EmptyState, fmtInt } from './shared'
+import { SectionCard, Table, Td, StatusPill, Btn, EmptyState, fmtInt, PageHeader, FilterBar, RowActions } from './shared'
+import { Tabs } from '../ui/Tabs'
+import { KpiCard, KpiRow } from '../ui/KpiCard'
 import { Callout } from '../OnboardingJourney'
 import { StatusBadge } from '../ui/StatusBadge'
 import { accountBands } from '../../lib/riskRepo'
@@ -106,31 +108,32 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div>
-        <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, margin: 0 }}>Accounts</h1>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-          Who buys from this marketplace — companies and their onboarding, and the people who shop here.
-        </p>
-      </div>
+      <PageHeader
+        title="Accounts"
+        description="Who buys from this marketplace — companies and their onboarding, and the people who shop here.">
+        <Tabs ariaLabel="Account type" value={tab} onChange={id => setTab(id as 'business' | 'retail')}
+          tabs={[
+            { id: 'business', label: 'Businesses', count: accounts.length },
+            { id: 'retail', label: 'Retail customers', count: book.shoppers.length },
+          ]} />
+      </PageHeader>
 
       {book.loadError && (
         <Callout tone="danger" title="Some of this screen did not load">{book.loadError}</Callout>
       )}
 
-      <div style={{ display: 'grid', gap: '12px', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-        <StatCard label="Business accounts" value={fmtInt(totals.accounts)}
-          sublabel={`${totals.onboarded} through every gate`} />
-        <StatCard label="Part-way through" value={fmtInt(totals.inFlight)}
-          sublabel="still have a gate outstanding" />
-        <StatCard label="Overdue" value={fmtInt(totals.overdue)}
-          sublabel={totals.overdue ? 'a gate or a review past its date' : 'nothing past its date'}
-          color={totals.overdue ? 'var(--danger)' : undefined} />
-        <StatCard label="Waiting to be decided" value={fmtInt(totals.waiting)}
-          sublabel="companies who have applied"
-          color={totals.waiting ? 'var(--warning)' : undefined} />
-        <StatCard label="Retail customers" value={fmtInt(book.shoppers.length)}
-          sublabel="people with an account here" />
-      </div>
+      <KpiRow label="Account summary">
+        <KpiCard variant="ops" label="Business accounts" value={fmtInt(totals.accounts)}
+          status={`${totals.onboarded} through every gate`} />
+        <KpiCard variant="ops" label="Part-way through" value={fmtInt(totals.inFlight)}
+          status="still have a gate outstanding" />
+        <KpiCard variant={totals.overdue ? 'risk' : 'ops'} label="Overdue" value={fmtInt(totals.overdue)}
+          status={totals.overdue ? 'a gate or a review past its date' : 'nothing past its date'} />
+        <KpiCard variant="ops" label="Waiting to be decided" value={fmtInt(totals.waiting)}
+          status="companies who have applied" />
+        <KpiCard variant="ops" label="Retail customers" value={fmtInt(book.shoppers.length)}
+          status="people with an account here" />
+      </KpiRow>
 
       {totals.waiting > 0 && (
         <Callout tone="warning" title={`${totals.waiting} ${totals.waiting === 1 ? 'company is' : 'companies are'} waiting on the desk`}>
@@ -146,22 +149,9 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
         </Callout>
       )}
 
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ display: 'flex', gap: '4px' }}>
-          <Btn variant={tab === 'business' ? 'primary' : 'secondary'} onClick={() => setTab('business')}>
-            <Building2 size={14} /> Businesses ({accounts.length})
-          </Btn>
-          <Btn variant={tab === 'retail' ? 'primary' : 'secondary'} onClick={() => setTab('retail')}>
-            <Users size={14} /> Retail customers ({book.shoppers.length})
-          </Btn>
-        </div>
-        <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 0 }}>
-          <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-          <input className="input" value={q} onChange={e => setQ(e.target.value)}
-            placeholder={tab === 'business' ? 'Company, market, industry, applicant…' : 'Name, email, market…'}
-            style={{ paddingLeft: '30px', width: '100%' }} />
-        </div>
-      </div>
+      <FilterBar ariaLabel="Search accounts"
+        search={{ value: q, onChange: setQ, ariaLabel: tab === 'business' ? 'Search business accounts' : 'Search retail customers',
+          placeholder: tab === 'business' ? 'Company, market, industry, applicant…' : 'Name, email, market…' }} />
 
       {tab === 'business' && (
         <div className="acct-chips" role="radiogroup" aria-label="Filter by status" onKeyDown={onChipKey}>
@@ -188,9 +178,9 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
                 <Table headers={['Company', 'Contact', 'Email', 'Country']}>
                   {waitingShown.map(w => (
                     <tr key={w.id}>
-                      <Td><div style={{ fontWeight: 600 }}>{w.company || '—'}</div></Td>
-                      <Td>{w.contact_name || '—'}</Td>
-                      <Td>{w.email || '—'}</Td>
+                      <Td clamp><div style={{ fontWeight: 600 }}>{w.company || '—'}</div></Td>
+                      <Td clamp>{w.contact_name || '—'}</Td>
+                      <Td clamp>{w.email || '—'}</Td>
                       <Td>{w.country || '—'}</Td>
                     </tr>
                   ))}
@@ -208,7 +198,7 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
             <EmptyState message={q || band !== 'all' ? 'No company matches that.' : 'No business accounts yet.'} />
           ) : (
             <>
-              <Table headers={['Company', 'Market', 'Terms', 'Credit', 'Onboarding', 'Where they are', '']}>
+              <Table headers={['Company', 'Market', 'Terms', 'Credit', 'Onboarding', 'Where they are', 'Actions']}>
                 {bizPage.rows.map(a => {
                   const mine = stepsOf(steps, a.id)
                   const p = progressOf(mine)
@@ -220,13 +210,13 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
                     x => !!x && (x.state === 'overdue' || isLate(x, TODAY)))
                   return (
                     <tr key={a.id}>
-                      <Td>
+                      <Td clamp title={a.company}>
                         <div style={{ fontWeight: 600 }}>{a.company}</div>
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                        <div style={{ color: 'var(--slate-600)' }}>
                           {a.id} · {a.segment}{a.industry ? ` · ${a.industry}` : ''}
                         </div>
                       </Td>
-                      <Td>
+                      <Td nowrap>
                         {a.market}
                         {risk.has(a.id) && (
                           <div style={{ marginTop: '3px' }}>
@@ -236,37 +226,36 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
                           </div>
                         )}
                       </Td>
-                      <Td>{a.terms}</Td>
-                      <Td>
+                      <Td nowrap>{a.terms}</Td>
+                      <Td kind="status">
                         {c ? (
                           <>
                             <StatusPill status={c.band} />
                             {c.limit_granted != null && (
-                              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                              <div style={{ color: 'var(--slate-600)', marginTop: '2px' }}>
                                 {fmtIn(c.limit_granted, c.currency)}
                               </div>
                             )}
                           </>
                         ) : (
-                          <span style={{ color: 'var(--danger)', fontSize: 'var(--text-xs)', fontWeight: 600 }}>
+                          <span style={{ color: 'var(--danger)', fontWeight: 600 }}>
                             No assessment
                           </span>
                         )}
                       </Td>
-                      <Td>
+                      <Td nowrap>
                         <Bar done={p.done} of={p.of}
                              late={!!p.next && (p.next.state === 'overdue' || isLate(p.next, TODAY))} />
                       </Td>
-                      <Td>
+                      <Td clamp>
                         <span style={{ color: late ? 'var(--danger)' : undefined, fontWeight: late ? 600 : 400 }}>
                           {whereTheyAre(p, TODAY)}
                         </span>
                       </Td>
                       <Td>
-                        <Btn variant="secondary"
-                          onClick={() => setOpenId(openId === a.id ? null : a.id)}>
-                          {openId === a.id ? 'Hide' : 'Journey'}
-                        </Btn>
+                        <RowActions label={a.company} actions={[
+                          { label: openId === a.id ? 'Hide' : 'Journey', onClick: () => setOpenId(openId === a.id ? null : a.id) },
+                        ]} />
                       </Td>
                     </tr>
                   )
@@ -285,16 +274,16 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
               <Table headers={['Customer', 'Where', 'Tier', 'Points', 'With us since']}>
                 {retailPage.rows.map(s => (
                   <tr key={s.id}>
-                    <Td>
+                    <Td clamp title={s.name}>
                       <div style={{ fontWeight: 600 }}>{s.name}</div>
                       {s.email && (
-                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{s.email}</div>
+                        <div style={{ color: 'var(--slate-600)' }}>{s.email}</div>
                       )}
                     </Td>
-                    <Td>{shopperLine(s)}</Td>
-                    <Td>{s.tier ?? '—'}</Td>
-                    <Td right>{s.points ? fmtInt(s.points) : '—'}</Td>
-                    <Td>{s.joined ?? '—'}</Td>
+                    <Td clamp>{shopperLine(s)}</Td>
+                    <Td kind="status">{s.tier ?? '—'}</Td>
+                    <Td kind="num">{s.points ? fmtInt(s.points) : '—'}</Td>
+                    <Td kind="date">{s.joined ?? '—'}</Td>
                   </tr>
                 ))}
               </Table>
@@ -314,16 +303,16 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
 /* How far along, at a glance. A fraction is exact and unreadable at a hundred
    rows; a bar is readable and imprecise. Both, so neither has to be. */
 function Bar({ done, of, late }: { done: number; of: number; late: boolean }) {
-  if (of === 0) return <span style={{ color: 'var(--danger)', fontSize: 'var(--text-xs)' }}>none</span>
+  if (of === 0) return <span style={{ color: 'var(--danger)' }}>none</span>
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '92px' }}>
-      <div style={{ flex: 1, height: '6px', borderRadius: '3px', background: 'var(--bg-alt)', overflow: 'hidden' }}>
+      <div style={{ flex: 1, height: '6px', borderRadius: 'var(--radius)', background: 'var(--bg-alt)', overflow: 'hidden' }}>
         <div style={{
           width: `${Math.round(done / of * 100)}%`, height: '100%',
           background: late ? 'var(--danger)' : done === of ? 'var(--success)' : 'var(--brand-accent)',
         }} />
       </div>
-      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', whiteSpace: 'nowrap' }}>
+      <span style={{ color: 'var(--slate-600)', whiteSpace: 'nowrap', fontVariantNumeric: 'tabular-nums' }}>
         {done}/{of}
       </span>
     </div>
