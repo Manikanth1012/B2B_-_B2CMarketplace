@@ -130,6 +130,18 @@ Still open:
 - [x] Nothing moves an invoice from open to overdue after its due date (as before). Done in spec 14.
 - [ ] Seller settlement lines and ledger postings are not written for the new orders.
 
+## Spec 18 — alignment sweep, dashboards and charts (2026-11-27, in progress)
+
+Spec `docs/superpowers/specs/2026-11-27-alignment-sweep-and-dashboards-design.md`, branch `ui-sweep`, no migration.
+- [x] Part 1, shared pieces (merged): `Td kind/nowrap/clamp`, header alignment from cells, hidden "Actions" header,
+  `RowActions` (2 inline + "More" menu, `ui/Menu`), `FilterBar`, `DateRangeFilter`, `FormField compact` + `FieldRow`,
+  `PageHeader`, `KpiCard breakdown/status` + `KpiRow`, `ui/charts` (Column/Bar/Line/Area/Donut/Sparkline, 6D palette
+  `--chart-1..6`, `categoryColour`), `/design-system` sections.
+- [ ] Scheduled jobs filters (date range, job, status, failures only), then the other log screens.
+- [ ] Operator screens in four groups; dashboards (operator, partner, enterprise); partner/enterprise screens; storefront.
+- Deferred minors: Donut has no keyboard focus (hidden table covers screen readers); a Menu whose items are all
+  disabled looks dead; `Td clamp` hover title only for plain-string children; menu arrow keys bubble to the row.
+
 ## Spec 17 — orders are records once paid, and the risk follow-ups (2026-11-27)
 
 Branch `order-integrity`, migration `20261127100000` — **to be applied by the user**. Spec
