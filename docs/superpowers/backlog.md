@@ -138,6 +138,20 @@ the lines added up (read-only) with the saving, and "Apply % off to all" fills t
 `bundle-line-prices`; migration `20261127300000_a_bundle_line_carries_its_price.sql` (`product_components.unit_price`,
 with DB guards) — not applied yet. Its UI waits for the spec 18 group 1 restyle of OperatorCatalogue.tsx.
 
+## More synthetic data (2026-11-27, queued after the pending items)
+
+User: "Please add more synthetic data into the platform once the above pending action items are over." To do after
+the bundle line prices, spec 19 and the rest of spec 18. Delivered as seed migrations, applied by the user. Every
+seeded order creates its `order_part` rows, and the seed respects the RLS and guards of specs 13, 17 and 19. Default
+scope, to confirm with the user when it starts:
+- more sellers and listings per market (IN, AE, KE) with floors set;
+- shoppers and business accounts with orders, invoices, payments and refunds spread over the last 6 months;
+- baskets in every state (for spec 19's reminders);
+- tickets, disputes and enquiries;
+- bundles with per-line prices;
+- notification log history;
+- enough volume to make the dashboards, reports and charts meaningful.
+
 ## Spec 19 — scheduled reminders (n−x / n+x) and configurable basket windows (2026-11-27, queued)
 
 Spec `docs/superpowers/specs/2026-11-27-scheduled-reminders-and-basket-windows-design.md`. User chose "general,
