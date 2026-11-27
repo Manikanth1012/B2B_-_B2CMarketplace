@@ -64,6 +64,43 @@ export function nights(rows: JobLogRow[]): Night[] {
     })
 }
 
+/** The ten jobs run_nightly runs, by the names the log carries. */
+export const JOB_NAMES = [
+  'agreements', 'enterprise subscriptions', 'subscriptions', 'documents', 'payments',
+  'bundle selections', 'baskets', 'invoices', 'risk', 'settlements',
+] as const
+
+export interface JobFilters {
+  /** `YYYY-MM-DD`, inclusive; empty means no bound. */
+  from: string
+  to: string
+  /** A job name, or 'all'. */
+  job: string
+  status: 'all' | 'ok' | 'failed'
+}
+
+export const ALL_JOBS = 'all'
+
+/** Keep the runs that match, and the nights that still have a run. Pure; the order is kept. */
+export function filterNights(list: Night[], f: JobFilters): Night[] {
+  const out: Night[] = []
+  for (const n of list) {
+    if (f.from && n.ranOn < f.from) continue
+    if (f.to && n.ranOn > f.to) continue
+    const jobs = n.jobs.filter(j =>
+      (f.job === ALL_JOBS || j.job === f.job) &&
+      (f.status === 'all' || (f.status === 'ok' ? j.ok : !j.ok)))
+    if (jobs.length > 0) out.push({ ...n, jobs })
+  }
+  return out
+}
+
+/** '12 nights · 87 runs'. */
+export function filterSummary(list: Night[]): string {
+  const runs = list.reduce((t, n) => t + n.jobs.length, 0)
+  return `${list.length} ${list.length === 1 ? 'night' : 'nights'} · ${runs} ${runs === 1 ? 'run' : 'runs'}`
+}
+
 const STALE_MS = 26 * 60 * 60 * 1000
 
 export function health(rows: JobLogRow[], now: Date): { tone: 'success' | 'warning' | 'danger'; says: string } {

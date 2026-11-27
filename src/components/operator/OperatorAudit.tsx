@@ -1,13 +1,16 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { OperatorAuditEntry } from '../../types'
-import { SectionCard, Table, Td, Id, EmptyState, fmtDateTime, Btn, Modal, FormField, TextInput, Select, TextArea, toast } from './shared'
+import { SectionCard, Table, Td, Id, EmptyState, fmtDateTime, Btn, Modal, FormField, TextInput, Select, TextArea, toast, FilterBar, DateRangeFilter } from './shared'
 import { Pager, usePaging } from '../Pager'
 
 export function OperatorAudit() {
   const [entries, setEntries] = useState<OperatorAuditEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('all')
+  const [severity, setSeverity] = useState<string>('all')
+  const [q, setQ] = useState('')
+  const [range, setRange] = useState({ from: '', to: '' })
 
   useEffect(() => {
     supabase.from('operator_audit_log').select('*').order('when_ts', { ascending: false }).then(({ data }) => {
@@ -17,14 +20,24 @@ export function OperatorAudit() {
   }, [])
 
   const categories = [...new Set(entries.map(e => e.category))]
-  const filtered = filter === 'all' ? entries : entries.filter(e => e.category === filter)
+  const severities = [...new Set(entries.map(e => e.severity))]
+  const needle = q.trim().toLowerCase()
+  /* when_ts is a timestamp; the date inputs are days, compared as the
+     leading YYYY-MM-DD of the stored value. */
+  const filtered = entries.filter(e =>
+    (filter === 'all' || e.category === filter) &&
+    (severity === 'all' || e.severity === severity) &&
+    (!range.from || e.when_ts.slice(0, 10) >= range.from) &&
+    (!range.to || e.when_ts.slice(0, 10) <= range.to) &&
+    (!needle || [e.actor, e.action, e.object, e.outcome].some(v => (v ?? '').toLowerCase().includes(needle))))
+  const filtering = filter !== 'all' || severity !== 'all' || q !== '' || range.from !== '' || range.to !== ''
   /* An append-only log only grows. Changing the category is a different
      question, so it starts again at page one; new rows arriving under the same
      question are not.
 
      Above the loading guard: `usePaging` is a hook, and a hook below an early
      return runs on some renders and not others. */
-  const page = usePaging(filtered, { resetKey: filter })
+  const page = usePaging(filtered, { resetKey: `${filter}:${severity}:${q}:${range.from}:${range.to}` })
 
   if (loading) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
 
@@ -41,15 +54,23 @@ export function OperatorAudit() {
         <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>{entries.length} entries · Append-only · Hash-chained · Reading this log is itself audited</p>
       </div>
 
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        <button onClick={() => setFilter('all')} style={{ padding: '6px 12px', borderRadius: 'var(--radius)', fontSize: 'var(--text-xs)', fontWeight: 600, background: filter === 'all' ? 'var(--brand-navy)' : 'white', color: filter === 'all' ? 'white' : 'var(--text-secondary)', border: '1px solid var(--border)', cursor: 'pointer' }}>All</button>
-        {categories.map(c => (
-          <button key={c} onClick={() => setFilter(c)} style={{ padding: '6px 12px', borderRadius: 'var(--radius)', fontSize: 'var(--text-xs)', fontWeight: 600, background: filter === c ? 'var(--brand-navy)' : 'white', color: filter === c ? 'white' : 'var(--text-secondary)', border: '1px solid var(--border)', cursor: 'pointer' }}>{c}</button>
-        ))}
-      </div>
+      <FilterBar ariaLabel="Audit filters"
+        search={{ value: q, onChange: setQ, placeholder: 'Actor, action, object or outcome', ariaLabel: 'Search the audit trail' }}
+        summary={filtering ? `${filtered.length} of ${entries.length} entries match` : undefined}
+        actions={filtering ? <Btn variant="tertiary" size="sm" onClick={() => { setFilter('all'); setSeverity('all'); setQ(''); setRange({ from: '', to: '' }) }}>Clear filters</Btn> : undefined}>
+        <DateRangeFilter from={range.from} to={range.to} onChange={setRange} />
+        <Select aria-label="Category" value={filter} onChange={e => setFilter(e.target.value)}>
+          <option value="all">All categories</option>
+          {categories.map(c => <option key={c} value={c}>{c}</option>)}
+        </Select>
+        <Select aria-label="Severity" value={severity} onChange={e => setSeverity(e.target.value)}>
+          <option value="all">All severities</option>
+          {severities.map(c => <option key={c} value={c}>{c}</option>)}
+        </Select>
+      </FilterBar>
 
       <SectionCard title="Audit Log" subtitle="Every consequential action, recorded. No edit path, no delete path.">
-        {filtered.length === 0 ? <EmptyState message="No audit entries" /> : (
+        {filtered.length === 0 ? <EmptyState message={filtering ? 'No audit entries match these filters' : 'No audit entries'} /> : (
           <Table headers={['When', 'Actor', 'Role', 'Action', 'Object', 'Category', 'Severity', 'Outcome']}>
             {page.rows.map(e => (
               <tr key={e.id}>

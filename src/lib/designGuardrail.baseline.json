@@ -1,7 +1,7 @@
 {
   "total": {
     "fontSize": 403,
-    "hex": 124,
+    "hex": 121,
     "radius": 67
   },
   "files": {
@@ -87,7 +87,7 @@
     },
     "components/PaymentGateway.tsx": {
       "fontSize": 6,
-      "hex": 2,
+      "hex": 1,
       "radius": 1
     },
     "components/PriceBookEditor.tsx": {
@@ -137,7 +137,7 @@
     },
     "components/enterprise/EnterpriseNumbers.tsx": {
       "fontSize": 0,
-      "hex": 8,
+      "hex": 6,
       "radius": 1
     },
     "components/enterprise/EnterpriseOrders.tsx": {

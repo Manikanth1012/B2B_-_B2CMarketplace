@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { nights, health, summarise } from './jobLog'
+import { nights, health, summarise, filterNights, filterSummary, JOB_NAMES } from './jobLog'
 import type { JobLogRow } from './jobLog'
 
 const row = (job: string, ran_on: string, over: Partial<JobLogRow> = {}): JobLogRow => ({
@@ -119,5 +119,38 @@ describe('summarise', () => {
   it('skips keys that are missing', () => {
     expect(summarise('payments', {})).toBe('Done')
     expect(summarise('enterprise subscriptions', { renewed: [{}] })).toBe('1 renewed')
+  })
+})
+
+describe('filterNights', () => {
+  const rows = [
+    row('a', '2026-11-13', { id: 1 }), row('b', '2026-11-13', { id: 2, ok: false, error: 'x' }),
+    row('a', '2026-11-12', { id: 3 }), row('b', '2026-11-12', { id: 4 }),
+    row('a', '2026-11-01', { id: 5 }),
+  ]
+  const all = { from: '', to: '', job: 'all', status: 'all' as const }
+
+  it('lists the ten jobs run_nightly runs', () => expect(JOB_NAMES).toHaveLength(10))
+
+  it('keeps everything with no filters', () => {
+    expect(filterSummary(filterNights(nights(rows), all))).toBe('3 nights · 5 runs')
+  })
+  it('bounds by date, inclusive', () => {
+    const r = filterNights(nights(rows), { ...all, from: '2026-11-12', to: '2026-11-13' })
+    expect(r.map(n => n.ranOn)).toEqual(['2026-11-13', '2026-11-12'])
+  })
+  it('filters by job and drops nights left empty', () => {
+    const r = filterNights(nights(rows), { ...all, job: 'b' })
+    expect(r.map(n => n.ranOn)).toEqual(['2026-11-13', '2026-11-12'])
+    expect(r.every(n => n.jobs.every(j => j.job === 'b'))).toBe(true)
+  })
+  it('filters by status', () => {
+    const failed = filterNights(nights(rows), { ...all, status: 'failed' })
+    expect(failed.map(n => n.ranOn)).toEqual(['2026-11-13'])
+    expect(filterSummary(failed)).toBe('1 night · 1 run')
+    expect(filterSummary(filterNights(nights(rows), { ...all, status: 'ok' }))).toBe('3 nights · 4 runs')
+  })
+  it('matches nothing cleanly', () => {
+    expect(filterSummary(filterNights(nights(rows), { ...all, job: 'zzz' }))).toBe('0 nights · 0 runs')
   })
 })

@@ -7,7 +7,7 @@ import { settle } from './loaded'
 import type { Loaded } from './loaded'
 import type { JobLogRow } from './jobLog'
 
-const DAYS = 15
+const DAYS = 90
 
 export async function loadJobLog(now: Date = new Date()): Promise<Loaded<JobLogRow[]>> {
   try {

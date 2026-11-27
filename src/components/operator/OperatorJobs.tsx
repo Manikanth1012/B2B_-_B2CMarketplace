@@ -1,19 +1,26 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { BentoCard } from '../ui/BentoCard'
 import { StatusBadge } from '../ui/StatusBadge'
-import { EmptyState } from './shared'
+import { Btn, DateRangeFilter, EmptyState, FilterBar, PageHeader, Select, daysBefore, isoDay } from './shared'
 import { loadJobLog } from '../../lib/jobLogRepo'
-import { nights, health, shortDate, utcTime } from '../../lib/jobLog'
-import type { JobLogRow } from '../../lib/jobLog'
+import { ALL_JOBS, JOB_NAMES, filterNights, filterSummary, nights, health, shortDate, utcTime } from '../../lib/jobLog'
+import type { JobFilters, JobLogRow } from '../../lib/jobLog'
 
 /* The nightly run, on screen. Read-only: the app cannot start the night, so the
-   footnote says how to do it by hand. Times are UTC, the clock the schedule keeps. */
+   footnote says how to do it by hand. Times are UTC, the clock the schedule keeps.
+   The filters narrow the list below; the health line is always about the latest night. */
 
 const duration = (ms: number | null) => (ms === null ? '—' : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`)
+
+const defaults = (): JobFilters => {
+  const today = isoDay(new Date())
+  return { from: daysBefore(today, 13), to: today, job: ALL_JOBS, status: 'all' }
+}
 
 export function OperatorJobs() {
   const [rows, setRows] = useState<JobLogRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [filters, setFilters] = useState<JobFilters>(defaults)
 
   useEffect(() => {
     let live = true
@@ -25,16 +32,18 @@ export function OperatorJobs() {
   }, [])
 
   const h = rows ? health(rows, new Date()) : null
-  const list = rows ? nights(rows).slice(0, 14) : []
+  const all = useMemo(() => (rows ? nights(rows) : []), [rows])
+  const list = useMemo(() => filterNights(all, filters), [all, filters])
+  const jobNames = useMemo(() => {
+    const extra = [...new Set((rows ?? []).map(r => r.job))].filter(j => !(JOB_NAMES as readonly string[]).includes(j)).sort()
+    return [...JOB_NAMES, ...extra]
+  }, [rows])
+  const set = (patch: Partial<JobFilters>) => setFilters(f => ({ ...f, ...patch }))
 
   return (
     <div className="op-jobs">
-      <div>
-        <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Scheduled jobs</h1>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-          What the nightly run did, last 14 nights. All times are UTC.
-        </p>
-      </div>
+      <PageHeader title="Scheduled jobs"
+        description="What the nightly run did. The log keeps up to 90 days; filter to look back. All times are UTC." />
 
       {error && <div role="alert" className="op-jobs__error">The job log could not be read: {error}</div>}
       {!error && !rows && <p role="status" className="op-jobs__note">Loading the job log…</p>}
@@ -46,7 +55,28 @@ export function OperatorJobs() {
         </p>
       )}
 
-      {rows && list.length === 0 && <EmptyState message="No nightly run has been recorded yet." />}
+      {rows && all.length > 0 && (
+        <FilterBar ariaLabel="Job filters" summary={filterSummary(list)}>
+          <DateRangeFilter from={filters.from} to={filters.to} onChange={r => set(r)}
+            quickLabel={n => `${n} nights`} />
+          <Select aria-label="Job" value={filters.job} onChange={e => set({ job: e.target.value })}>
+            <option value={ALL_JOBS}>All jobs</option>
+            {jobNames.map(j => <option key={j} value={j}>{j}</option>)}
+          </Select>
+          <Select aria-label="Status" value={filters.status}
+            onChange={e => set({ status: e.target.value as JobFilters['status'] })}>
+            <option value="all">All statuses</option>
+            <option value="ok">OK</option>
+            <option value="failed">Failed</option>
+          </Select>
+        </FilterBar>
+      )}
+
+      {rows && all.length === 0 && <EmptyState message="No nightly run has been recorded yet." />}
+      {rows && all.length > 0 && list.length === 0 && (
+        <EmptyState message="No runs match these filters."
+          action={<Btn variant="secondary" onClick={() => setFilters(defaults())}>Clear filters</Btn>} />
+      )}
 
       {list.map(n => (
         <BentoCard key={n.ranOn} as="article" headingLevel={2} title={`${shortDate(n.ranOn)} · ran at ${utcTime(n.startedAt)} UTC`}>
