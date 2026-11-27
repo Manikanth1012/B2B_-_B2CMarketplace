@@ -17,8 +17,8 @@ export function OperatorTickets({ focus = null }: { focus?: string | null } = {}
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('open')
   const [q, setQ] = useState('')
-  const [prio, setPrio] = useState('all')
-  const [cat, setCat] = useState('all')
+  const [prioSel, setPrio] = useState('all')
+  const [catSel, setCat] = useState('all')
   const [selected, setSelected] = useState<OperatorTicket | null>(null)
   /* What the customer sent with the complaint. Loaded when a ticket is opened
      rather than with the queue: most tickets have none, and a request per row
@@ -50,14 +50,17 @@ export function OperatorTickets({ focus = null }: { focus?: string | null } = {}
      the screen the moment `loading` flips. */
   const service = tickets.filter(t => t.category !== CONTENT_FEEDBACK_CATEGORY)
   const inQueue = service
+  const priorities = [...new Set(inQueue.map(t => t.priority))].sort()
+  const categories = [...new Set(inQueue.map(t => t.category))].sort()
+  /* A choice that no longer exists after a refetch reads as "All". */
+  const prio = prioSel === 'all' || priorities.includes(prioSel) ? prioSel : 'all'
+  const cat = catSel === 'all' || categories.includes(catSel) ? catSel : 'all'
   const needle = q.trim().toLowerCase()
   const filtered = inQueue.filter(t =>
     (filter === 'all' || t.status === filter) &&
     (prio === 'all' || t.priority === prio) &&
     (cat === 'all' || t.category === cat) &&
     (!needle || [t.subject, t.opened_by, t.org, t.owner ?? '', t.id].some(v => v.toLowerCase().includes(needle))))
-  const priorities = [...new Set(inQueue.map(t => t.priority))].sort()
-  const categories = [...new Set(inQueue.map(t => t.category))].sort()
   const page = usePaging(filtered, { resetKey: `${filter}:${q}:${prio}:${cat}` })
 
   useEffect(() => {

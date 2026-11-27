@@ -117,13 +117,15 @@ function Cases({ book, onChanged }: { book: DunningBook; onChanged: () => Promis
   const homeMarket = moneyBook.markets.find(m => m.is_default)?.currency ?? reporting
   const [q, setQ] = useState('')
   const [aud, setAud] = useState('all')
-  const [stat, setStat] = useState('all')
+  const [statSel, setStat] = useState('all')
+  const statuses = [...new Set(book.cases.map(c => c.status))].sort()
+  /* A choice that no longer exists after a refetch reads as "All". */
+  const stat = statSel === 'all' || statuses.includes(statSel) ? statSel : 'all'
   const needle = q.trim().toLowerCase()
   const shown = book.cases.filter(c =>
     (aud === 'all' || c.account_type === aud) &&
     (stat === 'all' || c.status === stat) &&
     (!needle || c.account_name.toLowerCase().includes(needle) || c.reason.toLowerCase().includes(needle)))
-  const statuses = [...new Set(book.cases.map(c => c.status))].sort()
   const page = usePaging(shown, { resetKey: `${q}:${aud}:${stat}` })
   const [addModal, setAddModal] = useState(false)
   const [promising, setPromising] = useState<Case | null>(null)

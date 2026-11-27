@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { Pager, usePaging } from '../Pager'
+import { inLocalRange } from '../../lib/localDay'
 import {
   Bell, Plus, Pencil, Eye, TriangleAlert as AlertTriangle, Lock,
 } from 'lucide-react'
@@ -1241,9 +1242,8 @@ function HistoryTab({ book }: { book: NotificationBook }) {
   const [range, setRange] = useState({ from: '', to: '' })
   const [open, setOpen] = useState<string | null>(null)
 
-  /* sent_at is a timestamp; the date inputs are days, compared as its leading YYYY-MM-DD. */
-  const rows = filterLog(book.log, { persona, kind, state, search }).filter(e =>
-    (!range.from || e.sent_at.slice(0, 10) >= range.from) && (!range.to || e.sent_at.slice(0, 10) <= range.to))
+  /* sent_at is a timestamp; the date inputs are days, compared as the operator's local day. */
+  const rows = filterLog(book.log, { persona, kind, state, search }).filter(e => inLocalRange(e.sent_at, range.from, range.to))
   /* The log is the longest table in the console and had no paging at all.
      Any change of filter is a different list, so it goes back to page 1. */
   const logPage = usePaging(rows, { resetKey: `${persona}:${kind}:${state}:${search}:${range.from}:${range.to}` })

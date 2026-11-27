@@ -68,22 +68,34 @@ describe('OperatorJobs', () => {
     it('shows nights and runs in range, and the old night after widening', async () => {
       load.mockResolvedValue({ ok: true, value: rows() })
       render(<OperatorJobs />)
-      expect(await screen.findByText('2 nights · 3 runs')).toBeTruthy()
-      fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-10-01' } })
-      expect(screen.getByText('3 nights · 4 runs')).toBeTruthy()
+      expect(await screen.findByText('3 nights · 4 runs')).toBeTruthy()
+      fireEvent.change(screen.getByLabelText('From'), { target: { value: '2026-11-12' } })
+      expect(screen.getByText('2 nights · 3 runs')).toBeTruthy()
     })
 
     it('filters by status and job, and the health line stays on the latest night', async () => {
       load.mockResolvedValue({ ok: true, value: rows() })
       render(<OperatorJobs />)
-      await screen.findByText('2 nights · 3 runs')
+      await screen.findByText('3 nights · 4 runs')
       chooseOption(screen.getByRole('combobox', { name: 'Status' }), 'failed')
       expect(screen.getByText('1 night · 1 run')).toBeTruthy()
       expect(screen.getByText('1 of 2 jobs failed on 13 Nov')).toBeTruthy()
       chooseOption(screen.getByRole('combobox', { name: 'Status' }), 'all')
       chooseOption(screen.getByRole('combobox', { name: 'Job' }), 'agreements')
-      expect(screen.getByText('2 nights · 2 runs')).toBeTruthy()
+      expect(screen.getByText('3 nights · 3 runs')).toBeTruthy()
       expect(screen.queryByText('deadlock')).toBeNull()
+    })
+
+    it('shows the newest 14 nights by default, counted from the newest night and not from today', async () => {
+      const many = Array.from({ length: 16 }, (_, i) => {
+        const d = new Date(Date.UTC(2026, 10, 1 + i)).toISOString().slice(0, 10)
+        return row('agreements', { id: i + 1, ran_on: d, started_at: `${d}T00:30:00Z` })
+      })
+      load.mockResolvedValue({ ok: true, value: many })
+      render(<OperatorJobs />)
+      expect(await screen.findByText(/14 nights · 14 runs · the newest 14 nights/)).toBeTruthy()
+      fireEvent.click(screen.getByRole('button', { name: '7 nights' }))
+      expect(screen.getByText('7 nights · 7 runs')).toBeTruthy()
     })
 
     it('says nothing matches and clears the filters', async () => {

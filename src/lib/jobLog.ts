@@ -81,6 +81,12 @@ export interface JobFilters {
 
 export const ALL_JOBS = 'all'
 
+/** How many runs the repo reads: 90 nights of ten jobs, with room for retries. */
+export const JOB_LOG_LIMIT = 2000
+
+/** With no date bound the screen shows this many of the newest nights. */
+export const DEFAULT_NIGHTS = 14
+
 /** Keep the runs that match, and the nights that still have a run. Pure; the order is kept. */
 export function filterNights(list: Night[], f: JobFilters): Night[] {
   const out: Night[] = []

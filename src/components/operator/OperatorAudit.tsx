@@ -3,12 +3,13 @@ import { supabase } from '../../lib/supabase'
 import type { OperatorAuditEntry } from '../../types'
 import { SectionCard, Table, Td, Id, EmptyState, fmtDateTime, Btn, Modal, FormField, TextInput, Select, TextArea, toast, FilterBar, DateRangeFilter } from './shared'
 import { Pager, usePaging } from '../Pager'
+import { inLocalRange } from '../../lib/localDay'
 
 export function OperatorAudit() {
   const [entries, setEntries] = useState<OperatorAuditEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<string>('all')
-  const [severity, setSeverity] = useState<string>('all')
+  const [filterSel, setFilter] = useState<string>('all')
+  const [severitySel, setSeverity] = useState<string>('all')
   const [q, setQ] = useState('')
   const [range, setRange] = useState({ from: '', to: '' })
 
@@ -21,14 +22,16 @@ export function OperatorAudit() {
 
   const categories = [...new Set(entries.map(e => e.category))]
   const severities = [...new Set(entries.map(e => e.severity))]
+  /* A choice that no longer exists after a refetch reads as "All". */
+  const filter = filterSel === 'all' || categories.includes(filterSel) ? filterSel : 'all'
+  const severity = severitySel === 'all' || severities.includes(severitySel) ? severitySel : 'all'
   const needle = q.trim().toLowerCase()
   /* when_ts is a timestamp; the date inputs are days, compared as the
-     leading YYYY-MM-DD of the stored value. */
+     operator's local day of the stored value. */
   const filtered = entries.filter(e =>
     (filter === 'all' || e.category === filter) &&
     (severity === 'all' || e.severity === severity) &&
-    (!range.from || e.when_ts.slice(0, 10) >= range.from) &&
-    (!range.to || e.when_ts.slice(0, 10) <= range.to) &&
+    inLocalRange(e.when_ts, range.from, range.to) &&
     (!needle || [e.actor, e.action, e.object, e.outcome].some(v => (v ?? '').toLowerCase().includes(needle))))
   const filtering = filter !== 'all' || severity !== 'all' || q !== '' || range.from !== '' || range.to !== ''
   /* An append-only log only grows. Changing the category is a different

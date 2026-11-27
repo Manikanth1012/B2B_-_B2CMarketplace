@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { BentoCard } from '../ui/BentoCard'
 import { StatusBadge } from '../ui/StatusBadge'
-import { Btn, DateRangeFilter, EmptyState, FilterBar, PageHeader, Select, daysBefore, isoDay } from './shared'
+import { Btn, DateRangeFilter, EmptyState, FilterBar, PageHeader, Select } from './shared'
 import { loadJobLog } from '../../lib/jobLogRepo'
-import { ALL_JOBS, JOB_NAMES, filterNights, filterSummary, nights, health, shortDate, utcTime } from '../../lib/jobLog'
+import { ALL_JOBS, DEFAULT_NIGHTS, JOB_LOG_LIMIT, JOB_NAMES, filterNights, filterSummary, nights, health, shortDate, utcTime } from '../../lib/jobLog'
 import type { JobFilters, JobLogRow } from '../../lib/jobLog'
 
 /* The nightly run, on screen. Read-only: the app cannot start the night, so the
@@ -12,10 +12,10 @@ import type { JobFilters, JobLogRow } from '../../lib/jobLog'
 
 const duration = (ms: number | null) => (ms === null ? '—' : ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`)
 
-const defaults = (): JobFilters => {
-  const today = isoDay(new Date())
-  return { from: daysBefore(today, 13), to: today, job: ALL_JOBS, status: 'all' }
-}
+/* No bounds: the screen shows the newest 14 nights the log holds, however long ago
+   the newest was, so it agrees with the health line. Quick picks count back from
+   that newest night (ran_on is a UTC date, the clock this screen keeps). */
+const defaults = (): JobFilters => ({ from: '', to: '', job: ALL_JOBS, status: 'all' })
 
 export function OperatorJobs() {
   const [rows, setRows] = useState<JobLogRow[] | null>(null)
@@ -33,7 +33,11 @@ export function OperatorJobs() {
 
   const h = rows ? health(rows, new Date()) : null
   const all = useMemo(() => (rows ? nights(rows) : []), [rows])
-  const list = useMemo(() => filterNights(all, filters), [all, filters])
+  const matched = useMemo(() => filterNights(all, filters), [all, filters])
+  const bounded = filters.from !== '' || filters.to !== ''
+  const list = bounded ? matched : matched.slice(0, DEFAULT_NIGHTS)
+  const newest = all[0]?.ranOn
+  const capped = (rows?.length ?? 0) >= JOB_LOG_LIMIT
   const jobNames = useMemo(() => {
     const extra = [...new Set((rows ?? []).map(r => r.job))].filter(j => !(JOB_NAMES as readonly string[]).includes(j)).sort()
     return [...JOB_NAMES, ...extra]
@@ -56,9 +60,13 @@ export function OperatorJobs() {
       )}
 
       {rows && all.length > 0 && (
-        <FilterBar ariaLabel="Job filters" summary={filterSummary(list)}>
+        <FilterBar ariaLabel="Job filters" summary={<>
+          {filterSummary(list)}
+          {!bounded && matched.length > list.length && ` · the newest ${DEFAULT_NIGHTS} nights; set a date range for more`}
+          {capped && ` · the log is capped, showing the newest ${rows?.length} runs`}
+        </>}>
           <DateRangeFilter from={filters.from} to={filters.to} onChange={r => set(r)}
-            quickLabel={n => `${n} nights`} />
+            today={newest} quickLabel={n => `${n} nights`} />
           <Select aria-label="Job" value={filters.job} onChange={e => set({ job: e.target.value })}>
             <option value={ALL_JOBS}>All jobs</option>
             {jobNames.map(j => <option key={j} value={j}>{j}</option>)}
