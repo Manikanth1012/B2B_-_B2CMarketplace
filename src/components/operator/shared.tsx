@@ -557,6 +557,14 @@ export interface RowAction {
  * among twenty rows. `false`/`null` entries are dropped, so a caller can write
  * `canEdit && { … }` inline.
  */
+/* Enter and Space on a row's button are the button's, not the row's: a
+   clickable row must not also open. Every other key carries on, because the
+   dialog's Escape and the focus trap's Tab listen on the document, and
+   stopping a React key event stops the native one before it gets there. */
+const keepFromRow = (e: React.KeyboardEvent) => {
+  if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') e.stopPropagation()
+}
+
 export function RowActions({ actions, max = 2, label }: {
   actions: (RowAction | false | null | undefined)[]
   max?: number
@@ -570,12 +578,12 @@ export function RowActions({ actions, max = 2, label }: {
     <div className="c-row-actions">
       {inline.map(a => (
         <Btn key={a.label} size="sm" variant={a.variant ?? 'tertiary'} disabled={a.disabled} loading={a.loading}
-          onClick={e => { e.stopPropagation(); a.onClick() }} onKeyDown={e => e.stopPropagation()}>
+          onClick={e => { e.stopPropagation(); a.onClick() }} onKeyDown={keepFromRow}>
           {a.icon}{a.label}
         </Btn>
       ))}
       {rest.length > 0 && (
-        <span onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} className="c-row-actions__more">
+        <span onClick={e => e.stopPropagation()} onKeyDown={keepFromRow} className="c-row-actions__more">
           <Menu label={label ? `More actions for ${label}` : 'More actions'}
             triggerClassName="c-btn c-btn--tertiary c-btn--sm c-btn--icon"
             items={rest.map(a => ({ label: a.label, onSelect: a.onClick, disabled: a.disabled || a.loading, danger: a.variant === 'danger', icon: a.icon }))}>

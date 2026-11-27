@@ -164,17 +164,43 @@ describe('RowActions', () => {
     expect(document.activeElement?.textContent).toBe('C')
     await userEvent.tab()
     expect(screen.queryByRole('menu')).toBeNull()
-    expect([more, screen.getByRole('button', { name: 'After' })]).toContain(document.activeElement)
-    expect(document.activeElement).not.toBe(document.body)
-    expect(document.activeElement?.textContent).not.toBe('First')
+    /* The press is spent closing the menu: focus is back on its button,
+       inside the dialog, and the next Tab moves on from there. */
+    expect(document.activeElement).toBe(more)
   })
 
-  it('keys pressed on its buttons do not reach the row', () => {
+  it('Enter and Space on its buttons do not reach the row; other keys do', () => {
     const rowKey = vi.fn()
     render(<table><tbody><tr onKeyDown={rowKey}><td><RowActions actions={[{ label: 'A', onClick: () => {} }, { label: 'B', onClick: () => {} }, { label: 'C', onClick: () => {} }]} /></td></tr></tbody></table>)
     fireEvent.keyDown(screen.getByRole('button', { name: 'A' }), { key: 'Enter' })
-    fireEvent.keyDown(screen.getByRole('button', { name: 'More actions' }), { key: 'ArrowDown' })
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More actions' }), { key: ' ' })
     expect(rowKey).not.toHaveBeenCalled()
+    fireEvent.keyDown(screen.getByRole('button', { name: 'A' }), { key: 'Escape' })
+    expect(rowKey).toHaveBeenCalledTimes(1)
+  })
+
+  it('inside a dialog, Escape on a row action closes the dialog and Tab still wraps inside the trap', async () => {
+    const onClose = vi.fn()
+    render(
+      <Dialog open onClose={onClose} title="Rows">
+        <button type="button">First</button>
+        <Table headers={['Name', 'Actions']}>
+          <tr><Td>A</Td><Td><RowActions actions={[{ label: 'View', onClick: () => {} }, { label: 'Edit', onClick: () => {} }]} /></Td></tr>
+        </Table>
+      </Dialog>,
+    )
+    const edit = screen.getByRole('button', { name: 'Edit' })
+    edit.focus()
+    await userEvent.keyboard('{Escape}')
+    expect(onClose).toHaveBeenCalledTimes(1)
+
+    /* Tab from the last focusable control in the dialog comes back round inside it. */
+    const panel = edit.closest('[role="dialog"]') as HTMLElement
+    const focusables = [...panel.querySelectorAll<HTMLElement>('button:not([disabled])')]
+    focusables[focusables.length - 1].focus()
+    await userEvent.tab()
+    expect(panel.contains(document.activeElement)).toBe(true)
+    expect(document.activeElement).not.toBe(document.body)
   })
 
   it('closes on a press outside', async () => {

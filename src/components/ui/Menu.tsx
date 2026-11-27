@@ -123,10 +123,11 @@ export function Menu({ items, label, children, triggerClassName, align = 'end' }
       case 'End': e.preventDefault(); if (enabled.length) setActive(enabled[enabled.length - 1]); break
       case 'Escape': e.preventDefault(); e.stopPropagation(); close(true); break
       /* The popup is portalled to the end of <body>, so a Tab left to the
-         browser would fall off the page (or, inside a dialog, wrap to its
-         first control). Focus goes back to the button and Tab carries on
-         from there, to whatever follows it. */
-      case 'Tab': button.current?.focus({ preventScroll: true }); close(false); break
+         browser would fall off the page, and a dialog's focus trap, seeing a
+         Tab from outside its panel, would wrap to its first control. Tab
+         closes the menu with focus back on its button: the press is spent
+         here, and the next Tab moves on from the button as usual. */
+      case 'Tab': e.preventDefault(); e.stopPropagation(); close(true); break
     }
   }
 
