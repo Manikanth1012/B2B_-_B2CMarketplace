@@ -19,6 +19,15 @@ the standing rule applies — reuse shared components, add to them rather than s
 | 8 | Page header pattern: title, one-line description, primary action right; tabs use the shared `Tabs`. | every screen |
 | 9 | KPI cards: never several currencies joined into one value. The headline is the largest currency (or a converted total marked "≈ in USD" only where rates are already loaded); other currencies are a compact list below (code left, amount right, tabular); a one-line context at the foot. Cards in a row share one height, the label and value sit at the same place, one value size. Counts carry a short status line instead of a bare number. (User screenshot: the Credit screen's "Owed and committed" card.) | `KpiCard` (`breakdown` prop), every KPI row |
 
+## Filtering on log and list screens
+
+Every log or list screen gets the shared `FilterBar` with the filters its data supports (user screenshot: Scheduled
+jobs has none). Scheduled jobs: date range (from/to, quick 7/14/30 nights; the repo reads up to 90 days instead of
+15), job (multi-select of the ten), status (all / OK / failed) and a "Failures only" toggle; the health line stays
+about the latest night; the list says how many nights and runs match. During the sweep, check the audit trail,
+notifications log, dunning, settlements and tickets for the same gap and give each the filters its data supports
+(filtering only — no new data, no changed behaviour).
+
 ## Dashboards and charts
 
 - **Charts** (`src/components/operator/charts.tsx` grows into `src/components/ui/charts/`): Column/Bar (vertical
