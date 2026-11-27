@@ -551,6 +551,10 @@ export interface RowAction {
       whatever moved into it, and a second Enter would fire that instead. A
       label that toggles (Journey / Hide) keeps one `id` so its focus survives. */
   id?: string
+  /** Words for a screen reader only, after the label ("Open" + " Meera's basket"). */
+  srOnly?: string
+  /** For a button that opens something in place: sets `aria-expanded`. */
+  expanded?: boolean
 }
 
 /**
@@ -584,8 +588,9 @@ export function RowActions({ actions, max = 2, label }: {
     <div className="c-row-actions">
       {inline.map((a, i) => (
         <Btn key={a.id ?? `#${i}`} size="sm" variant={a.variant ?? 'tertiary'} disabled={a.disabled} loading={a.loading}
+          aria-expanded={a.expanded}
           onClick={e => { e.stopPropagation(); a.onClick() }} onKeyDown={keepFromRow}>
-          {a.icon}{a.label}
+          {a.icon}{a.label}{a.srOnly && <span className="sr-only"> {a.srOnly}</span>}
         </Btn>
       ))}
       {rest.length > 0 && (

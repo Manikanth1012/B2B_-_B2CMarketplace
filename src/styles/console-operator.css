@@ -118,7 +118,7 @@
 }
 .op-baskets__filter[aria-pressed="true"] { background: var(--text); color: white; border-color: var(--text); }
 .op-baskets__btn { min-height: 44px; min-width: 44px; }
-.op-baskets__sub { font-size: var(--text-xs); color: var(--text-secondary); }
+.op-baskets__sub { color: var(--slate-600); }
 .op-baskets__detail { padding: 12px 10px 16px; background: var(--bg-alt); }
 .op-baskets__lines { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .op-baskets__line { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; font-size: var(--text-sm); }
