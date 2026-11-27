@@ -62,14 +62,14 @@
      this order; the same category key always takes the same slot (see
      categoryColour in ui/charts). Every slot is at least 3:1 against white
      and canvas, the WCAG 1.4.11 floor for a non-text mark (contrast.test.ts). */
-  --chart-1: #4F46E5;   /* indigo      6.29 white, 5.86 canvas */
-  --chart-2: #0D9488;   /* teal        3.74 white, 3.49 canvas */
-  --chart-3: #5B7DB1;   /* slate-blue  4.19 white, 3.90 canvas */
-  --chart-4: #B45309;   /* amber       5.02 white, 4.68 canvas */
-  --chart-5: #E11D48;   /* rose        4.70 white, 4.38 canvas */
-  --chart-6: #64748B;   /* slate       4.76 white, 4.43 canvas */
-  --chart-grid: #F1F5F9;  /* gridlines: decorative, deliberately faint */
-  --chart-axis: #CBD5E1;  /* the baseline under columns */
+  --chart-1: #0A2D72;   /* 6D navy     12.4 white, 11.60 canvas */
+  --chart-2: #D9622B;   /* 6D orange   3.5+ white, 3.30 canvas */
+  --chart-3: #20776D;   /* 6D teal     5.36 white, 4.82 canvas */
+  --chart-4: #5B7DB1;   /* slate-blue  4.19 white, 3.77 canvas */
+  --chart-5: #7A5BB5;   /* violet      5.2+ white, 4.74 canvas */
+  --chart-6: #6C6A72;   /* 6D grey     5.33 white, 4.80 canvas */
+  --chart-grid: #EFECF5;  /* gridlines: decorative, deliberately faint */
+  --chart-axis: #D3CEDF;  /* the baseline under columns */
 
   /* Semantic colours — each AA on white, canvas and its own tint */
   --success: #15803D;           /* 5.02 white, 4.67 canvas, 4.76 on tint */
