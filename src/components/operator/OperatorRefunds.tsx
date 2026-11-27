@@ -1,8 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { TriangleAlert as AlertTriangle, Clock, Scale, Gavel, Banknote } from 'lucide-react'
 import {
-  SectionCard, StatCard, Btn, Modal, FormField, TextArea, toast, fmtDate,
+  SectionCard, Btn, Modal, FormField, TextArea, toast, fmtDate, PageHeader, Table, Td,
 } from './shared'
+import { Tabs } from '../ui/Tabs'
+import { KpiCard, KpiRow, groupsToKpi } from '../ui/KpiCard'
+import { StatusBadge } from '../ui/StatusBadge'
 import { Callout } from '../OnboardingJourney'
 import { loadAllRefunds, escalateRefund, markRefundPaid } from '../../lib/refundRepo'
 import type { RefundBook } from '../../lib/refundRepo'
@@ -12,7 +15,6 @@ import {
 import type { Refund } from '../../lib/refunds'
 import { DecideModal } from '../partner/PartnerRefunds'
 import { useMarket } from '../../lib/MarketContext'
-import { formatGroups } from '../../lib/money'
 
 /* The marketplace's view of every refund on the platform.
  *
@@ -54,17 +56,14 @@ export function OperatorRefunds() {
   const late = ordered.filter(r =>
     r.state === 'requested' && policy && sla(r, policy, now).level === 'overdue')
   const mine = ordered.filter(r => ownership(r).owner === 'marketplace' && !STATES[r.state].final)
+  const atStake = groupsToKpi(stats.atStakeBy, fmtIn)
+  const refunded = groupsToKpi(stats.refundedBy, fmtIn)
   const rows = tab === 'attention' ? late : tab === 'mine' ? mine : ordered
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div>
-        <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Refunds</h1>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-          Every refund on the platform, whoever sold it. {stats.open} open ·
-          {' '}{formatGroups(stats.atStakeBy, fmtIn)} at stake · {stats.overdue} past the answer somebody owes.
-        </p>
-      </div>
+      <PageHeader title="Refunds"
+        description={`Every refund on the platform, whoever sold it. ${stats.open} open · ${stats.atStakeBy.length ? stats.atStakeBy.map(g => fmtIn(g.total.amount, g.currency)).join(' · ') : '—'} at stake · ${stats.overdue} past the answer somebody owes.`} />
 
       {book.loadError && <Callout tone="danger" title="Some of this page did not load">{book.loadError}</Callout>}
 
@@ -74,35 +73,28 @@ export function OperatorRefunds() {
         </Callout>
       )}
 
-      <div className="stat-row">
-        <StatCard label="Past the deadline" value={String(stats.overdue)}
-                  sublabel={slow.length > 0 ? `across ${slow.length} sellers` : 'Nobody is late'}
-                  color={stats.overdue > 0 ? 'var(--danger)' : undefined} />
-        <StatCard label="On this desk" value={String(mine.length)}
-                  sublabel="Escalated, first-party or bundled"
-                  color={mine.length > 0 ? 'var(--warning)' : undefined} />
-        <StatCard label="At stake" value={formatGroups(stats.atStakeBy, fmtIn)}
-                  sublabel="If every open request is granted" />
-        <StatCard label="Refunded to date" value={formatGroups(stats.refundedBy, fmtIn)}
-                  sublabel={`across ${stats.decided} decided`} />
-      </div>
+      <KpiRow label="Refunds summary">
+        <KpiCard variant={stats.overdue > 0 ? 'risk' : 'ops'} label="Past the deadline" value={String(stats.overdue)}
+                 tone={stats.overdue > 0 ? 'warning' : undefined}
+                 status={slow.length > 0 ? `across ${slow.length} sellers` : 'Nobody is late'} />
+        <KpiCard variant="ops" label="On this desk" value={String(mine.length)}
+                 tone={mine.length > 0 ? 'warning' : undefined}
+                 status="Escalated, first-party or bundled" />
+        <KpiCard variant="money" label="At stake" value={atStake.value} breakdown={atStake.breakdown}
+                 context="If every open request is granted" />
+        <KpiCard variant="money" label="Refunded to date" value={refunded.value} breakdown={refunded.breakdown}
+                 context={`across ${stats.decided} decided`} />
+      </KpiRow>
 
-      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-        {([
-          ['attention', `Past the deadline (${late.length})`],
-          ['mine', `This desk decides (${mine.length})`],
-          ['sellers', `Sellers not answering (${slow.length})`],
-          ['all', `Everything (${book.refunds.length})`],
-        ] as const).map(([id, label]) => (
-          <button key={id} onClick={() => setTab(id)} style={{
-            padding: '8px 15px', borderRadius: 'var(--radius)', cursor: 'pointer',
-            fontSize: 'var(--text-sm)', fontWeight: 600, border: '1px solid var(--border)',
-            background: tab === id ? 'var(--brand-navy)' : 'white',
-            color: tab === id ? 'white' : 'var(--text-secondary)',
-          }}>{label}</button>
-        ))}
-      </div>
+      <Tabs ariaLabel="Refund views" panelIdPrefix="refunds-panel-" value={tab} onChange={id => setTab(id as Tab)}
+        tabs={[
+          { id: 'attention', label: 'Past the deadline', count: late.length },
+          { id: 'mine', label: 'This desk decides', count: mine.length },
+          { id: 'sellers', label: 'Sellers not answering', count: slow.length },
+          { id: 'all', label: 'Everything', count: book.refunds.length },
+        ]} />
 
+      <div role="tabpanel" id={`refunds-panel-${tab}`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {tab === 'sellers' ? (
         slow.length === 0 ? (
           <Callout tone="success" title="Every seller is answering inside the SLA">
@@ -111,25 +103,21 @@ export function OperatorRefunds() {
         ) : (
           <SectionCard title="Sellers not answering"
                        subtitle="Ranked by how many customers are waiting on them, not by how many refunds they get">
-            <div style={{ padding: '8px 20px 16px' }}>
+            <Table headers={['Seller', 'Past the deadline', 'Taken from them', 'Customers waiting on']}>
               {slow.map(s => (
-                <div key={s.partner_id} style={{
-                  display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap',
-                  padding: '13px 0', borderBottom: '1px solid var(--border-light)',
-                }}>
-                  <div style={{ flex: 1, minWidth: '200px' }}>
-                    <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>{s.seller}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{s.partner_id}</div>
-                  </div>
-                  <Metric n={s.overdue} label="past the deadline" tone={s.overdue > 0 ? 'var(--danger)' : undefined} />
-                  <Metric n={s.escalated} label="already taken from them" tone={s.escalated > 0 ? 'var(--warning)' : undefined} />
-                  <div style={{ textAlign: 'right', minWidth: '110px' }}>
-                    <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)' }}>{formatGroups(s.valueBy, fmtIn)}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>customers waiting on</div>
-                  </div>
-                </div>
+                <tr key={s.partner_id}>
+                  <Td>
+                    <div style={{ fontWeight: 700 }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={s.seller}>{s.seller}</span></div>
+                    <div className="c-sub">{s.partner_id}</div>
+                  </Td>
+                  <Td kind="num"><span style={{ fontWeight: 700, color: s.overdue > 0 ? 'var(--danger)' : undefined }}>{s.overdue}</span></Td>
+                  <Td kind="num"><span style={{ fontWeight: 700, color: s.escalated > 0 ? 'var(--warning)' : undefined }}>{s.escalated}</span></Td>
+                  <Td kind="num">
+                    {s.valueBy.map(g => <div key={g.currency} style={{ fontWeight: 700 }}>{fmtIn(g.total.amount, g.currency)}</div>)}
+                  </Td>
+                </tr>
               ))}
-            </div>
+            </Table>
           </SectionCard>
         )
       ) : rows.length === 0 ? (
@@ -150,6 +138,7 @@ export function OperatorRefunds() {
                await reload()
              }} />
       ))}
+      </div>
 
       {deciding && (
         <DecideModal refund={deciding} amount={Number(deciding.amount)} as="marketplace" by={ACTOR}
@@ -171,15 +160,6 @@ export function OperatorRefunds() {
   )
 }
 
-function Metric({ n, label, tone }: { n: number; label: string; tone?: string }) {
-  return (
-    <div style={{ textAlign: 'right', minWidth: '150px' }}>
-      <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: tone }}>{n}</div>
-      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{label}</div>
-    </div>
-  )
-}
-
 function Row({ refund, book, now, onTake, onDecide, onPay }: {
   refund: Refund; book: RefundBook; now: Date
   onTake: () => void; onDecide: () => void; onPay: () => Promise<void>
@@ -197,17 +177,9 @@ function Row({ refund, book, now, onTake, onDecide, onPay }: {
       title={`${refund.item} — ${fmtIn(Number(refund.amount), refund.currency)}`}
       subtitle={`${refund.id} · ${refund.seller} · ${refund.customer} (${refund.buyer_type}) · ${refund.order_ref} · raised ${fmtDate(refund.requested)}`}
       action={
-        <span style={{
-          display: 'inline-flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap',
-          padding: '3px 11px', borderRadius: 'var(--radius-full)',
-          fontSize: 'var(--text-xs)', fontWeight: 700,
-          background: clock?.level === 'overdue' ? 'var(--danger-bg)'
-            : refund.state === 'escalated' ? 'var(--warning-bg)'
-            : spec.final ? 'var(--bg-alt)' : 'var(--info-bg)',
-          color: clock?.level === 'overdue' ? 'var(--danger)'
-            : refund.state === 'escalated' ? 'var(--warning)'
-            : spec.final ? 'var(--text-tertiary)' : 'var(--info)',
-        }}>{spec.label}</span>
+        <StatusBadge tone={clock?.level === 'overdue' ? 'danger' : refund.state === 'escalated' ? 'warning' : spec.final ? 'neutral' : 'info'}>
+          {spec.label}
+        </StatusBadge>
       }
     >
       <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '13px' }}>
@@ -220,8 +192,8 @@ function Row({ refund, book, now, onTake, onDecide, onPay }: {
           }}>
             {clock.level === 'overdue' || clock.level === 'gone'
               ? <AlertTriangle size={15} style={{ color: 'var(--danger)', flexShrink: 0, marginTop: '2px' }} />
-              : <Clock size={15} style={{ color: 'var(--text-secondary)', flexShrink: 0, marginTop: '2px' }} />}
-            <div style={{ fontSize: 'var(--text-sm)', lineHeight: 1.5 }}>{clock.text}</div>
+              : <Clock size={15} style={{ color: 'var(--slate-600)', flexShrink: 0, marginTop: '2px' }} />}
+            <div style={{ lineHeight: 1.5 }}>{clock.text}</div>
           </div>
         )}
 
@@ -237,10 +209,10 @@ function Row({ refund, book, now, onTake, onDecide, onPay }: {
         </div>
 
         {refund.detail && (
-          <div style={{ borderLeft: '3px solid var(--border)', paddingLeft: '12px', fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
+          <div style={{ borderLeft: '3px solid var(--border)', paddingLeft: '12px', lineHeight: 1.6 }}>
             “{refund.detail}”
             {refund.evidence && (
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+              <div className="c-sub" style={{ marginTop: '4px' }}>
                 On the record: {refund.evidence}
               </div>
             )}
@@ -253,10 +225,10 @@ function Row({ refund, book, now, onTake, onDecide, onPay }: {
 
         {refund.decision_note && (
           <div style={{ borderLeft: '3px solid var(--border)', paddingLeft: '12px' }}>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+            <div className="c-sub">
               {spec.label} {refund.decided_on ? `on ${fmtDate(refund.decided_on)}` : ''} by {refund.decided_by}
             </div>
-            <div style={{ fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
+            <div style={{ lineHeight: 1.6 }}>
               {refund.decision_note}
               {refund.state === 'partial' && refund.refunded !== null && (
                 <strong> {fmtIn(Number(refund.refunded), refund.currency)} of {fmtIn(Number(refund.amount), refund.currency)} returned.</strong>
@@ -280,9 +252,9 @@ function Row({ refund, book, now, onTake, onDecide, onPay }: {
 function F({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div>
-      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{label}</div>
-      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>{value}</div>
-      {sub && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px', lineHeight: 1.5 }}>{sub}</div>}
+      <div className="c-sub">{label}</div>
+      <div style={{ fontWeight: 600 }}>{value}</div>
+      {sub && <div className="c-sub" style={{ marginTop: '2px', lineHeight: 1.5 }}>{sub}</div>}
     </div>
   )
 }
@@ -311,7 +283,7 @@ function TakeOverModal({ refund, due, onClose, onTake }: {
             : `${refund.seller} still has until ${fmtDate(refund.sla_due)} plus the escalation window. Taking it early is a departure from the published rule, so it needs a reason on the record.`}
         </Callout>
       </div>
-      <div style={{ fontSize: 'var(--text-sm)', lineHeight: 1.6, marginBottom: '16px' }}>
+      <div style={{ lineHeight: 1.6, marginBottom: '16px' }}>
         The decision moves to this desk. The money does not: a refund granted against{' '}
         {refund.seller}’s product is still recovered from their settlement, and this reason is what they get
         to argue with.
@@ -322,7 +294,7 @@ function TakeOverModal({ refund, due, onClose, onTake }: {
                     ? 'Leave blank to record the standard reason.'
                     : 'The buyer is an enterprise account under contract and escalated to their account manager.'} />
       </FormField>
-      {err && <div style={{ fontSize: 'var(--text-sm)', color: 'var(--danger)', fontWeight: 600 }}>{err}</div>}
+      {err && <div style={{ color: 'var(--danger)', fontWeight: 600 }}>{err}</div>}
     </Modal>
   )
 }
