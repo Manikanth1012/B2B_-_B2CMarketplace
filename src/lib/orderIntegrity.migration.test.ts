@@ -59,8 +59,30 @@ describe('orders are records once paid, as a migration', () => {
     expect(head).not.toMatch(/create policy "?owner_delete_order_items/)
     /* Checkout's undo still needs it; the guard below is what narrows it. */
     expect(head).not.toContain('drop policy if exists "owner_delete_orders"')
-    /* Nothing else is opened on either table. */
-    expect(head).not.toMatch(/create policy [^;]* on public\.(orders|order_items)\b/)
+    /* Nothing else is opened on either table: the only policies created are
+       the two insert policies, narrowed below. */
+    const made = [...head.matchAll(/create policy ("?[a-z_]+"?) on public\.(orders|order_items)\b/g)].map(m => m[1])
+    expect(made).toEqual(['"owner_insert_orders"', '"owner_insert_order_items"'])
+  })
+
+  it('creates an order unpaid: a shopper inserts only an awaiting-payment order of their own, and lines only on one', () => {
+    /* The latest definitions, from the 20260729130300 loop. */
+    const loop = read('20260729130300_scoped_rls_personas.sql')
+    expect(squash(loop)).toContain(`create policy "owner_insert_%1$s" on public.%1$i for insert to authenticated with check (user_id = auth.uid() and current_persona() = 'consumer')$f$, t);`)
+    const flat = squash(head)
+    expect(flat).toContain('drop policy if exists "owner_insert_orders" on public.orders;')
+    expect(flat).toContain(`create policy "owner_insert_orders" on public.orders for insert to authenticated with check (user_id = auth.uid() and current_persona() = 'consumer' and status = 'awaiting_payment' and account_id is null);`)
+    expect(flat).toContain('drop policy if exists "owner_insert_order_items" on public.order_items;')
+    expect(flat).toContain(`create policy "owner_insert_order_items" on public.order_items for insert to authenticated with check (user_id = auth.uid() and current_persona() = 'consumer' and exists (select 1 from public.orders o where o.id = order_items.order_id and o.user_id = auth.uid() and o.status = 'awaiting_payment'));`)
+  })
+
+  it('has a read-only marker the live test calls, for signed-in users only', () => {
+    const f = squash(fn(head, 'orders_are_records'))
+    expect(f).toContain('returns boolean language sql stable')
+    expect(f).toContain('as $$ select true $$')
+    expect(f).not.toContain('security definer')
+    expect(head).toContain('revoke all on function public.orders_are_records() from public, anon;')
+    expect(head).toContain('grant execute on function public.orders_are_records() to authenticated;')
   })
 
   it('refuses a non-operator delete of anything but an unscored order awaiting payment, and keeps the operator rules', () => {
@@ -156,7 +178,15 @@ describe('orders are records once paid, as a migration', () => {
       'a held order whose shopper moved market could not be released',
       'one bad account failed the rescore',
       'an earlier held order counted as an earlier purchase',
+      'a shopper wrote a placed order with no payment behind it',
+      'a shopper could not write their own unpaid order',
+      'a shopper could not add a line to their own unpaid order',
+      "a shopper added a line to somebody else''s order",
+      'a shopper added a line to their own placed order',
+      'the marker orders_are_records() is missing',
     ]) expect(check).toContain(s)
+    /* The three refusals are row-level security's own, not some other guard's. */
+    expect(check.match(/exception when insufficient_privilege then/g)?.length).toBe(3)
     /* The fault is made and unmade inside the rolled-back block. */
     expect(check).toContain('create or replace function public.zz_selfcheck_oi_fault()')
     expect(check).toContain('drop function public.zz_selfcheck_oi_fault();')

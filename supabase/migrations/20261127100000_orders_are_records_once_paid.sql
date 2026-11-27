@@ -30,6 +30,19 @@
  *      only legitimate removal of lines is the cascade from an order, which
  *      runs as the table's owner and does not need it.
  *
+ *   2b. An order is created unpaid. `owner_insert_orders` (latest copy, the
+ *      20260729130300 loop) now also asks for `status = 'awaiting_payment'`
+ *      and no account: a shopper could write a `placed` or `delivered` order
+ *      with no payment behind it. `owner_insert_order_items` now also asks
+ *      that the line's order is the shopper's own and still awaiting payment:
+ *      it never asked whose order it was. Checkout writes exactly that (its
+ *      orders unpaid, then their lines). Business orders, payments, seeds and
+ *      data fixes are written by security-definer functions or the SQL
+ *      editor, as the tables' owner, and are not held to these policies.
+ *
+ *   Plus `orders_are_records()`, a read-only marker (always true) the live
+ *   test calls to tell whether this migration is applied without writing.
+ *
  *   3. `guard_order_currency` (latest copy from 20260802470000) lets the
  *      decision on a held order through when the shopper has changed market
  *      since: inside `decide_held_order` (the `aventa.risk_decision` flag is
@@ -56,6 +69,34 @@ begin;
 drop policy if exists "owner_update_orders" on public.orders;
 drop policy if exists "owner_update_order_items" on public.order_items;
 drop policy if exists "owner_delete_order_items" on public.order_items;
+
+/* 2b. The two insert policies, copied from the 20260729130300 loop (their
+   latest definitions) with one condition each added. The order_items check
+   reads orders under the shopper's own row-level security, which lets them
+   see their own orders; no orders policy reads order_items back, so the
+   check does not recurse. */
+drop policy if exists "owner_insert_orders" on public.orders;
+create policy "owner_insert_orders" on public.orders for insert to authenticated
+  with check (user_id = auth.uid() and current_persona() = 'consumer'
+              and status = 'awaiting_payment' and account_id is null);
+
+drop policy if exists "owner_insert_order_items" on public.order_items;
+create policy "owner_insert_order_items" on public.order_items for insert to authenticated
+  with check (user_id = auth.uid() and current_persona() = 'consumer'
+              and exists (select 1 from public.orders o
+                           where o.id = order_items.order_id
+                             and o.user_id = auth.uid()
+                             and o.status = 'awaiting_payment'));
+
+/* The marker. Read-only and always true: its existence is the answer. */
+create or replace function public.orders_are_records()
+returns boolean language sql stable set search_path = public as $$ select true $$;
+
+comment on function public.orders_are_records() is
+  'True once 20261127100000 (orders are records once paid) is applied. Read-only; the live test calls it.';
+
+revoke all on function public.orders_are_records() from public, anon;
+grant execute on function public.orders_are_records() to authenticated;
 
 /* ================================================= 1. the delete guard === */
 
@@ -464,6 +505,9 @@ declare
   v_eheld   uuid := gen_random_uuid();
   v_first   uuid := gen_random_uuid();
   v_eplaced uuid := gen_random_uuid();
+  v_new     uuid := gen_random_uuid();
+  v_else    uuid := gen_random_uuid();
+  v_shop    record;
 begin
   if not public.is_scheduler() then
     raise exception 'This session (%) is not one the schedule runs as, so the checks below would be refused.', session_user;
@@ -482,6 +526,20 @@ begin
   if exists (select 1 from pg_policies p where p.schemaname = 'public' and p.tablename in ('orders', 'order_items')
                 and p.cmd in ('UPDATE', 'ALL') and coalesce(p.qual, '') like '%auth.uid()%') then
     raise exception 'a policy still lets a buyer update their own order or its lines';
+  end if;
+  if coalesce((select p.with_check from pg_policies p where p.schemaname = 'public' and p.tablename = 'orders'
+                  and p.policyname = 'owner_insert_orders' and p.cmd = 'INSERT'), '') not like '%awaiting_payment%' then
+    raise exception 'owner_insert_orders still lets a shopper write an order that is not awaiting payment';
+  end if;
+  if coalesce((select p.with_check from pg_policies p where p.schemaname = 'public' and p.tablename = 'order_items'
+                  and p.policyname = 'owner_insert_order_items' and p.cmd = 'INSERT'), '') not like '%awaiting_payment%' then
+    raise exception 'owner_insert_order_items still lets a shopper add a line to any order';
+  end if;
+  if to_regprocedure('public.orders_are_records()') is null
+     or not has_function_privilege('authenticated', 'public.orders_are_records()', 'execute')
+     or has_function_privilege('anon', 'public.orders_are_records()', 'execute')
+     or public.orders_are_records() is distinct from true then
+    raise exception 'the marker orders_are_records() is missing, wrong, or callable without signing in';
   end if;
   if not exists (select 1 from pg_trigger t where t.tgrelid = 'public.orders'::regclass
                     and t.tgname = 'z_guard_order_delete' and not t.tgisinternal) then
@@ -635,6 +693,88 @@ begin
        or (select count(*) from public.orders o where o.id in (v_held, v_aps)) <> 2
        or not exists (select 1 from public.order_risk r where r.order_id = v_aps) then
       raise exception 'a refused shopper write changed something';
+    end if;
+
+    /* ---- 2b: an order is created unpaid, and only its buyer adds lines ---- */
+    /* A product this shopper may buy, on a shelf they may buy from, not
+       flagged in their basket; and an unpaid order that is somebody else's. */
+    select p.id, p.name into v_shop
+      from public.products p join public.categories c on c.id = p.category_id
+     where p.status = 'live' and p.fulfil = 'shipped'
+       and 'consumer' = any (c.shoppable_by) and 'consumer' = any (p.audiences)
+       and not exists (select 1 from public.cart_items ci
+                        where ci.user_id = v_user and ci.product_id = p.id and ci.stock_note is not null)
+     order by p.id
+     limit 1;
+    if not found then raise exception 'no shipped product a shopper may buy, to check their lines with'; end if;
+
+    insert into public.orders
+      (id, order_ref, status, total, subtotal, tax, discount, payment_method, buyer_name,
+       created_at, placed_date, seller, vertical, failed, stage, stages,
+       user_id, account_id, currency, market, tax_rate, shipping_address, payment_ref)
+    values
+      (v_else, 'ORD-SELFCHECK-OI-ELSE', 'awaiting_payment', 10, 10, 0, 0, 'card', 'Self-check',
+       now(), to_char(current_date, 'DD Mon YYYY'), null, 'device', false, 0, v_stages,
+       v_op, null, v_cur, v_mkt, v_taxr, jsonb_build_object('line1', 'Self-check'), null);
+
+    perform set_config('request.jwt.claims', json_build_object('sub', v_user, 'role', 'authenticated')::text, true);
+    set local role authenticated;
+
+    begin
+      insert into public.orders
+        (id, order_ref, status, total, subtotal, tax, discount, payment_method, buyer_name,
+         seller, failed, stage, stages, user_id, currency, market, tax_rate, shipping_address)
+      values
+        (gen_random_uuid(), 'ORD-SELFCHECK-OI-PAIDBYNOBODY', 'placed', 10, 10, 0, 0, 'card', 'Self-check',
+         null, false, 0, v_stages, v_user, v_cur, v_mkt, v_taxr, jsonb_build_object('line1', 'Self-check'));
+      raise exception 'a shopper wrote a placed order with no payment behind it';
+    exception when insufficient_privilege then
+      null;
+    end;
+
+    begin
+      insert into public.orders
+        (id, order_ref, status, total, subtotal, tax, discount, payment_method, buyer_name,
+         seller, failed, stage, stages, user_id, currency, market, tax_rate, shipping_address)
+      values
+        (v_new, 'ORD-SELFCHECK-OI-NEW', 'awaiting_payment', 10, 10, 0, 0, 'card', 'Self-check',
+         null, false, 0, v_stages, v_user, v_cur, v_mkt, v_taxr, jsonb_build_object('line1', 'Self-check'));
+    exception when others then
+      reset role;
+      raise exception 'a shopper could not write their own unpaid order: %', sqlerrm;
+    end;
+
+    begin
+      insert into public.order_items (id, order_id, product_id, product_name, price, quantity, fulfil, status)
+      values (gen_random_uuid(), v_new, v_shop.id, v_shop.name, 10, 1, 'shipped', 'placed');
+    exception when others then
+      reset role;
+      raise exception 'a shopper could not add a line to their own unpaid order: %', sqlerrm;
+    end;
+
+    begin
+      insert into public.order_items (id, order_id, product_id, product_name, price, quantity, fulfil, status)
+      values (gen_random_uuid(), v_else, v_shop.id, v_shop.name, 10, 1, 'shipped', 'placed');
+      raise exception 'a shopper added a line to somebody else''s order';
+    exception when insufficient_privilege then
+      null;
+    end;
+
+    begin
+      insert into public.order_items (id, order_id, product_id, product_name, price, quantity, fulfil, status)
+      values (gen_random_uuid(), v_placed, v_shop.id, v_shop.name, 10, 1, 'shipped', 'placed');
+      raise exception 'a shopper added a line to their own placed order';
+    exception when insufficient_privilege then
+      null;
+    end;
+    reset role;
+
+    perform set_config('request.jwt.claims', null, true);
+    if (select count(*) from public.order_items i where i.order_id = v_new) <> 1
+       or exists (select 1 from public.order_items i where i.order_id = v_else)
+       or (select count(*) from public.order_items i where i.order_id = v_placed) <> 1
+       or exists (select 1 from public.orders o where o.order_ref = 'ORD-SELFCHECK-OI-PAIDBYNOBODY') then
+      raise exception 'a refused shopper insert wrote something, or an allowed one did not';
     end if;
 
     /* ---- the seller and the operator still move what is theirs ---- */
