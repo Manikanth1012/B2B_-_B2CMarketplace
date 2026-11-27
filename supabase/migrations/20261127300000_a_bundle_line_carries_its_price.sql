@@ -211,6 +211,16 @@ begin
    where p.floor_price > 0.01
      and not exists (select 1 from public.product_components x
                       where x.bundle_id = c.bundle_id and x.unit_price is not null)
+     /* Two lines or more, so pricing one leaves the bundle priced as a whole
+        (dry run 2); every part has a price, and the bundle costs less than
+        its parts, so pricing all at their normal price must be refused (dry
+        run 3). */
+     and (select count(*) from public.product_components x where x.bundle_id = c.bundle_id) >= 2
+     and not exists (select 1 from public.product_components x join public.products xp on xp.id = x.component_id
+                      where x.bundle_id = c.bundle_id and xp.price <= 0)
+     and (select b.price from public.products b where b.id = c.bundle_id)
+         < (select sum(x.quantity * xp.price) - 0.01 from public.product_components x
+              join public.products xp on xp.id = x.component_id where x.bundle_id = c.bundle_id)
    order by c.bundle_id, c.sort_order
    limit 1;
   if v_bundle is null then
