@@ -40,7 +40,9 @@ const PAIRS: [fg: string, bg: string, min: number][] = [
   ['blue', 'bg-card', 4.5],
   ['blue', 'bg-alt', 4.5],
   ['text-inverse', 'cyan', 4.5],         // primary button label (v2: white on indigo; was brand-navy on cyan)
-  ['text-inverse', 'indigo-700', 4.5],  // .btn-cyan / .c-btn--accent hover
+  ['text-inverse', 'indigo-700', 4.5],  // .c-btn--primary hover
+  ['text-inverse', 'orange-600', 4.5], ['text-inverse', 'orange-700', 4.5], // .btn-cyan / .c-btn--accent (6D orange CTA) and hover
+  ['surface', 'orange-600', 4.5], ['surface', 'orange-700', 4.5],
   /* Dark-surface accents: hero eyebrow, ui-link--light, bento eyebrow, promo CTA, login icon,
      sidebar active icon and focus outline, hero headline accent (large type, 3:1) */
   ['accent-on-dark', 'ink-900', 4.5], ['accent-on-dark', 'brand-navy', 4.5], ['accent-on-dark', 'brand-navy-dark', 4.5],
@@ -89,18 +91,24 @@ describe('design tokens', () => {
     for (const bg of ['ink-900', 'brand-navy', 'brand-navy-dark', 'brand-navy-light', 'ink-800']) {
       expect(contrast(tokens['accent-on-dark'], tokens[bg]), bg).toBeGreaterThanOrEqual(3)
     }
-    expect(contrast(tokens['accent-on-dark'], '#312E81')).toBeGreaterThanOrEqual(3)
-    /* The plain indigo ring is what fails there. */
+    expect(contrast(tokens['accent-on-dark'], '#25376F')).toBeGreaterThanOrEqual(3)
+    /* The plain navy ring is what fails there. */
     expect(contrast(tokens['indigo-600'], tokens['ink-900'])).toBeLessThan(3)
   })
   it('the hero gradient end stop still carries the light accents', () => {
-    expect(contrast(tokens['accent-on-dark'], '#312E81')).toBeGreaterThanOrEqual(4.5)
-    expect(contrast(tokens['accent-on-dark-2'], '#312E81')).toBeGreaterThanOrEqual(3)
+    expect(contrast(tokens['accent-on-dark'], '#25376F')).toBeGreaterThanOrEqual(4.5)
+    expect(contrast(tokens['accent-on-dark-2'], '#25376F')).toBeGreaterThanOrEqual(3)
   })
-  it('carries the v2 palette and keeps the old names pointed at it', () => {
-    expect(tokens['ink-900']).toBe('#0B1220')
-    expect(tokens['indigo-600']).toBe('#4F46E5')
-    expect(tokens['canvas']).toBe('#F5F7FA')
+  it('carries the 6D palette and keeps the old names pointed at it', () => {
+    /* 6D Technologies brand (6dtechnologies.com) */
+    expect(tokens['indigo-600']).toBe('#0A2D72')
+    expect(tokens['orange-500']).toBe('#EE743B')
+    expect(tokens['teal-700']).toBe('#20776D')
+    expect(tokens['ink-800']).toBe('#1D1729')
+    expect(tokens['slate-500']).toBe('#6C6A72')
+    expect(tokens['canvas']).toBe('#F4F2F9')
+    expect(tokens['border']).toBe('#E4E0EE')
+    expect(css).toMatch(/--font: 'Poppins'/)
     expect(tokens['brand-navy']).toBe(tokens['ink-900'])
     expect(tokens['cyan']).toBe(tokens['indigo-600'])
     expect(tokens['bg-alt']).toBe(tokens['canvas'])

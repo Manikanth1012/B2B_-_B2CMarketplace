@@ -11,7 +11,7 @@ import { contrast } from '../lib/contrast'
 
 const COLOUR_TOKENS = [
   'ink-900', 'ink-800', 'slate-600', 'slate-500', 'control-border', 'slate-300', 'slate-200', 'slate-100', 'canvas', 'surface',
-  'indigo-600', 'indigo-700', 'indigo-50', 'teal-700',
+  'indigo-600', 'indigo-700', 'indigo-50', 'teal-700', 'orange-500', 'orange-600', 'orange-700', 'orange-50',
   'success', 'success-bg', 'warning', 'warning-bg', 'danger', 'danger-bg', 'info', 'info-bg',
 ]
 const TYPE_SCALE = [
@@ -39,7 +39,7 @@ function Swatch({ token }: { token: string }) {
   }, [token])
   const ok = /^#[0-9a-f]{6}$/i.test(hex)
   const onWhite = ok ? contrast(hex, '#FFFFFF') : 0
-  const onInk = ok ? contrast(hex, '#0F172A') : 0
+  const onInk = ok ? contrast(hex, '#1D1729') : 0
   /* The label on the chip is whichever of white or ink reads better. */
   const label = onWhite >= onInk ? 'var(--surface)' : 'var(--ink-800)'
   return (
