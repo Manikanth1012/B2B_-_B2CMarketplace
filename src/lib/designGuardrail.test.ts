@@ -71,6 +71,34 @@ export function countFile(source: string): Counts {
   return { fontSize, hex, radius }
 }
 
+type Baseline = { total: Counts; files: Record<string, Partial<Counts>> }
+type Scan = { total: Counts; files: Record<string, Counts> }
+
+/**
+ * What update mode may write: per category and per file, min(now, baseline).
+ * A file absent from the baseline counts as 0, so a new file with literals is
+ * a rise, not an addition. `risen` lists every rise; when it is not empty,
+ * nothing may be written.
+ */
+export function lowerBaseline(base: Baseline, now: Scan): { next: Scan; risen: string[] } {
+  const risen: string[] = []
+  const next: Scan = { total: { fontSize: 0, hex: 0, radius: 0 }, files: {} }
+  for (const k of CATEGORIES) {
+    if (now.total[k] > base.total[k]) risen.push(`total ${k}`)
+    next.total[k] = Math.min(now.total[k], base.total[k])
+  }
+  for (const [file, c] of Object.entries(now.files)) {
+    const out: Counts = { fontSize: 0, hex: 0, radius: 0 }
+    for (const k of CATEGORIES) {
+      const allowed = base.files[file]?.[k] ?? 0
+      if (c[k] > allowed) risen.push(`${file} ${k}`)
+      out[k] = Math.min(c[k], allowed)
+    }
+    if (out.fontSize + out.hex + out.radius > 0) next.files[file] = out
+  }
+  return { next, risen }
+}
+
 function walk(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name)
@@ -83,9 +111,7 @@ function walk(dir: string, out: string[] = []): string[] {
 const root = resolve(__dirname, '..')
 const baselinePath = join(__dirname, 'designGuardrail.baseline.json')
 
-type Baseline = { total: Counts; files: Record<string, Partial<Counts>> }
-
-function scan(): { total: Counts; files: Record<string, Counts> } {
+function scan(): Scan {
   const total: Counts = { fontSize: 0, hex: 0, radius: 0 }
   const files: Record<string, Counts> = {}
   for (const f of walk(join(root, 'components')).sort()) {
@@ -119,14 +145,34 @@ describe('counters', () => {
   })
 })
 
+describe('update mode', () => {
+  const base: Baseline = { total: { fontSize: 3, hex: 0, radius: 0 }, files: { 'components/A.tsx': { fontSize: 2 }, 'components/B.tsx': { fontSize: 1 } } }
+  const c = (fontSize: number): Counts => ({ fontSize, hex: 0, radius: 0 })
+  it('only lowers: a drop is written', () => {
+    const r = lowerBaseline(base, { total: c(2), files: { 'components/A.tsx': c(1), 'components/B.tsx': c(1) } })
+    expect(r.risen).toEqual([])
+    expect(r.next.total.fontSize).toBe(2)
+    expect(r.next.files['components/A.tsx'].fontSize).toBe(1)
+  })
+  it('a rise in one file offset by a drop in another is refused', () => {
+    const r = lowerBaseline(base, { total: c(3), files: { 'components/A.tsx': c(3), 'components/B.tsx': c(0) } })
+    expect(r.risen).toEqual(['components/A.tsx fontSize'])
+  })
+  it('a new file with literals is a rise, not an addition', () => {
+    const r = lowerBaseline(base, { total: c(3), files: { 'components/A.tsx': c(1), 'components/B.tsx': c(1), 'components/New.tsx': c(1) } })
+    expect(r.risen).toContain('components/New.tsx fontSize')
+    expect(r.next.files['components/New.tsx']).toBeUndefined()
+  })
+})
+
 describe('design guardrail', () => {
   it('no component gains a one-off font size, hex colour or border radius', () => {
     const now = scan()
     const base: Baseline = JSON.parse(readFileSync(baselinePath, 'utf8'))
 
-    if (process.env.UPDATE_GUARDRAIL) {
-      const risen = CATEGORIES.some(k => now.total[k] > base.total[k])
-      if (!risen) writeFileSync(baselinePath, JSON.stringify(now, null, 2) + '\n')
+    if (process.env.UPDATE_GUARDRAIL === '1') {
+      const { next, risen } = lowerBaseline(base, now)
+      if (risen.length === 0) writeFileSync(baselinePath, JSON.stringify(next, null, 2) + '\n')
     }
 
     const problems: string[] = []
