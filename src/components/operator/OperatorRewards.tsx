@@ -2,9 +2,12 @@ import { useState, useEffect, useCallback } from 'react'
 import { Pager, usePaging } from '../Pager'
 import { Gift, Clock, TriangleAlert as AlertTriangle, Check, Pause } from 'lucide-react'
 import {
-  SectionCard, StatCard, Btn, Modal, FormField, TextInput, TextArea, Select,
-  Table, Td, toast, fmtInt,
+  SectionCard, Btn, Modal, FormField, TextInput, TextArea, Select,
+  Table, Td, toast, fmtInt, PageHeader, RowActions,
 } from './shared'
+import { Tabs } from '../ui/Tabs'
+import { KpiCard, KpiRow } from '../ui/KpiCard'
+import { StatusBadge } from '../ui/StatusBadge'
 import { Callout } from '../OnboardingJourney'
 import { useMarket } from '../../lib/MarketContext'
 import { loadProgramme, approveProposal, rejectProposal, pauseRule } from '../../lib/rewardsRepo'
@@ -78,14 +81,8 @@ export function OperatorRewards() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div>
-        <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>
-          {programme?.name ?? 'Rewards'}
-        </h1>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-          The programme, what it owes, and who is paying for it.
-        </p>
-      </div>
+      <PageHeader title={programme?.name ?? 'Rewards'}
+        description="The programme, what it owes, and who is paying for it." />
 
       {book.loadError && <Callout tone="danger" title="Some of this page did not load">{book.loadError}</Callout>}
 
@@ -109,23 +106,23 @@ export function OperatorRewards() {
         const breakage = reported(owed.breakageValue)
         return (
           <>
-            <div className="stat-row">
-              <StatCard label="Points outstanding" value={fmtInt(owed.outstandingPoints)}
-                        sublabel={`across ${book.members.length} members, in ${owed.gross.length} ${owed.gross.length === 1 ? 'currency' : 'currencies'}`} />
+            <KpiRow label="Programme summary">
+              <KpiCard variant="ops" label="Points outstanding" value={fmtInt(owed.outstandingPoints)}
+                       status={`across ${book.members.length} members, in ${owed.gross.length} ${owed.gross.length === 1 ? 'currency' : 'currencies'}`} />
               {/* Converted, and said so. This tile used to divide every balance
                   on the marketplace by one rate and put a dollar sign on the
                   answer, which for a rupee member was out by a factor of a
                   hundred. */}
-              <StatCard label={`Gross liability, in ${home}`}
-                        value={fmtIn(gross.total.amount, gross.total.currency)}
-                        sublabel={`If every point were redeemed tomorrow · at ${AS_OF} rates`} />
-              <StatCard label={`Expected to be spent, in ${home}`}
-                        value={fmtIn(expected.total.amount, expected.total.currency)}
-                        sublabel={`${fmtIn(breakage.total.amount, breakage.total.currency)} of estimated breakage`} />
-              <StatCard label="Issued by sellers"
-                        value={fmtInt(owed.byFunder.partner + owed.byFunder.shared)}
-                        sublabel={`against ${fmtInt(owed.byFunder.operator)} the marketplace funded`} />
-            </div>
+              <KpiCard variant="money" label="Gross liability" unit={home}
+                       value={fmtIn(gross.total.amount, gross.total.currency)}
+                       context={`If every point were redeemed tomorrow · at ${AS_OF} rates`} />
+              <KpiCard variant="money" label="Expected to be spent" unit={home}
+                       value={fmtIn(expected.total.amount, expected.total.currency)}
+                       context={`${fmtIn(breakage.total.amount, breakage.total.currency)} of estimated breakage`} />
+              <KpiCard variant="ops" label="Issued by sellers"
+                       value={fmtInt(owed.byFunder.partner + owed.byFunder.shared)}
+                       status={`against ${fmtInt(owed.byFunder.operator)} the marketplace funded`} />
+            </KpiRow>
 
             {gross.missing.length > 0 && (
               <Callout tone="danger" title={`${gross.missing.join(', ')} could not be converted`}>
@@ -138,22 +135,15 @@ export function OperatorRewards() {
         )
       })()}
 
-      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-        {([
-          ['proposals', `Waiting on you (${pending.length})`],
-          ['rules', `Live rules (${live.length})`],
-          ['sellers', `Cost by seller (${sellers.length})`],
-          ['currencies', `What is owed, and where (${owed?.gross.length ?? 0})`],
-        ] as const).map(([id, label]) => (
-          <button key={id} onClick={() => setTab(id)} style={{
-            padding: '8px 15px', borderRadius: 'var(--radius)', cursor: 'pointer',
-            fontSize: 'var(--text-sm)', fontWeight: 600, border: '1px solid var(--border)',
-            background: tab === id ? 'var(--brand-navy)' : 'white',
-            color: tab === id ? 'white' : 'var(--text-secondary)',
-          }}>{label}</button>
-        ))}
-      </div>
+      <Tabs ariaLabel="Programme views" panelIdPrefix="rewards-panel-" value={tab} onChange={id => setTab(id as Tab)}
+        tabs={[
+          { id: 'proposals', label: 'Waiting on you', count: pending.length },
+          { id: 'rules', label: 'Live rules', count: live.length },
+          { id: 'sellers', label: 'Cost by seller', count: sellers.length },
+          { id: 'currencies', label: 'What is owed, and where', count: owed?.gross.length ?? 0 },
+        ]} />
 
+      <div role="tabpanel" id={`rewards-panel-${tab}`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {tab === 'proposals' && (
         pending.length === 0 ? (
           <Callout tone="success" title="Nothing waiting">
@@ -163,15 +153,10 @@ export function OperatorRewards() {
           <SectionCard key={r.id} title={r.name}
                        subtitle={`${r.id} · ${names[r.scope_id ?? ''] ?? r.scope_id} · proposed by ${r.proposed_by} on ${r.proposed_on}`}
                        action={
-                         <span style={{
-                           display: 'inline-flex', alignItems: 'center', gap: '5px', whiteSpace: 'nowrap',
-                           padding: '3px 11px', borderRadius: 'var(--radius-full)',
-                           fontSize: 'var(--text-xs)', fontWeight: 700,
-                           background: (daysWaiting(r, now) ?? 0) > 7 ? 'var(--danger-bg)' : 'var(--warning-bg)',
-                           color: (daysWaiting(r, now) ?? 0) > 7 ? 'var(--danger)' : 'var(--warning)',
-                         }}>
-                           <Clock size={11} /> waiting {daysWaiting(r, now)} days
-                         </span>
+                         <StatusBadge tone={(daysWaiting(r, now) ?? 0) > 7 ? 'danger' : 'warning'}
+                                      icon={<Clock size={12} aria-hidden="true" />}>
+                           waiting {daysWaiting(r, now)} days
+                         </StatusBadge>
                        }>
             <div style={{ padding: '18px 20px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '13px' }}>
@@ -181,7 +166,7 @@ export function OperatorRewards() {
                 <F label="Runs" value={`${r.from}${r.to ? ` – ${r.to}` : ' onwards'}`} />
                 <F label="As proposed, funded by" value={FUNDERS[r.funder].label} sub={shareLabel(r)} />
               </div>
-              <div style={{ borderLeft: '3px solid var(--border)', paddingLeft: '12px', fontSize: 'var(--text-sm)', lineHeight: 1.6 }}>
+              <div style={{ borderLeft: '3px solid var(--border)', paddingLeft: '12px', lineHeight: 1.6 }}>
                 “{r.why}”
               </div>
               <div>
@@ -196,31 +181,34 @@ export function OperatorRewards() {
 
       {tab === 'rules' && (
         <SectionCard title="Rules issuing points right now" subtitle="Who funds each, and what it is for">
-          <><Table headers={['Rule', 'Applies to', 'Rate', 'Funded by', 'Runs', '']}>
+          <><Table headers={['Rule', 'Applies to', 'Rate', 'Funded by', 'Runs', 'Actions']}>
             {rulesPage.rows.map(r => (
               <tr key={r.id}>
                 <Td>
-                  <div style={{ fontWeight: 600 }}>{r.name}</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{r.id}</div>
+                  <div style={{ fontWeight: 600 }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={r.name}>{r.name}</span></div>
+                  <div className="c-sub">{r.id}</div>
                 </Td>
-                <Td style={{ fontSize: 'var(--text-xs)' }}>
+                <Td>
                   {r.scope === 'all' ? 'Everything'
                     : r.scope === 'vertical' ? `${r.scope_id} marketplace`
                     : names[r.scope_id ?? ''] ?? r.scope_id}
-                  <div style={{ color: 'var(--text-tertiary)' }}>{r.audience}</div>
+                  <div className="c-sub">{r.audience}</div>
                 </Td>
-                <Td right>{r.rate}×</Td>
+                <Td kind="num">{r.rate}×</Td>
                 <Td>
                   <div>{FUNDERS[r.funder].label}</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{shareLabel(r)}</div>
+                  <div className="c-sub">{shareLabel(r)}</div>
                 </Td>
-                <Td style={{ fontSize: 'var(--text-xs)' }}>{r.from}{r.to ? ` – ${r.to}` : ' onwards'}</Td>
-                <Td right>
-                  <Btn variant="secondary" size="sm" onClick={async () => {
-                    const res = await pauseRule(r, ACTOR)
-                    toast(res.ok ? (res.note ?? 'Paused') : res.reason, res.ok ? 'success' : 'error')
-                    await reload()
-                  }}><Pause size={12} /> Pause</Btn>
+                <Td kind="date">{r.from}{r.to ? ` – ${r.to}` : ' onwards'}</Td>
+                <Td>
+                  <RowActions label={r.name} actions={[{
+                    id: 'pause', label: 'Pause', variant: 'secondary', icon: <Pause size={12} />,
+                    onClick: async () => {
+                      const res = await pauseRule(r, ACTOR)
+                      toast(res.ok ? (res.note ?? 'Paused') : res.reason, res.ok ? 'success' : 'error')
+                      await reload()
+                    },
+                  }]} />
                 </Td>
               </tr>
             ))}
@@ -238,27 +226,27 @@ export function OperatorRewards() {
           <SectionCard title="What the programme costs each seller"
                        subtitle={`Recovered on their settlement, itemised by rule on the statement · the ${home} column converts at ${AS_OF} rates`}>
             <><Table headers={['Seller', 'Points issued', 'Movements', 'Recovered from them',
-                             { label: `In ${home}`, align: 'right' }]}>
+                             `In ${home}`]}>
               {sellersPage.rows.map(s => {
                 const inHome = reported(s.cost)
                 return (
                   <tr key={s.partner_id}>
                     <Td>
-                      <div style={{ fontWeight: 600 }}>{names[s.partner_id] ?? s.partner_id}</div>
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{s.partner_id}</div>
+                      <div style={{ fontWeight: 600 }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={names[s.partner_id] ?? s.partner_id}>{names[s.partner_id] ?? s.partner_id}</span></div>
+                      <div className="c-sub">{s.partner_id}</div>
                     </Td>
-                    <Td right>{fmtInt(s.points)}</Td>
-                    <Td right>{s.movements}</Td>
+                    <Td kind="num">{fmtInt(s.points)}</Td>
+                    <Td kind="num">{s.movements}</Td>
                     {/* What they are actually charged, in the currencies they
                         are actually charged in. A seller listing in three
                         markets owes three amounts, and adding them was the
                         whole bug. */}
-                    <Td right style={{ maxWidth: '160px' }}>
+                    <Td kind="num" style={{ maxWidth: '160px' }}>
                       {s.cost.map(m => (
                         <div key={m.currency}><strong>{fmtIn(m.amount, m.currency)}</strong></div>
                       ))}
                     </Td>
-                    <Td right>{fmtIn(inHome.total.amount, inHome.total.currency)}</Td>
+                    <Td kind="num">{fmtIn(inHome.total.amount, inHome.total.currency)}</Td>
                   </tr>
                 )
               })}
@@ -278,17 +266,17 @@ export function OperatorRewards() {
               const members = book.members.filter(m => m.currency === g.currency)
               return (
                 <tr key={g.currency}>
-                  <Td><strong>{g.currency}</strong></Td>
-                  <Td right>{rate ? fmtIn(1 / rate.per_unit, g.currency) : '—'}</Td>
-                  <Td right>{members.length}</Td>
-                  <Td right>{fmtIn(g.amount, g.currency)}</Td>
-                  <Td right>{fmtIn(owed.expected[i].amount, g.currency)}</Td>
-                  <Td right>{fmtIn(owed.breakageValue[i].amount, g.currency)}</Td>
+                  <Td kind="id"><strong>{g.currency}</strong></Td>
+                  <Td kind="num">{rate ? fmtIn(1 / rate.per_unit, g.currency) : '—'}</Td>
+                  <Td kind="num">{members.length}</Td>
+                  <Td kind="num">{fmtIn(g.amount, g.currency)}</Td>
+                  <Td kind="num">{fmtIn(owed.expected[i].amount, g.currency)}</Td>
+                  <Td kind="num">{fmtIn(owed.breakageValue[i].amount, g.currency)}</Td>
                 </tr>
               )
             })}
           </Table>
-          <div style={{ padding: '14px 20px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
+          <div style={{ padding: '14px 20px', color: 'var(--slate-600)', lineHeight: 1.6 }}>
             Each rate is a chosen figure, not a converted one — a point is ₹1 in India because somebody
             set it there, not because $0.01 comes to ₹0.87. What is checked instead is that every
             currency hands back the same proportion of what was spent: {spread(owed.gross)} outstanding,
@@ -296,6 +284,8 @@ export function OperatorRewards() {
           </div>
         </SectionCard>
       )}
+
+      </div>
 
       {deciding && (
         <DecideModal rule={deciding} sellerName={names[deciding.scope_id ?? ''] ?? deciding.scope_id ?? ''}
@@ -309,9 +299,9 @@ export function OperatorRewards() {
 function F({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div>
-      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{label}</div>
-      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>{value}</div>
-      {sub && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--warning)', marginTop: '2px' }}>{sub}</div>}
+      <div className="c-sub">{label}</div>
+      <div style={{ fontWeight: 600 }}>{value}</div>
+      {sub && <div style={{ color: 'var(--warning)', marginTop: '2px' }}>{sub}</div>}
     </div>
   )
 }
@@ -389,13 +379,13 @@ function DecideModal({ rule, sellerName, onClose, onDone }: {
       </FormField>
 
       {answer === 'reject' && (
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.6 }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', color: 'var(--slate-600)', lineHeight: 1.6 }}>
           <AlertTriangle size={13} style={{ flexShrink: 0, marginTop: '2px' }} />
           <span>Refusing costs the marketplace nothing and costs the seller their campaign, so the reason is the whole of what they get back.</span>
         </div>
       )}
 
-      {err && <div style={{ fontSize: 'var(--text-sm)', color: 'var(--danger)', fontWeight: 600, marginTop: '12px' }}>{err}</div>}
+      {err && <div style={{ color: 'var(--danger)', fontWeight: 600, marginTop: '12px' }}>{err}</div>}
     </Modal>
   )
 }
