@@ -245,10 +245,19 @@ export function Dropdown(props: DropdownProps) {
   }, [open, place])
 
   /* Focus goes to the search box when there is one; otherwise it stays on
-     the control, which points at the active option. */
+     the control, which points at the active option. Only once the popup is
+     placed: until then it is `visibility: hidden`, and a browser refuses to
+     focus a hidden element, which would leave typing on the control (doing
+     type-ahead, not filtering). The caret goes to the end so a letter that
+     opened the list, already in the box, is followed rather than preceded. */
+  const placed = place !== null
   useEffect(() => {
-    if (open && searchable) search.current?.focus()
-  }, [open, searchable])
+    const box = search.current
+    if (!open || !searchable || !placed || !box) return
+    box.focus()
+    const end = box.value.length
+    try { box.setSelectionRange(end, end) } catch { /* type=search may refuse selection APIs */ }
+  }, [open, searchable, placed])
 
   /* The active option is kept in view as it moves. */
   useEffect(() => {

@@ -38,6 +38,9 @@
 /* ---------- Table ---------- */
 .c-table-wrap { overflow-x: auto; }
 .c-table { width: 100%; border-collapse: collapse; table-layout: auto; font-size: var(--text-table); min-width: min-content; }
+/* The spec asks for --slate-50; the palette has no such token (its lightest
+   slate is --slate-100 #F1F5F9), so the header uses --slate-100 rather than
+   a hard-coded tint outside the palette. */
 .c-table thead tr { background: var(--slate-100); border-bottom: 1px solid var(--slate-200); }
 .c-table th {
   height: var(--head-h); padding: 0 var(--cell-pad, 10px);
@@ -57,7 +60,9 @@
   border-radius: var(--radius);
 }
 .c-table__sort:hover { color: var(--ink-900); }
-.c-table__sort:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--focus-color, rgba(79,70,229,.18)); }
+/* The shared focus outline, as buttons have: an outline (not a box-shadow
+   alone) is what forced-colours mode keeps, so focus stays visible there. */
+.c-table__sort:focus-visible { outline: 2px solid var(--focus-color); outline-offset: 2px; border-radius: 2px; }
 .c-table__sort-ind { display: inline-flex; flex-direction: column; line-height: 0; opacity: .45; }
 .c-table__sort-ind svg { display: block; }
 th[aria-sort="ascending"] .c-table__sort-ind, th[aria-sort="descending"] .c-table__sort-ind { opacity: 1; color: var(--indigo-700); }

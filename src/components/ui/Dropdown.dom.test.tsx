@@ -334,6 +334,58 @@ describe('Dropdown', () => {
       expect(within(listbox()).getAllByRole('option').map(o => o.textContent)).toContain('Helix Retail')
     })
 
+    /* jsdom focuses hidden elements; a browser does not. So the spy records
+       whether the popup was still `visibility: hidden` when the search box
+       was focused — focusing it then would be refused for real. */
+    function watchSearchFocus() {
+      const seen: string[] = []
+      const real = HTMLElement.prototype.focus
+      const spy = vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (this: HTMLElement, ...args) {
+        if (this instanceof HTMLInputElement && this.type === 'search') {
+          const pop = this.closest('.ui-dd__pop') as HTMLElement | null
+          seen.push(pop ? (pop.style.visibility || 'visible') : 'detached')
+        }
+        return real.apply(this, args as [FocusOptions?])
+      })
+      return { seen, restore: () => spy.mockRestore() }
+    }
+
+    it('focuses the search box only once the popup is placed (mouse open)', async () => {
+      const user = userEvent.setup()
+      const w = watchSearchFocus()
+      try {
+        render(<Many />)
+        await user.click(screen.getByRole('combobox', { name: 'Seller' }))
+        expect(w.seen.length).toBeGreaterThan(0)
+        expect(w.seen).not.toContain('hidden')
+        expect(document.activeElement).toBe(screen.getByRole('searchbox', { name: 'Search options' }))
+        await user.keyboard('del')
+        expect(within(listbox()).getAllByRole('option').map(o => o.textContent)).toEqual(['Delta Parts'])
+      } finally { w.restore() }
+    })
+
+    it('focuses the search box only once the popup is placed (keyboard open), and the opening letter seeds it', async () => {
+      const user = userEvent.setup()
+      const w = watchSearchFocus()
+      try {
+        render(<Many />)
+        screen.getByRole('combobox', { name: 'Seller' }).focus()
+        await user.keyboard('{ArrowDown}')
+        expect(w.seen.length).toBeGreaterThan(0)
+        expect(w.seen).not.toContain('hidden')
+        await user.keyboard('{Escape}')
+        w.seen.length = 0
+        await user.keyboard('e')
+        expect(w.seen.length).toBeGreaterThan(0)
+        expect(w.seen).not.toContain('hidden')
+        const box = screen.getByRole('searchbox', { name: 'Search options' }) as HTMLInputElement
+        expect(document.activeElement).toBe(box)
+        await user.keyboard('cho')
+        expect(box.value).toBe('echo')
+        expect(within(listbox()).getAllByRole('option').map(o => o.textContent)).toEqual(['Echo Systems'])
+      } finally { w.restore() }
+    })
+
     it('no search box with 8 options or fewer', async () => {
       const user = userEvent.setup()
       render(<Controlled />)
