@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '../../lib/supabase'
 import {
-  SectionCard, EmptyState, Btn, Modal, FormField, TextArea, TextInput, Select, toast,
+  SectionCard, EmptyState, Btn, Modal, FormField, TextArea, TextInput, Select, toast, PageHeader, FilterBar,
 } from './shared'
 import { CircleAlert as AlertCircle, Clock } from 'lucide-react'
 import { clearGate, loadOnboarding } from '../../lib/onboardingRepo'
@@ -125,15 +125,11 @@ export function OperatorOnboarding() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Onboarding</h1>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            Sellers and businesses · seven gates for a seller, {SLA_DAYS} working days end to end · {inFlight.length} seller{inFlight.length === 1 ? '' : 's'} in flight
-          </p>
-        </div>
-        <Btn onClick={() => setAddPartnerModal(true)}>Onboard one yourself</Btn>
-      </div>
+      <PageHeader
+        title="Onboarding"
+        description={`Sellers and businesses · seven gates for a seller, ${SLA_DAYS} working days end to end · ${inFlight.length} seller${inFlight.length === 1 ? '' : 's'} in flight`}
+        actions={<Btn onClick={() => setAddPartnerModal(true)}>Onboard one yourself</Btn>}
+      />
 
       {dirError && <Callout tone="danger" title="Some of this screen did not load">{dirError}</Callout>}
 
@@ -163,23 +159,13 @@ export function OperatorOnboarding() {
           title={showAll ? 'All sellers' : 'Applications in flight'}
           subtitle={showAll ? `${queue.length} of ${dir.length} sellers` : `${inFlight.length} of ${dir.length} sellers`}
           action={
-            <button onClick={() => setShowAll(v => !v)} style={{
-              fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--brand-navy)',
-              background: 'none', border: 'none', cursor: 'pointer',
-            }}>{showAll ? 'In flight only' : 'Show all'}</button>
+            <Btn variant="tertiary" size="sm" onClick={() => setShowAll(v => !v)}>{showAll ? 'In flight only' : 'Show all'}</Btn>
           }
         >
           {showAll && (
             <div style={{ padding: '11px 16px', borderBottom: '1px solid var(--border-light)' }}>
-              <input
-                value={queueSearch}
-                onChange={e => setQueueSearch(e.target.value)}
-                placeholder="Search seller, id or country"
-                style={{
-                  width: '100%', padding: '6px 10px', borderRadius: 'var(--radius)',
-                  border: '1px solid var(--border)', fontSize: 'var(--text-xs)', outline: 'none', color: 'var(--text)',
-                }}
-              />
+              <FilterBar ariaLabel="Search sellers"
+                search={{ value: queueSearch, onChange: setQueueSearch, placeholder: 'Search seller, id or country', ariaLabel: 'Search sellers' }} />
             </div>
           )}
           {queue.length === 0 ? (
@@ -198,10 +184,10 @@ export function OperatorOnboarding() {
                     }}
                   >
                     <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--text)' }}>{r.name}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '1px' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '1px' }}>
                       {r.id} · {r.country || '—'} · {r.type}
                     </div>
-                    <div style={{ fontSize: '11px', marginTop: '3px', display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ fontSize: 'var(--text-xs)', marginTop: '3px', display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
                       <span style={{ fontWeight: 700, color: r.status === 'rejected' ? 'var(--danger)' : r.status === 'live' ? 'var(--success)' : 'var(--info)' }}>
                         {r.status}
                       </span>
@@ -356,10 +342,10 @@ function FunnelSummary({ rows }: { rows: PartnerDirectoryRow[] }) {
         {byGate.map(({ gate, here, cleared }) => (
           <div key={gate.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', fontSize: 'var(--text-xs)' }}>
             <span style={{ flex: '0 0 150px', color: 'var(--text)', fontWeight: 600 }}>{gate.name}</span>
-            <div style={{ flex: 1, height: '8px', background: 'var(--bg-alt)', borderRadius: '4px', overflow: 'hidden', minWidth: '60px' }}>
+            <div style={{ flex: 1, height: '8px', background: 'var(--bg-alt)', borderRadius: 'var(--radius)', overflow: 'hidden', minWidth: '60px' }}>
               <div style={{
                 width: `${rows.length ? (cleared / rows.length) * 100 : 0}%`, height: '100%',
-                background: 'var(--brand-navy)', borderRadius: '4px',
+                background: 'var(--brand-navy)', borderRadius: 'var(--radius)',
               }} />
             </div>
             <span style={{ flex: '0 0 96px', textAlign: 'right', color: 'var(--text-tertiary)' }}>
@@ -406,10 +392,10 @@ function OpenTasks({ snap }: { snap: OnboardingSnapshot }) {
                 <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '1px' }}>{task.detail}</div>
               </div>
               <div style={{ flexShrink: 0, textAlign: 'right' }}>
-                <div style={{ fontSize: '11px', fontWeight: 700, color: task.owner === 'Marketplace' ? 'var(--brand-navy)' : 'var(--text-secondary)' }}>
+                <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: task.owner === 'Marketplace' ? 'var(--brand-navy)' : 'var(--text-secondary)' }}>
                   {task.owner === 'Marketplace' ? 'Us' : 'The seller'}
                 </div>
-                {task.due && <div style={{ fontSize: '11px', color: state === 'blocked' ? 'var(--danger)' : 'var(--text-tertiary)' }}>{task.due}</div>}
+                {task.due && <div style={{ fontSize: 'var(--text-xs)', color: state === 'blocked' ? 'var(--danger)' : 'var(--text-tertiary)' }}>{task.due}</div>}
               </div>
             </div>
           ))}
