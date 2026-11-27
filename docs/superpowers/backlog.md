@@ -144,6 +144,9 @@ User: "Please add more synthetic data into the platform once the above pending a
 the bundle line prices, spec 19 and the rest of spec 18. Delivered as seed migrations, applied by the user. Every
 seeded order creates its `order_part` rows, and the seed respects the RLS and guards of specs 13, 17 and 19. Default
 scope, to confirm with the user when it starts:
+- more customers (user, 2026-11-27: "customers as well"): many more consumer shoppers and business accounts
+  (with users, roles and cost centres) in every market, with addresses, preferences and a spread of sign-up dates,
+  segments and activity levels;
 - more sellers and listings per market (IN, AE, KE) with floors set;
 - shoppers and business accounts with orders, invoices, payments and refunds spread over the last 6 months;
 - baskets in every state (for spec 19's reminders);
