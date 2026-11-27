@@ -130,6 +130,24 @@ Still open:
 - [x] Nothing moves an invoice from open to overdue after its due date (as before). Done in spec 14.
 - [ ] Seller settlement lines and ledger postings are not written for the new orders.
 
+## Spec 16 — design system v2, wave 1 of the UI modernization (2026-11-27)
+
+Done — branch `design-system-v2`, no migration. Spec `docs/superpowers/specs/2026-11-26-design-system-v2-design.md`.
+Direction A "Midnight & Indigo", balanced density (40px controls, 48px rows), tokens with the old names aliased,
+upgraded shared components (buttons, inputs, checkbox/radio, Toggle, custom Dropdown behind `Select` with search,
+Table with sort and sticky header, dot-and-text status, KPI variants, callouts and toasts, Dialog, Drawer, Tabs,
+Skeleton), the `/design-system` reference page and a guardrail test (`UPDATE_GUARDRAIL=1` only lowers it).
+Next waves (each visual only): 2 console shell and navigation; 3 operator screens; 4 partner and enterprise
+consoles; 5 shopper storefront; 6 charts. In wave 3 and after, apply the user's screenshot fixes everywhere:
+filter bars on one line at one height (a shared filter bar), tables with one type size per row and right-aligned
+tabular numbers, and list any operator-managed list that cannot be added to, edited or retired (ask first).
+Still open from wave 1:
+- [ ] Checkout not checked in a browser (needs a live basket); check it in wave 5.
+- [ ] Dropdown: Tab does not choose the highlighted option; listbox named by its value for some screen readers; caller onBlur fires when focus moves to the search box.
+- [ ] Hard-coded pressed/hover shades in console.css and old-palette rgba leftovers → tokens in wave 2.
+- [ ] Toasts have no persistent live region; selected table row loses its tint on hover; Drawer height should be 100dvh; tab height ~36px.
+- [ ] A built deploy needs the host's SPA fallback for `/design-system`.
+
 ## Spec 14 — subscription billing and overdue invoices (2026-11-26)
 
 Merged. Migration `20261126100000` (applied 2026-11-26). Spec `docs/superpowers/specs/2026-11-26-subscription-billing-and-overdue-design.md`.

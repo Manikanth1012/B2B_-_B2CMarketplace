@@ -2,6 +2,9 @@ import React, { useState, useEffect, useCallback, useId } from 'react'
 import { StatusBadge } from '../ui/StatusBadge'
 import { statusTone } from '../../lib/consoleTone'
 import { Dialog } from '../ui/Dialog'
+import { Spinner } from '../ui/Spinner'
+import { Dropdown } from '../ui/Dropdown'
+import { ChevronDown, ChevronUp, ChevronsUpDown, CheckCircle2, XCircle, Info } from 'lucide-react'
 
 export function fmtMoney(n: number): string {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -130,7 +133,8 @@ export function StatCard({ label, value, sublabel, color }: { label: string; val
  * it takes the alignment of the cells underneath it, read off the first row —
  * see `alignmentsFrom` below.
  */
-export type Header = string | { label: string; align: 'left' | 'right' }
+export type HeaderSort = { active: boolean; dir: 'asc' | 'desc'; onSort: () => void }
+export type Header = string | { label: string; align?: 'left' | 'right'; sort?: HeaderSort }
 
 const headerLabel = (h: Header): string => (typeof h === 'string' ? h : h.label)
 
@@ -217,9 +221,23 @@ export function Table({ headers, children }: { headers: Header[]; children: Reac
       }}>
         <thead>
           <tr>
-            {headers.map((h, i) => (
-              <th key={i} style={{ textAlign: typeof h === 'string' ? fromCells[i] : h.align }}>{headerLabel(h)}</th>
-            ))}
+            {headers.map((h, i) => {
+              const align = typeof h === 'string' ? fromCells[i] : (h.align ?? fromCells[i])
+              const sort = typeof h === 'string' ? undefined : h.sort
+              return (
+                <th key={i} style={{ textAlign: align }}
+                  aria-sort={sort ? (sort.active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}>
+                  {sort ? (
+                    <button type="button" className="c-table__sort" onClick={sort.onSort}>
+                      {headerLabel(h)}
+                      <span className="c-table__sort-ind" aria-hidden="true">
+                        {sort.active && sort.dir === 'desc' ? <ChevronDown size={12} /> : sort.active ? <ChevronUp size={12} /> : <ChevronsUpDown size={12} />}
+                      </span>
+                    </button>
+                  ) : headerLabel(h)}
+                </th>
+              )
+            })}
           </tr>
         </thead>
         <tbody>{children}</tbody>
@@ -242,10 +260,23 @@ export function Table({ headers, children }: { headers: Header[]; children: Reac
  * Edit and Delete buttons. A cell that has been given a width has been told it
  * must wrap, so it does.
  */
+/**
+ * A body row that can be selected. Optional: plain `<tr>` rows keep working.
+ * `selected` sets `aria-selected` and the highlight; other props pass through.
+ */
+export function TableRow({ selected, children, ...rest }: React.HTMLAttributes<HTMLTableRowElement> & { selected?: boolean }) {
+  return (
+    <tr {...rest} aria-selected={selected || undefined}
+      className={`${selected ? 'c-tr--selected ' : ''}${rest.className ?? ''}`.trim() || undefined}>
+      {children}
+    </tr>
+  )
+}
+
 export function Td({ children, right, style }: { children: React.ReactNode; right?: boolean; style?: React.CSSProperties }) {
   const bounded = style !== undefined && ('maxWidth' in style || 'width' in style)
   return (
-    <td className="c-td" style={{
+    <td className={right ? 'c-td c-td--num' : 'c-td'} style={{
       textAlign: right ? 'right' : 'left',
       ...(right && !bounded
         ? { whiteSpace: 'nowrap' as const }
@@ -299,11 +330,13 @@ export function Id({ children }: { children: string }) {
    `LTX-RDX-1101-260802075150876` are over it and wrap at their separators. */
 const SHORT_ID = 18
 
-export function EmptyState({ message, icon }: { message: string; icon?: React.ReactNode }) {
+export function EmptyState({ message, icon, title, action }: { message: string; icon?: React.ReactNode; title?: string; action?: React.ReactNode }) {
   return (
     <div className="c-empty">
       {icon && <div className="c-empty__icon" aria-hidden="true">{icon}</div>}
+      {title && <div className="c-empty__title">{title}</div>}
       {message}
+      {action && <div className="c-empty__action">{action}</div>}
     </div>
   )
 }
@@ -403,14 +436,22 @@ export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement
   return <textarea {...props} className={inputClass(props.className)} />
 }
 
+/* A custom dropdown (ui/Dropdown) with the same props a native <select>
+   took: value/defaultValue, onChange reading e.target.value, disabled, id,
+   aria-*, style, className and <option>/<optgroup> children. Dropdown adds
+   the .c-input class itself. */
 export function Select(props: React.SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={inputClass(props.className)} />
+  return <Dropdown {...props} />
 }
 
-export function Btn({ variant = 'primary', size = 'md', children, className, ...props }: {
+export function Btn({ variant = 'primary', size = 'md', loading, icon, children, className, disabled, ...props }: {
   /* `accent` is the cyan call to action: one per screen, for its main step. */
-  variant?: 'primary' | 'secondary' | 'danger' | 'success' | 'accent'
+  variant?: 'primary' | 'secondary' | 'tertiary' | 'danger' | 'success' | 'accent'
   size?: 'sm' | 'md'
+  /* Shows a spinner beside the label, sets aria-busy and disables the button. */
+  loading?: boolean
+  /* A square icon-only button; give it an aria-label. */
+  icon?: boolean
   children: React.ReactNode
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   /* A small button is the one that appears four-at-a-time in a table cell,
@@ -423,9 +464,10 @@ export function Btn({ variant = 'primary', size = 'md', children, className, ...
      out as "Duplica / te", which reads as two words and makes the button two
      rows tall. Icon and text are laid out there too, rather than by each caller
      wrapping them in a flex. */
-  const classes = ['c-btn', `c-btn--${variant}`, size === 'sm' && 'c-btn--sm', className].filter(Boolean).join(' ')
+  const classes = ['c-btn', `c-btn--${variant}`, size === 'sm' && 'c-btn--sm', icon && 'c-btn--icon', className].filter(Boolean).join(' ')
   return (
-    <button {...props} className={classes}>
+    <button {...props} className={classes} disabled={disabled || loading} aria-busy={loading || undefined}>
+      {loading && <Spinner size={size === 'sm' ? 12 : 14} />}
       {children}
     </button>
   )
@@ -479,16 +521,13 @@ export function ToastHost() {
   }, [])
 
   return (
-    <div style={{ position: 'fixed', bottom: '24px', right: '24px', zIndex: 2000, display: 'flex', flexDirection: 'column', gap: '8px' }}>
+    <div className="toast-host">
       {toasts.map(t => (
-        <div key={t.id} style={{
-          padding: '12px 20px', borderRadius: 'var(--radius-md)',
-          background: t.kind === 'error' ? 'var(--danger)' : t.kind === 'info' ? 'var(--info)' : 'var(--success)',
-          color: 'white', fontSize: 'var(--text-sm)', fontWeight: 600,
-          boxShadow: 'var(--shadow-lg)',
-          animation: 'slideIn 200ms ease',
-        }}>
-          {t.message}
+        <div key={t.id} className={`toast toast--${t.kind}`} role={t.kind === 'error' ? 'alert' : 'status'}>
+          <span className="toast__icon" aria-hidden="true">
+            {t.kind === 'error' ? <XCircle size={16} /> : t.kind === 'info' ? <Info size={16} /> : <CheckCircle2 size={16} />}
+          </span>
+          <span>{t.message}</span>
         </div>
       ))}
     </div>

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { EnterprisePriceBook } from './EnterprisePriceBook'
 import { DEFAULT_RULES } from '../../lib/accountPrices'
+import { chooseOption } from '../ui/Dropdown.testing'
 
 /* No database here: CI has no Supabase keys, and supabase.ts throws without them. */
 vi.mock('../../lib/supabase', () => ({ supabase: {} }))
@@ -46,7 +47,7 @@ describe('EnterprisePriceBook', () => {
     render(<EnterprisePriceBook />)
     await screen.findByText(/no prices of its own yet/)
     fireEvent.click(screen.getAllByRole('radio')[2])
-    fireEvent.change(screen.getByLabelText(/Add to preferred sellers/i), { target: { value: 'S1' } })
+    chooseOption(screen.getByLabelText(/Add to preferred sellers/i), 'S1')
     fireEvent.click(screen.getAllByRole('button', { name: 'Add' })[0])
     await waitFor(() => expect(add).toHaveBeenCalled())
     await waitFor(() => expect(screen.getByLabelText(/Add to preferred sellers/i)).toHaveProperty('value', ''))

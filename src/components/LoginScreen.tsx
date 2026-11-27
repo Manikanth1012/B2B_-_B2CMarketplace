@@ -79,8 +79,8 @@ const PERSONA_META: Record<Persona, { label: string; sub: string; user: string; 
     sub: 'Browse add-ons, devices & services',
     user: 'Priya Raman · Gold member',
     icon: <ShoppingBag size={24} />,
-    accentBg: 'rgba(0, 198, 181, 0.2)',
-    accentFg: 'var(--brand-accent-light)',
+    accentBg: 'var(--indigo-tint-on-dark)',
+    accentFg: 'var(--accent-on-dark)',
     accentColor: 'var(--brand-accent-dark)',
   },
   operator: {

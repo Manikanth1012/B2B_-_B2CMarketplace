@@ -34,12 +34,12 @@
 .cpe-side__icon { display: inline-flex; color: rgba(255, 255, 255, 0.62); }
 .cpe-side__item:hover { background: rgba(255, 255, 255, 0.06); color: #fff; }
 .cpe-side__item:hover .cpe-side__icon { color: #fff; }
-.cpe-side__item:focus-visible { outline: 2px solid var(--cyan); outline-offset: -2px; }
+.cpe-side__item:focus-visible { outline: 2px solid var(--accent-on-dark); outline-offset: -2px; }
 .cpe-side__item.is-active { background: rgba(255, 255, 255, 0.12); color: #fff; }
-.cpe-side__item.is-active .cpe-side__icon { color: var(--cyan); }
+.cpe-side__item.is-active .cpe-side__icon { color: var(--accent-on-dark); }
 .cpe-side__item.is-active::before {
   content: ''; position: absolute; left: 0; top: 8px; bottom: 8px; width: 3px;
-  border-radius: 0 3px 3px 0; background: var(--cyan);
+  border-radius: 0 3px 3px 0; background: var(--accent-on-dark);
 }
 .cpe-side__foot { padding: 12px; border-top: 1px solid rgba(255, 255, 255, 0.08); }
 @media (prefers-reduced-motion: reduce) { .cpe-side__item { transition: none; } }

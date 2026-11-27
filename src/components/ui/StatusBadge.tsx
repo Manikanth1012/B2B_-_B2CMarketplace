@@ -1,18 +1,9 @@
 import type { ReactNode } from 'react'
-import { CheckCircle2, AlertTriangle, XCircle, Info } from 'lucide-react'
 
 type Tone = 'success' | 'warning' | 'danger' | 'info' | 'neutral'
 
-/* A state never rests on colour alone: each tone carries its own shape. */
-const ICON: Record<Tone, ReactNode> = {
-  success: <CheckCircle2 size={12} aria-hidden />,
-  warning: <AlertTriangle size={12} aria-hidden />,
-  danger: <XCircle size={12} aria-hidden />,
-  info: <Info size={12} aria-hidden />,
-  neutral: null,
-}
-
-/** `icon` replaces the tone's shape; pass `null` where the words alone carry it. */
+/** Dot + words. The dot is decorative; the words carry the state, so a state never rests on colour alone.
+ *  `icon` replaces the dot with a shape; pass `null` to show the words only. */
 export function StatusBadge({ tone, icon, children }: {
   tone: Tone
   icon?: ReactNode | null
@@ -20,7 +11,7 @@ export function StatusBadge({ tone, icon, children }: {
 }) {
   return (
     <span className={`status-badge status-badge--${tone}`}>
-      {icon === undefined ? ICON[tone] : icon}
+      {icon === undefined ? <span className="status-badge__dot" aria-hidden="true" /> : icon}
       {children}
     </span>
   )

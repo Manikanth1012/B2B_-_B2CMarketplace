@@ -14,7 +14,7 @@
 
 import {
   CircleCheck as CheckCircle, Clock, Circle, CircleAlert as AlertCircle,
-  FileText, Users,
+  FileText, Users, Info, XCircle, AlertTriangle, CheckCircle2,
 } from 'lucide-react'
 import type { JourneyStep } from '../lib/onboarding'
 import { evidenceChecklist, journeyProgress } from '../lib/onboarding'
@@ -297,20 +297,15 @@ export function Callout({ tone, title, children }: {
   title?: string
   children: React.ReactNode
 }) {
-  const map = {
-    info:    { bg: 'var(--info-bg)',    ink: 'var(--info)',    line: 'var(--info)' },
-    danger:  { bg: 'var(--danger-bg)',  ink: 'var(--danger)',  line: 'var(--danger)' },
-    warning: { bg: 'var(--warning-bg)', ink: 'var(--warning)', line: 'var(--warning)' },
-    success: { bg: 'var(--success-bg)', ink: 'var(--success)', line: 'var(--success)' },
-  }[tone]
+  /* Icon + bold lead: the tone never rests on colour alone. */
+  const Icon = { info: Info, danger: XCircle, warning: AlertTriangle, success: CheckCircle2 }[tone]
   return (
-    <div style={{
-      padding: '10px 12px', borderRadius: 'var(--radius-md)',
-      background: map.bg, borderLeft: `3px solid ${map.line}`,
-      fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', lineHeight: 1.5,
-    }}>
-      {title && <strong style={{ color: map.ink, display: 'block', marginBottom: '2px' }}>{title}</strong>}
-      {children}
+    <div className={`callout callout--${tone}`}>
+      <span className="callout__icon" aria-hidden="true"><Icon size={16} /></span>
+      <div>
+        {title && <strong className="callout__lead">{title}</strong>}
+        {children}
+      </div>
     </div>
   )
 }
