@@ -14,14 +14,14 @@ import {
 } from 'lucide-react'
 import {
   SectionCard, EmptyState, Btn, Modal, FormField, TextArea, TextInput, Select,
-  toast, fmtMoney, fmtDate, PageHeader, FilterBar, Table, Td,
+  toast, fmtMoney, fmtDate, PageHeader, FilterBar, Table, Td, FieldRow,
 } from './shared'
 import { Tabs } from '../ui/Tabs'
 import { KpiCard, KpiRow } from '../ui/KpiCard'
 import { Callout } from '../OnboardingJourney'
 import {
   loadCatalogue, approveListing, rejectListing, raiseQuery, publishFirstParty,
-  createBundle, previewBundle, composePack, setAudiences,
+  createBundle, composePack, setAudiences,
 } from '../../lib/catalogueRepo'
 import { publishDue, approveProposal, rejectProposal } from '../../lib/listingLifecycleRepo'
 import { changesIn, STATE_MEANING, stateOf, untilLive } from '../../lib/listingLifecycle'
@@ -31,7 +31,8 @@ import {
   compose, compositionProblem, compositionWarnings, maxComponentDiscount, priceBasis,
   sellableHere, withheldNote,
 } from '../../lib/federation'
-import { checkBundleAgainstFloors, bundleRoom, bases, headroom } from '../../lib/pricing'
+import { bundleRoom, bases, headroom, checkBundleLines, percentOffLine } from '../../lib/pricing'
+import type { BundleLine } from '../../lib/pricing'
 import type { ComponentPick, TelcoItem } from '../../lib/federation'
 import { canApprove, summarise, bundleView, rulesFor, applyPolicy, policyFailures, splitOf } from '../../lib/catalogue'
 import type { ProductRow, Submission } from '../../lib/catalogue'
@@ -1155,18 +1156,21 @@ function DecideChangeDialog({ version, mode, productName, onClose, onSubmit }: {
 
 /* ----------------------------------------------------- bundle builder ---- */
 
-function BundleBuilder({ snap, onClose, onCreate }: {
+export function BundleBuilder({ snap, onClose, onCreate }: {
   snap: CatalogueSnapshot
   onClose: () => void
   onCreate: (draft: BundleDraft) => void
 }) {
   const [name, setName] = useState('')
   const [categoryId, setCategoryId] = useState(snap.categories[0]?.id ?? '')
-  const [price, setPrice] = useState('')
   const [model, setModel] = useState('monthly')
   const [description, setDescription] = useState('')
-  const [picked, setPicked] = useState<{ productId: string; quantity: number; note: string }[]>([])
+  /* `unitPrice` is the text of the "Price in bundle" field: each product is
+     priced on its own, between its seller's floor and its normal price, and
+     the bundle price is those lines added up. */
+  const [picked, setPicked] = useState<{ productId: string; quantity: number; note: string; unitPrice: string }[]>([])
   const [search, setSearch] = useState('')
+  const [pctOff, setPctOff] = useState('10')
 
   /* Only what is on sale, and never another bundle — a bundle of bundles has a
      price nobody can explain. */
@@ -1175,36 +1179,48 @@ function BundleBuilder({ snap, onClose, onCreate }: {
     !picked.some(x => x.productId === p.id) &&
     `${p.name} ${p.seller} ${p.id}`.toLowerCase().includes(search.trim().toLowerCase()))
 
-  const draft: BundleDraft = {
-    name, categoryId, subCategory: 'Bundles', description,
-    price: parseFloat(price) || 0, model, fulfil: 'provisioned', components: picked,
-  }
-  const preview = previewBundle(draft, snap.products)
   const sellers = [...new Set(picked.map(p => snap.products.find(x => x.id === p.productId)?.seller).filter(Boolean))]
 
-  /* What each seller agreed to accept. Composing a bundle spends somebody
-     else's margin, and until the floors existed the only honest discount was
-     none — so this is the number the builder was missing. */
-  const components = picked.flatMap(pk => {
+  /* What each seller agreed to accept, and what the operator sets for each
+     product inside the bundle. Composing a bundle spends somebody else's
+     margin, so every line is held between its seller's floor and its price. */
+  const lines: BundleLine[] = picked.flatMap(pk => {
     const p = snap.products.find(x => x.id === pk.productId)
     if (!p) return []
+    const unit = pk.unitPrice.trim() === '' ? NaN : Number(pk.unitPrice)
     return [{
       productId: p.id, name: p.name, quantity: pk.quantity,
-      price: Number(p.price), floor_price: Number(p.floor_price ?? p.price),
+      price: Number(p.price), floor_price: Number(p.floor_price ?? p.price), unitPrice: unit,
     }]
   })
-  const room = bundleRoom(components)
-  const partsTotal = room.partsTotal
-  const saving = +(partsTotal - (parseFloat(price) || 0)).toFixed(2)
-  const floorCheck = picked.length >= 2 && parseFloat(price) > 0
-    ? checkBundleAgainstFloors(parseFloat(price), components)
-    : null
+  const room = bundleRoom(lines)
+  const verdict = checkBundleLines(lines)
+  const partsTotal = verdict.partsTotal
+  const bundlePrice = verdict.total
+
+  const draft: BundleDraft = {
+    name, categoryId, subCategory: 'Bundles', description,
+    price: bundlePrice, model, fulfil: 'provisioned',
+    components: picked.map(pk => ({ productId: pk.productId, quantity: pk.quantity, note: pk.note, unitPrice: Number(pk.unitPrice) })),
+  }
+
+  const setUnit = (productId: string, value: string) =>
+    setPicked(list => list.map(x => x.productId === productId ? { ...x, unitPrice: value } : x))
+  const applyPct = () => {
+    /* An empty field is not 0%: it would quietly put every line back. */
+    if (pctOff.trim() === '') return
+    const pct = Number(pctOff)
+    if (!Number.isFinite(pct)) return
+    setPicked(list => list.map(x => {
+      const l = lines.find(y => y.productId === x.productId)
+      return l ? { ...x, unitPrice: percentOffLine(l, pct).toFixed(2) } : x
+    }))
+  }
 
   const problem =
     !name.trim() ? 'Give the bundle a name.'
     : picked.length < 2 ? 'A bundle is two or more things sold together. With one component it is just the product.'
-    : !(parseFloat(price) > 0) ? 'Set a price.'
-    : floorCheck && !floorCheck.ok ? floorCheck.reason
+    : !verdict.ok ? verdict.reason
     : null
 
   return (
@@ -1245,27 +1261,49 @@ function BundleBuilder({ snap, onClose, onCreate }: {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', marginBottom: '9px' }}>
               {picked.map(pk => {
                 const p = snap.products.find(x => x.id === pk.productId)!
+                const l = lines.find(x => x.productId === pk.productId)
+                const err = verdict.lineErrors[pk.productId]
+                const unit = l && Number.isFinite(l.unitPrice) ? l.unitPrice : null
+                const off = unit !== null && p.price > 0 ? Math.round(((p.price - unit) / p.price) * 1000) / 10 : null
+                const errId = `bundle-line-err-${pk.productId}`
                 return (
-                  <div key={pk.productId} style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '7px 9px', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', flexWrap: 'wrap' }}>
-                    <input type="number" min={1} value={pk.quantity}
-                           onChange={e => setPicked(list => list.map(x => x.productId === pk.productId ? { ...x, quantity: Math.max(1, parseInt(e.target.value) || 1) } : x))}
-                           style={{ width: '54px', padding: '3px 6px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', fontSize: 'var(--text-xs)' }} />
-                    <div style={{ flex: 1, minWidth: '150px' }}>
-                      <div style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>{p.name}</div>
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                        {p.seller}{p.partner_id === null ? ' · first party' : ''} · ${fmtMoney(p.price)} each
-                        {p.floor_price !== undefined && (
-                          <> · will go to <strong>${fmtMoney(Number(p.floor_price))}</strong>
-                            {' '}({headroom({ price: Number(p.price), floor_price: Number(p.floor_price), list_price: Number(p.list_price ?? p.price) }).pct}% room)</>
-                        )}
+                  <div key={pk.productId} className="bundle-line">
+                    <div className="bundle-line__qty">
+                      <TextInput type="number" min={1} value={pk.quantity} aria-label={`Quantity of ${p.name}`}
+                        onChange={e => setPicked(list => list.map(x => x.productId === pk.productId ? { ...x, quantity: Math.max(1, parseInt(e.target.value) || 1) } : x))} />
+                    </div>
+                    <div className="bundle-line__what">
+                      <div className="bundle-line__name">{p.name}</div>
+                      <div className="bundle-line__meta">
+                        {p.seller}{p.partner_id === null ? ' · first party' : ''} · normal ${fmtMoney(p.price)}
+                        {p.floor_price !== undefined && <> · floor ${fmtMoney(Number(p.floor_price))}</>}
                       </div>
                     </div>
-                    <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>${fmtMoney(p.price * pk.quantity)}</span>
-                    <button onClick={() => setPicked(list => list.filter(x => x.productId !== pk.productId))}
-                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--danger)' }}><X size={14} /></button>
+                    <div className="bundle-line__price">
+                      <TextInput type="number" step="0.01" min={Number(p.floor_price ?? p.price)} max={p.price}
+                        value={pk.unitPrice} onChange={e => setUnit(pk.productId, e.target.value)}
+                        aria-label={`Price in bundle for ${p.name}`} aria-invalid={!!err}
+                        aria-describedby={err ? errId : undefined} />
+                      <span className="bundle-line__off">{off !== null && off > 0 ? `−${off}%` : ''}</span>
+                    </div>
+                    <span className="bundle-line__total">{unit !== null ? `$${fmtMoney(unit * pk.quantity)}` : '—'}</span>
+                    <button type="button" className="bundle-line__remove" aria-label={`Remove ${p.name}`}
+                            onClick={() => setPicked(list => list.filter(x => x.productId !== pk.productId))}><X size={14} /></button>
+                    {/* Tied to the field by aria-describedby and aria-invalid rather
+                        than announced: an alert would speak on every keystroke. */}
+                    {err && <div id={errId} className="bundle-line__err">{err}</div>}
                   </div>
                 )
               })}
+              {picked.length > 0 && (
+                <FieldRow>
+                  <FormField label="Apply % off to all" compact>
+                    <TextInput type="number" min={0} max={100} step="0.5" value={pctOff}
+                      onChange={e => setPctOff(e.target.value)} />
+                  </FormField>
+                  <Btn variant="secondary" onClick={applyPct}>Apply</Btn>
+                </FieldRow>
+              )}
             </div>
           )}
 
@@ -1275,7 +1313,7 @@ function BundleBuilder({ snap, onClose, onCreate }: {
             {shown.length === 0 ? (
               <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', padding: '10px' }}>Nothing else matches.</p>
             ) : shown.slice(0, 40).map(p => (
-              <button key={p.id} onClick={() => setPicked(list => [...list, { productId: p.id, quantity: 1, note: '' }])}
+              <button key={p.id} onClick={() => setPicked(list => [...list, { productId: p.id, quantity: 1, note: '', unitPrice: Number(p.price).toFixed(2) }])}
                       style={{ display: 'flex', width: '100%', gap: '8px', alignItems: 'center', padding: '7px 10px', background: 'none', border: 'none', borderBottom: '1px solid var(--border-light)', cursor: 'pointer', textAlign: 'left' }}>
                 <Plus size={12} style={{ color: 'var(--brand-navy)', flexShrink: 0 }} />
                 <span style={{ flex: 1, fontSize: 'var(--text-xs)' }}>
@@ -1288,11 +1326,6 @@ function BundleBuilder({ snap, onClose, onCreate }: {
         </div>
 
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
-          <div style={{ flex: '0 1 160px' }}>
-            <FormField label="Bundle price" required>
-              <TextInput type="number" step="0.01" value={price} onChange={e => setPrice(e.target.value)} placeholder="0.00" />
-            </FormField>
-          </div>
           <div style={{ flex: '0 1 160px' }}>
             <FormField label="Billing">
               <Select value={model} onChange={e => setModel(e.target.value)}>
@@ -1349,13 +1382,13 @@ function BundleBuilder({ snap, onClose, onCreate }: {
                 <strong>${fmtMoney(partsTotal)}</strong>
               </div>
               <div style={{ display: 'flex', fontSize: 'var(--text-xs)', gap: '10px', marginTop: '3px', flexWrap: 'wrap' }}>
-                <span style={{ flex: 1, color: 'var(--text-secondary)' }}>As a bundle</span>
-                <strong>${fmtMoney(parseFloat(price) || 0)}</strong>
+                <span style={{ flex: 1, color: 'var(--text-secondary)' }}>Bundle price (the lines added up)</span>
+                <strong data-testid="bundle-price">${fmtMoney(bundlePrice)}</strong>
               </div>
               <div style={{ display: 'flex', fontSize: 'var(--text-xs)', gap: '10px', marginTop: '4px', paddingTop: '4px', borderTop: '1px solid var(--border)', flexWrap: 'wrap' }}>
                 <span style={{ flex: 1, fontWeight: 700 }}>Saving</span>
-                <strong style={{ color: saving > 0 ? 'var(--success)' : 'var(--danger)' }}>
-                  ${fmtMoney(saving)}{partsTotal > 0 && ` (${Math.round((saving / partsTotal) * 100)}%)`}
+                <strong style={{ color: verdict.saving > 0 ? 'var(--success)' : 'var(--danger)' }}>
+                  ${fmtMoney(verdict.saving)}{partsTotal > 0 && ` (${verdict.savingPct}%)`}
                 </strong>
               </div>
             </>

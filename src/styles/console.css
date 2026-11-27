@@ -253,6 +253,33 @@ textarea.c-input { resize: vertical; min-height: 88px; height: auto; padding: 10
   .c-chip[aria-pressed="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
 }
 
+/* A product line in "Compose a bundle": quantity, what it is, its price inside
+   the bundle (between its seller's floor and its normal price), the line total
+   and remove — one row, wrapping under the name on narrow screens. */
+.bundle-line {
+  display: grid; grid-template-columns: 72px minmax(160px, 1fr) 150px 96px 32px; align-items: center;
+  gap: var(--space-2); padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface);
+}
+.bundle-line__name { font-size: var(--text-sm); font-weight: 600; color: var(--text); }
+.bundle-line__meta { font-size: var(--text-xs); color: var(--text-secondary); }
+.bundle-line__price { display: flex; align-items: center; gap: var(--space-1); }
+.bundle-line__price .c-input { min-width: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.bundle-line__off { flex: none; width: 48px; font-size: var(--text-xs); color: var(--success); font-variant-numeric: tabular-nums; }
+.bundle-line__total { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.bundle-line__remove {
+  width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center;
+  border: none; background: none; border-radius: var(--radius); color: var(--danger); cursor: pointer;
+}
+.bundle-line__remove:hover { background: var(--danger-bg); }
+.bundle-line__err { grid-column: 2 / -1; font-size: var(--text-xs); color: var(--danger); }
+@media (max-width: 640px) {
+  .bundle-line { grid-template-columns: 64px 1fr 32px; }
+  .bundle-line__remove { grid-column: 3; grid-row: 1; }
+  .bundle-line__price { grid-column: 2; }
+  .bundle-line__total { grid-column: 2; text-align: left; }
+}
+
 /* FormField compact, and a row of fields with their buttons on the input line. */
 .c-field--compact { margin-bottom: 0; }
 .c-field-row { display: flex; align-items: flex-end; gap: var(--space-2); flex-wrap: wrap; }

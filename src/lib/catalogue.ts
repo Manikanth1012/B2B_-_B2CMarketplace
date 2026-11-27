@@ -80,6 +80,10 @@ export interface Component {
   quantity: number
   note: string | null
   sort_order: number
+  /** The price of one unit inside the bundle, set per product by the operator
+      (migration 20261127300000). Null on bundles composed before then and on a
+      seller's own bundles, which are priced as a whole. */
+  unit_price?: number | null
 }
 
 export interface Media {
