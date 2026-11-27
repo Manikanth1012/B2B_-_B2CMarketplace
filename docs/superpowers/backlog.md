@@ -138,6 +138,22 @@ the lines added up (read-only) with the saving, and "Apply % off to all" fills t
 `bundle-line-prices`; migration `20261127300000_a_bundle_line_carries_its_price.sql` (`product_components.unit_price`,
 with DB guards: per line floor..price, operator only, lines add up on insert/update/delete and on bundle price edits) — NOT applied yet; until it is, Compose a bundle fails (it writes unit_price). Also fixed: createBundle and composePack now set floor_price/list_price (NOT NULL since 20260731130000 — both inserts were refused before).
 
+## Follow-ups for specs 13, 14 and 17 (2026-11-28, queued right after spec 19)
+
+The user asked (2026-11-28) to keep specs 13, 14 and 17 in the work list. Their main work is merged and the migrations are applied. What is still open is ticked off in each spec's section below. It will be done as one follow-up spec, on its own branch, with one migration:
+- Spec 17:
+  - `settle_payment_attempt` refuses when the orders' total differs from the attempt amount;
+  - a seller moving an order part recalculates the order header (`restate_order` as security definer, or an operator-side recalculation);
+  - remove `orderOpsRepo.setLineStatus`, or back it with an operator policy.
+- Spec 14:
+  - proration of a part month;
+  - a supplementary `-S2` invoice for a subscription that missed its month (never change a raised invoice).
+- Spec 13:
+  - a scoring fault leaves a trace on the order;
+  - the Flagged list's 30 days count from the decision;
+  - the five small UI items.
+  - Deferred (feature-sized, ask first): recalling a seller's push, and device/IP signals.
+
 ## More synthetic data (2026-11-27, queued after the pending items)
 
 User: "Please add more synthetic data into the platform once the above pending action items are over." To do after
@@ -232,15 +248,15 @@ Still open:
 Built on branch `fraud-risk-scoring`. Migration `20261113600000` (applied 2026-11-26; tenth nightly job `risk`).
 Still open:
 - [ ] A held order that a seller's order manager had already acknowledged is cancelled only on our side; the push is not recalled.
-- [ ] A buyer can still edit an order's total or lines between placing it and the hold; a cancel refunds up to `orders.total`, which can differ from what was paid (tax, bundle price).
+- [x] (fixed by spec 17, 20261127100000) A buyer can still edit an order's total or lines between placing it and the hold; a cancel refunds up to `orders.total`, which can differ from what was paid (tax, bundle price).
 - [ ] The Flagged list's 30-day window counts from when the order was scored, not when it was decided.
 - [ ] No device, IP or address-reputation signals; the rules use only what the marketplace already records.
-- [ ] A scoring fault leaves no trace on the order, and one bad account stops the whole nightly rescore.
+- [ ] A scoring fault leaves no trace on the order. (One bad account stopping the nightly rescore: fixed by spec 17.)
 Follow-up migration recommended by the final review (2026-11-26), in this order:
-- [ ] **Important:** a buyer can delete their own held order (`owner_delete_orders`; `guard_order_delete` passes non-operators), and `order_risk` cascades with it — the order leaves the Held queue with no record. Refuse a non-operator delete of an order that is held or scored; consider `on delete restrict`.
-- [ ] **Important (older hole):** a consumer can update their own `orders` rows — e.g. `awaiting_payment` → `placed` without paying or being scored, or a new `shipping_address` after release. A buyer should change status only through `settle_payment_attempt`, and not the address or lines once the order leaves `awaiting_payment`.
-- [ ] A shopper who has changed market leaves a held order stuck (`guard_order_currency` refuses release and cancel).
-- [ ] Catch a fault per account in `refresh_account_risk` so one bad account cannot fail the whole job.
+- [x] (fixed by spec 17, 20261127100000) **Important:** a buyer can delete their own held order (`owner_delete_orders`; `guard_order_delete` passes non-operators), and `order_risk` cascades with it — the order leaves the Held queue with no record. Refuse a non-operator delete of an order that is held or scored; consider `on delete restrict`.
+- [x] (fixed by spec 17, 20261127100000) **Important (older hole):** a consumer can update their own `orders` rows — e.g. `awaiting_payment` → `placed` without paying or being scored, or a new `shipping_address` after release. A buyer should change status only through `settle_payment_attempt`, and not the address or lines once the order leaves `awaiting_payment`.
+- [x] (fixed by spec 17, 20261127100000) A shopper who has changed market leaves a held order stuck (`guard_order_currency` refuses release and cancel).
+- [x] (fixed by spec 17, 20261127100000) Catch a fault per account in `refresh_account_risk` so one bad account cannot fail the whole job.
 - [ ] Smaller: the checkout confirmation still says digital services activate immediately under the held notice; Accounts/Credit show the raw band ("low") and shopper rows show none; Advance/Fail buttons show on a held order (the database refuses them); an undecided earlier hold counts as an earlier order for "First order"; sellers can see refunds (and the cancel note) on an order they never saw.
 
 ## Spec 11 — loose ends II (2026-11-13)
