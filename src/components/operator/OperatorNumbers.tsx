@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Search, X } from 'lucide-react'
 import {
-  SectionCard, StatCard, Table, Td, StatusPill, EmptyState, Btn, Modal,
-  FormField, TextInput, Select, TextArea, toast, fmtInt,
+  SectionCard, Table, Td, StatusPill, EmptyState, Btn, Modal,
+  FormField, TextInput, Select, TextArea, toast, fmtInt, PageHeader, RowActions, FieldRow,
 } from './shared'
+import { Tabs } from '../ui/Tabs'
+import { KpiCard, KpiRow } from '../ui/KpiCard'
 import { Callout } from '../OnboardingJourney'
 import {
   KIND_LABEL, PURPOSE_LABEL, STATE_LABEL, STATE_TONE, ESIM_ORDER, ESIM_LABEL,
@@ -67,16 +69,9 @@ export function OperatorNumbers() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Numbers &amp; SIMs</h1>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            {fmtInt(book.ranges.length)} blocks reserved · {fmtInt(e.inUse)} numbers in use
-            {' · '}{fmtInt(e.onDevices)} of them fitted to a device
-          </p>
-        </div>
-        <Btn onClick={() => setAssigning(true)}>Assign a number</Btn>
-      </div>
+      <PageHeader title="Numbers & SIMs"
+        description={`${fmtInt(book.ranges.length)} blocks reserved · ${fmtInt(e.inUse)} numbers in use · ${fmtInt(e.onDevices)} of them fitted to a device`}
+        actions={<Btn onClick={() => setAssigning(true)}>Assign a number</Btn>} />
 
       {book.loadError && <Callout tone="danger" title="This did not load">{book.loadError}</Callout>}
 
@@ -106,34 +101,28 @@ export function OperatorNumbers() {
         </Callout>
       ))}
 
-      <div className="stat-row">
-        <StatCard label="Numbers in use" value={fmtInt(e.inUse)}
-                  sublabel={`${fmtInt(e.people)} people · ${fmtInt(e.accounts)} accounts`} />
-        <StatCard label="Fitted to a device" value={fmtInt(e.onDevices)}
-                  sublabel="IoT SIMs in sensors and gateways that have shipped" />
-        <StatCard label="In quarantine" value={fmtInt(e.quarantined)}
-                  sublabel="Released, and not reissuable for ninety days"
-                  color={e.quarantined ? 'var(--warning)' : undefined} />
-        <StatCard label="Blocks needing attention" value={fmtInt(alarms.length)}
-                  sublabel={alarms.length ? 'Expiring reservations or nearly full' : 'Every reservation has room and time'}
-                  color={alarms.length ? 'var(--warning)' : 'var(--success)'} />
-      </div>
+      <KpiRow label="Numbers summary">
+        <KpiCard variant="ops" label="Numbers in use" value={fmtInt(e.inUse)}
+                 status={`${fmtInt(e.people)} people · ${fmtInt(e.accounts)} accounts`} />
+        <KpiCard variant="ops" label="Fitted to a device" value={fmtInt(e.onDevices)}
+                 status="IoT SIMs in sensors and gateways that have shipped" />
+        <KpiCard variant="ops" label="In quarantine" value={fmtInt(e.quarantined)}
+                 tone={e.quarantined ? 'warning' : undefined}
+                 status="Released, and not reissuable for ninety days" />
+        <KpiCard variant={alarms.length ? 'risk' : 'ops'} label="Blocks needing attention" value={fmtInt(alarms.length)}
+                 tone={alarms.length ? 'warning' : 'success'}
+                 status={alarms.length ? 'Expiring reservations or nearly full' : 'Every reservation has room and time'} />
+      </KpiRow>
 
-      <div style={{ display: 'flex', gap: '4px', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer',
-            fontSize: 'var(--text-sm)', fontWeight: tab === t.id ? 700 : 500,
-            color: tab === t.id ? 'var(--brand-accent-dark)' : 'var(--text-tertiary)',
-            borderBottom: tab === t.id ? '2px solid var(--brand-accent-dark)' : '2px solid transparent',
-          }}>{t.label}</button>
-        ))}
-      </div>
+      <Tabs ariaLabel="Numbers views" panelIdPrefix="numbers-panel-" value={tab} onChange={id => setTab(id as Tab)}
+        tabs={TABS} />
 
+      <div role="tabpanel" id={`numbers-panel-${tab}`}>
       {tab === 'blocks' && <BlocksTab book={book} />}
       {tab === 'allocated' && <AllocatedTab onChanged={reload} />}
       {tab === 'esim' && <EsimTab book={book} onChanged={reload} />}
       {tab === 'systems' && <SystemsTab book={book} />}
+      </div>
 
       {assigning && (
         <AssignModal book={book} onClose={() => setAssigning(false)}
@@ -153,7 +142,7 @@ function BlocksTab({ book }: { book: NumberBook }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <SectionCard title="Blocks reserved from the owning systems"
                    subtitle="Utilisation is against what was reserved, never against the block size — a block of 10,000 with 500 reserved and 500 assigned is full.">
-        <Table headers={['Block', 'What for', 'Range', 'Reserved', 'Allocated', 'Free', 'Used', 'Reservation', '']}>
+        <Table headers={['Block', 'What for', 'Range', 'Reserved', 'Allocated', 'Free', 'Used', 'Reservation', 'Actions']}>
           {book.use.map(u => {
             const alarm = blockAlarm(u)
             const r = rangeOf(u.range_id)
@@ -161,44 +150,46 @@ function BlocksTab({ book }: { book: NumberBook }) {
               <tr key={u.range_id}>
                 <Td>
                   <div style={{ fontWeight: 600 }}>{u.range_id}</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                  <div className="c-sub">
                     {KIND_LABEL[u.kind]} · {u.market} · {u.system_id}
                   </div>
                 </Td>
-                <Td right style={{ fontSize: 'var(--text-xs)' }}>{PURPOSE_LABEL[u.purpose]}</Td>
-                <Td right style={{ fontSize: '11px', fontFamily: 'ui-monospace, monospace' }}>
+                <Td nowrap>{PURPOSE_LABEL[u.purpose]}</Td>
+                <Td kind="id" style={{ fontFamily: 'ui-monospace, monospace' }}>
                   {u.range_from}<br />{u.range_to}
                 </Td>
-                <Td right>{fmtInt(u.reserved)}</Td>
-                <Td right>
+                <Td kind="num">{fmtInt(u.reserved)}</Td>
+                <Td kind="num">
                   {fmtInt(u.reserved - u.free)}
                   {u.quarantine > 0 && (
-                    <div style={{ fontSize: '11px', color: 'var(--warning)' }}>
+                    <div style={{ color: 'var(--warning)' }}>
                       {fmtInt(u.quarantine)} in quarantine
                     </div>
                   )}
                 </Td>
-                <Td right>{fmtInt(u.free)}</Td>
-                <Td right style={{
+                <Td kind="num">{fmtInt(u.free)}</Td>
+                <Td kind="num" style={{
                   fontWeight: 700,
                   color: utilisation(u) >= 95 ? 'var(--danger)' : utilisation(u) >= 80 ? 'var(--warning)' : 'var(--text)',
                 }}>{utilisation(u)}%</Td>
-                <Td right style={{ fontSize: 'var(--text-xs)' }}>
+                <Td kind="status">
                   <StatusPill status={u.status === 'active' ? 'active' : u.status === 'expiring' ? 'pending' : 'retired'}
                               label={u.status} />
                   {alarm.level !== 'none' && (
-                    <div style={{ color: alarm.level === 'danger' ? 'var(--danger)' : 'var(--warning)', marginTop: '2px', maxWidth: '220px' }}>
+                    <div style={{ color: alarm.level === 'danger' ? 'var(--danger)' : 'var(--warning)', marginTop: '2px', maxWidth: '220px', whiteSpace: 'normal' }}>
                       {alarm.why}
                     </div>
                   )}
                 </Td>
-                <Td right><Btn variant="secondary" size="sm" onClick={() => setOpen(u)}>Open</Btn></Td>
+                <Td>
+                  <RowActions label={u.range_id} actions={[{ id: 'open', label: 'Open', variant: 'secondary', onClick: () => setOpen(u) }]} />
+                </Td>
               </tr>
             )
           })}
         </Table>
         <div style={{ padding: '12px 20px', borderTop: '1px solid var(--border-light)' }}>
-          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: 0 }}>
+          <p className="c-sub" style={{ margin: 0 }}>
             Free is the reservation less what has been allocated out of it. There is no list of free numbers
             here and there should not be — the owning system holds that, and a copy would be a second answer.
           </p>
@@ -238,15 +229,15 @@ function BlockDetail({ use, range, onClose }: {
             <Table headers={['Number', 'State', 'Who or what has it', 'Since', 'Order']}>
               {rows.map(n => (
                 <tr key={n.id}>
-                  <Td style={{ fontFamily: 'ui-monospace, monospace', fontSize: 'var(--text-xs)' }}>{n.value}</Td>
-                  <Td right><StatusPill status={STATE_TONE[n.state]} label={STATE_LABEL[n.state]} /></Td>
-                  <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '340px' }}>{heldBy(n)}</Td>
-                  <Td right style={{ fontSize: 'var(--text-xs)' }}>{n.assigned_on ?? '—'}</Td>
-                  <Td right style={{ fontSize: 'var(--text-xs)' }}>{n.order_ref ?? '—'}</Td>
+                  <Td kind="id" style={{ fontFamily: 'ui-monospace, monospace' }}>{n.value}</Td>
+                  <Td kind="status"><StatusPill status={STATE_TONE[n.state]} label={STATE_LABEL[n.state]} /></Td>
+                  <Td style={{ maxWidth: '340px' }}>{heldBy(n)}</Td>
+                  <Td kind="date">{n.assigned_on ?? '—'}</Td>
+                  <Td kind="id">{n.order_ref ?? '—'}</Td>
                 </tr>
               ))}
             </Table>
-            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', padding: '8px 16px' }}>
+            <p className="c-sub" style={{ padding: '8px 16px' }}>
               Showing {fmtInt(rows.length)} of {fmtInt(use.reserved - use.free)} allocated. The counts come
               from the database, not from this page.
             </p>
@@ -278,27 +269,27 @@ function AllocatedTab({ onChanged }: { onChanged: () => Promise<void> }) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       <SectionCard title="Find a number"
                    subtitle="A number, an order, a device serial or a name — support does not know which of those the customer is reading out.">
-        <div style={{ padding: '14px 20px', display: 'flex', gap: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-          <div style={{ flex: 1, minWidth: '260px' }}>
-            <FormField label="Search">
+        <div style={{ padding: '14px 20px' }}>
+          <FieldRow>
+            <FormField label="Search" compact>
               <TextInput value={q} onChange={e => setQ(e.target.value)}
                          onKeyDown={e => { if (e.key === 'Enter') void run(q) }}
                          placeholder="8912345600000, ORD-882091, SKU5007-0000012, SmartBuild" />
             </FormField>
-          </div>
-          <Btn size="sm" disabled={busy} onClick={() => void run(q)}>
-            <Search size={14} /> {busy ? 'Looking…' : 'Search'}
-          </Btn>
-          {q && (
-            <Btn variant="secondary" size="sm"
-                 onClick={() => { setQ(''); void loadEstate(80).then(setRows) }}>
-              <X size={14} /> Clear
+            <Btn disabled={busy} onClick={() => void run(q)}>
+              <Search size={14} /> {busy ? 'Looking…' : 'Search'}
             </Btn>
-          )}
+            {q && (
+              <Btn variant="secondary"
+                   onClick={() => { setQ(''); void loadEstate(80).then(setRows) }}>
+                <X size={14} /> Clear
+              </Btn>
+            )}
+          </FieldRow>
           {q.trim().length >= 3 && (
-            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', paddingBottom: '10px' }}>
+            <div className="c-sub" style={{ marginTop: '8px' }}>
               Reads as {lookupKind(q) === 'name' ? 'a name' : `a ${lookupKind(q)}`}
-            </span>
+            </div>
           )}
         </div>
       </SectionCard>
@@ -308,16 +299,18 @@ function AllocatedTab({ onChanged }: { onChanged: () => Promise<void> }) {
         {rows === null ? <div style={{ padding: '30px', textAlign: 'center' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
         : rows.length === 0 ? <EmptyState message="Nothing matches that" />
         : (
-          <Table headers={['Number', 'Kind', 'What for', 'State', 'Who or what has it', 'Order', '']}>
+          <Table headers={['Number', 'Kind', 'What for', 'State', 'Who or what has it', 'Order', 'Actions']}>
             {rows.map(n => (
               <tr key={n.id}>
-                <Td style={{ fontFamily: 'ui-monospace, monospace', fontSize: 'var(--text-xs)' }}>{n.value}</Td>
-                <Td right style={{ fontSize: 'var(--text-xs)' }}>{KIND_LABEL[n.kind]}</Td>
-                <Td right style={{ fontSize: 'var(--text-xs)' }}>{PURPOSE_LABEL[n.purpose]}</Td>
-                <Td right><StatusPill status={STATE_TONE[n.state]} label={STATE_LABEL[n.state]} /></Td>
-                <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '360px' }}>{heldBy(n)}</Td>
-                <Td right style={{ fontSize: 'var(--text-xs)' }}>{n.order_ref ?? '—'}</Td>
-                <Td right><Btn variant="secondary" size="sm" onClick={() => setOpen(n)}>Open</Btn></Td>
+                <Td kind="id" style={{ fontFamily: 'ui-monospace, monospace' }}>{n.value}</Td>
+                <Td nowrap>{KIND_LABEL[n.kind]}</Td>
+                <Td nowrap>{PURPOSE_LABEL[n.purpose]}</Td>
+                <Td kind="status"><StatusPill status={STATE_TONE[n.state]} label={STATE_LABEL[n.state]} /></Td>
+                <Td style={{ maxWidth: '360px' }}>{heldBy(n)}</Td>
+                <Td kind="id">{n.order_ref ?? '—'}</Td>
+                <Td>
+                  <RowActions label={n.value} actions={[{ id: 'open', label: 'Open', variant: 'secondary', onClick: () => setOpen(n) }]} />
+                </Td>
               </tr>
             ))}
           </Table>
@@ -385,14 +378,14 @@ function NumberDetail({ n, onClose, onChanged }: {
         <Table headers={['', '']}>
           {facts.map(([k, v]) => (
             <tr key={k}>
-              <Td style={{ fontWeight: 600, color: 'var(--text-secondary)', width: '38%' }}>{k}</Td>
-              {/* Widthed on purpose. `Td right` means "this is a figure" and
+              <Td style={{ fontWeight: 600, color: 'var(--slate-600)', width: '38%' }}>{k}</Td>
+              {/* Widthed on purpose. A figure cell means "this is a figure" and
                   carries `nowrap` with it, which is right for $41,871.56 and
                   wrong for "Nimbus Occupancy sensor SKU5004-0000001, at Priya
                   Raman, from ORD-881044" — that ran the table past the edge of
                   its own modal and clipped every value in the list. A cell with
                   a width has been told it must wrap, and does. */}
-              <Td right style={{ color: v?.trim() ? 'var(--text)' : 'var(--text-tertiary)', fontSize: 'var(--text-sm)', width: '62%' }}>
+              <Td style={{ color: v?.trim() ? 'var(--text)' : 'var(--slate-600)', width: '62%' }}>
                 {/* Declared, never blank — and an empty string is blank. `??`
                     alone let `market: ''` render as nothing at all, which is
                     the state this line exists to rule out. */}
@@ -452,17 +445,17 @@ function EsimTab({ book, onChanged }: { book: NumberBook; onChanged: () => Promi
 
       <SectionCard title="Profiles" subtitle={`${book.esim.length} issued`}>
         {book.esim.length === 0 ? <EmptyState message="No eSIM profiles issued" /> : (
-          <Table headers={['ICCID', 'EID', 'Where it has got to', 'SM-DP+', 'Changed', 'Record the next step']}>
+          <Table headers={['ICCID', 'EID', 'Where it has got to', 'SM-DP+', 'Changed', 'Actions']}>
             {book.esim.map(p => (
               <tr key={p.iccid}>
-                <Td style={{ fontFamily: 'ui-monospace, monospace', fontSize: 'var(--text-xs)' }}>{p.iccid}</Td>
-                <Td right style={{ fontFamily: 'ui-monospace, monospace', fontSize: '11px', maxWidth: '200px', wordBreak: 'break-all' }}>
+                <Td kind="id" style={{ fontFamily: 'ui-monospace, monospace' }}>{p.iccid}</Td>
+                <Td kind="id" style={{ fontFamily: 'ui-monospace, monospace', maxWidth: '200px', wordBreak: 'break-all', whiteSpace: 'normal' }}>
                   {p.eid ?? 'Not recorded'}
                 </Td>
-                <Td right>
+                <Td nowrap>
                   {/* The ladder, in the standard's order, so the state reads as
                       a position rather than a word. */}
-                  <div style={{ display: 'flex', gap: '3px', alignItems: 'center', justifyContent: 'flex-end' }}>
+                  <div style={{ display: 'flex', gap: '3px', alignItems: 'center' }}>
                     {ESIM_ORDER.filter(s => s !== 'deleted').map(s => (
                       <span key={s} title={ESIM_LABEL[s]} style={{
                         width: '10px', height: '10px', borderRadius: '50%',
@@ -470,26 +463,24 @@ function EsimTab({ book, onChanged }: { book: NumberBook; onChanged: () => Promi
                           ? 'var(--success)' : 'var(--gray-100)',
                       }} />
                     ))}
-                    <span style={{ fontSize: 'var(--text-xs)', marginLeft: '6px' }}>{ESIM_LABEL[p.state]}</span>
+                    <span style={{ marginLeft: '6px' }}>{ESIM_LABEL[p.state]}</span>
                   </div>
                   {p.note && (
-                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', marginTop: '2px', maxWidth: '260px' }}>
+                    <div className="c-sub" style={{ marginTop: '2px', maxWidth: '260px', whiteSpace: 'normal' }}>
                       {p.note}
                     </div>
                   )}
                 </Td>
-                <Td right style={{ fontSize: 'var(--text-xs)' }}>{p.smdp}</Td>
-                <Td right style={{ fontSize: 'var(--text-xs)' }}>{p.changed_on ?? p.released_on}</Td>
-                <Td right>
-                  <div style={{ display: 'flex', gap: '4px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                    {esimNext(p.state).length === 0
-                      ? <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>Deleted — nothing follows</span>
-                      : esimNext(p.state).map(s => (
-                        <Btn key={s} variant={s === 'deleted' ? 'danger' : 'secondary'} size="sm"
-                             disabled={busy === p.iccid || !canMoveProfile(p.state, s).ok}
-                             onClick={() => void move(p, s)}>{ESIM_LABEL[s]}</Btn>
-                      ))}
-                  </div>
+                <Td nowrap>{p.smdp}</Td>
+                <Td kind="date">{p.changed_on ?? p.released_on}</Td>
+                <Td>
+                  {esimNext(p.state).length === 0
+                    ? <span className="c-sub">Deleted — nothing follows</span>
+                    : <RowActions label={p.iccid} actions={esimNext(p.state).map(s => ({
+                        id: s, label: ESIM_LABEL[s], variant: s === 'deleted' ? 'danger' as const : 'secondary' as const,
+                        disabled: busy === p.iccid || !canMoveProfile(p.state, s).ok,
+                        onClick: () => void move(p, s),
+                      }))} />}
                 </Td>
               </tr>
             ))}
@@ -514,25 +505,25 @@ function SystemsTab({ book }: { book: NumberBook }) {
             <Td>
               <div style={{ fontWeight: 600 }}>{s.name}</div>
               {s.note && (
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', maxWidth: '380px' }}>{s.note}</div>
+                <div className="c-sub" style={{ maxWidth: '380px' }}>{s.note}</div>
               )}
             </Td>
-            <Td right style={{ fontSize: 'var(--text-xs)' }}>
+            <Td>
               {s.resources.map(r => KIND_LABEL[r as NumberKind] ?? r).join(', ')}
             </Td>
-            <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '220px' }}>{s.interface}</Td>
-            <Td right>
+            <Td style={{ maxWidth: '220px' }}>{s.interface}</Td>
+            <Td kind="status">
               <StatusPill status={s.sync_state === 'healthy' ? 'healthy' : s.sync_state === 'degraded' ? 'degraded' : 'rejected'}
                           label={s.sync_state} />
               {/* A degraded system holds reservations rather than confirming
                   them, which is a promise this screen has to state. */}
               {s.sync_state !== 'healthy' && (
-                <div style={{ fontSize: '11px', color: 'var(--warning)', marginTop: '2px', maxWidth: '200px' }}>
+                <div style={{ color: 'var(--warning)', marginTop: '2px', maxWidth: '200px', whiteSpace: 'normal' }}>
                   Reservations against it are held, not confirmed.
                 </div>
               )}
             </Td>
-            <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '280px' }}>{systemLine(s)}</Td>
+            <Td style={{ maxWidth: '280px' }}>{systemLine(s)}</Td>
           </tr>
         ))}
       </Table>
@@ -555,23 +546,23 @@ function ChannelPolicy({ rules }: { rules: ChannelRule[] }) {
     <SectionCard
       title="What this channel does with numbers"
       subtitle="Read by the allocation function as well as by you — a refusal here is the refusal a customer meets.">
-      <Table headers={['', 'What', 'Where it is done', 'Why']}>
+      <Table headers={['Decision', 'What', 'Where it is done', 'Why']}>
         {[...no, ...yes].map(r => (
           <tr key={r.id}>
-            <Td>
+            <Td kind="status">
               <StatusPill status={r.decision === 'sold here' ? 'healthy' : 'rejected'}
                           label={r.decision === 'sold here' ? 'here' : 'not here'} />
             </Td>
             <Td>
               <div style={{ fontWeight: 600 }}>{r.label}</div>
-              <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono, monospace)' }}>
+              <div className="c-sub c-mono">
                 {r.id}
               </div>
             </Td>
-            <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '200px' }}>
+            <Td style={{ maxWidth: '200px' }}>
               {shortAnswer(r)}
             </Td>
-            <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '420px', color: 'var(--text-secondary)' }}>
+            <Td style={{ maxWidth: '420px', color: 'var(--slate-600)' }}>
               {r.reason}
               {/* A rule nobody agreed is one that gets reversed by whoever
                   complains loudest, so the desk gets told rather than the log. */}
