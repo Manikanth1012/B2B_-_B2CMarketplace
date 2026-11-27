@@ -50,6 +50,7 @@ const PAIRS: [fg: string, bg: string, min: number][] = [
   ['accent-on-dark-2', 'ink-900', 3], ['accent-on-dark-2', 'brand-navy-light', 3],
   ['text-inverse', 'brand-navy', 4.5],
   ['text-inverse', 'brand-navy-dark', 4.5],
+  ['success', 'surface', 4.5], ['warning', 'surface', 4.5],   // KpiCard value tone
   ['success', 'bg-card', 4.5],
   ['warning', 'bg-card', 4.5],
   ['danger', 'bg-card', 4.5],

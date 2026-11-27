@@ -19,6 +19,7 @@ import {
   PageHeader, FilterBar, Table, TableRow, Td,
 } from './shared'
 import { Tabs } from '../ui/Tabs'
+import { KpiCard, KpiRow } from '../ui/KpiCard'
 import { Callout } from '../OnboardingJourney'
 import { EvidenceLink } from '../EvidenceLink'
 import { PartnerMarkets } from './PartnerMarkets'
@@ -210,8 +211,8 @@ export function OperatorPartners({ focus = null }: { focus?: string | null } = {
               return (
                 <TableRow key={r.id} selected={r.id === selected} style={{ cursor: 'pointer' }}
                   onClick={() => { setSelected(r.id); setTab('overview') }}>
-                  <Td clamp title={r.name}>
-                    <div style={{ fontWeight: 700, color: 'var(--text)' }}>{r.name}</div>
+                  <Td>
+                    <div style={{ fontWeight: 700, color: 'var(--text)' }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={r.name}>{r.name}</span></div>
                     <div style={{ color: 'var(--slate-600)' }}>{r.id} · {r.type} · {r.country}</div>
                   </Td>
                   <Td>
@@ -303,7 +304,7 @@ export function OperatorPartners({ focus = null }: { focus?: string | null } = {
           }
         >
           <div style={{ padding: '10px 20px 0', borderBottom: '1px solid var(--border-light)' }}>
-            <Tabs ariaLabel="Seller record" value={tab} onChange={id => setTab(id as Tab)}
+            <Tabs ariaLabel="Seller record" panelIdPrefix="seller-panel-" value={tab} onChange={id => setTab(id as Tab)}
               tabs={TABS.map(t => ({
                 id: t.id, label: t.label,
                 count: !detail ? undefined
@@ -314,7 +315,7 @@ export function OperatorPartners({ focus = null }: { focus?: string | null } = {
               }))} />
           </div>
 
-          <div style={{ padding: '18px 20px' }}>
+          <div role="tabpanel" id={`seller-panel-${tab}`} style={{ padding: '18px 20px' }}>
             {detail?.loadError && <Callout tone="danger" title="Part of this record did not load">{detail.loadError}</Callout>}
 
             {tab === 'overview' && (
@@ -830,13 +831,13 @@ function Listings({ detail, catName }: { detail: PartnerDetail; catName: (id: st
           const state = listingState(l.status)
           return (
             <tr key={l.id}>
-              <Td clamp title={l.name}>
-                <div style={{ fontWeight: 700 }}>{l.name}</div>
+              <Td>
+                <div style={{ fontWeight: 700 }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={l.name}>{l.name}</span></div>
                 <div style={{ color: 'var(--slate-600)' }}>{l.id}</div>
               </Td>
               <Td nowrap>{catName(l.category_id)}</Td>
               <Td kind="num">${fmtMoney(l.price)}</Td>
-              <Td kind="num">{l.stock}</Td>
+              <Td kind="status">{l.stock}</Td>
               <Td>
                 <div style={{ fontWeight: 700,
                   color: l.status === 'live' ? 'var(--success)' : l.status === 'pending' ? 'var(--warning)' : 'var(--danger)' }}>
@@ -946,12 +947,15 @@ function Bills({ detail }: { detail: PartnerDetail }) {
 
   return (
     <div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '14px' }}>
-        <Stat label="Gross billed" value={`$${fmtMoney(total('gross'))}`} sub={`${detail.statements.length} periods`} />
-        <Stat label="Marketplace commission" value={`$${fmtMoney(total('commission'))}`}
-              sub={detail.plan ? `${detail.plan.base_rate}% on the ${detail.plan.name} plan` : 'No plan'} />
-        <Stat label="Settled to the seller" value={`$${fmtMoney(total('net'))}`}
-              sub={`${fmtInt(detail.statements.reduce((n, s) => n + s.order_count, 0))} orders`} />
+      <div style={{ marginBottom: '14px' }}>
+        <KpiRow label="Billing summary">
+          <KpiCard variant="money" label="Gross billed" value={`$${fmtMoney(total('gross'))}`} unit="USD"
+            context={`${detail.statements.length} periods`} />
+          <KpiCard variant="money" label="Marketplace commission" value={`$${fmtMoney(total('commission'))}`} unit="USD"
+            context={detail.plan ? `${detail.plan.base_rate}% on the ${detail.plan.name} plan` : 'No plan'} />
+          <KpiCard variant="money" label="Settled to the seller" value={`$${fmtMoney(total('net'))}`} unit="USD"
+            context={`${fmtInt(detail.statements.reduce((n, s) => n + s.order_count, 0))} orders`} />
+        </KpiRow>
       </div>
 
       <Table headers={['Period', 'Orders', 'Gross', 'Commission', 'Fees', 'Refunds', 'Net paid', 'State']}>

@@ -576,8 +576,8 @@ export function RowActions({ actions, max = 2, label }: {
   const rest = list.length > max ? list.slice(max) : []
   return (
     <div className="c-row-actions">
-      {inline.map(a => (
-        <Btn key={a.label} size="sm" variant={a.variant ?? 'tertiary'} disabled={a.disabled} loading={a.loading}
+      {inline.map((a, i) => (
+        <Btn key={i} size="sm" variant={a.variant ?? 'tertiary'} disabled={a.disabled} loading={a.loading}
           onClick={e => { e.stopPropagation(); a.onClick() }} onKeyDown={keepFromRow}>
           {a.icon}{a.label}
         </Btn>

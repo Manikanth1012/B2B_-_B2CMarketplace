@@ -148,7 +148,7 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
       )}
 
       <KpiRow label="Catalogue summary">
-        <KpiCard variant="ops" label="Awaiting review" value={String(stats.waiting)}
+        <KpiCard variant="ops" label="Awaiting review" value={String(stats.waiting)} tone="warning"
           status={`${stats.flagged} need a policy or certification check`} />
         <KpiCard variant={stats.medianAgeDays !== null && stats.medianAgeDays > 1 ? 'risk' : 'ops'} label="Median time waiting"
           value={stats.medianAgeDays === null ? 'Nothing waiting' : `${stats.medianAgeDays} days`}
@@ -156,11 +156,11 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
         <KpiCard variant="ops" label="Approval rate"
           value={stats.approvalRate === null ? 'Nothing decided' : `${stats.approvalRate}%`}
           status={`${stats.rejected} refused, mostly for missing evidence`} />
-        <KpiCard variant="ops" label="Live listings" value={String(stats.live)}
+        <KpiCard variant="ops" label="Live listings" value={String(stats.live)} tone="success"
           status={`${stats.suspended} suspended with their seller`} />
       </KpiRow>
 
-      <Tabs ariaLabel="Catalogue sections" value={tab} onChange={id => setTab(id as Tab)}
+      <Tabs ariaLabel="Catalogue sections" panelIdPrefix="cat-panel-" value={tab} onChange={id => setTab(id as Tab)}
         tabs={[
           { id: 'queue', label: 'Review queue', count: queue.length + changeQueue.length },
           { id: 'catalogue', label: 'Live catalogue', count: snap.products.length },
@@ -168,6 +168,7 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
           { id: 'rules', label: 'Dependencies', count: snap.rules.length },
         ]} />
 
+      <div role="tabpanel" id={`cat-panel-${tab}`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {tab === 'queue' && (
         <SectionCard title="Review queue" subtitle="Decisions are visible to the seller with the reason you give">
           {queue.length === 0 ? <EmptyState message="Nothing is waiting" /> : (
@@ -458,6 +459,7 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
       )}
 
       {tab === 'rules' && <DependencyRules snap={snap} catName={catName} onOpen={setOpenProduct} />}
+      </div>
 
       {openProduct && productOf(openProduct) && (
         <ProductInspector
@@ -576,8 +578,8 @@ function ProductTable({ products, snap, onOpen, heroOf, catName }: {
                 </div>
               </Td>
               <Td clamp>{catName(p.category_id)}</Td>
-              <Td clamp title={p.seller}>
-                {p.seller}
+              <Td>
+                <span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={p.seller}>{p.seller}</span>
                 {p.partner_id === null && <div style={{ color: 'var(--slate-600)' }}>first party</div>}
               </Td>
               <Td kind="num">${fmtMoney(p.price)}</Td>
@@ -633,8 +635,8 @@ function DependencyRules({ snap, catName, onOpen }: {
             if (!p) return null
             return (
               <tr key={r.id}>
-                <Td clamp title={p.name}>
-                  <button onClick={() => onOpen(p.id)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', fontWeight: 700, color: 'var(--brand-navy)' }}>{p.name}</button>
+                <Td>
+                  <span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={p.name}><button onClick={() => onOpen(p.id)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left', fontWeight: 700, color: 'var(--brand-navy)' }}>{p.name}</button></span>
                   <div style={{ color: 'var(--slate-600)' }}>{p.id}</div>
                 </Td>
                 <Td clamp>{catName(p.category_id)}</Td>

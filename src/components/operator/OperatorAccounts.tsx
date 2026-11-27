@@ -111,7 +111,7 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
       <PageHeader
         title="Accounts"
         description="Who buys from this marketplace — companies and their onboarding, and the people who shop here.">
-        <Tabs ariaLabel="Account type" value={tab} onChange={id => setTab(id as 'business' | 'retail')}
+        <Tabs ariaLabel="Account type" panelIdPrefix="acct-panel-" value={tab} onChange={id => setTab(id as 'business' | 'retail')}
           tabs={[
             { id: 'business', label: 'Businesses', count: accounts.length },
             { id: 'retail', label: 'Retail customers', count: book.shoppers.length },
@@ -129,7 +129,7 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
           status="still have a gate outstanding" />
         <KpiCard variant={totals.overdue ? 'risk' : 'ops'} label="Overdue" value={fmtInt(totals.overdue)}
           status={totals.overdue ? 'a gate or a review past its date' : 'nothing past its date'} />
-        <KpiCard variant="ops" label="Waiting to be decided" value={fmtInt(totals.waiting)}
+        <KpiCard variant="ops" label="Waiting to be decided" value={fmtInt(totals.waiting)} tone={totals.waiting ? 'warning' : undefined}
           status="companies who have applied" />
         <KpiCard variant="ops" label="Retail customers" value={fmtInt(book.shoppers.length)}
           status="people with an account here" />
@@ -165,6 +165,7 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
         </div>
       )}
 
+      <div role="tabpanel" id={`acct-panel-${tab}`}>
       {tab === 'business' ? (
         <SectionCard title="Business accounts"
           subtitle="Whoever needs something doing about them, first.">
@@ -210,8 +211,8 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
                     x => !!x && (x.state === 'overdue' || isLate(x, TODAY)))
                   return (
                     <tr key={a.id}>
-                      <Td clamp title={a.company}>
-                        <div style={{ fontWeight: 600 }}>{a.company}</div>
+                      <Td>
+                        <div style={{ fontWeight: 600 }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={a.company}>{a.company}</span></div>
                         <div style={{ color: 'var(--slate-600)' }}>
                           {a.id} · {a.segment}{a.industry ? ` · ${a.industry}` : ''}
                         </div>
@@ -274,8 +275,8 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
               <Table headers={['Customer', 'Where', 'Tier', 'Points', 'With us since']}>
                 {retailPage.rows.map(s => (
                   <tr key={s.id}>
-                    <Td clamp title={s.name}>
-                      <div style={{ fontWeight: 600 }}>{s.name}</div>
+                    <Td>
+                      <div style={{ fontWeight: 600 }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={s.name}>{s.name}</span></div>
                       {s.email && (
                         <div style={{ color: 'var(--slate-600)' }}>{s.email}</div>
                       )}
@@ -292,6 +293,7 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
           )}
         </SectionCard>
       )}
+      </div>
 
       {open && (
         <Journey account={open} steps={stepsOf(steps, open.id)} />

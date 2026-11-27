@@ -227,7 +227,7 @@ export function DesignSystemPage() {
         <h2 id="ds-kpi">KPI</h2>
         <div className="ds__grid">
           <KpiCard variant="money" label="Revenue" unit="USD" value="$128,400" delta={{ text: '+8.2% vs last month', direction: 'up' }} context="Settled this month" series={[4, 6, 5, 8, 7, 10, 12]} />
-          <KpiCard variant="ops" label="Open tickets" value="23" delta={{ text: 'No change', direction: 'flat' }} context="Across all queues" />
+          <KpiCard variant="ops" label="Open tickets" value="23" tone="warning" delta={{ text: 'No change', direction: 'flat' }} context="Across all queues" />
           <KpiCard variant="risk" label="Overdue invoices" value="7" delta={{ text: '+2 this week', direction: 'down' }} context="Needs follow-up" />
         </div>
       </section>

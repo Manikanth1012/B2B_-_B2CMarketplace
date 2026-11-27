@@ -12,7 +12,7 @@ import { Sparkline } from './charts/Sparkline'
  * standing bare. In a `KpiRow` the cards share one height and the label,
  * value and foot line sit at the same place on each.
  */
-export function KpiCard({ label, value, delta, icon, children, unit, context, variant, series, breakdown, status }: {
+export function KpiCard({ label, value, delta, icon, children, unit, context, variant, series, breakdown, status, tone }: {
   label: string
   icon?: ReactNode
   value: string
@@ -29,6 +29,8 @@ export function KpiCard({ label, value, delta, icon, children, unit, context, va
   breakdown?: { label: string; value: string }[]
   /** A short status line for a count, e.g. "2 overdue, 1 due today". */
   status?: string
+  /** Colours the value: `warning` for something waiting, `success` for something healthy. */
+  tone?: 'warning' | 'success'
 }) {
   const Icon = delta?.direction === 'up' ? ArrowUpRight : delta?.direction === 'down' ? ArrowDownRight : Minus
   return (
@@ -37,7 +39,7 @@ export function KpiCard({ label, value, delta, icon, children, unit, context, va
         <div className="kpi-card__label">{icon && <span aria-hidden="true" className="kpi-card__icon">{icon}</span>}{label}</div>
         {unit && <span className="kpi-card__unit">{unit}</span>}
       </div>
-      <div className="kpi-card__value">{value}</div>
+      <div className={`kpi-card__value${tone ? ` kpi-card__value--${tone}` : ''}`}>{value}</div>
       {breakdown && breakdown.length > 0 && (
         <dl className="kpi-card__breakdown">
           {breakdown.map(b => (
