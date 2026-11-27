@@ -130,6 +130,22 @@ Still open:
 - [x] Nothing moves an invoice from open to overdue after its due date (as before). Done in spec 14.
 - [ ] Seller settlement lines and ledger postings are not written for the new orders.
 
+## Bundle line prices (2026-11-27, in progress)
+
+User: "while creating a bundle I do not get the option of choosing a discounted price for each product". Chosen:
+price per line. Each product gets a "Price in bundle" (seller floor ≤ price ≤ normal price), the bundle price is
+the lines added up (read-only) with the saving, and "Apply % off to all" fills the lines. Branch
+`bundle-line-prices`; migration `20261127300000_a_bundle_line_carries_its_price.sql` (`product_components.unit_price`,
+with DB guards) — not applied yet. Its UI waits for the spec 18 group 1 restyle of OperatorCatalogue.tsx.
+
+## Spec 19 — scheduled reminders (n−x / n+x) and configurable basket windows (2026-11-27, queued)
+
+Spec `docs/superpowers/specs/2026-11-27-scheduled-reminders-and-basket-windows-design.md`. User chose "general,
+baskets first". Basket windows (pending / abandoned / cleared days) become per-market settings. Notification rules on
+dated events get steps (n−7, n−1, n+0, n+2 …) per channel with their own templates, sent by an eleventh nightly job
+`reminders`, never twice. First dated events: basket abandoned and clearing, invoice due, subscription renewal,
+agreement notice, quote expiry. Seeded steps are off until the operator turns them on.
+
 ## Spec 18 — alignment sweep, dashboards and charts (2026-11-27, in progress)
 
 Spec `docs/superpowers/specs/2026-11-27-alignment-sweep-and-dashboards-design.md`, branch `ui-sweep`, no migration.
