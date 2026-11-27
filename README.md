@@ -315,7 +315,7 @@ Both require `npm install jsdom`.
 
 ## Branding
 
-The app is **Aventa**. Chrome is deep navy `#061B3A`, with the 6D mark beside the Aventa wordmark. The typeface is Inter, loaded in `index.html`.
+The app is **Aventa**. Since 2026-11-27 its colours and type follow the 6D Technologies brand (6dtechnologies.com): navy `#0A2D72` for primary actions, links and focus, deep navy `#081F52` chrome, the 6D orange call to action (`#EE743B` as a fill, `#B54A18` under white labels for AA), light orange and peach accents on dark grounds, teal `#20776D` for positive signals, `#1D1729` / `#4A4752` / `#6C6A72` text on `#F4F2F9` / `#E4E0EE` surfaces, 4px control corners, and Poppins (loaded in `index.html`). Tokens live in `src/styles/global.css`; `src/lib/contrast.test.ts` keeps every pairing at WCAG AA. The 6D mark sits beside the Aventa wordmark.
 
 The Aventa wordmark is an SVG component (`AventaWordmark`) because there is no Aventa logo file to ship. The 6D mark is different: it renders only from the approved PNG in `assets/brand/` (`6d-logo-white.png` on dark chrome; `6d-logo.png` is available for light surfaces but nothing uses it yet) and is never redrawn in text, CSS or SVG. In the React app the public storefront header shows it beside the Aventa wordmark, the signed-in consumer storefront shows it in its navy header, and the operator, partner and enterprise consoles show it in their navy rails. Only the static `enterprise.html` prototype is neutral and carries no 6D mark, so that one demos as white-label.
 
