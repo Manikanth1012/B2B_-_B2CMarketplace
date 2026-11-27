@@ -1,8 +1,8 @@
 {
   "total": {
-    "fontSize": 405,
-    "hex": 130,
-    "radius": 69
+    "fontSize": 403,
+    "hex": 124,
+    "radius": 67
   },
   "files": {
     "components/AccountView.tsx": {
@@ -329,11 +329,6 @@
       "fontSize": 4,
       "hex": 0,
       "radius": 0
-    },
-    "components/operator/charts.tsx": {
-      "fontSize": 2,
-      "hex": 6,
-      "radius": 2
     },
     "components/partner/PartnerDashboard.tsx": {
       "fontSize": 3,

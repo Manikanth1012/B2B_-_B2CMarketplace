@@ -1,20 +1,18 @@
 import type { ReactNode } from 'react'
 import { ArrowDownRight, ArrowUpRight, Minus } from 'lucide-react'
+import { Sparkline } from './charts/Sparkline'
 
-/** Inline trend line: no axes, decorative, hidden under two points. */
-function Sparkline({ series }: { series: number[] }) {
-  if (series.length < 2) return null
-  const w = 120, h = 32, pad = 2
-  const min = Math.min(...series), max = Math.max(...series), span = max - min || 1
-  const pts = series.map((v, i) => `${(i / (series.length - 1) * (w - pad * 2) + pad).toFixed(1)},${(h - pad - (v - min) / span * (h - pad * 2)).toFixed(1)}`).join(' ')
-  return (
-    <svg className="kpi-card__spark" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden="true" focusable="false">
-      <polyline points={pts} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
-    </svg>
-  )
-}
-
-export function KpiCard({ label, value, delta, icon, children, unit, context, variant, series }: {
+/**
+ * A headline figure.
+ *
+ * Rule 9 (spec 18): one value per card, never several currencies joined into
+ * one string. The headline is the largest currency; the others go in
+ * `breakdown`, a compact list under it (code left, amount right, tabular). A
+ * count carries a short `status` line ("3 need a decision") rather than
+ * standing bare. In a `KpiRow` the cards share one height and the label,
+ * value and foot line sit at the same place on each.
+ */
+export function KpiCard({ label, value, delta, icon, children, unit, context, variant, series, breakdown, status }: {
   label: string
   icon?: ReactNode
   value: string
@@ -22,28 +20,56 @@ export function KpiCard({ label, value, delta, icon, children, unit, context, va
   children?: ReactNode
   /** Small caps note beside the label, e.g. a currency or period. */
   unit?: string
-  /** One line under the value. */
+  /** One line under the value, at the card's foot. */
   context?: string
   /** `risk` adds a 3px left rule in the danger colour. */
   variant?: 'money' | 'ops' | 'risk'
   series?: number[]
+  /** The other currencies (or parts), listed under the headline: label left, value right. */
+  breakdown?: { label: string; value: string }[]
+  /** A short status line for a count, e.g. "2 overdue, 1 due today". */
+  status?: string
 }) {
   const Icon = delta?.direction === 'up' ? ArrowUpRight : delta?.direction === 'down' ? ArrowDownRight : Minus
   return (
     <div className={`bento-card bento-card--light kpi-card${variant ? ` kpi-card--${variant}` : ''}`}>
       <div className="kpi-card__head">
-        <div className="kpi-card__label">{icon && <span aria-hidden="true" style={{ display: 'inline-flex', verticalAlign: '-3px', marginRight: 6 }}>{icon}</span>}{label}</div>
+        <div className="kpi-card__label">{icon && <span aria-hidden="true" className="kpi-card__icon">{icon}</span>}{label}</div>
         {unit && <span className="kpi-card__unit">{unit}</span>}
       </div>
       <div className="kpi-card__value">{value}</div>
+      {breakdown && breakdown.length > 0 && (
+        <dl className="kpi-card__breakdown">
+          {breakdown.map(b => (
+            <div key={b.label} className="kpi-card__breakdown-row">
+              <dt>{b.label}</dt>
+              <dd>{b.value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
       {delta && (
         <div className={`kpi-card__delta${delta.direction === 'flat' ? '' : ` kpi-card__delta--${delta.direction}`}`}>
           <Icon size={12} aria-hidden style={{ verticalAlign: '-2px' }} /> {delta.text}
         </div>
       )}
-      {context && <div className="kpi-card__context">{context}</div>}
-      {series && <Sparkline series={series} />}
+      {(status || context) && (
+        <div className="kpi-card__foot">
+          {status && <div className="kpi-card__status">{status}</div>}
+          {context && <div className="kpi-card__context">{context}</div>}
+        </div>
+      )}
+      {series && <Sparkline values={series} className="kpi-card__spark" />}
       {children}
     </div>
   )
+}
+
+/**
+ * A row of KPI cards: equal widths that wrap on a narrow screen, one height
+ * per line of cards, the foot line pushed to the bottom of each so the
+ * contexts line up.
+ */
+export function KpiRow({ children, label }: { children: ReactNode; label?: string }) {
+  return <div className="kpi-row" role={label ? 'group' : undefined} aria-label={label}>{children}</div>
 }

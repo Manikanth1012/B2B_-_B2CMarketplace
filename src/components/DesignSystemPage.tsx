@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Search } from 'lucide-react'
-import { Btn, EmptyState, FormField, Modal, Select, StatusPill, Table, TableRow, Td, TextArea, TextInput, ToastHost, toast } from './operator/shared'
+import { Download, Pencil, Search } from 'lucide-react'
+import { Btn, DateRangeFilter, EmptyState, FieldRow, FilterBar, FormField, Id, Modal, PageHeader, RowActions, Select, StatusPill, Table, TableRow, Td, TextArea, TextInput, ToastHost, daysBefore, isoDay, toast } from './operator/shared'
 import { Callout } from './OnboardingJourney'
-import { Dialog, Drawer, Dropdown, KpiCard, Skeleton, Spinner, StatusBadge, Tabs, Toggle } from './ui'
+import { Dialog, Drawer, Dropdown, KpiCard, KpiRow, Skeleton, Spinner, StatusBadge, Tabs, Toggle } from './ui'
+import { AreaChart, BarChart, ColumnChart, DonutChart, LineChart, Sparkline, categoryColour, compactNumber } from './ui/charts'
 import { contrast } from '../lib/contrast'
 
 /* The reference page for the design system: every shared component in every
@@ -26,6 +27,20 @@ const SPACES = ['space-1', 'space-2', 'space-3', 'space-4', 'space-6', 'space-8'
 const RADII = ['radius-sm', 'radius', 'radius-md', 'radius-lg', 'radius-xl']
 const SHADOWS = ['shadow-sm', 'shadow-md', 'shadow-lg', 'shadow-popover', 'shadow-modal']
 const COUNTRIES = ['Australia', 'Brazil', 'Canada', 'Denmark', 'Egypt', 'France', 'Ghana', 'India', 'Japan', 'Kenya', 'Mexico']
+const CHART_TOKENS = ['chart-1', 'chart-2', 'chart-3', 'chart-4', 'chart-5', 'chart-6']
+const MONTHS = ['Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov']
+const MARKETS = [
+  { key: 'consumer', label: 'Consumer', orders: 1061, gross: 109510, commission: 9331 },
+  { key: 'partner', label: 'Partner', orders: 40, gross: 49180, commission: 4576 },
+  { key: 'iot', label: 'IoT', orders: 188, gross: 196720, commission: 18384 },
+  { key: 'security', label: 'Security', orders: 115, gross: 156847, commission: 14612 },
+  { key: 'device', label: 'Device', orders: 401, gross: 167486, commission: 15528 },
+  { key: 'content', label: 'Content', orders: 795, gross: 31363, commission: 3871 },
+]
+const LOG = [
+  { id: 'INV-2026-0779', account: 'Northwind Traders', period: 'Oct 2026', status: 'paid', date: '02 Nov 2026', total: 41871.56, note: 'Settled in two parts after the September dispute was closed in the seller\'s favour.' },
+  { id: 'INV-2026-0781', account: 'Contoso Supply', period: 'Oct 2026', status: 'pending', date: '04 Nov 2026', total: 980.0, note: 'Waiting for the purchase order number.' },
+]
 const ROWS = [
   { id: 'a', name: 'Northwind Traders', status: 'active', total: 12840 },
   { id: 'b', name: 'Contoso Supply', status: 'pending', total: 4210 },
@@ -65,6 +80,12 @@ export function DesignSystemPage() {
   const [modal, setModal] = useState(false)
   const [drawer, setDrawer] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [q, setQ] = useState('')
+  const [jobStatus, setJobStatus] = useState('all')
+  const [failuresOnly, setFailuresOnly] = useState(false)
+  const today = isoDay(new Date())
+  const [range, setRange] = useState({ from: daysBefore(today, 13), to: today })
+  const [unit, setUnit] = useState('')
   const rows = [...ROWS].sort((x, y) => (sortDir === 'asc' ? 1 : -1) * x.name.localeCompare(y.name))
   const money = (n: number) => `$${n.toLocaleString('en-US')}`
 
@@ -208,6 +229,115 @@ export function DesignSystemPage() {
           <KpiCard variant="money" label="Revenue" unit="USD" value="$128,400" delta={{ text: '+8.2% vs last month', direction: 'up' }} context="Settled this month" series={[4, 6, 5, 8, 7, 10, 12]} />
           <KpiCard variant="ops" label="Open tickets" value="23" delta={{ text: 'No change', direction: 'flat' }} context="Across all queues" />
           <KpiCard variant="risk" label="Overdue invoices" value="7" delta={{ text: '+2 this week', direction: 'down' }} context="Needs follow-up" />
+        </div>
+      </section>
+
+
+      <section className="ds__section" aria-labelledby="ds-pagehead">
+        <h2 id="ds-pagehead">Page header</h2>
+        <div className="ds__card">
+          <PageHeader level={2} title="Settlement statements" description="What each seller is owed for a period, and what has been paid."
+            actions={<><Btn variant="secondary"><Download size={16} aria-hidden /> Export</Btn><Btn>New statement</Btn></>} />
+        </div>
+      </section>
+
+      <section className="ds__section" aria-labelledby="ds-tdkinds">
+        <h2 id="ds-tdkinds">Table cells and row actions</h2>
+        <p className="ds__lead">Only figures are right-aligned (<code>kind="num"</code> or <code>right</code>); ids, statuses and dates are left and never wrap; names clamp to two lines with the whole text on hover. The actions column has a hidden heading; past two actions the rest go under More.</p>
+        <Table headers={['Statement', 'Account', 'Period', 'Status', 'Issued', 'Total', 'Note', 'Actions']}>
+          {LOG.map(r => (
+            <tr key={r.id}>
+              <Td kind="id"><Id>{r.id}</Id></Td>
+              <Td clamp>{r.account}</Td>
+              <Td kind="date">{r.period}</Td>
+              <Td kind="status"><StatusPill status={r.status} /></Td>
+              <Td kind="date">{r.date}</Td>
+              <Td kind="num">{money(r.total)}</Td>
+              <Td clamp>{r.note}</Td>
+              <Td>
+                <RowActions label={r.id} actions={[
+                  { label: 'View', onClick: () => toast(`Opened ${r.id}`, 'info') },
+                  { label: 'Edit', icon: <Pencil size={14} aria-hidden />, onClick: () => toast(`Editing ${r.id}`, 'info') },
+                  { label: 'Download PDF', onClick: () => toast('Downloaded', 'success') },
+                  { label: 'Void', variant: 'danger', onClick: () => toast(`Voided ${r.id}`, 'error') },
+                ]} />
+              </Td>
+            </tr>
+          ))}
+        </Table>
+      </section>
+
+      <section className="ds__section" aria-labelledby="ds-filterbar">
+        <h2 id="ds-filterbar">Filter bar</h2>
+        <FilterBar search={{ value: q, onChange: setQ, placeholder: 'Search jobs', ariaLabel: 'Search jobs' }}
+          summary={`14 nights and 140 runs match${q ? ` "${q}"` : ''}`}
+          actions={<Btn variant="secondary">Export</Btn>}>
+          <Select aria-label="Status" value={jobStatus} onChange={e => setJobStatus(e.target.value)}>
+            <option value="all">All statuses</option><option value="ok">OK</option><option value="failed">Failed</option>
+          </Select>
+          <Toggle checked={failuresOnly} onChange={setFailuresOnly} label="Failures only" />
+        </FilterBar>
+        <h3>Date range</h3>
+        <FilterBar>
+          <DateRangeFilter from={range.from} to={range.to} onChange={setRange} today={today} quickLabel={n => `${n} nights`} />
+        </FilterBar>
+      </section>
+
+      <section className="ds__section" aria-labelledby="ds-fieldrow">
+        <h2 id="ds-fieldrow">Field row</h2>
+        <p className="ds__lead">A field and its buttons on one line: the buttons sit on the input at 40px, even when written <code>size="sm"</code>.</p>
+        <FieldRow>
+          <FormField label="Search"><TextInput value={unit} onChange={e => setUnit(e.target.value)} placeholder="A serial, an order or a customer" /></FormField>
+          <Btn size="sm"><Search size={14} aria-hidden /> Search</Btn>
+          <Btn variant="secondary" size="sm" onClick={() => setUnit('')}>Clear</Btn>
+        </FieldRow>
+        <h3>Compact field</h3>
+        <div className="ds__field"><FormField compact label="No bottom margin"><TextInput placeholder="Compact" /></FormField></div>
+      </section>
+
+      <section className="ds__section" aria-labelledby="ds-kpirow">
+        <h2 id="ds-kpirow">KPI row with breakdown</h2>
+        <KpiRow label="Credit">
+          <KpiCard variant="money" label="Owed and committed" unit="USD" value="$412,880" breakdown={[{ label: 'EUR', value: '€86,140' }, { label: 'GBP', value: '£12,400' }, { label: 'INR', value: '₹1,240,000' }]} context="Across 38 accounts" />
+          <KpiCard variant="ops" label="Applications" value="12" status="3 need a decision today" context="Last 30 days" />
+          <KpiCard variant="risk" label="Overdue invoices" value="7" status="2 over 60 days" delta={{ text: '+2 this week', direction: 'down' }} context="Needs follow-up" />
+          <KpiCard label="Orders" value="2,600" delta={{ text: '+4% vs last month', direction: 'up' }} context="All marketplaces" series={[12, 14, 13, 17, 16, 19, 21]} />
+        </KpiRow>
+      </section>
+
+      <section className="ds__section" aria-labelledby="ds-charts">
+        <h2 id="ds-charts">Charts</h2>
+        <p className="ds__lead">Six categorical slots from the tokens; a marketplace always takes the same one (<code>categoryColour(key)</code>). Each slot is at least 3:1 against white and canvas, the floor for a non-text mark. One unit per axis; a legend only when more than one series shares a plot.</p>
+        <div className="ds__swatches">{CHART_TOKENS.map(t => <Swatch key={t} token={t} />)}</div>
+        <div className="ds__charts">
+          <div className="ds__card">
+            <ColumnChart caption="Gross value by month" label="Gross merchandise value by month" yLabel="Gross value"
+              data={MONTHS.map((m, i) => ({ label: m, value: [61200, 70400, 66800, 82100, 79600, 91300][i], muted: i < 2, note: i < 2 ? 'monthly aggregate' : undefined }))} />
+          </div>
+          <div className="ds__card">
+            <BarChart caption="Commission by marketplace" label="Commission by marketplace, ranked" share
+              data={MARKETS.map(m => ({ label: m.label, value: m.commission, key: m.key }))} />
+          </div>
+          <div className="ds__card">
+            <ColumnChart caption="Orders by marketplace" label="Orders by marketplace" yLabel="Orders" format={n => n.toLocaleString('en-US')} tickFormat={compactNumber}
+              data={MARKETS.map(m => ({ label: m.label, value: m.orders, key: m.key }))} />
+          </div>
+          <div className="ds__card">
+            <LineChart caption="Orders and returns" label="Orders and returns by month" yLabel="Orders" labels={MONTHS} format={n => n.toLocaleString('en-US')}
+              series={[{ key: 'orders', label: 'Orders', values: [380, 402, 395, 441, 430, 468] }, { key: 'returns', label: 'Returns', values: [22, 25, 19, null, 27, 24] }]} />
+          </div>
+          <div className="ds__card">
+            <AreaChart caption="Gross value trend" label="Gross value trend by month" labels={MONTHS}
+              series={[{ key: 'gross', label: 'Gross value', values: [61200, 70400, 66800, 82100, 79600, 91300] }]} />
+          </div>
+          <div className="ds__card">
+            <DonutChart caption="Seller tiers" label="Sellers by tier" centre="64" centreSub="sellers" format={n => `${n}`}
+              data={[{ label: 'Gold', value: 9, colour: categoryColour('gold') }, { label: 'Silver', value: 21, key: 'silver' }, { label: 'Bronze', value: 34, key: 'bronze' }]} />
+          </div>
+          <div className="ds__card">
+            <h3>Sparkline</h3>
+            <div className="ds__spark"><Sparkline values={[4, 6, 5, 8, 7, 10, 12]} label="Up from 4 to 12 over seven months" /></div>
+          </div>
         </div>
       </section>
 

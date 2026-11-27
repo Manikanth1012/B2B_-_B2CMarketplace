@@ -4,7 +4,8 @@ import { statusTone } from '../../lib/consoleTone'
 import { Dialog } from '../ui/Dialog'
 import { Spinner } from '../ui/Spinner'
 import { Dropdown } from '../ui/Dropdown'
-import { ChevronDown, ChevronUp, ChevronsUpDown, CheckCircle2, XCircle, Info } from 'lucide-react'
+import { Menu } from '../ui/Menu'
+import { ChevronDown, ChevronUp, ChevronsUpDown, CheckCircle2, XCircle, Info, MoreHorizontal, Search } from 'lucide-react'
 
 export function fmtMoney(n: number): string {
   return n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -182,17 +183,40 @@ function rowsIn(children: React.ReactNode): React.ReactElement[] {
   return out
 }
 
-function alignmentsFrom(children: React.ReactNode, columns: number): ('left' | 'right')[] {
+/* A cell is a figure when it says `right` or `kind="num"`. */
+const cellIsRight = (props: { right?: boolean; kind?: TdKind }): boolean =>
+  !!props.right || props.kind === 'num'
+
+function alignmentsFrom(children: React.ReactNode, columns: number): { align: ('left' | 'right')[]; known: boolean } {
   for (const row of rowsIn(children)) {
     const cells = React.Children.toArray(
       (row.props as { children?: React.ReactNode }).children,
     ).filter(React.isValidElement)
     if (cells.length !== columns) continue
-    return cells.map(c =>
-      (c.props as { right?: boolean }).right ? 'right' : 'left')
+    return { align: cells.map(c => (cellIsRight(c.props as { right?: boolean; kind?: TdKind }) ? 'right' : 'left')), known: true }
   }
-  return Array.from({ length: columns }, () => 'left' as const)
+  return { align: Array.from({ length: columns }, () => 'left' as const), known: false }
 }
+
+/* Rule 2 (spec 18): a header sits where its cells sit. An explicit `align`
+   still wins, but when it contradicts the cells read off the first row it is
+   almost always a stale setting at the top of the table, so development says
+   so: once per header, not on every render. */
+const warnedHeaders = new Set<string>()
+function warnContradiction(label: string, said: 'left' | 'right', cells: 'left' | 'right') {
+  if (!import.meta.env.DEV) return
+  const key = `${label}|${said}|${cells}`
+  if (warnedHeaders.has(key)) return
+  warnedHeaders.add(key)
+  console.warn(`Table: the "${label}" header is aligned ${said} but its cells are ${cells}. Drop the header's align, or mark the cells (Td right / kind="num").`)
+}
+
+/* Rule 4: an actions column carries no visible heading. "Actions" over a
+   column of buttons says nothing the buttons do not; the name stays for a
+   screen reader. Only a heading that says "Actions" is treated so: a blank
+   heading may sit over anything (a checkbox, an expander, a link), and naming
+   it "Actions" would mislabel it. */
+const isActionsHeader = (label: string): boolean => label.trim().toLowerCase() === 'actions'
 
 /**
  * Side padding, chosen by how many columns have to share the width.
@@ -206,7 +230,7 @@ const padFor = (columns: number): string =>
   columns >= 10 ? '6px' : columns >= 8 ? '7px' : '10px'
 
 export function Table({ headers, children }: { headers: Header[]; children: React.ReactNode }) {
-  const fromCells = alignmentsFrom(children, headers.length)
+  const { align: fromCells, known } = alignmentsFrom(children, headers.length)
   return (
     <div className="c-table-wrap">
       <table className="c-table" style={{
@@ -223,7 +247,11 @@ export function Table({ headers, children }: { headers: Header[]; children: Reac
           <tr>
             {headers.map((h, i) => {
               const align = typeof h === 'string' ? fromCells[i] : (h.align ?? fromCells[i])
+              if (typeof h !== 'string' && h.align && known && h.align !== fromCells[i]) warnContradiction(h.label, h.align, fromCells[i])
               const sort = typeof h === 'string' ? undefined : h.sort
+              if (!sort && isActionsHeader(headerLabel(h))) {
+                return <th key={i} className="c-th--actions"><span className="sr-only">Actions</span></th>
+              }
               return (
                 <th key={i} style={{ textAlign: align }}
                   aria-sort={sort ? (sort.active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none') : undefined}>
@@ -273,12 +301,41 @@ export function TableRow({ selected, children, ...rest }: React.HTMLAttributes<H
   )
 }
 
-export function Td({ children, right, style }: { children: React.ReactNode; right?: boolean; style?: React.CSSProperties }) {
+/**
+ * What a column holds, for cells that would rather say so than set three
+ * props (spec 18, rules 1 and 3):
+ *
+ *   num     a number, money, a percentage or a count: right, tabular, one line
+ *   text    prose or a name: left, wraps
+ *   status  a pill or a state: left, one line, never right
+ *   date    a date or time printed as text: left, one line
+ *   id      a short reference: left, one line
+ */
+export type TdKind = 'num' | 'text' | 'status' | 'date' | 'id'
+
+export function Td({ children, right, kind, nowrap, clamp, title, colSpan, style }: {
+  children?: React.ReactNode
+  right?: boolean
+  kind?: TdKind
+  /** Hold the cell on one line. On by default for figures, statuses, dates and ids. */
+  nowrap?: boolean
+  /** Wrap to at most this many lines (`true` = 2) and show the whole text on hover. */
+  clamp?: boolean | number
+  /** The hover text for a clamped cell; a plain string child is used when this is not given. */
+  title?: string
+  colSpan?: number
+  style?: React.CSSProperties
+}) {
+  const isRight = cellIsRight({ right, kind })
   const bounded = style !== undefined && ('maxWidth' in style || 'width' in style)
+  const lines = clamp === true ? 2 : typeof clamp === 'number' ? clamp : 0
+  const oneLine = nowrap ?? (lines === 0 && ((isRight && !bounded) || kind === 'status' || kind === 'date' || kind === 'id'))
+  const classes = ['c-td', isRight && 'c-td--num', lines > 0 && 'c-td--clamp'].filter(Boolean).join(' ')
+  const hover = title ?? (typeof children === 'string' ? children : undefined)
   return (
-    <td className={right ? 'c-td c-td--num' : 'c-td'} style={{
-      textAlign: right ? 'right' : 'left',
-      ...(right && !bounded
+    <td className={classes} colSpan={colSpan} title={lines > 0 ? hover : undefined} style={{
+      textAlign: isRight ? 'right' : 'left',
+      ...(oneLine
         ? { whiteSpace: 'nowrap' as const }
         /* `overflowWrap`, not `wordBreak`: break inside a word only when the
            word alone cannot fit, rather than wherever the line happens to run
@@ -286,7 +343,11 @@ export function Td({ children, right, style }: { children: React.ReactNode; righ
            Device / s". */
         : { whiteSpace: 'normal' as const, overflowWrap: 'break-word' as const }),
       ...style,
-    }}>{children}</td>
+    }}>
+      {lines > 0
+        ? <span className="c-td__clamp" style={{ WebkitLineClamp: lines }}>{children}</span>
+        : children}
+    </td>
   )
 }
 
@@ -393,7 +454,9 @@ export function Modal({ open, onClose, title, children, footer }: ModalProps) {
  * chips, a group of buttons — is left alone: there is no one control for the
  * label to point at, and those carry their own accessible names.
  */
-export function FormField({ label, children, required, hint }: { label: string; children: React.ReactNode; required?: boolean; hint?: string }) {
+export function FormField({ label, children, required, hint, compact }: { label: string; children: React.ReactNode; required?: boolean; hint?: string
+  /** No bottom margin: for a field in a FieldRow, a FilterBar or a card that sets its own spacing. */
+  compact?: boolean }) {
   const id = useId()
   const hintId = `${id}-hint`
   const only = React.Children.count(children) === 1 ? React.Children.only(children) : null
@@ -412,7 +475,7 @@ export function FormField({ label, children, required, hint }: { label: string; 
     : children
 
   return (
-    <div className="c-field">
+    <div className={compact ? 'c-field c-field--compact' : 'c-field'}>
       <label htmlFor={single ? ((single.props as { id?: string }).id ?? id) : undefined}
         className="c-field__label">
         {label}{required && <span className="c-field__req"> *</span>}
@@ -470,6 +533,205 @@ export function Btn({ variant = 'primary', size = 'md', loading, icon, children,
       {loading && <Spinner size={size === 'sm' ? 12 : 14} />}
       {children}
     </button>
+  )
+}
+
+// ---------- Row actions (spec 18, rule 4) ----------
+
+export interface RowAction {
+  label: string
+  onClick: () => void
+  variant?: 'primary' | 'secondary' | 'tertiary' | 'danger' | 'success'
+  disabled?: boolean
+  loading?: boolean
+  icon?: React.ReactNode
+}
+
+/**
+ * A table row's buttons: right-aligned, on one line, at the 32px row size.
+ *
+ * Two fit beside a record without crowding it; a third is where the column
+ * starts taking width from the data. So up to `max` (two) are drawn as
+ * buttons and anything after them goes into a "More" menu, which is keyboard
+ * operable and carries the row's name so "More actions" is never ambiguous
+ * among twenty rows. `false`/`null` entries are dropped, so a caller can write
+ * `canEdit && { … }` inline.
+ */
+/* Enter and Space on a row's button are the button's, not the row's: a
+   clickable row must not also open. Every other key carries on, because the
+   dialog's Escape and the focus trap's Tab listen on the document, and
+   stopping a React key event stops the native one before it gets there. */
+const keepFromRow = (e: React.KeyboardEvent) => {
+  if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') e.stopPropagation()
+}
+
+export function RowActions({ actions, max = 2, label }: {
+  actions: (RowAction | false | null | undefined)[]
+  max?: number
+  /** What the row is, for the More button's name: "More actions for {label}". */
+  label?: string
+}) {
+  const list = actions.filter((a): a is RowAction => !!a)
+  const inline = list.length > max ? list.slice(0, max) : list
+  const rest = list.length > max ? list.slice(max) : []
+  return (
+    <div className="c-row-actions">
+      {inline.map(a => (
+        <Btn key={a.label} size="sm" variant={a.variant ?? 'tertiary'} disabled={a.disabled} loading={a.loading}
+          onClick={e => { e.stopPropagation(); a.onClick() }} onKeyDown={keepFromRow}>
+          {a.icon}{a.label}
+        </Btn>
+      ))}
+      {rest.length > 0 && (
+        <span onClick={e => e.stopPropagation()} onKeyDown={keepFromRow} className="c-row-actions__more">
+          <Menu label={label ? `More actions for ${label}` : 'More actions'}
+            triggerClassName="c-btn c-btn--tertiary c-btn--sm c-btn--icon"
+            items={rest.map(a => ({ label: a.label, onSelect: a.onClick, disabled: a.disabled || a.loading, danger: a.variant === 'danger', icon: a.icon }))}>
+            <MoreHorizontal size={16} aria-hidden="true" />
+          </Menu>
+        </span>
+      )}
+    </div>
+  )
+}
+
+// ---------- Filter bar (spec 18, rule 5) ----------
+
+/**
+ * The one line above a list: search, filters, actions.
+ *
+ * One height (40px, the control height) and one line: the search takes the
+ * room that is left, each filter keeps a fixed width (`--filter-w`, 180px;
+ * a child can set its own `width`), actions sit at the end. Below about 720px
+ * of its own width (a container query, so a narrow card counts as narrow) it
+ * wraps: search on its own line, the filters under it.
+ *
+ * `summary` is the line under the bar that says how much matched ("12 nights,
+ * 40 runs"), announced politely as it changes.
+ */
+export function FilterBar({ search, children, actions, summary, ariaLabel = 'Filters' }: {
+  search?: { value: string; onChange: (value: string) => void; placeholder?: string; ariaLabel: string }
+  children?: React.ReactNode
+  actions?: React.ReactNode
+  summary?: React.ReactNode
+  ariaLabel?: string
+}) {
+  return (
+    <div className="c-filterbar-wrap">
+      <div className="c-filterbar" role="group" aria-label={ariaLabel}>
+        {search && (
+          <span className="c-search c-filterbar__search">
+            <Search size={16} aria-hidden="true" />
+            <TextInput type="search" value={search.value} placeholder={search.placeholder}
+              aria-label={search.ariaLabel} onChange={e => search.onChange(e.target.value)} />
+          </span>
+        )}
+        {children && <div className="c-filterbar__filters">{children}</div>}
+        {actions && <div className="c-filterbar__actions">{actions}</div>}
+      </div>
+      {summary !== undefined && summary !== null && summary !== false && (
+        <div className="c-filterbar__summary" aria-live="polite">{summary}</div>
+      )}
+    </div>
+  )
+}
+
+/* Dates as `YYYY-MM-DD`, the value a native date input reads and writes, in
+   local time so "today" is the operator's today and not UTC's. */
+export function isoDay(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+export function daysBefore(iso: string, n: number): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  return isoDay(new Date(y, m - 1, d - n))
+}
+
+/**
+ * From and to, as two native date inputs dressed as the console's inputs, and
+ * quick picks for the last 7, 14 or 30 days. A pick sets `to` to today and
+ * `from` so the range holds that many days including today; the pick whose
+ * range is showing reads as pressed.
+ */
+export function DateRangeFilter({ from, to, onChange, quick = [7, 14, 30], quickLabel = n => `${n} days`, today, label = 'Date range' }: {
+  from: string
+  to: string
+  onChange: (range: { from: string; to: string }) => void
+  quick?: number[]
+  /** The words on a quick pick: "7 days", or "7 nights" for a nightly log. */
+  quickLabel?: (n: number) => string
+  /** `YYYY-MM-DD`; defaults to the local today. */
+  today?: string
+  label?: string
+}) {
+  const now = today ?? isoDay(new Date())
+  return (
+    <div className="c-daterange" role="group" aria-label={label}>
+      <input type="date" className="c-input c-daterange__input" aria-label="From" value={from} max={to || undefined}
+        onChange={e => onChange({ from: e.target.value, to })} />
+      <span className="c-daterange__sep" aria-hidden="true">to</span>
+      <input type="date" className="c-input c-daterange__input" aria-label="To" value={to} min={from || undefined}
+        onChange={e => onChange({ from, to: e.target.value })} />
+      {quick.length > 0 && (
+        <span className="c-daterange__quick">
+          {quick.map(n => {
+            const range = { from: daysBefore(now, n - 1), to: now }
+            const on = from === range.from && to === range.to
+            return (
+              <button key={n} type="button" className="c-chip" aria-pressed={on}
+                onClick={() => onChange(range)}>{quickLabel(n)}</button>
+            )
+          })}
+        </span>
+      )}
+    </div>
+  )
+}
+
+// ---------- Field row (spec 18, rule 6) ----------
+
+/**
+ * Fields and their buttons on one line, lined up on the input.
+ *
+ * The fields inside lose their bottom margin and grow; buttons sit on the
+ * input's baseline at the input's height (40px), a small button included,
+ * because a 32px button beside a 40px input is the "Find a unit" misalignment
+ * whatever the screen. A field with a hint under it would push its button up
+ * by the hint's height, so hints belong outside a row.
+ */
+export function FieldRow({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <div className={className ? `c-field-row ${className}` : 'c-field-row'}>{children}</div>
+}
+
+// ---------- Page header (spec 18, rule 8) ----------
+
+/**
+ * A screen's top: the title, one line saying what the screen is for, and the
+ * primary action on the right. On a narrow screen the actions drop under the
+ * title rather than squeezing it. `children` (tabs, a filter bar) sit under
+ * the whole header.
+ */
+export function PageHeader({ title, description, actions, children, level = 1 }: {
+  title: React.ReactNode
+  description?: React.ReactNode
+  actions?: React.ReactNode
+  children?: React.ReactNode
+  /** 1 for a screen; 2 when the screen sits inside a page that has its own h1. */
+  level?: 1 | 2
+}) {
+  const H = level === 2 ? 'h2' : 'h1'
+  return (
+    <header className="c-page-head">
+      <div className="c-page-head__row">
+        <div className="c-page-head__text">
+          <H className="c-page-head__title">{title}</H>
+          {description && <p className="c-page-head__desc">{description}</p>}
+        </div>
+        {actions && <div className="c-page-head__actions">{actions}</div>}
+      </div>
+      {children}
+    </header>
   )
 }
 

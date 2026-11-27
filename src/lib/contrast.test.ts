@@ -78,6 +78,8 @@ const PAIRS: [fg: string, bg: string, min: number][] = [
   ['success', 'bg-alt', 4.5],           // price book: tag label on an alt row
   ['warning', 'bg-alt', 4.5],
   ['brand-accent-dark', 'bg-alt', 3],   // Rewards bar: the fill's light end on its track (WCAG 1.4.11)
+  /* Chart marks (spec 18): non-text, 3:1 on the card and on the page ground. */
+  ...[1, 2, 3, 4, 5, 6].flatMap(n => [[`chart-${n}`, 'surface', 3], [`chart-${n}`, 'canvas', 3]] as [string, string, number][]),
 ]
 
 describe('design tokens', () => {
