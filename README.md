@@ -343,6 +343,14 @@ The look is defined by tokens in `src/styles/global.css`. Existing variables wer
 
 New: `--blue #0756A5`, `--electric #168BFF`, `--cyan #12CDE0`, `--teal #00C6B5`, `--grad-navy`, `--grad-cyan`, `--shadow-card`, `--shadow-lift`, `--radius-card` (16px).
 
+### Using and guarding the design system
+
+- **Tokens** (colour, type, spacing, radius, shadow, control and row heights) live in `src/styles/global.css`. Use `var(--...)`, not literals.
+- **Shared components** are in `src/components/ui/*` and `src/components/operator/shared.tsx` (buttons, inputs, `Select`/`Dropdown`, `Table`, `StatusBadge`, `KpiCard`, `Dialog`, `Drawer`, `Tabs`, toast, `EmptyState`, `Skeleton`).
+- **Reference page:** open `/design-system` (dev server or build) to see every token and component in every state. It needs no sign-in, reads no data and is not linked from any menu.
+- **Guardrail:** `src/lib/designGuardrail.test.ts` counts one-off `fontSize` literals, hex colours and non-token `borderRadius` values in `src/components/**/*.tsx` and fails if any total, or any single file, rises above `src/lib/designGuardrail.baseline.json`. When you remove literals, lower the baseline: run `UPDATE_GUARDRAIL=1 npx vitest run src/lib/designGuardrail.test.ts` (it rewrites the JSON only if nothing rose) and commit it.
+- **Standing rule: reuse before inventing.** Check `/design-system` and the shared components before adding a new style or variant.
+
 `--text-tertiary` is `#556479`, not the `#64748B` the design brief suggested: that slate measures 4.43:1 on the new `#F4F7FC` ground, under AA. Spec 1 used `#5B6B82`; the spec 5 sweep found it at 4.44:1 on the pale status tints (a selected or flagged row), and `#556479` clears 4.93:1 on every one of them.
 
 `--star` (`#8F5A06`) colours rating stars. The stars alone carry a rating, so they need text contrast; the old gold `#F5A623` was 2.03:1 on white and is kept only for decorative bars.

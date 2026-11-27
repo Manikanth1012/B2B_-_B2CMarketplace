@@ -1,0 +1,444 @@
+{
+  "total": {
+    "fontSize": 405,
+    "hex": 130,
+    "radius": 69
+  },
+  "files": {
+    "components/AccountView.tsx": {
+      "fontSize": 0,
+      "hex": 9,
+      "radius": 1
+    },
+    "components/AddressBookCard.tsx": {
+      "fontSize": 1,
+      "hex": 0,
+      "radius": 1
+    },
+    "components/BillDocument.tsx": {
+      "fontSize": 1,
+      "hex": 1,
+      "radius": 3
+    },
+    "components/Checkout.tsx": {
+      "fontSize": 3,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/ClearanceStamp.tsx": {
+      "fontSize": 0,
+      "hex": 0,
+      "radius": 2
+    },
+    "components/CompareTray.tsx": {
+      "fontSize": 1,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/EvidenceLink.tsx": {
+      "fontSize": 2,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/Header.tsx": {
+      "fontSize": 1,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/KnowledgeBase.tsx": {
+      "fontSize": 1,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/LoginScreen.tsx": {
+      "fontSize": 1,
+      "hex": 4,
+      "radius": 0
+    },
+    "components/MarketPicker.tsx": {
+      "fontSize": 5,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/MyNumberCard.tsx": {
+      "fontSize": 2,
+      "hex": 4,
+      "radius": 1
+    },
+    "components/MyReviewsCard.tsx": {
+      "fontSize": 1,
+      "hex": 7,
+      "radius": 1
+    },
+    "components/NotificationPreferencesView.tsx": {
+      "fontSize": 0,
+      "hex": 0,
+      "radius": 1
+    },
+    "components/OnboardingJourney.tsx": {
+      "fontSize": 6,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/OrderParts.tsx": {
+      "fontSize": 1,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/PaymentGateway.tsx": {
+      "fontSize": 6,
+      "hex": 2,
+      "radius": 1
+    },
+    "components/PriceBookEditor.tsx": {
+      "fontSize": 5,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/PrivacyCard.tsx": {
+      "fontSize": 0,
+      "hex": 10,
+      "radius": 2
+    },
+    "components/ProductDetail.tsx": {
+      "fontSize": 0,
+      "hex": 4,
+      "radius": 2
+    },
+    "components/RewardsView.tsx": {
+      "fontSize": 0,
+      "hex": 1,
+      "radius": 0
+    },
+    "components/StockWatchCard.tsx": {
+      "fontSize": 0,
+      "hex": 4,
+      "radius": 1
+    },
+    "components/WalletCard.tsx": {
+      "fontSize": 8,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/enterprise/EnterpriseAgreement.tsx": {
+      "fontSize": 6,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/enterprise/EnterpriseApprovals.tsx": {
+      "fontSize": 0,
+      "hex": 0,
+      "radius": 2
+    },
+    "components/enterprise/EnterpriseDashboard.tsx": {
+      "fontSize": 0,
+      "hex": 6,
+      "radius": 4
+    },
+    "components/enterprise/EnterpriseNumbers.tsx": {
+      "fontSize": 0,
+      "hex": 8,
+      "radius": 1
+    },
+    "components/enterprise/EnterpriseOrders.tsx": {
+      "fontSize": 0,
+      "hex": 0,
+      "radius": 1
+    },
+    "components/enterprise/EnterpriseProfile.tsx": {
+      "fontSize": 0,
+      "hex": 0,
+      "radius": 2
+    },
+    "components/enterprise/EnterpriseShell.tsx": {
+      "fontSize": 1,
+      "hex": 2,
+      "radius": 1
+    },
+    "components/enterprise/EnterpriseTeam.tsx": {
+      "fontSize": 1,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/enterprise/EnterpriseViews.tsx": {
+      "fontSize": 1,
+      "hex": 0,
+      "radius": 2
+    },
+    "components/enterprise/RequisitionPanel.tsx": {
+      "fontSize": 0,
+      "hex": 1,
+      "radius": 0
+    },
+    "components/operator/ApplicationsQueue.tsx": {
+      "fontSize": 5,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/operator/OperatorAccounts.tsx": {
+      "fontSize": 0,
+      "hex": 0,
+      "radius": 1
+    },
+    "components/operator/OperatorBanners.tsx": {
+      "fontSize": 15,
+      "hex": 4,
+      "radius": 2
+    },
+    "components/operator/OperatorBillTemplates.tsx": {
+      "fontSize": 2,
+      "hex": 6,
+      "radius": 1
+    },
+    "components/operator/OperatorCatalogue.tsx": {
+      "fontSize": 67,
+      "hex": 2,
+      "radius": 2
+    },
+    "components/operator/OperatorClearance.tsx": {
+      "fontSize": 0,
+      "hex": 1,
+      "radius": 2
+    },
+    "components/operator/OperatorComTab.tsx": {
+      "fontSize": 0,
+      "hex": 1,
+      "radius": 3
+    },
+    "components/operator/OperatorContentFeedback.tsx": {
+      "fontSize": 12,
+      "hex": 1,
+      "radius": 1
+    },
+    "components/operator/OperatorContracts.tsx": {
+      "fontSize": 5,
+      "hex": 0,
+      "radius": 1
+    },
+    "components/operator/OperatorCredit.tsx": {
+      "fontSize": 11,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/operator/OperatorDashboard.tsx": {
+      "fontSize": 6,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/operator/OperatorDeveloper.tsx": {
+      "fontSize": 0,
+      "hex": 1,
+      "radius": 0
+    },
+    "components/operator/OperatorDisputes.tsx": {
+      "fontSize": 8,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/operator/OperatorDunning.tsx": {
+      "fontSize": 9,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/operator/OperatorInventory.tsx": {
+      "fontSize": 3,
+      "hex": 6,
+      "radius": 1
+    },
+    "components/operator/OperatorKnowledge.tsx": {
+      "fontSize": 8,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/operator/OperatorMarkets.tsx": {
+      "fontSize": 11,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/operator/OperatorNotes.tsx": {
+      "fontSize": 8,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/operator/OperatorNotifications.tsx": {
+      "fontSize": 0,
+      "hex": 3,
+      "radius": 0
+    },
+    "components/operator/OperatorNumbers.tsx": {
+      "fontSize": 6,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/operator/OperatorOnboarding.tsx": {
+      "fontSize": 4,
+      "hex": 0,
+      "radius": 2
+    },
+    "components/operator/OperatorOrders.tsx": {
+      "fontSize": 9,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/operator/OperatorPartners.tsx": {
+      "fontSize": 36,
+      "hex": 0,
+      "radius": 1
+    },
+    "components/operator/OperatorRevenueShare.tsx": {
+      "fontSize": 0,
+      "hex": 4,
+      "radius": 0
+    },
+    "components/operator/OperatorReviews.tsx": {
+      "fontSize": 10,
+      "hex": 1,
+      "radius": 0
+    },
+    "components/operator/OperatorRoles.tsx": {
+      "fontSize": 7,
+      "hex": 1,
+      "radius": 0
+    },
+    "components/operator/OperatorSettlement.tsx": {
+      "fontSize": 3,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/operator/OperatorSettlementCycles.tsx": {
+      "fontSize": 5,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/operator/OperatorShelves.tsx": {
+      "fontSize": 4,
+      "hex": 0,
+      "radius": 4
+    },
+    "components/operator/OperatorWallets.tsx": {
+      "fontSize": 16,
+      "hex": 1,
+      "radius": 0
+    },
+    "components/operator/PartnerMarkets.tsx": {
+      "fontSize": 7,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/operator/StockLineDetail.tsx": {
+      "fontSize": 4,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/operator/charts.tsx": {
+      "fontSize": 2,
+      "hex": 6,
+      "radius": 2
+    },
+    "components/partner/PartnerDashboard.tsx": {
+      "fontSize": 3,
+      "hex": 3,
+      "radius": 4
+    },
+    "components/partner/PartnerDetails.tsx": {
+      "fontSize": 1,
+      "hex": 0,
+      "radius": 2
+    },
+    "components/partner/PartnerDeveloper.tsx": {
+      "fontSize": 0,
+      "hex": 3,
+      "radius": 1
+    },
+    "components/partner/PartnerIntegrations.tsx": {
+      "fontSize": 0,
+      "hex": 1,
+      "radius": 0
+    },
+    "components/partner/PartnerListings.tsx": {
+      "fontSize": 9,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/partner/PartnerMisc.tsx": {
+      "fontSize": 1,
+      "hex": 1,
+      "radius": 0
+    },
+    "components/partner/PartnerNewListing.tsx": {
+      "fontSize": 3,
+      "hex": 2,
+      "radius": 1
+    },
+    "components/partner/PartnerOnboarding.tsx": {
+      "fontSize": 13,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/partner/PartnerOrders.tsx": {
+      "fontSize": 3,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/partner/PartnerPerformance.tsx": {
+      "fontSize": 1,
+      "hex": 1,
+      "radius": 4
+    },
+    "components/partner/PartnerReviews.tsx": {
+      "fontSize": 7,
+      "hex": 2,
+      "radius": 2
+    },
+    "components/partner/PartnerSettlement.tsx": {
+      "fontSize": 9,
+      "hex": 2,
+      "radius": 0
+    },
+    "components/partner/PartnerShell.tsx": {
+      "fontSize": 0,
+      "hex": 1,
+      "radius": 0
+    },
+    "components/partner/PartnerSupport.tsx": {
+      "fontSize": 9,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/pricebooks/SellerAccountPrices.tsx": {
+      "fontSize": 2,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/public/ApplyToSell.tsx": {
+      "fontSize": 6,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/public/CategoryShowcase.tsx": {
+      "fontSize": 0,
+      "hex": 0,
+      "radius": 1
+    },
+    "components/public/ContinueWithAventaId.tsx": {
+      "fontSize": 1,
+      "hex": 0,
+      "radius": 0
+    },
+    "components/public/RegisterShopper.tsx": {
+      "fontSize": 0,
+      "hex": 0,
+      "radius": 2
+    },
+    "components/ui/AventaWordmark.tsx": {
+      "fontSize": 0,
+      "hex": 3,
+      "radius": 0
+    },
+    "components/ui/NetworkGlobe.tsx": {
+      "fontSize": 0,
+      "hex": 10,
+      "radius": 0
+    }
+  }
+}
