@@ -94,7 +94,7 @@ export function PaymentGateway({ attempt, method, savedLabel, merchant, money, o
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, zIndex: 500, background: '#0f172a',
+      position: 'fixed', inset: 0, zIndex: 500, background: 'var(--ink-900)',
       display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
       padding: '32px 16px', overflowY: 'auto',
     }}>

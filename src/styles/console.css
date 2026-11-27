@@ -144,8 +144,11 @@ textarea.c-input { resize: vertical; min-height: 88px; height: auto; padding: 10
 .c-btn--sm { padding: 0 10px; font-size: var(--text-xs); height: var(--control-h-sm); min-height: var(--control-h-sm); }
 .c-btn--icon { width: var(--control-h); padding: 0; }
 .c-btn--icon.c-btn--sm { width: var(--control-h-sm); }
-.c-btn--primary, .c-btn--accent { background: var(--indigo-600); color: #fff; }
-.c-btn--primary:hover:not(:disabled), .c-btn--accent:hover:not(:disabled) { background: var(--indigo-700); }
+.c-btn--primary { background: var(--indigo-600); color: #fff; }
+.c-btn--primary:hover:not(:disabled) { background: var(--indigo-700); }
+/* Accent = the 6D orange call to action (white label 5.31:1 on --orange-600). */
+.c-btn--accent { background: var(--orange-600); color: #fff; }
+.c-btn--accent:hover:not(:disabled) { background: var(--orange-700); }
 .c-btn--primary:active:not(:disabled), .c-btn--accent:active:not(:disabled) { background: #3730A3; }
 .c-btn--secondary { background: var(--surface); color: var(--text); border-color: var(--control-border); }
 .c-btn--secondary:hover:not(:disabled) { background: var(--slate-100); border-color: var(--slate-500); }
