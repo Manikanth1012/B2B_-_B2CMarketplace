@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { Search, TriangleAlert, PackageSearch, Truck, CircleSlash } from 'lucide-react'
+import { TriangleAlert, PackageSearch, Truck, CircleSlash } from 'lucide-react'
 import {
-  SectionCard, StatCard, EmptyState, Btn, StatusPill, Table, Td, toast,
-  Modal, FormField, TextInput, TextArea, Select, fmtInt,
+  SectionCard, EmptyState, Btn, StatusPill, Table, Td, toast,
+  Modal, FormField, TextInput, TextArea, Select, fmtInt, PageHeader, FilterBar, RowActions,
 } from './shared'
+import { Tabs } from '../ui/Tabs'
+import { KpiCard, KpiRow, groupsToKpi } from '../ui/KpiCard'
 import { Callout } from '../OnboardingJourney'
 import { Pager, usePaging } from '../Pager'
 import { StatusBadge } from '../ui/StatusBadge'
@@ -18,7 +20,6 @@ import {
 } from '../../lib/orderOps'
 import type { OrderRow, Severity } from '../../lib/orderOps'
 import { STATE_LABEL as COM_LABEL, STATE_TONE as COM_TONE } from '../../lib/com'
-import { formatGroups } from '../../lib/money'
 import { useMarket } from '../../lib/MarketContext'
 import { groupBySelection } from '../../lib/bundles'
 import { useBundleNames } from '../bundles/useBundleNames'
@@ -69,32 +70,20 @@ export function OperatorOrders() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div>
-        <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Orders</h1>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px', maxWidth: '80ch' }}>
-          Every order across retail, business accounts and guest checkout, in one place. The
-          marketplace moves an order along; it does not rewrite what it cost or who bought it —
-          those were agreed at checkout and a refund is the way to change them.
-        </p>
-      </div>
+      <PageHeader
+        title="Orders"
+        description="Every order across retail, business accounts and guest checkout, in one place. The marketplace moves an order along; it does not rewrite what it cost or who bought it, and a refund is the way to change those.">
+        <Tabs ariaLabel="Order views" panelIdPrefix="orders-panel-" value={tab} onChange={id => setTab(id as 'exceptions' | 'all')}
+          tabs={[{ id: 'exceptions', label: 'Needs somebody' }, { id: 'all', label: 'The whole book' }]} />
+      </PageHeader>
 
       <Rollup book={book} today={today} />
 
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        {([['exceptions', 'Needs somebody'], ['all', 'The whole book']] as const).map(([id, label]) => (
-          <button key={id} onClick={() => setTab(id)}
-            style={{
-              padding: '7px 14px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)',
-              fontWeight: 600, cursor: 'pointer',
-              border: `1px solid ${tab === id ? 'var(--primary)' : 'var(--border)'}`,
-              background: tab === id ? 'var(--primary-soft)' : 'var(--surface)',
-              color: tab === id ? 'var(--primary)' : 'var(--text-secondary)',
-            }}>{label}</button>
-        ))}
-      </div>
-
+      <div role="tabpanel" id={`orders-panel-${tab}`}>
       {tab === 'exceptions' && <Exceptions book={book} today={today} onOpen={setOpen} />}
       {tab === 'all' && <Register book={book} today={today} onOpen={setOpen} />}
+      </div>
+
 
       {opened && (
         <OrderDetail order={opened} book={book} today={today}
@@ -110,22 +99,24 @@ function Rollup({ book, today }: { book: OrderBook; today: string }) {
   const { fmtIn } = useMarket()
   const r = rollup(book.orders, book.lines, book.pushes, today)
 
+  const money = groupsToKpi(r.value, fmtIn)
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
-      <StatCard label="Still moving" value={fmtInt(r.open)}
-        sublabel={`of ${fmtInt(r.total)} in the book`} />
+    <KpiRow label="Order summary">
+      <KpiCard variant="ops" label="Still moving" value={fmtInt(r.open)}
+        status={`of ${fmtInt(r.total)} in the book`} />
       {/* Four currencies trade here, so this is several figures. A single total
           across them would be a quantity of nothing, and it would look entirely
-          reasonable on the screen. */}
-      <StatCard label="Open order value" value={formatGroups(r.value, fmtIn)}
-        sublabel="Each market in its own money" />
-      <StatCard label="Saying something untrue" value={fmtInt(r.wrong)}
-        sublabel={r.wrong === 0 ? 'Nothing is misreporting itself' : 'A customer has been told something false'}
-        color={r.wrong > 0 ? 'var(--danger)' : undefined} />
-      <StatCard label="Needs somebody" value={fmtInt(r.exceptions)}
-        sublabel={`${fmtInt(r.failed)} failed outright`}
-        color={r.exceptions > 0 ? 'var(--warning)' : undefined} />
-    </div>
+          reasonable on the screen. The largest leads; the rest are listed. */}
+      <KpiCard variant="money" label="Open order value" value={money.value} breakdown={money.breakdown}
+        context="Each market in its own money" />
+      <KpiCard variant={r.wrong > 0 ? 'risk' : 'ops'} label="Saying something untrue" value={fmtInt(r.wrong)}
+        tone={r.wrong > 0 ? 'warning' : undefined}
+        status={r.wrong === 0 ? 'Nothing is misreporting itself' : 'A customer has been told something false'} />
+      <KpiCard variant="ops" label="Needs somebody" value={fmtInt(r.exceptions)}
+        tone={r.exceptions > 0 ? 'warning' : undefined}
+        status={`${fmtInt(r.failed)} failed outright`} />
+    </KpiRow>
   )
 }
 
@@ -151,15 +142,15 @@ function Exceptions({ book, today, onOpen }: {
   return (
     <SectionCard title="What needs somebody, worst first"
       subtitle="An order saying something untrue comes above one that is merely slow — a delay is a delay, but a customer who has been told their service is live has already been misled.">
-      <Table headers={['Order', 'Buyer', { label: 'Value', align: 'right' }, 'What is wrong', { label: '', align: 'right' }]}>
+      <Table headers={['Order', 'Buyer', 'Value', 'What is wrong', 'Actions']}>
         {queue.map(e => {
           const o = e.order
           const age = ageInDays(o, today)
           return (
             <tr key={o.id}>
-              <Td>
-                <strong style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>{o.order_ref}</strong>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+              <Td kind="id">
+                <strong className="c-mono">{o.order_ref}</strong>
+                <div className="c-sub">
                   {o.market} · {o.placed_date ?? 'undated'}{age !== null ? ` · ${age}d old` : ''}
                 </div>
                 <div style={{ marginTop: '3px' }}>
@@ -167,30 +158,24 @@ function Exceptions({ book, today, onOpen }: {
                 </div>
               </Td>
               <Td style={{ maxWidth: '26ch' }}>
-                <div style={{ fontSize: 'var(--text-xs)' }}>{BUYER_LABEL[buyerKind(o)]}</div>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
-                  {o.buyer_name ?? '—'}
-                </div>
-                {o.seller && (
-                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>from {o.seller}</div>
-                )}
+                <div>{BUYER_LABEL[buyerKind(o)]}</div>
+                <div className="c-sub">{o.buyer_name ?? '—'}</div>
+                {o.seller && <div className="c-sub">from {o.seller}</div>}
               </Td>
-              <Td right>
+              <Td kind="num">
                 <strong>{fmtIn(o.total, o.currency)}</strong>
               </Td>
               <Td style={{ maxWidth: '52ch' }}>
                 {e.problems.map((p, i) => (
                   <div key={i} style={{ marginBottom: i === e.problems.length - 1 ? 0 : '7px' }}>
                     <StatusPill status={SEVERITY_TONE[p.severity]} label={SEVERITY_LABEL[p.severity]} />
-                    <div style={{ fontSize: 'var(--text-xs)', marginTop: '2px', lineHeight: 1.5 }}>{p.what}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>
-                      {p.next}
-                    </div>
+                    <div style={{ marginTop: '2px', lineHeight: 1.5 }}>{p.what}</div>
+                    <div className="c-sub">{p.next}</div>
                   </div>
                 ))}
               </Td>
-              <Td right>
-                <Btn size="sm" onClick={() => onOpen(o.id)}>Open</Btn>
+              <Td>
+                <RowActions label={o.order_ref} actions={[{ label: 'Open', variant: 'primary', onClick: () => onOpen(o.id) }]} />
               </Td>
             </tr>
           )
@@ -233,74 +218,65 @@ function Register({ book, today, onOpen }: {
   return (
     <SectionCard title="Every order"
       subtitle="One box, because a caller does not know which field they are holding — a reference, an email, an account, a purchase order or the name of the thing they bought.">
-      <div style={{ padding: '14px 18px', display: 'flex', gap: '10px', flexWrap: 'wrap', alignItems: 'center' }}>
-        <div style={{ position: 'relative', flex: '1 1 280px' }}>
-          <Search size={15} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-tertiary)' }} />
-          <TextInput value={q} onChange={e => setQ(e.target.value)} style={{ paddingLeft: '32px' }}
-            placeholder="Reference, email, account, PO, tracking, or what they bought" />
-        </div>
-        <Select value={kind} onChange={e => setKind(e.target.value as typeof kind)} style={{ width: 'auto' }}>
+      <FilterBar ariaLabel="Filter orders"
+        search={{ value: q, onChange: setQ, ariaLabel: 'Search orders',
+          placeholder: 'Reference, email, account, PO, tracking, or what they bought' }}>
+        <Select aria-label="Buyer" value={kind} onChange={e => setKind(e.target.value as typeof kind)}>
           <option value="all">Every buyer</option>
           <option value="consumer">Retail</option>
           <option value="enterprise">Business accounts</option>
           <option value="guest">Guest checkout</option>
         </Select>
-        <Select value={status} onChange={e => setStatus(e.target.value)} style={{ width: 'auto' }}>
+        <Select aria-label="State" value={status} onChange={e => setStatus(e.target.value)}>
           <option value="all">Any state</option>
           {statuses.map(s => <option key={s} value={s}>{s}</option>)}
         </Select>
-      </div>
+      </FilterBar>
 
       {found.length === 0
         ? <EmptyState message={q ? `Nothing matches "${q}".` : 'No orders.'} />
         : (
           <>
-            <Table headers={['Order', 'Buyer', 'Bought', { label: 'Value', align: 'right' }, 'State', { label: '', align: 'right' }]}>
+            <Table headers={['Order', 'Buyer', 'Bought', 'Value', 'State', 'Actions']}>
               {page.rows.map(o => {
                 const mine = book.lines.filter(l => l.order_id === o.id)
                 const problems = problemsFor(o, book.lines, book.pushes, today)
                 return (
                   <tr key={o.id}>
-                    <Td>
-                      <strong style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>{o.order_ref}</strong>
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                        {o.market} · {o.placed_date ?? 'undated'}
-                      </div>
+                    <Td kind="id">
+                      <strong className="c-mono">{o.order_ref}</strong>
+                      <div className="c-sub">{o.market} · {o.placed_date ?? 'undated'}</div>
                     </Td>
                     <Td style={{ maxWidth: '24ch' }}>
-                      <div style={{ fontSize: 'var(--text-xs)' }}>{o.buyer_name ?? '—'}</div>
-                      <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
-                        {BUYER_LABEL[buyerKind(o)]}
-                      </div>
+                      <div>{o.buyer_name ?? '—'}</div>
+                      <div className="c-sub">{BUYER_LABEL[buyerKind(o)]}</div>
                     </Td>
                     <Td style={{ maxWidth: '30ch' }}>
-                      <div style={{ fontSize: 'var(--text-xs)', lineHeight: 1.5 }}>
+                      <div style={{ lineHeight: 1.5 }}>
                         {groupBySelection(mine).map(g => g.selectionId
                           ? `Bundle: ${bundleName(g.selectionId)} (${g.lines.map(l => l.product_name).join(', ')})`
                           : g.lines[0].product_name).join(', ') || '—'}
                       </div>
-                      {o.seller && (
-                        <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{o.seller}</div>
-                      )}
+                      {o.seller && <div className="c-sub">{o.seller}</div>}
                     </Td>
-                    <Td right><strong>{fmtIn(o.total, o.currency)}</strong></Td>
-                    <Td>
+                    <Td kind="num"><strong>{fmtIn(o.total, o.currency)}</strong></Td>
+                    <Td kind="status">
                       <StatusPill status={STATUS_TONE[o.status] ?? 'draft'} label={o.status} />
                       {scores.has(o.id) && (
                         <div style={{ marginTop: '3px' }}>
                           <StatusBadge tone={bandTone(scores.get(o.id)!.band)}>Risk {scores.get(o.id)!.score}</StatusBadge>
                         </div>
                       )}
-                      <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
-                        showing “{showing(o)}”
-                      </div>
+                      <div className="c-sub" style={{ marginTop: '2px' }}>showing “{showing(o)}”</div>
                       {problems.length > 0 && (
-                        <div style={{ fontSize: '10px', color: 'var(--warning)', marginTop: '2px' }}>
+                        <div style={{ color: 'var(--warning)', marginTop: '2px' }}>
                           {problems.length} thing{problems.length === 1 ? '' : 's'} wrong
                         </div>
                       )}
                     </Td>
-                    <Td right><Btn size="sm" variant="secondary" onClick={() => onOpen(o.id)}>Open</Btn></Td>
+                    <Td>
+                      <RowActions label={o.order_ref} actions={[{ label: 'Open', variant: 'secondary', onClick: () => onOpen(o.id) }]} />
+                    </Td>
                   </tr>
                 )
               })}
@@ -374,12 +350,12 @@ function OrderDetail({ order, book, today, onClose, onChanged }: {
       </div>
 
       <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: '6px' }}>What was bought</div>
-      <Table headers={['Line', 'Fulfilment', { label: 'Qty', align: 'right' }, { label: 'Charged', align: 'right' }, 'Network']}>
+      <Table headers={['Line', 'Fulfilment', 'Qty', 'Charged', 'Network']}>
         {groupBySelection(lines).flatMap(g => [
           ...(g.selectionId ? [
             <tr key={`b-${g.selectionId}`} className="bundle-row-head">
               <td className="c-td" colSpan={3}><strong>Bundle: {bundleName(g.selectionId)}</strong></td>
-              <Td right style={{ fontWeight: 700 }}>{fmtIn(g.lines.reduce((n, l) => n + l.price * l.quantity, 0), order.currency)}</Td>
+              <Td kind="num" style={{ fontWeight: 700 }}>{fmtIn(g.lines.reduce((n, l) => n + l.price * l.quantity, 0), order.currency)}</Td>
               <td className="c-td" />
             </tr>,
           ] : []),
@@ -388,25 +364,23 @@ function OrderDetail({ order, book, today, onClose, onChanged }: {
           return (
             <tr key={l.id} className={g.selectionId ? 'bundle-row-part' : undefined}>
               <Td>
-                <div style={{ fontSize: 'var(--text-xs)' }}>{l.product_name}</div>
-                <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
-                  {l.product_id}
-                </div>
+                <div>{l.product_name}</div>
+                <div className="c-sub c-mono">{l.product_id}</div>
               </Td>
-              <Td><span style={{ fontSize: 'var(--text-xs)' }}>{l.fulfil}</span></Td>
-              <Td right>{fmtInt(l.quantity)}</Td>
-              <Td right>{fmtIn(l.price * l.quantity, order.currency)}</Td>
-              <Td>
+              <Td>{l.fulfil}</Td>
+              <Td kind="num">{fmtInt(l.quantity)}</Td>
+              <Td kind="num">{fmtIn(l.price * l.quantity, order.currency)}</Td>
+              <Td kind="status">
                 {p
                   ? <>
                       <StatusPill status={COM_TONE[p.state]} label={COM_LABEL[p.state]} />
                       {p.failure_reason && (
-                        <div style={{ fontSize: '10px', color: 'var(--danger)', marginTop: '2px', maxWidth: '24ch', lineHeight: 1.4 }}>
+                        <div style={{ color: 'var(--danger)', marginTop: '2px', maxWidth: '24ch', lineHeight: 1.4, whiteSpace: 'normal' }}>
                           {p.failure_reason}
                         </div>
                       )}
                     </>
-                  : <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>not a network order</span>}
+                  : <span className="c-sub">not a network order</span>}
               </Td>
             </tr>
           )
@@ -418,7 +392,7 @@ function OrderDetail({ order, book, today, onClose, onChanged }: {
           order-level discount — said on the screen because a reader adding the
           column up and getting the total rather than the subtotal would
           otherwise think one of them was wrong. */}
-      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: '8px 0 16px', lineHeight: 1.6 }}>
+      <div style={{ color: 'var(--slate-600)', margin: '8px 0 16px', lineHeight: 1.6 }}>
         Lines come to {fmtIn(charged, order.currency)} — prices are what the buyer was quoted, tax
         included, so {fmtIn(order.tax, order.currency)} of that is {order.tax_rate}% tax collected on
         the authority's behalf.{' '}
@@ -428,7 +402,7 @@ function OrderDetail({ order, book, today, onClose, onChanged }: {
       </div>
 
       <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: '4px' }}>What can be done here</div>
-      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: '0 0 10px', lineHeight: 1.6 }}>
+      <p style={{ color: 'var(--slate-600)', margin: '0 0 10px', lineHeight: 1.6 }}>
         {FROZEN_REASON}
       </p>
 
@@ -471,7 +445,7 @@ function OrderDetail({ order, book, today, onClose, onChanged }: {
       </div>
 
       {(held || !forward.ok) && (
-        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '8px', lineHeight: 1.6 }}>
+        <div style={{ color: 'var(--slate-600)', marginTop: '8px', lineHeight: 1.6 }}>
           {held ? HELD_FOR_REVIEW : !forward.ok && forward.reason}
         </div>
       )}
@@ -517,10 +491,10 @@ function OrderDetail({ order, book, today, onClose, onChanged }: {
 function Fact({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '9px 11px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: 'var(--text-tertiary)' }}>
-        {icon}<span style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
+      <div className="c-sub" style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+        {icon}<span style={{ fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>{label}</span>
       </div>
-      <div style={{ fontSize: 'var(--text-xs)', marginTop: '3px', lineHeight: 1.5 }}>{value}</div>
+      <div style={{ marginTop: '3px', lineHeight: 1.5 }}>{value}</div>
     </div>
   )
 }

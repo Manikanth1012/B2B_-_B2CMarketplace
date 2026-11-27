@@ -269,3 +269,8 @@ textarea.c-input { resize: vertical; min-height: 88px; height: auto; padding: 10
 .c-page-head__desc { margin: var(--space-1) 0 0; font-size: var(--fs-body); color: var(--slate-600); }
 .c-page-head__actions { display: flex; align-items: center; gap: var(--space-2); flex: none; flex-wrap: wrap; }
 .c-page-head > :not(.c-page-head__row) { margin-top: var(--space-4); }
+
+/* A cell's second line (an id, an email, a market and date): secondary by
+   colour, never by a smaller size (spec 18, rule 7). */
+.c-sub { color: var(--slate-600); }
+.c-mono { font-family: var(--font-mono); }

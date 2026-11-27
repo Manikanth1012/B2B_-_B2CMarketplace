@@ -36,7 +36,7 @@ afterEach(cleanup)
 async function open(ref: string) {
   const user = userEvent.setup()
   render(<OperatorOrders />)
-  await user.click(await screen.findByRole('button', { name: 'The whole book' }))
+  await user.click(await screen.findByRole('tab', { name: 'The whole book' }))
   const row = screen.getByText(ref).closest('tr')!
   await user.click(within(row).getByRole('button', { name: 'Open' }))
   return screen.findByRole('dialog')

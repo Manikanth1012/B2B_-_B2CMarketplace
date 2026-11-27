@@ -75,3 +75,23 @@ export function KpiCard({ label, value, delta, icon, children, unit, context, va
 export function KpiRow({ children, label }: { children: ReactNode; label?: string }) {
   return <div className="kpi-row" role={label ? 'group' : undefined} aria-label={label}>{children}</div>
 }
+
+/**
+ * Money held in several currencies, as a card wants it (rule 9): the largest
+ * currency by amount is the headline, the rest a `breakdown`. Amounts in
+ * different currencies are not comparable, so "largest" only decides which one
+ * leads; nothing is added together.
+ */
+export function groupsToKpi(
+  groups: readonly { currency: string; total: { amount: number } }[],
+  fmt: (amount: number, currency: string) => string,
+  empty = '—',
+): { value: string; breakdown?: { label: string; value: string }[] } {
+  if (groups.length === 0) return { value: empty }
+  const sorted = [...groups].sort((a, b) => b.total.amount - a.total.amount)
+  const [head, ...rest] = sorted
+  return {
+    value: fmt(head.total.amount, head.currency),
+    breakdown: rest.length ? rest.map(g => ({ label: g.currency, value: fmt(g.total.amount, g.currency) })) : undefined,
+  }
+}

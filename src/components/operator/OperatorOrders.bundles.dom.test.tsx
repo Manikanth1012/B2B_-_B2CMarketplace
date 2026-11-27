@@ -46,7 +46,7 @@ describe('OperatorOrders, bundles', () => {
     }
     const user = userEvent.setup()
     render(<OperatorOrders />)
-    await user.click(await screen.findByRole('button', { name: 'The whole book' }))
+    await user.click(await screen.findByRole('tab', { name: 'The whole book' }))
 
     const row = screen.getByText('ORD-77').closest('tr')!
     expect(await within(row).findByText('Bundle: Home office (Router, eSIM plan), Cable')).toBeTruthy()
