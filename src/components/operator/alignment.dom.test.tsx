@@ -6,6 +6,9 @@ vi.mock('../../lib/supabase', () => ({ supabase: {} }))
 
 import { DateRangeFilter, FieldRow, FilterBar, FormField, PageHeader, RowActions, Table, Td, TextInput, Btn, daysBefore } from './shared'
 import { KpiCard, KpiRow } from '../ui/KpiCard'
+import { Dialog } from '../ui/Dialog'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 afterEach(() => { cleanup(); vi.restoreAllMocks() })
 
@@ -76,16 +79,23 @@ describe('Table headers (rules 2 and 4)', () => {
     expect(warn).not.toHaveBeenCalled()
   })
 
-  it('an "Actions" or trailing blank header is visually hidden but named', () => {
+  it('an "Actions" header is visually hidden but named; a blank header is left alone', () => {
     const { container, rerender } = render(<Table headers={['Name', 'Actions']}><tr><Td>A</Td><Td>x</Td></tr></Table>)
     const th = screen.getByRole('columnheader', { name: 'Actions' })
     expect(th.className).toContain('c-th--actions')
     expect(th.querySelector('.sr-only')?.textContent).toBe('Actions')
     rerender(<Table headers={['Name', '']}><tr><Td>A</Td><Td>x</Td></tr></Table>)
-    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy()
-    /* A blank first column (a checkbox or expander) is not the actions column. */
-    rerender(<Table headers={['', 'Name']}><tr><Td>-</Td><Td>A</Td></tr></Table>)
     expect(container.querySelectorAll('.c-th--actions')).toHaveLength(0)
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull()
+  })
+
+  it('only a cell holding RowActions shrinks to fit: an unmigrated actions column keeps its width', () => {
+    const css = readFileSync(resolve(__dirname, '../../styles/console.css'), 'utf8')
+    expect(css).toMatch(/\.c-table td:has\(> \.c-row-actions\) \{ width: 1%; \}/)
+    expect(css).not.toMatch(/c-th--actions[^{]*\{[^}]*width/)
+    render(<Table headers={['Name', 'Actions']}><tr><Td>A</Td><Td><div className="tb-actions"><Btn size="sm">Edit</Btn></div></Td></tr></Table>)
+    const th = screen.getByRole('columnheader', { name: 'Actions' })
+    expect(th.getAttribute('style')).toBeNull()
   })
 })
 
@@ -139,6 +149,32 @@ describe('RowActions', () => {
     await userEvent.click(more)
     await userEvent.click(screen.getByRole('menuitem', { name: 'Download PDF' }))
     expect(pdf).toHaveBeenCalledTimes(1)
+  })
+
+  it('Tab out of the menu returns focus to the button rather than off the page or round a dialog', async () => {
+    render(
+      <Dialog open onClose={() => {}} title="Row">
+        <button type="button">First</button>
+        <RowActions label="R" actions={[{ label: 'A', onClick: () => {} }, { label: 'B', onClick: () => {} }, { label: 'C', onClick: () => {} }]} />
+        <button type="button">After</button>
+      </Dialog>,
+    )
+    const more = screen.getByRole('button', { name: 'More actions for R' })
+    await userEvent.click(more)
+    expect(document.activeElement?.textContent).toBe('C')
+    await userEvent.tab()
+    expect(screen.queryByRole('menu')).toBeNull()
+    expect([more, screen.getByRole('button', { name: 'After' })]).toContain(document.activeElement)
+    expect(document.activeElement).not.toBe(document.body)
+    expect(document.activeElement?.textContent).not.toBe('First')
+  })
+
+  it('keys pressed on its buttons do not reach the row', () => {
+    const rowKey = vi.fn()
+    render(<table><tbody><tr onKeyDown={rowKey}><td><RowActions actions={[{ label: 'A', onClick: () => {} }, { label: 'B', onClick: () => {} }, { label: 'C', onClick: () => {} }]} /></td></tr></tbody></table>)
+    fireEvent.keyDown(screen.getByRole('button', { name: 'A' }), { key: 'Enter' })
+    fireEvent.keyDown(screen.getByRole('button', { name: 'More actions' }), { key: 'ArrowDown' })
+    expect(rowKey).not.toHaveBeenCalled()
   })
 
   it('closes on a press outside', async () => {

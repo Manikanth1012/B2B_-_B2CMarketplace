@@ -41,6 +41,17 @@ describe('niceTicks and formats', () => {
     expect(niceTicks(0, 7, 4)).toEqual([0, 2, 4, 6, 8])
     expect(niceTicks(-30, 90, 4)).toEqual([-50, 0, 50, 100])
   })
+  it('never a 2.5 step for counts; decimals rounded to the step', () => {
+    expect(niceTicks(0, 9, 4)).toEqual([0, 2.5, 5, 7.5, 10])
+    expect(niceTicks(0, 9, 4, true)).toEqual([0, 5, 10])
+    expect(niceTicks(0, 3, 4, true)).toEqual([0, 1, 2, 3])
+    expect(niceTicks(0, 0.3, 3)).toEqual([0, 0.1, 0.2, 0.3])
+    expect(niceTicks(0, 0.7, 4)).toEqual([0, 0.2, 0.4, 0.6, 0.8])
+  })
+  it('a column chart of counts gets whole-number ticks', () => {
+    const { container } = render(<ColumnChart label="n" format={n => `${n}`} data={[{ label: 'a', value: 9 }, { label: 'b', value: 4 }]} />)
+    expect([...container.querySelectorAll('.ui-chart__y-tick')].map(t => t.textContent)).toEqual(['0', '5', '10'])
+  })
   it('compact money for ticks', () => {
     expect(compactMoney(50000)).toBe('$50k')
     expect(compactMoney(1250000)).toBe('$1.3M')
@@ -116,8 +127,15 @@ describe('LineChart and AreaChart', () => {
     expect(container.querySelectorAll('polyline')).toHaveLength(3)
     await userEvent.tab()
     expect(document.querySelector('.ui-chart__tip')?.textContent).toBe('Jan: Orders 10, Returns 1')
-    expect(container.querySelectorAll('.ui-chart__dot')).toHaveLength(2)
+    /* Two at the focused band, and the lone return in March between a gap and the end. */
+    expect(container.querySelectorAll('.ui-chart__dot')).toHaveLength(3)
     expect(container.querySelector('table.sr-only tbody tr:nth-child(2)')?.textContent).toBe('Feb20—')
+  })
+  it('a reading between two gaps is drawn as a dot', () => {
+    const { container } = render(<LineChart label="x" labels={['a', 'b', 'c', 'd']} series={[{ key: 's', label: 'S', values: [1, 2, null, 4] }]} />)
+    const dots = [...container.querySelectorAll('.ui-chart__dot')] as HTMLElement[]
+    expect(dots).toHaveLength(1)
+    expect(dots[0].style.left).toBe('87.5%')
   })
   it('no legend for one series; area draws a fill', () => {
     const { container } = render(<AreaChart label="Gross" labels={['Jan', 'Feb']} series={[{ key: 'g', label: 'Gross', values: [1, 2] }]} />)

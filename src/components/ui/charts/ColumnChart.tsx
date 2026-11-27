@@ -1,5 +1,5 @@
 import type React from 'react'
-import { ChartFrame, ChartTip, Gridlines, XAxis, YAxis, compactMoney, money0, niceTicks, pct, useRovingMarks } from './common'
+import { ChartFrame, ChartTip, Gridlines, XAxis, YAxis, allIntegers, compactMoney, money0, niceTicks, pct, useRovingMarks } from './common'
 import { SERIES, categoryColour } from './palette'
 
 /** One column. `key` pins the colour to a category; `muted` draws it back
@@ -33,7 +33,7 @@ export function ColumnChart({ data, height = 160, format = money0, tickFormat, c
   const roving = useRovingMarks(data.length)
   if (data.length === 0) return null
 
-  const ticks = niceTicks(Math.min(0, ...data.map(d => d.value)), Math.max(...data.map(d => d.value), 1), tickCount)
+  const ticks = niceTicks(Math.min(0, ...data.map(d => d.value)), Math.max(...data.map(d => d.value), 1), tickCount, allIntegers(data.map(d => d.value)))
   const tick = tickFormat ?? (format === money0 ? compactMoney : format)
   const shown = roving.shown
   const fill = (d: Column) => d.colour ?? (d.key ? categoryColour(d.key) : colour ?? SERIES[0])

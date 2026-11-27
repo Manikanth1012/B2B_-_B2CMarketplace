@@ -212,12 +212,11 @@ function warnContradiction(label: string, said: 'left' | 'right', cells: 'left' 
 }
 
 /* Rule 4: an actions column carries no visible heading. "Actions" over a
-   column of buttons says nothing the buttons do not, and costs the column its
-   width; the name stays for a screen reader. A blank heading only counts as
-   the actions column when it is the last one: a blank first column is a
-   checkbox or an expander, and calling that "Actions" would mislabel it. */
-const isActionsHeader = (label: string, i: number, count: number): boolean =>
-  label.trim().toLowerCase() === 'actions' || (label.trim() === '' && i === count - 1 && count > 1)
+   column of buttons says nothing the buttons do not; the name stays for a
+   screen reader. Only a heading that says "Actions" is treated so: a blank
+   heading may sit over anything (a checkbox, an expander, a link), and naming
+   it "Actions" would mislabel it. */
+const isActionsHeader = (label: string): boolean => label.trim().toLowerCase() === 'actions'
 
 /**
  * Side padding, chosen by how many columns have to share the width.
@@ -250,7 +249,7 @@ export function Table({ headers, children }: { headers: Header[]; children: Reac
               const align = typeof h === 'string' ? fromCells[i] : (h.align ?? fromCells[i])
               if (typeof h !== 'string' && h.align && known && h.align !== fromCells[i]) warnContradiction(h.label, h.align, fromCells[i])
               const sort = typeof h === 'string' ? undefined : h.sort
-              if (!sort && isActionsHeader(headerLabel(h), i, headers.length)) {
+              if (!sort && isActionsHeader(headerLabel(h))) {
                 return <th key={i} className="c-th--actions"><span className="sr-only">Actions</span></th>
               }
               return (
@@ -571,12 +570,12 @@ export function RowActions({ actions, max = 2, label }: {
     <div className="c-row-actions">
       {inline.map(a => (
         <Btn key={a.label} size="sm" variant={a.variant ?? 'tertiary'} disabled={a.disabled} loading={a.loading}
-          onClick={e => { e.stopPropagation(); a.onClick() }}>
+          onClick={e => { e.stopPropagation(); a.onClick() }} onKeyDown={e => e.stopPropagation()}>
           {a.icon}{a.label}
         </Btn>
       ))}
       {rest.length > 0 && (
-        <span onClick={e => e.stopPropagation()} className="c-row-actions__more">
+        <span onClick={e => e.stopPropagation()} onKeyDown={e => e.stopPropagation()} className="c-row-actions__more">
           <Menu label={label ? `More actions for ${label}` : 'More actions'}
             triggerClassName="c-btn c-btn--tertiary c-btn--sm c-btn--icon"
             items={rest.map(a => ({ label: a.label, onSelect: a.onClick, disabled: a.disabled || a.loading, danger: a.variant === 'danger', icon: a.icon }))}>

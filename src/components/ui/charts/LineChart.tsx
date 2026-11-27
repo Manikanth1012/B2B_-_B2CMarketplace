@@ -1,5 +1,5 @@
 import type React from 'react'
-import { ChartFrame, ChartTip, Gridlines, XAxis, YAxis, compactMoney, money0, niceTicks, pct, useRovingMarks } from './common'
+import { ChartFrame, ChartTip, Gridlines, XAxis, YAxis, allIntegers, compactMoney, money0, niceTicks, pct, useRovingMarks } from './common'
 import { seriesColour } from './palette'
 
 /** One line. `null` is a gap (no reading), not a zero. */
@@ -31,7 +31,7 @@ export function LineChart({ labels, series, height = 180, format = money0, tickF
   if (n === 0 || series.length === 0) return null
 
   const all = series.flatMap(s => s.values.filter((v): v is number => v !== null))
-  const ticks = niceTicks(Math.min(0, ...all), Math.max(1, ...all), tickCount)
+  const ticks = niceTicks(Math.min(0, ...all), Math.max(1, ...all), tickCount, allIntegers(all))
   const tick = tickFormat ?? (format === money0 ? compactMoney : format)
   const colourOf = (s: LineSeries, i: number) => s.colour ?? seriesColour(i)
   const x = (i: number) => ((i + 0.5) / n) * 100
@@ -84,10 +84,17 @@ export function LineChart({ labels, series, height = 180, format = money0, tickF
               ))}
             </>
           )}
-          {n === 1 && series.map((s, si) => s.values[0] === null ? null : (
-            <span key={`only-${s.key}`} className="ui-chart__dot" aria-hidden="true"
-              style={{ left: '50%', bottom: `${pct(s.values[0] as number, ticks)}%`, background: colourOf(s, si) }} />
-          ))}
+          {/* A reading with no neighbour (one category, or a value between
+              two gaps) has no line to sit on, so it is drawn as a dot. */}
+          {series.map((s, si) => s.values.map((v, i) => {
+            const alone = v !== null && v !== undefined
+              && (i === 0 || s.values[i - 1] === null || s.values[i - 1] === undefined)
+              && (i === n - 1 || s.values[i + 1] === null || s.values[i + 1] === undefined)
+            return alone && shown !== i ? (
+              <span key={`alone-${s.key}-${i}`} className="ui-chart__dot" aria-hidden="true"
+                style={{ left: `${x(i)}%`, bottom: `${pct(v as number, ticks)}%`, background: colourOf(s, si) }} />
+            ) : null
+          }))}
           <div className="ui-chart__bands">
             {labels.map((l, i) => (
               <div key={`${l}-${i}`} role="img" aria-label={bandWords(i)} className="ui-chart__band" {...roving.markProps(i)} />

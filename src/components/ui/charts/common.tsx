@@ -29,21 +29,30 @@ function compactAbs(a: number): string {
 /**
  * Round tick values for an axis from `lo` to `hi`: steps of 1, 2, 2.5 or 5
  * times a power of ten, about `count` of them, always including zero when the
- * range spans it.
+ * range spans it. With `integers` (counts) the step is a whole number and
+ * never 2.5: "2.5 orders" is not a tick anyone can read. Values are rounded to
+ * the step's own decimals, so 0.1 + 0.2 is 0.3 and not 0.30000000000000004.
  */
-export function niceTicks(lo: number, hi: number, count = 4): number[] {
+export function niceTicks(lo: number, hi: number, count = 4, integers = false): number[] {
   const min = Math.min(0, lo)
   const max = Math.max(hi, min + 1e-9)
   const raw = (max - min) / Math.max(count, 1)
   const mag = Math.pow(10, Math.floor(Math.log10(raw || 1)))
   const r = raw / mag
-  const step = (r <= 1 ? 1 : r <= 2 ? 2 : r <= 2.5 ? 2.5 : r <= 5 ? 5 : 10) * mag
-  const start = Math.floor(min / step) * step
-  const end = Math.ceil(max / step) * step
+  const m = r <= 1 ? 1 : r <= 2 ? 2 : r <= 2.5 && !integers ? 2.5 : r <= 5 ? 5 : 10
+  let step = Number((m * mag).toPrecision(12))
+  if (integers) step = Math.max(1, Math.round(step))
+  const decimals = (String(step).split('.')[1] ?? '').length
+  const fix = (v: number) => Number(v.toFixed(decimals))
+  const first = Math.floor(min / step)
+  const last = Math.ceil(max / step)
   const out: number[] = []
-  for (let v = start; v <= end + step / 2; v += step) out.push(Math.round(v / step) * step)
+  for (let k = first; k <= last; k++) out.push(fix(k * step))
   return out.length > 1 ? out : [0, step]
 }
+
+/** True when every value is a whole number (a count), for niceTicks. */
+export const allIntegers = (values: readonly number[]): boolean => values.every(v => Number.isInteger(v))
 
 /** Where a value sits between the first and last tick, 0 to 100. */
 export function pct(v: number, ticks: number[]): number {

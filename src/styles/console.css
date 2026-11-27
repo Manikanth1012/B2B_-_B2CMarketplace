@@ -192,8 +192,10 @@ textarea.c-input { resize: vertical; min-height: 88px; height: auto; padding: 10
   overflow-wrap: break-word;
 }
 
-/* An actions column: no visible heading, as narrow as its buttons. */
-.c-table th.c-th--actions { width: 1%; }
+/* A cell holding RowActions is as narrow as its buttons. Keyed on the cell's
+   content rather than on the heading, so a table whose actions column still
+   holds its own wrapping button group keeps the width it had. */
+.c-table td:has(> .c-row-actions) { width: 1%; }
 
 /* Row actions: right-aligned, one line, 32px buttons. */
 .c-row-actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--space-1); white-space: nowrap; }
@@ -211,7 +213,10 @@ textarea.c-input { resize: vertical; min-height: 88px; height: auto; padding: 10
 /* Filter bar: one line at the control height; the search grows, filters keep
    a fixed width, actions sit at the end. Wraps only when the bar itself is
    narrower than about 720px. */
-.c-filterbar-wrap { container-type: inline-size; margin-bottom: var(--space-3); }
+/* `container-type: inline-size` takes the width from the parent, not the
+   content, so in a shrink-to-fit parent it would collapse to nothing: the
+   explicit full width keeps it. */
+.c-filterbar-wrap { container-type: inline-size; width: 100%; min-width: 0; margin-bottom: var(--space-3); }
 .c-filterbar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: nowrap; min-height: var(--control-h); }
 .c-filterbar__search { flex: 1 1 240px; min-width: 200px; }
 .c-filterbar__filters { display: flex; align-items: center; gap: var(--space-2); flex: 0 1 auto; min-width: 0; }
