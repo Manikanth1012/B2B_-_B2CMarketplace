@@ -9,7 +9,7 @@ import {
   decideHeldOrder, loadRiskBook, rescoreAccounts, setRiskBands, updateRiskRule,
 } from '../../lib/riskRepo'
 import type { AccountRiskRow, FlaggedRow, HeldRow, RiskBook, RuleRow } from '../../lib/riskRepo'
-import { bandTone, bandsProblem, reasonsLine, ruleEditProblem } from '../../lib/risk'
+import { BAND_LABEL, bandTone, bandsProblem, reasonsLine, ruleEditProblem } from '../../lib/risk'
 import type { Bands } from '../../lib/risk'
 
 /* Fraud and risk scoring (spec 13). Orders and accounts are scored by rules the
@@ -22,8 +22,6 @@ type Tab = 'held' | 'flagged' | 'accounts' | 'rules'
 type Said = { ok: boolean; text: string } | null
 
 const TAB_LABEL: Record<Tab, string> = { held: 'Held', flagged: 'Flagged', accounts: 'Accounts', rules: 'Rules' }
-
-const BAND_LABEL = { low: 'Low', review: 'Review', hold: 'Hold', high: 'High' } as const
 
 export function OperatorRisk() {
   const { fmtIn } = useMarket()
@@ -237,7 +235,9 @@ function AccountsTab({ rows, onSaid, onChanged }: {
     const res = await rescoreAccounts()
     setBusy(false)
     if (!res.ok) { onSaid({ ok: false, text: res.error }); return }
-    onSaid({ ok: true, text: `${res.value.scored} accounts scored, ${res.value.review} to review, ${res.value.high} high.` })
+    const failed = res.value.failed ?? 0
+    onSaid({ ok: true, text: `${res.value.scored} accounts scored, ${res.value.review} to review, ${res.value.high} high.`
+      + (failed > 0 ? ` ${failed} could not be scored and keep their last score.` : '') })
     await onChanged()
   }
 

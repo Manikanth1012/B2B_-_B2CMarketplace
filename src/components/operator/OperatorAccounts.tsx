@@ -7,7 +7,7 @@ import { StatCard, SectionCard, Table, Td, StatusPill, Btn, EmptyState, fmtInt }
 import { Callout } from '../OnboardingJourney'
 import { StatusBadge } from '../ui/StatusBadge'
 import { accountBands } from '../../lib/riskRepo'
-import { bandTone } from '../../lib/risk'
+import { BAND_LABEL, bandTone } from '../../lib/risk'
 import { useMarket } from '../../lib/MarketContext'
 import { loadAccountBook } from '../../lib/accountsRepo'
 import type { AccountBook } from '../../lib/accountsRepo'
@@ -231,7 +231,7 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
                         {risk.has(a.id) && (
                           <div style={{ marginTop: '3px' }}>
                             <StatusBadge tone={bandTone(risk.get(a.id)!.band)}>
-                              Risk: {risk.get(a.id)!.band}
+                              Risk: {BAND_LABEL[risk.get(a.id)!.band]}
                             </StatusBadge>
                           </div>
                         )}

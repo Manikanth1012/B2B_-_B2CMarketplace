@@ -218,12 +218,16 @@ export async function setRiskBands(kind: 'order' | 'account', bands: Bands): Pro
 }
 
 /** Score every account now. Returns what the nightly job's result holds. */
-export async function rescoreAccounts(): Promise<Kept<{ scored: number; review: number; high: number }>> {
+export async function rescoreAccounts(): Promise<Kept<{ scored: number; review: number; high: number; failed?: number }>> {
   try {
     const { data, error } = await supabase.rpc('refresh_account_risk')
     if (error) return fail(error)
     const r = (data ?? {}) as Rec
-    return { ok: true, value: { scored: Number(r.scored ?? 0), review: Number(r.review ?? 0), high: Number(r.high ?? 0) } }
+    /* `failed`: accounts that could not be scored and kept their last score
+       (20261127100000); absent before it, read as 0. */
+    return { ok: true, value: {
+      scored: Number(r.scored ?? 0), review: Number(r.review ?? 0), high: Number(r.high ?? 0), failed: Number(r.failed ?? 0),
+    } }
   } catch (e) {
     return fail(e)
   }

@@ -396,49 +396,7 @@ export function Checkout({ cartItems, onClearCart, onComplete, onAcceptFlag, onR
   }
 
   if (step === 'confirm') {
-    return (
-      <section style={{ padding: '64px 0' }}>
-        <div className="container" style={{ maxWidth: '480px', textAlign: 'center' }}>
-          <div style={{
-            width: '64px',
-            height: '64px',
-            borderRadius: '50%',
-            background: 'var(--success-bg)',
-            color: 'var(--success)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            margin: '0 auto 24px',
-          }}>
-            <Check size={32} />
-          </div>
-          <h1 style={{ fontSize: 'var(--text-3xl)', fontWeight: 700, marginBottom: '12px' }}>
-            Order confirmed!
-          </h1>
-          {/* Plural when the basket spanned sellers, because it produced one
-              order each and both references are real. Saying "your order
-              reference" and showing two is how somebody quotes the wrong one at
-              support. */}
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '8px' }}>
-            {orderRef.includes(' · ')
-              ? 'Your basket covered more than one seller, so it was placed as separate orders'
-              : 'Your order reference is'}
-          </p>
-          <p style={{ fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--brand-accent-dark)', marginBottom: '24px' }}>
-            {orderRef}
-          </p>
-          {heldOrder && (
-            <p role="status" style={{ color: 'var(--text)', fontWeight: 600, marginBottom: '16px' }}>{HELD_FOR_BUYER}</p>
-          )}
-          <p style={{ color: 'var(--text-secondary)', marginBottom: '32px' }}>
-            We've sent a confirmation to {email}. Digital services will activate immediately, and physical items will ship within 2-3 business days.
-          </p>
-          <button onClick={onComplete} className="btn btn-primary btn-lg">
-            Continue Shopping
-          </button>
-        </div>
-      </section>
-    )
+    return <OrderPlaced orderRef={orderRef} email={email} held={heldOrder} onComplete={onComplete} />
   }
 
   return (
@@ -807,5 +765,58 @@ function Input({ label, value, onChange, type = 'text', required, full }: {
         onChange={(e) => onChange(e.target.value)}
       />
     </div>
+  )
+}
+
+/** The confirmation once the payment has succeeded. A held order (spec 13) is
+    told it is being checked, and is not promised to activate or ship. */
+export function OrderPlaced({ orderRef, email, held, onComplete }: {
+  orderRef: string; email: string; held: boolean; onComplete: () => void
+}) {
+  return (
+    <section style={{ padding: '64px 0' }}>
+      <div className="container" style={{ maxWidth: '480px', textAlign: 'center' }}>
+        <div style={{
+          width: '64px',
+          height: '64px',
+          borderRadius: '50%',
+          background: 'var(--success-bg)',
+          color: 'var(--success)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          margin: '0 auto 24px',
+        }}>
+          <Check size={32} />
+        </div>
+        <h1 style={{ fontSize: 'var(--text-3xl)', fontWeight: 700, marginBottom: '12px' }}>
+          Order confirmed!
+        </h1>
+        {/* Plural when the basket spanned sellers, because it produced one
+            order each and both references are real. Saying "your order
+            reference" and showing two is how somebody quotes the wrong one at
+            support. */}
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '8px' }}>
+          {orderRef.includes(' · ')
+            ? 'Your basket covered more than one seller, so it was placed as separate orders'
+            : 'Your order reference is'}
+        </p>
+        <p style={{ fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--brand-accent-dark)', marginBottom: '24px' }}>
+          {orderRef}
+        </p>
+        {held && (
+          <p role="status" style={{ color: 'var(--text)', fontWeight: 600, marginBottom: '16px' }}>{HELD_FOR_BUYER}</p>
+        )}
+        <p style={{ color: 'var(--text-secondary)', marginBottom: '32px' }}>
+          {/* A held order goes nowhere until it is checked, so it is not promised
+              to activate or ship. */}
+          We've sent a confirmation to {email}.
+          {!held && ' Digital services will activate immediately, and physical items will ship within 2-3 business days.'}
+        </p>
+        <button onClick={onComplete} className="btn btn-primary btn-lg">
+          Continue Shopping
+        </button>
+      </div>
+    </section>
   )
 }

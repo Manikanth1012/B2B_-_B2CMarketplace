@@ -53,7 +53,7 @@ describe('a customer buys in the market they are registered in', () => {
   const place = async (market: string, currency: string) => {
     const { data: m } = await supabase.from('markets').select('tax_rate').eq('code', market).single()
     const res = await supabase.from('orders').insert({
-      order_ref: ref(), seller: 'Kestrel Devices', status: 'placed',
+      order_ref: ref(), seller: 'Kestrel Devices', status: 'awaiting_payment',
       total: 100, subtotal: 100, tax: 0, discount: 0,
       market, currency, tax_rate: Number((m as { tax_rate: number }).tax_rate),
       payment_method: 'card', buyer_name: 'Priya Raman',

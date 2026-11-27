@@ -7,7 +7,7 @@ import {
 import { Callout } from '../OnboardingJourney'
 import { StatusBadge } from '../ui/StatusBadge'
 import { accountBands } from '../../lib/riskRepo'
-import { bandTone } from '../../lib/risk'
+import { BAND_LABEL as RISK_BAND_LABEL, bandTone } from '../../lib/risk'
 import { loadCreditBook, releaseHold } from '../../lib/creditRepo'
 import type { CreditBook } from '../../lib/creditRepo'
 import {
@@ -199,7 +199,7 @@ function Buyers({ book, today }: { book: CreditBook; today: string }) {
                 </div>
                 {risk.has(p.account_id) && (
                   <div style={{ marginTop: '3px' }}>
-                    <StatusBadge tone={bandTone(risk.get(p.account_id)!.band)}>Risk: {risk.get(p.account_id)!.band}</StatusBadge>
+                    <StatusBadge tone={bandTone(risk.get(p.account_id)!.band)}>Risk: {RISK_BAND_LABEL[risk.get(p.account_id)!.band]}</StatusBadge>
                   </div>
                 )}
                 {p.deposit_held > 0 && (
