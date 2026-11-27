@@ -20,3 +20,5 @@
 .ds__card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-card); padding: var(--space-4); }
 .ds__panel { padding: var(--space-4) 0; }
 .ds__stack { display: grid; gap: var(--space-3); }
+.ds__charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--space-4); margin-top: var(--space-4); align-items: start; }
+.ds__spark { width: 160px; color: var(--indigo-600); }

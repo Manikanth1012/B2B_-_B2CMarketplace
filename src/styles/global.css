@@ -51,6 +51,19 @@
   --grad-navy: linear-gradient(135deg, #0B1220 0%, #0F172A 55%, #312E81 100%);
   --grad-cyan: linear-gradient(90deg, #4F46E5 0%, #0F766E 100%);
 
+  /* Chart palette (spec 18): categorical marks only, at most six, always in
+     this order; the same category key always takes the same slot (see
+     categoryColour in ui/charts). Every slot is at least 3:1 against white
+     and canvas, the WCAG 1.4.11 floor for a non-text mark (contrast.test.ts). */
+  --chart-1: #4F46E5;   /* indigo      6.29 white, 5.86 canvas */
+  --chart-2: #0D9488;   /* teal        3.74 white, 3.49 canvas */
+  --chart-3: #5B7DB1;   /* slate-blue  4.19 white, 3.90 canvas */
+  --chart-4: #B45309;   /* amber       5.02 white, 4.68 canvas */
+  --chart-5: #E11D48;   /* rose        4.70 white, 4.38 canvas */
+  --chart-6: #64748B;   /* slate       4.76 white, 4.43 canvas */
+  --chart-grid: #F1F5F9;  /* gridlines: decorative, deliberately faint */
+  --chart-axis: #CBD5E1;  /* the baseline under columns */
+
   /* Semantic colours — each AA on white, canvas and its own tint */
   --success: #15803D;           /* 5.02 white, 4.67 canvas, 4.76 on tint */
   --success-bg: #ECFDF3;

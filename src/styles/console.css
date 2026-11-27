@@ -178,3 +178,86 @@ textarea.c-input { resize: vertical; min-height: 88px; height: auto; padding: 10
 @media (prefers-reduced-motion: reduce) {
   .c-btn { transition: none; }
 }
+
+/* ---------- Spec 18: alignment, filters, row actions, page header ---------- */
+
+/* Td clamp: a name wraps to at most two lines (the count comes from the
+   cell's inline -webkit-line-clamp) and keeps a width it can be read at. */
+.c-td--clamp { min-width: 140px; }
+.c-td__clamp {
+  display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden;
+  overflow-wrap: break-word;
+}
+
+/* An actions column: no visible heading, as narrow as its buttons. */
+.c-table th.c-th--actions { width: 1%; }
+
+/* Row actions: right-aligned, one line, 32px buttons. */
+.c-row-actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--space-1); white-space: nowrap; }
+.c-row-actions__more { display: inline-flex; }
+
+/* A menu (ui/Menu) reuses the listbox popup; these are its own touches. */
+.ui-menu { min-width: 180px; }
+.ui-menu__item {
+  width: 100%; border: 0; background: transparent; font: inherit; color: inherit; text-align: left;
+}
+.ui-menu__item:focus-visible { outline: 2px solid var(--focus-color); outline-offset: -2px; }
+.ui-menu__item--danger { color: var(--danger); }
+.ui-menu__icon { display: inline-flex; color: var(--slate-600); }
+
+/* Filter bar: one line at the control height; the search grows, filters keep
+   a fixed width, actions sit at the end. Wraps only when the bar itself is
+   narrower than about 720px. */
+.c-filterbar-wrap { container-type: inline-size; margin-bottom: var(--space-3); }
+.c-filterbar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: nowrap; min-height: var(--control-h); }
+.c-filterbar__search { flex: 1 1 240px; min-width: 200px; }
+.c-filterbar__filters { display: flex; align-items: center; gap: var(--space-2); flex: 0 1 auto; min-width: 0; }
+.c-filterbar__filters > * { flex: 0 0 auto; width: var(--filter-w, 180px); }
+.c-filterbar__filters > .c-daterange, .c-filterbar__filters > .ui-toggle, .c-filterbar__filters > .c-btn { width: auto; }
+.c-filterbar__actions { display: flex; align-items: center; gap: var(--space-2); margin-left: auto; flex: none; }
+.c-filterbar .c-field { margin-bottom: 0; }
+.c-filterbar .c-btn, .c-filterbar .c-btn--sm { height: var(--control-h); min-height: var(--control-h); }
+.c-filterbar__summary { margin-top: var(--space-2); font-size: var(--fs-meta); color: var(--slate-600); }
+@container (max-width: 720px) {
+  .c-filterbar { flex-wrap: wrap; }
+  .c-filterbar__search { flex: 1 1 100%; }
+  .c-filterbar__filters { flex-wrap: wrap; flex: 1 1 100%; }
+  .c-filterbar__actions { margin-left: 0; }
+}
+
+/* Date range: two date inputs and the quick picks, at the control height. */
+.c-daterange { display: inline-flex; align-items: center; gap: var(--space-2); flex-wrap: nowrap; }
+.c-daterange__input { width: 150px; }
+.c-daterange__sep { font-size: var(--fs-meta); color: var(--slate-600); }
+.c-daterange__quick { display: inline-flex; gap: var(--space-1); }
+
+/* A chip: a pressable quick pick; pressed reads in indigo, not by colour alone
+   (the fill and the border both change, and aria-pressed carries it). */
+.c-chip {
+  display: inline-flex; align-items: center; height: var(--control-h-sm); padding: 0 var(--space-3);
+  border-radius: var(--radius-pill); border: 1px solid var(--control-border); background: var(--surface);
+  font: inherit; font-size: var(--fs-meta); font-weight: 600; color: var(--ink-800); cursor: pointer; white-space: nowrap;
+}
+.c-chip:hover { background: var(--slate-100); }
+.c-chip:focus-visible { outline: 2px solid var(--focus-color); outline-offset: 2px; }
+.c-chip[aria-pressed="true"] { background: var(--indigo-50); border-color: var(--indigo-600); color: var(--indigo-700); }
+@media (forced-colors: active) {
+  .c-chip[aria-pressed="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+}
+
+/* FormField compact, and a row of fields with their buttons on the input line. */
+.c-field--compact { margin-bottom: 0; }
+.c-field-row { display: flex; align-items: flex-end; gap: var(--space-2); flex-wrap: wrap; }
+.c-field-row > .c-field { margin-bottom: 0; flex: 1 1 240px; min-width: 0; }
+.c-field-row > .c-btn, .c-field-row > .c-btn--sm {
+  height: var(--control-h); min-height: var(--control-h); padding: 0 16px; font-size: var(--text-sm); flex: none;
+}
+
+/* Page header: title and one line on the left, the primary action right. */
+.c-page-head { margin-bottom: var(--space-6); }
+.c-page-head__row { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); flex-wrap: wrap; }
+.c-page-head__text { min-width: 0; flex: 1 1 320px; }
+.c-page-head__title { margin: 0; font-size: var(--fs-title); font-weight: var(--fw-title); letter-spacing: var(--ls-title); color: var(--ink-800); line-height: 1.25; }
+.c-page-head__desc { margin: var(--space-1) 0 0; font-size: var(--fs-body); color: var(--slate-600); }
+.c-page-head__actions { display: flex; align-items: center; gap: var(--space-2); flex: none; flex-wrap: wrap; }
+.c-page-head > :not(.c-page-head__row) { margin-top: var(--space-4); }
