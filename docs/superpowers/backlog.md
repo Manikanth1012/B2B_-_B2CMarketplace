@@ -130,13 +130,13 @@ Still open:
 - [x] Nothing moves an invoice from open to overdue after its due date (as before). Done in spec 14.
 - [ ] Seller settlement lines and ledger postings are not written for the new orders.
 
-## Bundle line prices (2026-11-27, in progress)
+## Bundle line prices (2026-11-27, merged; migration 20261127300000 to apply)
 
 User: "while creating a bundle I do not get the option of choosing a discounted price for each product". Chosen:
 price per line. Each product gets a "Price in bundle" (seller floor ≤ price ≤ normal price), the bundle price is
 the lines added up (read-only) with the saving, and "Apply % off to all" fills the lines. Branch
 `bundle-line-prices`; migration `20261127300000_a_bundle_line_carries_its_price.sql` (`product_components.unit_price`,
-with DB guards) — not applied yet. Its UI waits for the spec 18 group 1 restyle of OperatorCatalogue.tsx.
+with DB guards: per line floor..price, operator only, lines add up on insert/update/delete and on bundle price edits) — NOT applied yet; until it is, Compose a bundle fails (it writes unit_price). Also fixed: createBundle and composePack now set floor_price/list_price (NOT NULL since 20260731130000 — both inserts were refused before).
 
 ## More synthetic data (2026-11-27, queued after the pending items)
 
