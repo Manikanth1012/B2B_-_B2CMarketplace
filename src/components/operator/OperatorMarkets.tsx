@@ -30,7 +30,10 @@ import {
 import type { Cell, GrantState } from '../../lib/marketAdmin'
 import type { PartnerMarket } from '../../lib/marketPricing'
 import { supabase } from '../../lib/supabase'
-import { SectionCard, StatCard, Btn, Table, Td, EmptyState, Modal, toast, ConfirmDialog } from './shared'
+import { SectionCard, Btn, Table, Td, EmptyState, Modal, toast, ConfirmDialog, PageHeader } from './shared'
+import { KpiCard, KpiRow } from '../ui/KpiCard'
+import { StatusBadge } from '../ui/StatusBadge'
+import { Callout } from '../OnboardingJourney'
 import { AuditPanel } from './AuditPanel'
 
 interface Seller { id: string; name: string; type: string; country: string }
@@ -166,62 +169,45 @@ export function OperatorMarkets() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div>
-        <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, margin: 0 }}>Markets & currencies</h1>
-        <p style={{ color: 'var(--text-secondary)', fontSize: 'var(--text-sm)', margin: '4px 0 0' }}>
-          Where the marketplace trades, what it takes money in, and who is allowed to sell there
-        </p>
-      </div>
+      <PageHeader title="Markets & currencies"
+        description="Where the marketplace trades, what it takes money in, and who is allowed to sell there" />
 
-      <div className="stat-row">
-        <StatCard label="Markets open" value={String(markets.length)}
-                  sublabel={markets.map(m => m.code).join(' · ')} />
-        <StatCard label="Currencies accepted" value={String(new Set(accepted.map(a => a.currency)).size)}
-                  sublabel={[...new Set(accepted.map(a => a.currency))].sort().join(' · ')} />
-        <StatCard label="Sellers on record" value={String(sellers.length)} />
-        <StatCard label="Market requests waiting" value={String(waiting.length)}
-                  color={waiting.length ? 'var(--warning)' : undefined}
-                  sublabel={waiting.length ? 'Nobody can trade until these are decided' : 'Nothing outstanding'} />
-      </div>
+      <KpiRow label="Markets summary">
+        <KpiCard variant="ops" label="Markets open" value={String(markets.length)}
+                 status={markets.map(m => m.code).join(' · ')} />
+        <KpiCard variant="ops" label="Currencies accepted" value={String(new Set(accepted.map(a => a.currency)).size)}
+                 status={[...new Set(accepted.map(a => a.currency))].sort().join(' · ')} />
+        <KpiCard variant="ops" label="Sellers on record" value={String(sellers.length)}
+                 status={`${new Set(cells.filter(c => c.state === 'approved').map(c => c.partner_id)).size} trading somewhere`} />
+        <KpiCard variant="ops" label="Market requests waiting" value={String(waiting.length)}
+                 tone={waiting.length ? 'warning' : undefined}
+                 status={waiting.length ? 'Nobody can trade until these are decided' : 'Nothing outstanding'} />
+      </KpiRow>
 
       {/* Two consequences of granting a currency that nothing on this screen
           could see until now. Both are stated before the section that does the
           granting, because they are the reason to look twice at it. */}
       {gaps.length > 0 && (
-        <div style={{
-          padding: '13px 16px', borderRadius: 'var(--radius-md)',
-          background: 'var(--warning-bg)', border: '1px solid var(--warning)',
-          fontSize: 'var(--text-sm)', lineHeight: 1.6,
-        }}>
-          <strong>
-            {gaps.length} {gaps.length === 1 ? 'shelf is' : 'shelves are'} not fully priced.
-          </strong>
-          <div style={{ marginTop: '5px', fontSize: 'var(--text-xs)' }}>
+        <Callout tone="warning" title={`${gaps.length} ${gaps.length === 1 ? 'shelf is' : 'shelves are'} not fully priced.`}>
+          <div>
             {gaps.map(g => {
               const m = markets.find(x => x.code === g.market_code)
               return `${m?.name ?? g.market_code} in ${g.currency}: ${g.missing} of ${g.of} unpriced`
             }).join(' · ')}
           </div>
-          <div style={{ marginTop: '6px', fontSize: '11px', color: 'var(--text-secondary)' }}>
+          <div className="c-sub" style={{ marginTop: '6px' }}>
             A shopper who chooses one of these is shown the product's base price instead — a plausible
             number in the wrong money, which is the kind of wrong nothing on the page can look wrong.
           </div>
-        </div>
+        </Callout>
       )}
 
       {unsettleable(accepted, rates, reporting).length > 0 && (
-        <div style={{
-          padding: '13px 16px', borderRadius: 'var(--radius-md)',
-          background: 'var(--danger-bg)', border: '1px solid var(--danger)',
-          fontSize: 'var(--text-sm)', lineHeight: 1.6,
-        }}>
-          <strong>
-            No rate on file for {unsettleable(accepted, rates, reporting).join(', ')}.
-          </strong>{' '}
+        <Callout tone="danger" title={`No rate on file for ${unsettleable(accepted, rates, reporting).join(', ')}.`}>
           The marketplace can take money in {unsettleable(accepted, rates, reporting).length === 1 ? 'it' : 'them'} and
           cannot pay a seller out of {unsettleable(accepted, rates, reporting).length === 1 ? 'it' : 'them'} — a
           settlement into that account will refuse rather than convert at a rate nobody set.
-        </div>
+        </Callout>
       )}
 
       {/* ================================= what does not add up ========== */}
@@ -252,14 +238,14 @@ export function OperatorMarkets() {
                 { pegged?: boolean; source?: string } | undefined
               return (
                 <tr key={f.currency}>
-                  <Td>
-                    <strong style={{ fontSize: 'var(--text-xs)' }}>{f.currency}</strong>
-                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{cur?.name ?? ''}</div>
+                  <Td kind="text">
+                    <strong>{f.currency}</strong>
+                    <div className="c-sub">{cur?.name ?? ''}</div>
                   </Td>
-                  <Td right>{f.rate}</Td>
-                  <Td right>{f.as_of}</Td>
-                  <Td right>
-                    <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                  <Td kind="num">{f.rate}</Td>
+                  <Td kind="date">{f.as_of}</Td>
+                  <Td kind="text">
+                    <span className="c-sub">
                       {row?.source ?? '—'}{row?.pegged ? ' · pegged' : ''}
                     </span>
                   </Td>
@@ -287,8 +273,8 @@ export function OperatorMarkets() {
               }}>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '10px' }}>
                   <Globe size={16} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
-                  <strong style={{ fontSize: 'var(--text-sm)' }}>{m.name}</strong>
-                  <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                  <strong>{m.name}</strong>
+                  <span className="c-sub">
                     {m.code} · {m.tax_label} {m.tax_rate}%{m.is_default ? ' · default market' : ''}
                   </span>
                   <span style={{ marginLeft: 'auto' }}>
@@ -297,7 +283,7 @@ export function OperatorMarkets() {
                         <Plus size={12} /> Add currency
                       </Btn>
                     ) : (
-                      <span style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                      <span className="c-sub">
                         Takes every currency on file
                       </span>
                     )}
@@ -315,12 +301,12 @@ export function OperatorMarkets() {
                         border: `1px solid ${isDefault ? 'var(--brand-navy)' : 'var(--border)'}`,
                         background: isDefault ? 'var(--bg-alt)' : 'white',
                       }}>
-                        <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>
+                        <span style={{ fontWeight: 700 }}>
                           {symbolOf(c, book.currencies) === c ? c : `${symbolOf(c, book.currencies)} ${c}`}
                         </span>
                         {isDefault ? (
-                          <span style={{
-                            fontSize: '9px', fontWeight: 700, textTransform: 'uppercase',
+                          <span className="c-sub" style={{
+                            fontWeight: 700, textTransform: 'uppercase',
                             letterSpacing: '0.05em', color: 'var(--brand-navy)',
                           }}>
                             quoted by default
@@ -331,6 +317,7 @@ export function OperatorMarkets() {
                               onClick={() => makeDefault(m.code, c)}
                               disabled={busy === key}
                               title={`Quote shoppers in ${m.name} in ${c}`}
+                              aria-label={`Quote shoppers in ${m.name} in ${c}`}
                               style={chip('var(--text-tertiary)')}
                             >
                               <Star size={12} />
@@ -339,6 +326,7 @@ export function OperatorMarkets() {
                               onClick={() => askRemove(m.code, c)}
                               disabled={busy === key}
                               title={`Stop trading in ${c} here`}
+                              aria-label={`Stop trading in ${c} in ${m.name}`}
                               style={chip('var(--danger)')}
                             >
                               <Trash2 size={12} />
@@ -354,7 +342,7 @@ export function OperatorMarkets() {
                     is worth saying beside the row rather than only in the toast
                     that fires after somebody tries. */}
                 {takes.length > 1 && (
-                  <p style={{ margin: '9px 0 0', fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                  <p className="c-sub" style={{ margin: '9px 0 0' }}>
                     To stop trading in {takes[0]} here, make another currency the default first.
                   </p>
                 )}
@@ -377,9 +365,9 @@ export function OperatorMarkets() {
             <><Table headers={['Seller', ...markets.map(m => m.name)]}>
               {sellersPage.rows.map(s => (
                 <tr key={s.id}>
-                  <Td>
-                    <div style={{ fontWeight: 700, fontSize: 'var(--text-xs)' }}>{s.name}</div>
-                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                  <Td kind="text" style={{ maxWidth: '28ch' }}>
+                    <div style={{ fontWeight: 700 }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={s.name}>{s.name}</span></div>
+                    <div className="c-sub">
                       {s.id} · {s.type} · {s.country}
                     </div>
                   </Td>
@@ -387,21 +375,21 @@ export function OperatorMarkets() {
                     const cell = cells.find(c => c.partner_id === s.id && c.market_code === m.code)!
                     const key = `${s.id}|${m.code}`
                     return (
-                      /* `right`, because `Table` right-aligns every header after
-                         the first. A left-aligned cell under a right-aligned
-                         header puts the market's name nowhere near its column. */
-                      <Td key={m.code} right>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '7px' }}>
+                      /* A status, so left: the header takes the cells' alignment. */
+                      <Td key={m.code} kind="status">
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                           <GrantChip state={cell.state} />
                           {cell.state === 'approved' ? (
                             <button onClick={() => decide(s.id, m.code, 'suspended')}
                                     disabled={busy === key} title={`Suspend ${s.name} in ${m.name}`}
+                                    aria-label={`Suspend ${s.name} in ${m.name}`}
                                     style={chip('var(--danger)')}>
                               <Ban size={12} />
                             </button>
                           ) : (
                             <button onClick={() => decide(s.id, m.code, 'approved')}
                                     disabled={busy === key} title={`Let ${s.name} sell in ${m.name}`}
+                                    aria-label={`Let ${s.name} sell in ${m.name}`}
                                     style={chip('var(--success)')}>
                               <Check size={12} />
                             </button>
@@ -426,7 +414,7 @@ export function OperatorMarkets() {
           {markets.map(m => {
             const t = tallyFor(m.code, cells)
             return (
-              <div key={m.code} style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+              <div key={m.code} className="c-sub">
                 <strong style={{ color: 'var(--text)' }}>{m.name}</strong>{' — '}
                 {t.approved} trading
                 {t.requested > 0 && <span style={{ color: 'var(--warning)' }}>, {t.requested} waiting</span>}
@@ -448,7 +436,7 @@ export function OperatorMarkets() {
       >
         {adding && (
           <>
-            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', marginTop: 0 }}>
+            <p className="c-sub" style={{ marginTop: 0 }}>
               Adding a currency lets sellers approved here set a price in it, and lets a shopper
               choose to be quoted in it. It does not change what anybody is quoted by default, and
               it does not change the tax — {markets.find(m => m.code === adding)?.tax_label}{' '}
@@ -469,11 +457,11 @@ export function OperatorMarkets() {
                       textAlign: 'left',
                     }}
                   >
-                    <strong style={{ fontSize: 'var(--text-sm)', minWidth: '58px' }}>{c}</strong>
-                    <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>
+                    <strong style={{ minWidth: '58px' }}>{c}</strong>
+                    <span className="c-sub">
                       {cur?.name ?? c}
                     </span>
-                    <span style={{ marginLeft: 'auto', fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                    <span className="c-sub" style={{ marginLeft: 'auto' }}>
                       {priced[c] ?? 0} listing{(priced[c] ?? 0) === 1 ? '' : 's'} already priced in it
                     </span>
                   </button>
@@ -510,22 +498,14 @@ const chip = (color: string): React.CSSProperties => ({
 })
 
 function GrantChip({ state }: { state: GrantState }) {
-  const look: Record<GrantState, { label: string; ink: string; bg: string; icon: React.ReactNode }> = {
-    approved:  { label: 'Trading',   ink: 'var(--success)', bg: 'var(--success-bg)', icon: <Check size={11} /> },
-    requested: { label: 'Waiting',   ink: 'var(--warning)', bg: 'var(--warning-bg)', icon: <Clock size={11} /> },
-    suspended: { label: 'Suspended', ink: 'var(--danger)',  bg: 'var(--danger-bg)',  icon: <Ban size={11} /> },
+  const look: Record<GrantState, { label: string; tone: 'success' | 'warning' | 'danger' | 'neutral'; icon: React.ReactNode }> = {
+    approved:  { label: 'Trading',   tone: 'success', icon: <Check size={11} /> },
+    requested: { label: 'Waiting',   tone: 'warning', icon: <Clock size={11} /> },
+    suspended: { label: 'Suspended', tone: 'danger',  icon: <Ban size={11} /> },
     /* Named rather than left blank: "not asked" and "refused" are different
        facts about a seller, and an empty cell reads as either. */
-    none:      { label: 'Not asked', ink: 'var(--text-tertiary)', bg: 'var(--bg-alt)', icon: null },
+    none:      { label: 'Not asked', tone: 'neutral', icon: null },
   }
   const l = look[state]
-  return (
-    <span style={{
-      display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px',
-      borderRadius: 'var(--radius-full)', background: l.bg, color: l.ink,
-      fontSize: '10px', fontWeight: 700, whiteSpace: 'nowrap',
-    }}>
-      {l.icon}{l.label}
-    </span>
-  )
+  return <StatusBadge tone={l.tone} icon={l.icon}>{l.label}</StatusBadge>
 }

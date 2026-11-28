@@ -2,8 +2,9 @@ import { useState, useEffect, useCallback } from 'react'
 import { Pager, usePaging } from '../Pager'
 import { CircleCheck as CheckCircle, TriangleAlert as AlertTriangle, Download } from 'lucide-react'
 import {
-  SectionCard, StatCard, Btn, Select, Table, Td, toast, fmtMoney, fmtInt,
+  SectionCard, Btn, Select, Table, Td, toast, fmtMoney, fmtInt, PageHeader, RowActions,
 } from './shared'
+import { KpiCard, KpiRow } from '../ui/KpiCard'
 import { Callout } from '../OnboardingJourney'
 import { loadLedger } from '../../lib/ledgerRepo'
 import type { LedgerBook } from '../../lib/ledgerRepo'
@@ -78,37 +79,29 @@ export function OperatorRevenueShare() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Revenue share</h1>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            How the period’s gross divides between the sellers, the marketplace and the authority — and the
-            proof that both sides agree on it.
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <Select value={viewing ?? ''} onChange={e => setPeriod(e.target.value)} style={{ width: 'auto' }}>
+      <PageHeader title="Revenue share"
+        description="How the period’s gross divides between the sellers, the marketplace and the authority — and the proof that both sides agree on it."
+        actions={<>
+          <Select aria-label="Period" value={viewing ?? ''} onChange={e => setPeriod(e.target.value)} style={{ width: 'auto' }}>
             {book.periods.map(p => (
               <option key={p.id} value={p.id}>{p.label}{p.status === 'open' ? ' — open' : ''}</option>
             ))}
           </Select>
           <Btn variant="secondary" onClick={download}><Download size={14} /> Export</Btn>
-        </div>
-      </div>
+        </>} />
 
       {book.loadError && <Callout tone="danger" title="Some of this did not load">{book.loadError}</Callout>}
 
-      <div className="stat-row">
-        <StatCard label="Gross through the platform" value={`$${fmtMoney(split.gross)}`}
-                  sublabel={`${statements.length} statements · ${fmtInt(lines.length)} order lines`} />
-        <StatCard label="Sellers keep" value={`$${fmtMoney(split.sellerNet)}`}
-                  sublabel="After commission, fees, refunds and withholding" />
-        <StatCard label="The marketplace keeps" value={`$${fmtMoney(split.marketplace)}`}
-                  sublabel={split.effectiveRate === null ? 'Nothing yet' : `${split.effectiveRate}% of gross, commission and fees`}
-                  color="var(--success)" />
-        <StatCard label="Collected for the authority" value={`$${fmtMoney(split.tax + split.withholding)}`}
-                  sublabel={`$${fmtMoney(split.tax)} output tax · $${fmtMoney(split.withholding)} withheld`} />
-      </div>
+      <KpiRow label="Revenue share summary">
+        <KpiCard variant="money" label="Gross through the platform" value={`$${fmtMoney(split.gross)}`}
+                 context={`${statements.length} statements · ${fmtInt(lines.length)} order lines`} />
+        <KpiCard variant="money" label="Sellers keep" value={`$${fmtMoney(split.sellerNet)}`}
+                 context="After commission, fees, refunds and withholding" />
+        <KpiCard variant="money" label="The marketplace keeps" value={`$${fmtMoney(split.marketplace)}`} tone="success"
+                 context={split.effectiveRate === null ? 'Nothing yet' : `${split.effectiveRate}% of gross, commission and fees`} />
+        <KpiCard variant="money" label="Collected for the authority" value={`$${fmtMoney(split.tax + split.withholding)}`}
+                 context={`$${fmtMoney(split.tax)} output tax · $${fmtMoney(split.withholding)} withheld`} />
+      </KpiRow>
 
       {split.gross > 0 && (
         <SectionCard title="Where the gross went" subtitle="Every claim on the same money, at once">
@@ -116,12 +109,11 @@ export function OperatorRevenueShare() {
             <div style={{ display: 'flex', height: '34px', borderRadius: 'var(--radius)', overflow: 'hidden', marginBottom: '14px' }}>
               <Band width={split.sellerNet / split.gross} colour="var(--brand-navy)"
                     label={`Sellers $${fmtMoney(split.sellerNet)}`} />
-              <Band width={split.commission / split.gross} colour="#5E4B9B" label="Commission" />
-              {/* White labels need 4.5:1: the lighter purples were 3.9 and 2.21:1
-                  (spec 5 sweep). The ramp keeps its order, one step deeper. */}
-              <Band width={split.fees / split.gross} colour="#6D4BB8" label="Fees" />
-              <Band width={split.tax / split.gross} colour="#7C5CC4" label="Tax" />
-              <Band width={(split.refunds + split.withholding) / split.gross} colour="#D9CCF2" label="" />
+              <Band width={split.commission / split.gross} colour="var(--chart-5)" label="Commission" />
+              {/* White labels need 4.5:1: each of these chart tokens clears it. */}
+              <Band width={split.fees / split.gross} colour="var(--chart-3)" label="Fees" />
+              <Band width={split.tax / split.gross} colour="var(--chart-6)" label="Tax" />
+              <Band width={(split.refunds + split.withholding) / split.gross} colour="var(--chart-axis)" label="" />
             </div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
               <Fact label="Gross order value" value={`$${fmtMoney(split.gross)}`} />
@@ -149,7 +141,7 @@ export function OperatorRevenueShare() {
       <SectionCard title="Share by seller"
                    subtitle="Commission charged beside the rate their plan carries — a gap between those two is the commonest settlement dispute. Fees sit in their own column because they are a separate charge.">
         <><Table headers={['Seller', 'Orders', 'Gross', 'Commission', 'Fees',
-                       'Commission %', 'Plan %', 'With fees', 'They keep', '']}>
+                       'Commission %', 'Plan %', 'With fees', 'They keep', 'Actions']}>
           {sellersPage.rows.map(s => {
             const key = s.partner_id ?? 'first-party'
             /* Commission against the plan rate, like for like. Fees are shown
@@ -160,34 +152,34 @@ export function OperatorRevenueShare() {
             return (
               <>
                 <tr key={key}>
-                  <Td>
-                    <div style={{ fontWeight: 600 }}>{s.partner_name}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                  <Td kind="text">
+                    <div style={{ fontWeight: 600 }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={s.partner_name}>{s.partner_name}</span></div>
+                    <div className="c-sub">
                       {s.partner_id ?? 'The marketplace’s own'}
                     </div>
                   </Td>
-                  <Td right>{fmtInt(s.orders)}</Td>
-                  <Td right>${fmtMoney(s.gross)}</Td>
-                  <Td right>${fmtMoney(s.commission)}</Td>
-                  <Td right>${fmtMoney(s.fees)}</Td>
-                  <Td right style={{ color: mismatch ? 'var(--warning)' : undefined, fontWeight: mismatch ? 700 : 400 }}>
+                  <Td kind="num">{fmtInt(s.orders)}</Td>
+                  <Td kind="num">${fmtMoney(s.gross)}</Td>
+                  <Td kind="num">${fmtMoney(s.commission)}</Td>
+                  <Td kind="num">${fmtMoney(s.fees)}</Td>
+                  <Td kind="num" style={{ color: mismatch ? 'var(--warning)' : undefined, fontWeight: mismatch ? 700 : 400 }}>
                     {s.effectiveRate === null ? '—' : `${s.effectiveRate}%`}
                   </Td>
-                  <Td right>{s.planRate === null ? '—' : `${s.planRate}%`}</Td>
-                  <Td right style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                  <Td kind="num">{s.planRate === null ? '—' : `${s.planRate}%`}</Td>
+                  <Td kind="num">
                     {s.totalTake === null ? '—' : `${s.totalTake}%`}
                   </Td>
-                  <Td right><strong>${fmtMoney(s.net)}</strong></Td>
-                  <Td right>
-                    <Btn variant="secondary" size="sm"
-                         onClick={() => setExpanded(expanded === key ? null : key)}>
-                      {expanded === key ? 'Hide lines' : 'Lines'}
-                    </Btn>
+                  <Td kind="num"><strong>${fmtMoney(s.net)}</strong></Td>
+                  <Td>
+                    <RowActions label={s.partner_name} actions={[
+                      { id: 'lines', label: expanded === key ? 'Hide lines' : 'Lines', variant: 'secondary', srOnly: s.partner_name,
+                        expanded: expanded === key, onClick: () => setExpanded(expanded === key ? null : key) },
+                    ]} />
                   </Td>
                 </tr>
                 {expanded === key && (
                   <tr key={`${key}-lines`}>
-                    <Td style={{ padding: 0 }}>
+                    <Td colSpan={10} style={{ padding: 0 }}>
                       <div style={{ padding: '4px 0 14px' }}>
                         {statements.filter(x => (x.partner_id ?? 'first-party') === key).map(x => (
                           <StatementLines key={x.id} statement={x} book={book} />
@@ -221,9 +213,9 @@ function Band({ width, colour, label }: { width: number; colour: string; label: 
 function Fact({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
     <div>
-      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{label}</div>
-      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700 }}>{value}</div>
-      {sub && <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '2px', lineHeight: 1.5 }}>{sub}</div>}
+      <div className="c-sub">{label}</div>
+      <div style={{ fontWeight: 700 }}>{value}</div>
+      {sub && <div className="c-sub" style={{ marginTop: '2px', lineHeight: 1.5 }}>{sub}</div>}
     </div>
   )
 }
@@ -275,30 +267,30 @@ export function StatementLines({ statement, book }: {
       <Table headers={['Order', 'Product', 'Qty', 'Gross', 'Tax', 'Commission', 'Fees', 'Refunds', 'Net']}>
         {lines.map(l => (
           <tr key={l.id}>
-            <Td style={{ fontSize: 'var(--text-xs)' }}>{l.order_ref}</Td>
-            <Td style={{ fontSize: 'var(--text-xs)' }}>
-              {l.product_name}
-              <div style={{ color: 'var(--text-tertiary)' }}>{l.product_id}</div>
+            <Td kind="id">{l.order_ref}</Td>
+            <Td kind="text">
+              <span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={l.product_name}>{l.product_name}</span>
+              <div className="c-sub">{l.product_id}</div>
             </Td>
-            <Td right>{fmtInt(l.quantity)}</Td>
-            <Td right>${fmtMoney(Number(l.gross))}</Td>
-            <Td right>${fmtMoney(Number(l.tax))}</Td>
-            <Td right>${fmtMoney(Number(l.commission))}</Td>
-            <Td right>${fmtMoney(Number(l.fees))}</Td>
-            <Td right>{Number(l.refunds) ? `$${fmtMoney(Number(l.refunds))}` : '—'}</Td>
-            <Td right><strong>${fmtMoney(Number(l.net))}</strong></Td>
+            <Td kind="num">{fmtInt(l.quantity)}</Td>
+            <Td kind="num">${fmtMoney(Number(l.gross))}</Td>
+            <Td kind="num">${fmtMoney(Number(l.tax))}</Td>
+            <Td kind="num">${fmtMoney(Number(l.commission))}</Td>
+            <Td kind="num">${fmtMoney(Number(l.fees))}</Td>
+            <Td kind="num">{Number(l.refunds) ? `$${fmtMoney(Number(l.refunds))}` : '—'}</Td>
+            <Td kind="num"><strong>${fmtMoney(Number(l.net))}</strong></Td>
           </tr>
         ))}
         <tr style={{ borderTop: '2px solid var(--border)' }}>
-          <Td><strong>Statement</strong></Td>
+          <Td kind="text"><strong>Statement</strong></Td>
           <Td>{''}</Td>
-          <Td right><strong>{fmtInt(statement.order_count)}</strong></Td>
-          <Td right><strong>${fmtMoney(Number(statement.gross))}</strong></Td>
-          <Td>{''}</Td>
-          <Td right><strong>${fmtMoney(Number(statement.commission))}</strong></Td>
-          <Td right><strong>${fmtMoney(Number(statement.fees))}</strong></Td>
-          <Td right><strong>{Number(statement.refunds) ? `$${fmtMoney(Number(statement.refunds))}` : '—'}</strong></Td>
-          <Td right><strong>${fmtMoney(Number(statement.net))}</strong></Td>
+          <Td kind="num"><strong>{fmtInt(statement.order_count)}</strong></Td>
+          <Td kind="num"><strong>${fmtMoney(Number(statement.gross))}</strong></Td>
+          <Td kind="num">{''}</Td>
+          <Td kind="num"><strong>${fmtMoney(Number(statement.commission))}</strong></Td>
+          <Td kind="num"><strong>${fmtMoney(Number(statement.fees))}</strong></Td>
+          <Td kind="num"><strong>{Number(statement.refunds) ? `$${fmtMoney(Number(statement.refunds))}` : '—'}</strong></Td>
+          <Td kind="num"><strong>${fmtMoney(Number(statement.net))}</strong></Td>
         </tr>
       </Table>
       {Number(statement.withholding) > 0 && (

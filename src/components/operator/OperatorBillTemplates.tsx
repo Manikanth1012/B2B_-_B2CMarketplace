@@ -3,8 +3,10 @@ import { Pager, usePaging } from '../Pager'
 import { Plus, Copy, Trash2, Pencil, Lock, ArrowLeft, ChevronUp, ChevronDown } from 'lucide-react'
 import {
   SectionCard, EmptyState, Btn, FormField, TextInput, TextArea, Select,
-  Table, Td, toast, ConfirmDialog,
+  Table, Td, toast, ConfirmDialog, PageHeader, RowActions, FieldRow,
 } from './shared'
+import { Tabs } from '../ui/Tabs'
+import { StatusBadge } from '../ui/StatusBadge'
 import { Callout } from '../OnboardingJourney'
 import { BillDocument } from '../BillDocument'
 import { OperatorClearance } from './OperatorClearance'
@@ -73,42 +75,27 @@ export function OperatorBillTemplates() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Bill and invoice templates</h1>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-secondary)', marginTop: '4px', maxWidth: '68ch' }}>
-            Which sections appear on a document, in what order, and who is sent which template.
-          </p>
-        </div>
-        {tab === 'templates' && (
-          <Btn onClick={() => setEditing('new')}><Plus size={14} style={{ marginRight: 6 }} />New template</Btn>
-        )}
-      </div>
+      <PageHeader title="Bill and invoice templates"
+        description="Which sections appear on a document, in what order, and who is sent which template."
+        actions={tab === 'templates' ? <Btn onClick={() => setEditing('new')}><Plus size={14} style={{ marginRight: 6 }} />New template</Btn> : undefined} />
 
-      <div style={{ display: 'flex', gap: '4px', borderBottom: '1px solid var(--border)' }}>
-        {([
-          ['templates', 'Templates'],
-          ['assignments', 'Who gets what'],
-          ['identity', 'Billing identity'],
-          /* A template decides how a document looks; the regime decides whether
-             it may be shown to anybody at all. The two belong on one screen
-             because they are two answers to "what is on this invoice". */
-          ['clearance', 'Statutory clearance'],
-        ] as const).map(([id, label]) => (
-          <button key={id} onClick={() => setTab(id)} style={{
-            padding: '8px 14px', border: 'none', background: 'none', cursor: 'pointer',
-            fontSize: 'var(--text-sm)', fontWeight: tab === id ? 700 : 500,
-            color: tab === id ? 'var(--brand-navy)' : 'var(--text-tertiary)',
-            borderBottom: `2px solid ${tab === id ? 'var(--brand-navy)' : 'transparent'}`,
-            marginBottom: '-1px',
-          }}>{label}</button>
-        ))}
-      </div>
+      {/* A template decides how a document looks; the regime decides whether
+          it may be shown to anybody at all. The two belong on one screen
+          because they are two answers to "what is on this invoice". */}
+      <Tabs ariaLabel="Template views" panelIdPrefix="bill-templates-panel-" value={tab} onChange={id => setTab(id as typeof tab)}
+        tabs={[
+          { id: 'templates', label: 'Templates' },
+          { id: 'assignments', label: 'Who gets what' },
+          { id: 'identity', label: 'Billing identity' },
+          { id: 'clearance', label: 'Statutory clearance' },
+        ]} />
 
+      <div role="tabpanel" id={`bill-templates-panel-${tab}`} aria-labelledby={`bill-templates-panel-${tab}-tab`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {tab === 'templates' && <TemplateList book={book} onEdit={setEditing} onChanged={reload} />}
       {tab === 'assignments' && <Assignments book={book} onChanged={reload} />}
       {tab === 'identity' && <BillingIdentity book={book} onChanged={reload} />}
       {tab === 'clearance' && <OperatorClearance />}
+      </div>
     </div>
   )
 }
@@ -140,50 +127,37 @@ function TemplateList(
       </Callout>
 
       <SectionCard title="Templates" subtitle={`${book.templates.length} on file`}>
-        <><Table headers={['Template', 'Audience', 'Document title', 'Sections', 'Next reference', 'In use', '']}>
+        <><Table headers={['Template', 'Audience', 'Document title', 'Sections', 'Next reference', 'In use', 'Actions']}>
           {templatesPage.rows.map(t => {
             const ids = sectionsOn(t, book.sections, book.chosen).map(s => s.id)
             const used = usedBy(t.id, book.assignments)
             const del = canDelete(t, book.assignments)
             return (
               <tr key={t.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                <Td>
+                <Td kind="text" style={{ maxWidth: '46ch' }}>
                   <div style={{ fontWeight: 600, color: 'var(--text)' }}>
-                    {t.name}
-                    {t.system && (
-                      <span style={{
-                        marginLeft: 8, padding: '1px 7px', borderRadius: 'var(--radius-full)',
-                        background: 'var(--bg-alt)', color: 'var(--text-tertiary)',
-                        fontSize: '10px', fontWeight: 700,
-                      }}>Built in</span>
-                    )}
+                    <span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={t.name}>{t.name}</span>
                   </div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', maxWidth: '46ch' }}>{t.note}</div>
+                  {t.system && <div><StatusBadge tone="neutral" icon={null}>Built in</StatusBadge></div>}
+                  <div className="c-sub">{t.note}</div>
                 </Td>
-                <Td>{t.audience === 'any' ? 'Any' : t.audience}</Td>
-                <Td>{t.doc_title}</Td>
-                <Td right>{ids.length}</Td>
-                <Td><span style={{ fontVariantNumeric: 'tabular-nums' }}>{referencePattern(t)}</span></Td>
-                <Td>
+                <Td kind="text" nowrap>{t.audience === 'any' ? 'Any' : t.audience}</Td>
+                <Td kind="text">{t.doc_title}</Td>
+                <Td kind="num">{ids.length}</Td>
+                <Td kind="id">{referencePattern(t)}</Td>
+                <Td kind="text">
                   {used.length
                     ? used.join(', ')
-                    : <span style={{ color: 'var(--text-tertiary)' }}>Nobody yet</span>}
+                    : <span className="c-sub">Nobody yet</span>}
                 </Td>
                 <Td>
-                  <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                    <Btn size="sm" variant="secondary" onClick={() => onEdit(t)}>
-                      <Pencil size={12} style={{ marginRight: 4 }} />Edit
-                    </Btn>
-                    <Btn size="sm" variant="secondary"
-                      onClick={() => act(() => duplicateTemplate({ source: t, ids, actor: ACTOR }))}>
-                      <Copy size={12} style={{ marginRight: 4 }} />Duplicate
-                    </Btn>
-                    <Btn size="sm" variant="danger" disabled={!del.ok}
-                      title={del.ok ? undefined : del.reason}
-                      onClick={() => setConfirming(t)}>
-                      <Trash2 size={12} />
-                    </Btn>
-                  </div>
+                  <RowActions label={t.name} actions={[
+                    { id: 'edit', label: 'Edit', variant: 'secondary', srOnly: t.name, icon: <Pencil size={12} />, onClick: () => onEdit(t) },
+                    { id: 'delete', label: 'Delete', variant: 'danger', srOnly: t.name, icon: <Trash2 size={12} />,
+                      disabled: !del.ok, title: del.ok ? undefined : del.reason, onClick: () => setConfirming(t) },
+                    { id: 'duplicate', label: 'Duplicate', variant: 'secondary', srOnly: t.name, icon: <Copy size={12} />,
+                      onClick: () => { void act(() => duplicateTemplate({ source: t, ids, actor: ACTOR })) } },
+                  ]} />
                 </Td>
               </tr>
             )
@@ -338,20 +312,18 @@ function TemplateEditor(
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+      <div>
         <Btn variant="secondary" size="sm" onClick={onCancel}>
           <ArrowLeft size={13} style={{ marginRight: 5 }} />Back
         </Btn>
-        <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 800, color: 'var(--text)' }}>
-          {template ? template.name : 'New template'}
-        </h2>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+      </div>
+      <PageHeader level={2} title={template ? template.name : 'New template'}
+        actions={<>
           <Btn variant="secondary" size="sm" onClick={onCancel}>Cancel</Btn>
           <Btn size="sm" disabled={saving || !verdict.ok} onClick={() => void save()}>
             {saving ? 'Saving…' : template ? 'Save' : 'Create it'}
           </Btn>
-        </div>
-      </div>
+        </>} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.15fr) minmax(0, 1fr)', gap: '20px', alignItems: 'start' }}>
         {/* ------------------------------------------------------- the choices */}
@@ -631,7 +603,7 @@ function Assignments({ book, onChanged }: { book: BillTemplateBook; onChanged: (
             const options = book.templates.filter(t => t.audience === aud || t.audience === 'any')
             return (
               <div key={aud} style={{ display: 'grid', gridTemplateColumns: '140px minmax(0,1fr) minmax(0,1.2fr)', gap: '12px', alignItems: 'center' }}>
-                <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--text)', textTransform: 'capitalize' }}>{aud}</div>
+                <div style={{ fontWeight: 700, color: 'var(--text)', textTransform: 'capitalize' }}>{aud}</div>
                 <Select value={current?.id ?? ''}
                   onChange={e => void act(() => assignTemplate({
                     audience: aud, partyId: null, templateId: e.target.value,
@@ -640,7 +612,7 @@ function Assignments({ book, onChanged }: { book: BillTemplateBook; onChanged: (
                   {!current && <option value="">Not assigned</option>}
                   {options.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </Select>
-                <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                <div className="c-sub">
                   {current
                     ? `${sectionsOn(current, book.sections, book.chosen).length} sections · next ${referencePattern(current)}`
                     : 'Nobody in this audience has a document at all.'}
@@ -652,23 +624,21 @@ function Assignments({ book, onChanged }: { book: BillTemplateBook; onChanged: (
       </SectionCard>
 
       <SectionCard title="Exceptions" subtitle={`${overrides.length} counterpart${overrides.length === 1 ? 'y' : 'ies'} on something other than the default`}>
-        <Table headers={['Counterparty', 'Audience', 'Template', 'Why', 'Changed', '']}>
+        <Table headers={['Counterparty', 'Audience', 'Template', 'Why', 'Changed', 'Actions']}>
           {overrides.map(a => {
             const t = book.templates.find(x => x.id === a.template_id)
             return (
               <tr key={a.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                <Td><strong>{a.party_id}</strong></Td>
-                <Td>{a.audience}</Td>
-                <Td>{t?.name ?? a.template_id}</Td>
-                <Td><span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{a.why}</span></Td>
-                <Td>{a.updated_by ? `${a.updated_by} · ${a.updated_on}` : '—'}</Td>
+                <Td kind="id"><strong>{a.party_id}</strong></Td>
+                <Td kind="text" nowrap>{a.audience}</Td>
+                <Td kind="text">{t?.name ?? a.template_id}</Td>
+                <Td kind="text" style={{ maxWidth: '46ch' }}><span className="c-sub">{a.why}</span></Td>
+                <Td kind="text">{a.updated_by ? `${a.updated_by} · ${a.updated_on}` : '—'}</Td>
                 <Td>
-                  <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                    <Btn size="sm" variant="secondary"
-                      onClick={() => void act(() => removeOverride({ assignment: a, actor: ACTOR }))}>
-                      Remove
-                    </Btn>
-                  </div>
+                  <RowActions label={a.party_id ?? undefined} actions={[
+                    { id: 'remove', label: 'Remove', variant: 'secondary', srOnly: a.party_id ?? undefined,
+                      onClick: () => { void act(() => removeOverride({ assignment: a, actor: ACTOR })) } },
+                  ]} />
                 </Td>
               </tr>
             )
@@ -680,36 +650,38 @@ function Assignments({ book, onChanged }: { book: BillTemplateBook; onChanged: (
             their own inset. This form does not, so it takes the padding itself
             rather than the whole card taking it and insetting the table too. */}
         <div style={{ padding: '16px 20px 4px', borderTop: '1px solid var(--border-light)' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr) minmax(0,1.4fr) auto', gap: '12px', alignItems: 'end' }}>
-            <FormField label="Counterparty" hint="A seller or account id, e.g. PTR-1003.">
-              <TextInput value={party} onChange={e => setParty(e.target.value.toUpperCase())} placeholder="PTR-1003" />
+          <FieldRow>
+            <FormField compact label="Counterparty">
+              <TextInput value={party} onChange={e => setParty(e.target.value.toUpperCase())} placeholder="PTR-1003"
+                aria-describedby="exception-hint" />
             </FormField>
-            <FormField label="Template">
+            <FormField compact label="Template">
               <Select value={partyTemplate} onChange={e => setPartyTemplate(e.target.value)}>
                 <option value="">Choose one</option>
                 {book.templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
               </Select>
             </FormField>
-            <FormField label="Why" hint="An exception without a reason is one nobody dares remove later.">
-              <TextInput value={why} onChange={e => setWhy(e.target.value)}
+            <FormField compact label="Why">
+              <TextInput value={why} onChange={e => setWhy(e.target.value)} aria-describedby="exception-hint"
                 placeholder="Registered where the regulator prescribes the format." />
             </FormField>
-            <div style={{ marginBottom: '16px' }}>
-              <Btn disabled={!party.trim() || !partyTemplate || !why.trim()}
-                onClick={async () => {
-                  const t = book.templates.find(x => x.id === partyTemplate)
-                  if (!t) return
-                  const audience: Audience = t.audience === 'any'
-                    ? (party.startsWith('PTR') ? 'partner' : party.startsWith('ENT') ? 'enterprise' : 'consumer')
-                    : t.audience
-                  const ok = await act(() => assignTemplate({
-                    audience, partyId: party.trim(), templateId: partyTemplate, why, actor: ACTOR,
-                  }))
-                  if (ok) { setParty(''); setPartyTemplate(''); setWhy('') }
-                }}>
-                <Plus size={14} style={{ marginRight: 6 }} />Add exception
-              </Btn>
-            </div>
+            <Btn disabled={!party.trim() || !partyTemplate || !why.trim()}
+              onClick={async () => {
+                const t = book.templates.find(x => x.id === partyTemplate)
+                if (!t) return
+                const audience: Audience = t.audience === 'any'
+                  ? (party.startsWith('PTR') ? 'partner' : party.startsWith('ENT') ? 'enterprise' : 'consumer')
+                  : t.audience
+                const ok = await act(() => assignTemplate({
+                  audience, partyId: party.trim(), templateId: partyTemplate, why, actor: ACTOR,
+                }))
+                if (ok) { setParty(''); setPartyTemplate(''); setWhy('') }
+              }}>
+              <Plus size={14} style={{ marginRight: 6 }} />Add exception
+            </Btn>
+          </FieldRow>
+          <div id="exception-hint" className="c-sub" style={{ marginTop: '6px' }}>
+            A seller or account id, e.g. PTR-1003. An exception without a reason is one nobody dares remove later.
           </div>
         </div>
       </SectionCard>
@@ -736,14 +708,8 @@ function BillingIdentity({ book, onChanged }: { book: BillTemplateBook; onChange
     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
       {book.issuers.map(i => (
         <button key={i.id} type="button" onClick={() => setMarket(i.market ?? null)}
-          className={i.market === market ? 'chip chip-on' : 'chip'}
-          style={{
-            padding: '8px 14px', borderRadius: 8, cursor: 'pointer', textAlign: 'left',
-            border: i.market === market ? '2px solid #0D47A1' : '1px solid #d5d9e0',
-            background: i.market === market ? '#eef3fb' : '#fff',
-          }}>
-          <div style={{ fontWeight: 600 }}>{i.market}</div>
-          <div style={{ fontSize: 12, color: '#5b6472' }}>{i.legal_name}</div>
+          className="c-chip" aria-pressed={i.market === market}>
+          <strong>{i.market}</strong> <span className="c-sub">{i.legal_name}</span>
         </button>
       ))}
     </div>

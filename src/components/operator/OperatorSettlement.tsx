@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../../lib/supabase'
 import type { SettlementStatement } from '../../types'
-import { SectionCard, Table, Td, StatusPill, EmptyState, fmtDate, Btn, Modal, FormField, TextInput, TextArea, Select, toast, ConfirmDialog, FilterBar } from './shared'
+import { SectionCard, Table, Td, StatusPill, EmptyState, fmtDate, Btn, Modal, FormField, TextInput, TextArea, Select, toast, ConfirmDialog, FilterBar, PageHeader, RowActions } from './shared'
+import { Tabs } from '../ui/Tabs'
+import { StatusBadge } from '../ui/StatusBadge'
 import { useMarket } from '../../lib/MarketContext'
 import { byCurrency, formatGroups, money } from '../../lib/money'
 import { payoutFor } from '../../lib/settlement'
@@ -108,28 +110,13 @@ export function OperatorSettlement({ focus = null }: { focus?: string | null } =
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div>
-          <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Settlement Runs</h1>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            {pendingCount} pending · {book(totalPending)} net payable, remitting {formatGroups(payableBy, fmtIn, 'nothing')} · {approvedCount} approved
-          </p>
-        </div>
-        {tab === 'statements' && <Btn onClick={() => setAddModal(true)}>New statement</Btn>}
-      </div>
+      <PageHeader title="Settlement Runs"
+        description={`${pendingCount} pending · ${book(totalPending)} net payable, remitting ${formatGroups(payableBy, fmtIn, 'nothing')} · ${approvedCount} approved`}
+        actions={tab === 'statements' ? <Btn onClick={() => setAddModal(true)}>New statement</Btn> : undefined} />
 
-      <div style={{ display: 'flex', gap: '4px', borderBottom: '1px solid var(--border)' }}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            padding: '10px 16px', border: 'none', background: 'none', cursor: 'pointer',
-            fontSize: 'var(--text-sm)', fontWeight: tab === t.id ? 700 : 500,
-            color: tab === t.id ? 'var(--brand-navy)' : 'var(--text-secondary)',
-            borderBottom: tab === t.id ? '2px solid var(--brand-navy)' : '2px solid transparent',
-            marginBottom: '-1px',
-          }}>{t.label}</button>
-        ))}
-      </div>
+      <Tabs ariaLabel="Settlement views" panelIdPrefix="settlement-panel-" value={tab} onChange={id => setTab(id as Tab)} tabs={TABS} />
 
+      <div role="tabpanel" id={`settlement-panel-${tab}`} aria-labelledby={`settlement-panel-${tab}-tab`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {tab === 'cycles' && <SettlementCycles />}
       {tab === 'runs' && <SettlementRuns />}
       {tab === 'tax' && <WithholdingPositions />}
@@ -150,33 +137,36 @@ export function OperatorSettlement({ focus = null }: { focus?: string | null } =
           <Table headers={['Partner', 'Period', 'Gross', 'Commission', 'Fees', 'Refunds', 'Net', 'Orders', 'Status', 'Actions']}>
             {page.rows.map(s => (
               <tr key={s.id}>
-                <Td>{s.partner_name}{s.disputed && <span style={{ fontSize: '10px', color: 'var(--danger)', marginLeft: '4px' }}>disputed</span>}</Td>
-                <Td right>{s.period}</Td>
-                <Td right>{fmtIn(Number(s.gross), s.currency)}</Td>
-                <Td right>-{fmtIn(Number(s.commission), s.currency)}</Td>
-                <Td right>-{fmtIn(Number(s.fees), s.currency)}</Td>
-                <Td right>-{fmtIn(Number(s.refunds), s.currency)}</Td>
-                <Td right style={{ fontWeight: 700 }}>
+                <Td kind="text">
+                  <span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={s.partner_name}>{s.partner_name}</span>
+                  {s.disputed && <div><StatusBadge tone="danger">disputed</StatusBadge></div>}
+                </Td>
+                <Td kind="date">{s.period}</Td>
+                <Td kind="num">{fmtIn(Number(s.gross), s.currency)}</Td>
+                <Td kind="num">-{fmtIn(Number(s.commission), s.currency)}</Td>
+                <Td kind="num">-{fmtIn(Number(s.fees), s.currency)}</Td>
+                <Td kind="num">-{fmtIn(Number(s.refunds), s.currency)}</Td>
+                <Td kind="num" style={{ fontWeight: 700 }}>
                   {fmtIn(Number(s.net), s.currency)}
                   {/* What actually leaves, where the seller's account takes
                       something else. Nine of fifteen bank in dollars and see
                       nothing extra; the other six were being shown a figure
                       their bank would never receive. */}
                   {s.payout_currency !== s.currency && (
-                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontWeight: 500 }}>
+                    <div className="c-sub" style={{ fontWeight: 500 }}>
                       pays {fmtIn(Number(s.payout_net), s.payout_currency)} at {s.fx_rate}
                     </div>
                   )}
                 </Td>
-                <Td right>{s.order_count}</Td>
-                <Td right><StatusPill status={s.status} /></Td>
-                <Td right>
-                  <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-                    <Btn variant="secondary" size="sm" onClick={() => setDetailModal(s)}>View</Btn>
-                    {s.status === 'pending' && <Btn variant="success" size="sm" onClick={() => handleApprove(s.id)}>Approve</Btn>}
-                    {s.status === 'pending' && <Btn variant="danger" size="sm" onClick={() => setRejectModal(s)}>Reject</Btn>}
-                    <Btn variant="danger" size="sm" onClick={() => handleDelete(s.id)}>Delete</Btn>
-                  </div>
+                <Td kind="num">{s.order_count}</Td>
+                <Td kind="status"><StatusPill status={s.status} /></Td>
+                <Td>
+                  <RowActions label={s.partner_name} actions={[
+                    { id: 'view', label: 'View', variant: 'secondary', srOnly: s.partner_name, onClick: () => setDetailModal(s) },
+                    s.status === 'pending' && { id: 'approve', label: 'Approve', variant: 'success', srOnly: s.partner_name, onClick: () => { void handleApprove(s.id) } },
+                    s.status === 'pending' && { id: 'reject', label: 'Reject', variant: 'danger', srOnly: s.partner_name, onClick: () => setRejectModal(s) },
+                    { id: 'delete', label: 'Delete', variant: 'danger', srOnly: s.partner_name, onClick: () => { void handleDelete(s.id) } },
+                  ]} />
                 </Td>
               </tr>
             ))}
@@ -185,6 +175,7 @@ export function OperatorSettlement({ focus = null }: { focus?: string | null } =
         <Pager page={page} noun="statements" />
       </SectionCard>
       </>}
+      </div>
 
       {/* Detail modal */}
       <Modal open={!!detailModal} onClose={() => setDetailModal(null)} title="Settlement Detail"
@@ -207,7 +198,7 @@ export function OperatorSettlement({ focus = null }: { focus?: string | null } =
                   <tr>
                     <td style={{ padding: '10px 0', color: 'var(--text-tertiary)' }}>
                       Remitted to the seller's account
-                      <div style={{ fontSize: '10px' }}>
+                      <div className="c-sub">
                         at the {detailModal.fx_as_of} fix of {detailModal.fx_rate} — frozen, so a reprint
                         matches what was paid
                       </div>

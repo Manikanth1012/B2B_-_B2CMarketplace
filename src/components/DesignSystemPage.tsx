@@ -300,6 +300,7 @@ export function DesignSystemPage() {
         <KpiRow label="Credit">
           <KpiCard variant="money" label="Owed and committed" unit="USD" value="$412,880" breakdown={[{ label: 'EUR', value: '€86,140' }, { label: 'GBP', value: '£12,400' }, { label: 'INR', value: '₹1,240,000' }]} context="Across 38 accounts" />
           <KpiCard variant="ops" label="Applications" value="12" status="3 need a decision today" context="Last 30 days" />
+          <KpiCard variant="money" label="Customer money held" unit="USD" value="$18,200" tone="danger" status="Refundable on request" />
           <KpiCard variant="risk" label="Overdue invoices" value="7" status="2 over 60 days" delta={{ text: '+2 this week', direction: 'down' }} context="Needs follow-up" />
           <KpiCard label="Orders" value="2,600" delta={{ text: '+4% vs last month', direction: 'up' }} context="All marketplaces" series={[12, 14, 13, 17, 16, 19, 21]} />
         </KpiRow>

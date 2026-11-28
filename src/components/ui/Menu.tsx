@@ -25,6 +25,9 @@ export interface MenuItem {
   icon?: React.ReactNode
   /** Words for a screen reader only, after the label. */
   srOnly?: string
+  /** A visible line under the label, linked by aria-describedby. For a disabled
+      item it is the reason: the item stays focusable so the reason can be read. */
+  hint?: string
 }
 
 const GAP = 4
@@ -48,7 +51,8 @@ export function Menu({ items, label, children, triggerClassName, align = 'end' }
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([])
   const menuId = useId()
 
-  const enabled = items.map((it, i) => (it.disabled ? -1 : i)).filter(i => i >= 0)
+  /* Disabled items stay in the roving focus, so their reason can be reached and read. */
+  const enabled = items.map((_, i) => i)
 
   const close = useCallback((refocus: boolean) => {
     setOpen(false)
@@ -158,12 +162,17 @@ export function Menu({ items, label, children, triggerClassName, align = 'end' }
           onKeyDown={onMenuKey}>
           {items.map((it, i) => (
             <button key={it.label} ref={el => { itemRefs.current[i] = el }} type="button" role="menuitem"
-              tabIndex={i === active ? 0 : -1} disabled={it.disabled} aria-disabled={it.disabled || undefined}
+              tabIndex={i === active ? 0 : -1} aria-disabled={it.disabled || undefined}
+              aria-describedby={it.hint ? `${menuId}-hint-${i}` : undefined}
+              /* The name is the label alone: the hint is shown inside the item
+                 but belongs to its description, so it is not read twice. */
+              aria-label={it.hint ? `${it.label}${it.srOnly ? ` ${it.srOnly}` : ''}` : undefined}
               className={['ui-dd__opt', 'ui-menu__item', i === active && 'is-active', it.danger && 'ui-menu__item--danger', it.disabled && 'is-disabled'].filter(Boolean).join(' ')}
-              onMouseEnter={() => { if (!it.disabled) setActive(i) }}
+              onMouseEnter={() => setActive(i)}
               onClick={() => run(it)}>
               {it.icon && <span className="ui-menu__icon" aria-hidden="true">{it.icon}</span>}
-              <span className="ui-dd__label">{it.label}{it.srOnly && <span className="sr-only"> {it.srOnly}</span>}</span>
+              <span className="ui-dd__label">{it.label}{it.srOnly && <span className="sr-only"> {it.srOnly}</span>}
+                {it.hint && <span id={`${menuId}-hint-${i}`} className="c-sub" style={{ display: 'block' }}>{it.hint}</span>}</span>
             </button>
           ))}
         </div>,

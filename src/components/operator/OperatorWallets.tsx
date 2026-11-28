@@ -2,8 +2,10 @@ import { useState, useEffect, useCallback } from 'react'
 import { Pager, usePaging } from '../Pager'
 import { Wallet as WalletIcon, Lock, Zap, Clock, TriangleAlert } from 'lucide-react'
 import {
-  SectionCard, EmptyState, Btn, Table, Td, toast, fmtInt, fmtDate, StatCard,
+  SectionCard, EmptyState, Btn, Table, Td, toast, fmtInt, fmtDate, PageHeader,
 } from './shared'
+import { KpiCard, KpiRow } from '../ui/KpiCard'
+import { StatusBadge } from '../ui/StatusBadge'
 import { Callout } from '../OnboardingJourney'
 import { loadWalletBook, markReturnPaid } from '../../lib/walletRepo'
 import type { WalletBookSnapshot } from '../../lib/walletRepo'
@@ -24,9 +26,8 @@ const ACTOR = 'Marketplace operations'
    which rates produced it. Same constant, same reason, as the rewards screen. */
 const AS_OF = '2026-08-01'
 
-const STATE_INK: Record<string, string> = {
-  active: 'var(--success)', dormant: 'var(--warning)',
-  closing: 'var(--info, #2a78d6)', closed: 'var(--text-tertiary)',
+const STATE_TONE: Record<string, 'success' | 'warning' | 'info' | 'neutral'> = {
+  active: 'success', dormant: 'warning', closing: 'info', closed: 'neutral',
 }
 
 export function OperatorWallets() {
@@ -64,6 +65,9 @@ export function OperatorWallets() {
   const heldCash = reported(book.cashBy.map(g => g.total))
   const heldPromo = reported(book.promoBy.map(g => g.total))
   const heldDormant = reported(book.dormantBy.map(g => g.total))
+  /* The money as it is held, one row per currency, for a card's breakdown. */
+  const groupRows = (groups: Parameters<typeof formatGroups>[0]) =>
+    groups.length > 1 ? groups.map(g => ({ label: g.currency, value: fmtIn(g.total.amount, g.currency) })) : undefined
   /* Which wallet a ledger row or a closure belongs to, and therefore what it is
      in. Neither table carries a currency of its own — they cannot: a movement
      is in the money of the wallet it moved. */
@@ -79,12 +83,8 @@ export function OperatorWallets() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div>
-        <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Marketplace wallet</h1>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-          What the marketplace is holding on behalf of customers, and whose money each part of it is
-        </p>
-      </div>
+      <PageHeader title="Marketplace wallet"
+        description="What the marketplace is holding on behalf of customers, and whose money each part of it is" />
 
       {snap.loadError && <Callout tone="danger" title="Some of this screen did not load">{snap.loadError}</Callout>}
 
@@ -103,7 +103,7 @@ export function OperatorWallets() {
               <div key={c.id} style={{ display: 'flex', gap: '10px', alignItems: 'center', marginTop: '5px', flexWrap: 'wrap' }}>
                 <strong>{fmtIn(Number(c.cash_returned), curOf(c.wallet_id))}</strong>
                 <span>to {w?.name ?? c.wallet_id} — {c.instrument}</span>
-                <span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                <span className="c-sub">
                   requested {fmtDate(c.requested_at)}
                 </span>
                 <Btn size="sm" onClick={() => act(() => markReturnPaid({ closureId: c.id, actor: ACTOR }), 'Marked as paid')}>
@@ -115,23 +115,27 @@ export function OperatorWallets() {
         </Callout>
       )}
 
-      <div className="stat-row">
-        <StatCard label={`Held in wallets, in ${home}`}
-                  value={fmtIn(held.total.amount, held.total.currency)}
-                  sublabel={`Across ${book.accounts} accounts in ${book.currencies.length} ${book.currencies.length === 1 ? 'currency' : 'currencies'} · at ${AS_OF} rates`} />
-        <StatCard label="The customer's own money"
-                  value={fmtIn(heldCash.total.amount, heldCash.total.currency)}
-                  sublabel="Top-ups and refunds — refundable on request" color="var(--danger)" />
-        <StatCard label="Credit we issued"
-                  value={fmtIn(heldPromo.total.amount, heldPromo.total.currency)}
-                  sublabel="Rewards and goodwill — spendable, not refundable" color="var(--success)" />
-        <StatCard label="Dormant"
-                  value={book.dormant === 0 ? 'None' : fmtIn(heldDormant.total.amount, heldDormant.total.currency)}
-                  sublabel={book.dormant === 0
-                    ? 'Every account has moved recently'
-                    : `${book.dormant} account${book.dormant === 1 ? '' : 's'} untouched for ${snap.policy.dormancy_months} months`}
-                  color={book.dormant > 0 ? 'var(--warning)' : undefined} />
-      </div>
+      {/* The headline is the converted figure, as before; what is actually held,
+          currency by currency, sits under it. Nothing is added or converted here. */}
+      <KpiRow label="Wallet summary">
+        <KpiCard variant="money" label={`Held in wallets, in ${home}`} unit={held.total.currency}
+                 value={`≈ ${fmtIn(held.total.amount, held.total.currency)}`}
+                 context={`Across ${book.accounts} accounts in ${book.currencies.length} ${book.currencies.length === 1 ? 'currency' : 'currencies'} · at ${AS_OF} rates`} />
+        <KpiCard variant="money" label="The customer's own money" unit={heldCash.total.currency}
+                 value={`≈ ${fmtIn(heldCash.total.amount, heldCash.total.currency)}`} tone="danger"
+                 context="Top-ups and refunds — refundable on request" />
+        <KpiCard variant="money" label="Credit we issued" unit={heldPromo.total.currency}
+                 value={`≈ ${fmtIn(heldPromo.total.amount, heldPromo.total.currency)}`} tone="success"
+                 breakdown={groupRows(book.promoBy)}
+                 context="Rewards and goodwill — spendable, not refundable" />
+        <KpiCard variant="money" label="Dormant" unit={book.dormant === 0 ? undefined : heldDormant.total.currency}
+                 value={book.dormant === 0 ? 'None' : `≈ ${fmtIn(heldDormant.total.amount, heldDormant.total.currency)}`}
+                 tone={book.dormant > 0 ? 'warning' : undefined}
+                 breakdown={book.dormant === 0 ? undefined : groupRows(book.dormantBy)}
+                 context={book.dormant === 0
+                   ? 'Every account has moved recently'
+                   : `${book.dormant} account${book.dormant === 1 ? '' : 's'} untouched for ${snap.policy.dormancy_months} months`} />
+      </KpiRow>
 
       {/* What is actually held, before anything was converted. A reporting total
           is a view of the balance sheet; this is the balance sheet. */}
@@ -161,23 +165,23 @@ export function OperatorWallets() {
           <div style={{ border: '1px solid var(--danger)', borderRadius: 'var(--radius-md)', padding: '12px 14px', background: 'var(--danger-bg)' }}>
             <div style={{ display: 'flex', gap: '7px', alignItems: 'center', marginBottom: '5px' }}>
               <Lock size={14} style={{ color: 'var(--danger)' }} />
-              <strong style={{ fontSize: 'var(--text-sm)' }}>Refundable — {spread(book.cashBy)}</strong>
+              <strong>Refundable — {spread(book.cashBy)}</strong>
             </div>
-            <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: 0 }}>{snap.policy.cash_refundable}</p>
+            <p className="c-sub" style={{ margin: 0 }}>{snap.policy.cash_refundable}</p>
           </div>
           <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '12px 14px', background: 'var(--bg-alt)' }}>
             <div style={{ display: 'flex', gap: '7px', alignItems: 'center', marginBottom: '5px' }}>
               <Zap size={14} style={{ color: 'var(--success)' }} />
-              <strong style={{ fontSize: 'var(--text-sm)' }}>Not refundable — {spread(book.promoBy)}</strong>
+              <strong>Not refundable — {spread(book.promoBy)}</strong>
             </div>
-            <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: 0 }}>{snap.policy.non_refundable}</p>
+            <p className="c-sub" style={{ margin: 0 }}>{snap.policy.non_refundable}</p>
           </div>
           <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '12px 14px' }}>
             <div style={{ display: 'flex', gap: '7px', alignItems: 'center', marginBottom: '5px' }}>
               <Clock size={14} style={{ color: 'var(--warning)' }} />
-              <strong style={{ fontSize: 'var(--text-sm)' }}>Dormancy</strong>
+              <strong>Dormancy</strong>
             </div>
-            <p style={{ fontSize: '11px', color: 'var(--text-secondary)', margin: 0 }}>{snap.policy.dormancy_note}</p>
+            <p className="c-sub" style={{ margin: 0 }}>{snap.policy.dormancy_note}</p>
           </div>
         </div>
       </SectionCard>
@@ -192,15 +196,19 @@ export function OperatorWallets() {
             const value = byCurrency(rows.map(l => money(Math.abs(Number(l.amount)), curOf(l.wallet_id))))
             return (
               <tr key={s.id}>
-                <Td><strong style={{ fontSize: 'var(--text-xs)' }}>{s.label}</strong></Td>
-                <Td right>{fmtInt(rows.length)}</Td>
-                <Td right>{spread(value)}</Td>
-                <Td>
-                  <span style={{ fontSize: '10px', fontWeight: 700, color: s.pot === 'cash' ? 'var(--danger)' : 'var(--success)' }}>
-                    {s.pot === 'cash' ? "The customer's" : 'Not refundable'}
-                  </span>
+                <Td kind="text"><strong>{s.label}</strong></Td>
+                <Td kind="num">{fmtInt(rows.length)}</Td>
+                <Td kind="num">
+                  {value.length === 0
+                    ? 'Nothing held'
+                    : value.map(g => <div key={g.currency}>{fmtIn(g.total.amount, g.currency)}</div>)}
                 </Td>
-                <Td><span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{s.note}</span></Td>
+                <Td kind="status">
+                  <StatusBadge tone={s.pot === 'cash' ? 'danger' : 'success'} icon={null}>
+                    {s.pot === 'cash' ? "The customer's" : 'Not refundable'}
+                  </StatusBadge>
+                </Td>
+                <Td kind="text"><span className="c-sub">{s.note}</span></Td>
               </tr>
             )
           })}
@@ -213,18 +221,18 @@ export function OperatorWallets() {
           <><Table headers={['Holder', 'Type', 'Their money', 'Our credit', 'Balance', 'Opened', 'Last movement', 'State']}>
             {walletsPage.rows.map(w => (
               <tr key={w.id} style={{ cursor: 'pointer' }} onClick={() => setOpen(w.id)}>
-                <Td>
-                  <div style={{ fontWeight: 700, fontSize: 'var(--text-xs)', color: 'var(--brand-navy)' }}>{w.name}</div>
-                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{w.party} · {w.id}</div>
+                <Td kind="text" style={{ maxWidth: '28ch' }}>
+                  <div style={{ fontWeight: 700, color: 'var(--brand-navy)' }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={w.name}>{w.name}</span></div>
+                  <div className="c-sub">{w.party} · {w.id}</div>
                 </Td>
-                <Td><span style={{ fontSize: '11px' }}>{w.kind}</span></Td>
-                <Td right>{fmtIn(Number(w.cash), w.currency)}</Td>
-                <Td right>{Number(w.promo) === 0 ? '—' : fmtIn(Number(w.promo), w.currency)}</Td>
-                <Td right><strong>{fmtIn(Number(w.balance), w.currency)}</strong></Td>
-                <Td><span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{fmtDate(w.opened)}</span></Td>
-                <Td><span style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{fmtDate(w.last_move)}</span></Td>
-                <Td>
-                  <span style={{ fontSize: '10px', fontWeight: 800, color: STATE_INK[w.state] }}>{w.state}</span>
+                <Td kind="text" nowrap>{w.kind}</Td>
+                <Td kind="num">{fmtIn(Number(w.cash), w.currency)}</Td>
+                <Td kind="num">{Number(w.promo) === 0 ? '—' : fmtIn(Number(w.promo), w.currency)}</Td>
+                <Td kind="num"><strong>{fmtIn(Number(w.balance), w.currency)}</strong></Td>
+                <Td kind="date">{fmtDate(w.opened)}</Td>
+                <Td kind="date">{fmtDate(w.last_move)}</Td>
+                <Td kind="status">
+                  <StatusBadge tone={STATE_TONE[w.state] ?? 'neutral'} icon={null}>{w.state}</StatusBadge>
                 </Td>
               </tr>
             ))}
@@ -259,9 +267,9 @@ function WalletDrawer({ wallet, snap, onClose }: {
           <div style={{ display: 'flex', gap: '9px', alignItems: 'center' }}>
             <WalletIcon size={16} style={{ color: 'var(--text-tertiary)' }} />
             <h3 style={{ fontSize: 'var(--text-lg)', fontWeight: 800, margin: 0 }}>{wallet.name}</h3>
-            <span style={{ fontSize: '10px', fontWeight: 800, color: STATE_INK[wallet.state] }}>{wallet.state}</span>
+            <StatusBadge tone={STATE_TONE[wallet.state] ?? 'neutral'} icon={null}>{wallet.state}</StatusBadge>
           </div>
-          <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+          <div className="c-sub">
             {wallet.party} · {wallet.id} · {wallet.kind} · opened {fmtDate(wallet.opened)}
           </div>
         </div>
@@ -282,7 +290,7 @@ function WalletDrawer({ wallet, snap, onClose }: {
               ['Balance', mny(wallet.balance), 'var(--text)'],
             ] as [string, string, string][]).map(([k, v, ink]) => (
               <div key={k} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '10px 12px' }}>
-                <div style={{ fontSize: '10px', textTransform: 'uppercase', letterSpacing: '0.03em', color: 'var(--text-tertiary)', fontWeight: 700 }}>{k}</div>
+                <div className="c-sub" style={{ textTransform: 'uppercase', letterSpacing: '0.03em', fontWeight: 700 }}>{k}</div>
                 <div style={{ fontSize: 'var(--text-lg)', fontWeight: 800, color: ink }}>{v}</div>
               </div>
             ))}
@@ -299,7 +307,7 @@ function WalletDrawer({ wallet, snap, onClose }: {
 
           <div>
             <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: '7px' }}>
-              Statement <span style={{ fontWeight: 400, color: 'var(--text-tertiary)' }}>· newest first</span>
+              Statement <span className="c-sub" style={{ fontWeight: 400 }}>· newest first</span>
             </div>
             {statement.length === 0 ? <EmptyState message="No movements" /> : (
               <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)' }}>
@@ -310,20 +318,20 @@ function WalletDrawer({ wallet, snap, onClose }: {
                       display: 'flex', gap: '10px', padding: '9px 12px', alignItems: 'baseline', flexWrap: 'wrap',
                       borderTop: i === 0 ? 'none' : '1px solid var(--border-light)',
                     }}>
-                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', minWidth: '78px' }}>{fmtDate(e.when_date)}</span>
+                      <span className="c-sub" style={{ minWidth: '78px' }}>{fmtDate(e.when_date)}</span>
                       <div style={{ flex: 1, minWidth: '170px' }}>
-                        <div style={{ fontSize: 'var(--text-xs)' }}>{e.what}</div>
-                        <div style={{ fontSize: '10px', color: e.pot === 'cash' ? 'var(--danger)' : 'var(--success)' }}>
+                        <div>{e.what}</div>
+                        <div style={{ color: e.pot === 'cash' ? 'var(--danger)' : 'var(--success)' }}>
                           {src?.label ?? e.source} · {e.pot === 'cash' ? "the customer's money" : 'credit we issued'}
                         </div>
                       </div>
                       <span style={{
-                        fontSize: 'var(--text-xs)', fontWeight: 700, minWidth: '72px', textAlign: 'right',
+                        fontWeight: 700, minWidth: '72px', textAlign: 'right',
                         color: Number(e.amount) < 0 ? 'var(--text-secondary)' : 'var(--success)',
                       }}>
                         {Number(e.amount) < 0 ? '−' : '+'}{mny(Math.abs(Number(e.amount)))}
                       </span>
-                      <span style={{ fontSize: '10px', color: 'var(--text-tertiary)', minWidth: '62px', textAlign: 'right' }}>
+                      <span className="c-sub" style={{ minWidth: '62px', textAlign: 'right' }}>
                         {mny(e.balance)}
                       </span>
                     </div>

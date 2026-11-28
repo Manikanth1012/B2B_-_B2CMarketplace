@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { FileText, TriangleAlert, Scale, ShieldCheck } from 'lucide-react'
 import {
-  SectionCard, StatCard, EmptyState, Btn, StatusPill, Table, Td, toast,
-  Modal, FormField, TextInput, TextArea, Select,
+  SectionCard, EmptyState, Btn, StatusPill, Table, Td, toast,
+  Modal, FormField, TextInput, TextArea, Select, PageHeader, RowActions, FilterBar,
 } from './shared'
+import { Tabs } from '../ui/Tabs'
+import { KpiCard, KpiRow } from '../ui/KpiCard'
 import { Callout } from '../OnboardingJourney'
 import {
   loadNoteBook, raiseNote, approveNote, voidNote, applyToStatement, resolveDispute,
@@ -66,48 +68,33 @@ export function OperatorNotes() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div>
-        <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>
-          Credit and debit notes
-        </h1>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px', maxWidth: '80ch' }}>
-          Adjustments to what a seller is paid that are not about a sale. Each one is a document with
-          a reason, evidence and a signature, and it lands on the seller's next statement as its own
-          line — so their reconciliation against their contracted commission still works.
-        </p>
-      </div>
+      <PageHeader title="Credit and debit notes"
+        description="Adjustments to what a seller is paid that are not about a sale. Each one is a document with a reason, evidence and a signature, and it lands on the seller's next statement as its own line — so their reconciliation against their contracted commission still works."
+        actions={<>
+          <Btn variant="secondary" onClick={() => setRaising('debit')}>Raise a debit note</Btn>
+          <Btn onClick={() => setRaising('credit')}>Raise a credit note</Btn>
+        </>} />
 
       {problems.length > 0 && (
         <Callout tone="danger" title={`${problems.length} note${problems.length === 1 ? '' : 's'} disagree with the policy`}>
           <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {problems.map((p, i) => <li key={i} style={{ fontSize: 'var(--text-xs)', lineHeight: 1.6 }}>{p}</li>)}
+            {problems.map((p, i) => <li key={i} style={{ lineHeight: 1.6 }}>{p}</li>)}
           </ul>
         </Callout>
       )}
 
       <Exposure book={book} policy={policy} />
 
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-        {([['queue', 'Notes'], ['policy', 'Reasons and thresholds']] as const).map(([id, label]) => (
-          <button key={id} onClick={() => setTab(id)}
-            style={{
-              padding: '7px 14px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)',
-              fontWeight: 600, cursor: 'pointer',
-              border: `1px solid ${tab === id ? 'var(--primary)' : 'var(--border)'}`,
-              background: tab === id ? 'var(--primary-soft)' : 'var(--surface)',
-              color: tab === id ? 'var(--primary)' : 'var(--text-secondary)',
-            }}>{label}</button>
-        ))}
-        <div style={{ flex: 1 }} />
-        <Btn size="sm" variant="secondary" onClick={() => setRaising('debit')}>Raise a debit note</Btn>
-        <Btn size="sm" onClick={() => setRaising('credit')}>Raise a credit note</Btn>
-      </div>
+      <Tabs ariaLabel="Note views" panelIdPrefix="notes-panel-" value={tab} onChange={id => setTab(id as 'queue' | 'policy')}
+        tabs={[{ id: 'queue', label: 'Notes' }, { id: 'policy', label: 'Reasons and thresholds' }]} />
 
-      {tab === 'queue' && (
-        <Queue book={book} policy={policy} reload={reload}
-               onVoid={setVoiding} onResolve={setResolving} />
-      )}
-      {tab === 'policy' && <PolicyTab book={book} policy={policy} />}
+      <div role="tabpanel" id={`notes-panel-${tab}`} aria-labelledby={`notes-panel-${tab}-tab`}>
+        {tab === 'queue' && (
+          <Queue book={book} policy={policy} reload={reload}
+                 onVoid={setVoiding} onResolve={setResolving} />
+        )}
+        {tab === 'policy' && <PolicyTab book={book} policy={policy} />}
+      </div>
 
       {raising && (
         <RaiseDialog book={book} policy={policy} kind={raising}
@@ -141,16 +128,15 @@ function Exposure({ book, policy }: { book: NoteBook; policy: NotePolicy }) {
   const disputed = book.notes.filter(n => n.state === 'disputed').length
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px' }}>
-      <StatCard label="Agreed, not yet settled" value={cash(e.committed)}
-        sublabel="Lands on the next run" color="var(--info)" />
-      <StatCard label="Still being decided" value={cash(e.awaiting)}
-        sublabel="Drafts and notes short a signature" />
-      <StatCard label="Under dispute" value={cash(e.disputed)}
-        sublabel={disputed === 0 ? 'Nothing challenged' : `${disputed} seller${disputed === 1 ? '' : 's'} arguing`}
-        color={disputed > 0 ? 'var(--danger)' : undefined} />
-      <StatCard label="Settled" value={cash(e.settled)} sublabel="On a statement already" />
-    </div>
+    <KpiRow label="Notes summary">
+      <KpiCard variant="money" label="Agreed, not yet settled" unit={e.currency} value={cash(e.committed)}
+        context="Lands on the next run" />
+      <KpiCard variant="money" label="Still being decided" unit={e.currency} value={cash(e.awaiting)}
+        context="Drafts and notes short a signature" />
+      <KpiCard variant={disputed > 0 ? 'risk' : 'money'} label="Under dispute" unit={e.currency} value={cash(e.disputed)}
+        context={disputed === 0 ? 'Nothing challenged' : `${disputed} seller${disputed === 1 ? '' : 's'} arguing`} />
+      <KpiCard variant="money" label="Settled" unit={e.currency} value={cash(e.settled)} context="On a statement already" />
+    </KpiRow>
   )
 }
 
@@ -184,17 +170,18 @@ function Queue({ book, policy, reload, onVoid, onResolve }: {
   return (
     <SectionCard title="What to work, worst first"
       subtitle="A disputed note is a seller who is not being paid while the argument is open, so it comes above everything. Then the ones short a signature, then the agreed."
-      action={
-        <Select value={filter} onChange={e => setFilter(e.target.value as 'open' | 'all')}
+      >
+      <FilterBar ariaLabel="Note filters" summary={`${rows.length} ${rows.length === 1 ? 'note' : 'notes'}`}>
+        <Select aria-label="Show" value={filter} onChange={e => setFilter(e.target.value as 'open' | 'all')}
                 style={{ width: 'auto' }}>
           <option value="open">Still moving</option>
           <option value="all">Everything, including settled and void</option>
         </Select>
-      }>
+      </FilterBar>
       {rows.length === 0
         ? <EmptyState message="Nothing outstanding. Every note has either settled or been voided." />
         : (
-          <Table headers={['Note', 'Seller and reason', { label: 'Amount', align: 'right' }, 'State', 'Signatures', { label: '', align: 'right' }]}>
+          <Table headers={['Note', 'Seller and reason', 'Amount', 'State', 'Signatures', 'Actions']}>
             {rows.map(n => {
               const reason = book.reasons.find(r => r.id === n.reason_id) ?? null
               const missing = whatIsMissing(n, reason, policy)
@@ -204,75 +191,78 @@ function Queue({ book, policy, reload, onVoid, onResolve }: {
 
               return (
                 <tr key={n.id}>
-                  <Td>
-                    <strong style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>{n.id}</strong>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
-                      raised {n.raised_on} by {n.raised_by}
-                    </div>
+                  <Td kind="id">
+                    <strong className="c-mono">{n.id}</strong>
+                    <div className="c-sub">raised {n.raised_on} by {n.raised_by}</div>
                   </Td>
 
-                  <Td style={{ maxWidth: '44ch' }}>
-                    <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>{sellerName(n.partner_id)}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)' }}>{line(n, reason)}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.5, marginTop: '2px' }}>
+                  <Td kind="text" style={{ maxWidth: '44ch' }}>
+                    <div style={{ fontWeight: 600 }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={sellerName(n.partner_id)}>{sellerName(n.partner_id)}</span></div>
+                    <div>{line(n, reason)}</div>
+                    <div className="c-sub" style={{ lineHeight: 1.5, marginTop: '2px' }}>
                       {n.detail}
                     </div>
                     {n.evidence && (
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '3px' }}>
+                      <div className="c-sub" style={{ marginTop: '3px' }}>
                         Evidence: {n.evidence}
                       </div>
                     )}
                     {n.dispute_note && (
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)', marginTop: '4px', lineHeight: 1.5 }}>
+                      <div style={{ color: 'var(--danger)', marginTop: '4px', lineHeight: 1.5 }}>
                         The seller says: {n.dispute_note}
                       </div>
                     )}
                     {n.void_reason && (
-                      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+                      <div className="c-sub" style={{ marginTop: '4px' }}>
                         Voided: {n.void_reason}
+                      </div>
+                    )}
+                    {!sig.ok && n.state !== 'disputed' && (
+                      <div className="c-sub" style={{ marginTop: '4px', lineHeight: 1.5 }}>
+                        {sig.reason}
                       </div>
                     )}
                     {missing.length > 0 && n.state === 'draft' && (
                       <ul style={{ margin: '5px 0 0', paddingLeft: '16px' }}>
                         {missing.map((m, i) => (
-                          <li key={i} style={{ fontSize: 'var(--text-xs)', color: 'var(--warning)', lineHeight: 1.5 }}>{m}</li>
+                          <li key={i} style={{ color: 'var(--warning)', lineHeight: 1.5 }}>{m}</li>
                         ))}
                       </ul>
                     )}
                   </Td>
 
-                  <Td right>
+                  <Td kind="num">
                     <strong style={{ color: n.kind === 'credit' ? 'var(--success)' : 'var(--danger)' }}>
                       {n.kind === 'credit' ? '+' : '−'}{fmtIn(n.amount, n.currency)}
                     </strong>
-                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                    <div className="c-sub">
                       {n.kind === 'credit' ? 'we pay more' : 'we recover'}
                     </div>
                     {n.tax > 0 && (
-                      <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                      <div className="c-sub">
                         incl. tax {fmtIn(n.tax, n.currency)}{n.tax_rate ? ` at ${n.tax_rate}%` : ''}
                       </div>
                     )}
                   </Td>
 
-                  <Td>
+                  <Td kind="text" style={{ maxWidth: '24ch' }}>
                     <StatusPill status={STATE_TONE[n.state]} label={STATE_LABEL[n.state]} />
-                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px', maxWidth: '24ch', lineHeight: 1.4 }}>
+                    <div className="c-sub" style={{ marginTop: '2px', lineHeight: 1.4 }}>
                       {STATE_MEANING[n.state]}
                     </div>
                     {n.statement_id && (
-                      <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
+                      <div className="c-sub c-mono">
                         {n.statement_id}
                       </div>
                     )}
                   </Td>
 
-                  <Td>
-                    <div style={{ fontSize: 'var(--text-xs)', lineHeight: 1.6 }}>
-                      {n.approved_by ?? <span style={{ color: 'var(--text-tertiary)' }}>nobody yet</span>}
+                  <Td kind="text">
+                    <div style={{ lineHeight: 1.6 }}>
+                      {n.approved_by ?? <span className="c-sub">nobody yet</span>}
                     </div>
                     {need === 'two' && (
-                      <div style={{ fontSize: '10px', color: n.second_approved_by ? 'var(--text-tertiary)' : 'var(--warning)' }}>
+                      <div className={n.second_approved_by ? 'c-sub' : undefined} style={n.second_approved_by ? undefined : { color: 'var(--warning)' }}>
                         {n.second_approved_by ?? `needs a second — at or above ${policy.second_approval_above} ${policy.currency}`}
                       </div>
                     )}
@@ -280,32 +270,22 @@ function Queue({ book, policy, reload, onVoid, onResolve }: {
                         name says twice what the name already said, and on the
                         sub-floor notes the approver field is the policy itself. */}
                     {need === 'none' && !n.approved_by && (
-                      <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                      <div className="c-sub">
                         no signature needed — under the {policy.auto_approve_below} {policy.currency} floor
                       </div>
                     )}
                   </Td>
 
-                  <Td right>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'flex-end' }}>
-                      {n.state === 'disputed' ? (
-                        <Btn size="sm" onClick={() => onResolve(n)}>Resolve</Btn>
-                      ) : (
-                        <Btn size="sm" disabled={!sig.ok || busy === n.id}
-                             title={sig.ok ? undefined : sig.reason}
-                             onClick={() => void sign(n)}>
-                          {busy === n.id ? 'Signing…' : sig.ok && sig.which === 'second' ? 'Countersign' : 'Approve'}
-                        </Btn>
-                      )}
-                      <Btn size="sm" variant="secondary" disabled={!voidable.ok}
-                           title={voidable.ok ? `Can be voided until ${voidable.until}` : voidable.reason}
-                           onClick={() => onVoid(n)}>Void</Btn>
-                      {!sig.ok && n.state !== 'disputed' && (
-                        <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', maxWidth: '26ch', textAlign: 'right', lineHeight: 1.4 }}>
-                          {sig.reason}
-                        </div>
-                      )}
-                    </div>
+                  <Td>
+                    <RowActions label={n.id} actions={[
+                      n.state === 'disputed'
+                        ? { id: 'primary', label: 'Resolve', variant: 'primary', srOnly: n.id, onClick: () => onResolve(n) }
+                        : { id: 'primary', label: busy === n.id ? 'Signing…' : sig.ok && sig.which === 'second' ? 'Countersign' : 'Approve',
+                            variant: 'primary', srOnly: n.id, disabled: !sig.ok || busy === n.id,
+                            title: sig.ok ? undefined : sig.reason, onClick: () => void sign(n) },
+                      { id: 'void', label: 'Void', variant: 'secondary', srOnly: n.id, disabled: !voidable.ok,
+                        title: voidable.ok ? `Can be voided until ${voidable.until}` : voidable.reason, onClick: () => onVoid(n) },
+                    ]} />
                   </Td>
                 </tr>
               )
@@ -340,34 +320,35 @@ function Landing({ book, reload }: { book: NoteBook; reload: () => Promise<void>
 
   return (
     <div style={{ marginTop: '16px', paddingTop: '14px', borderTop: '1px solid var(--border)' }}>
-      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: '4px' }}>
+      <div style={{ fontWeight: 700, marginBottom: '4px' }}>
         Statements still open with notes waiting
       </div>
-      <p style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', margin: '0 0 10px', maxWidth: '76ch' }}>
+      <p className="c-sub" style={{ margin: '0 0 10px', maxWidth: '76ch' }}>
         The settlement run applies notes by itself. Landing one here is for a statement that was cut
         before the last signature arrived — a signed-off statement cannot take one at all.
       </p>
-      <Table headers={['Statement', 'Seller', 'Period', { label: 'Waiting', align: 'right' }, { label: '', align: 'right' }]}>
+      <Table headers={['Statement', 'Seller', 'Period', 'Waiting', 'Actions']}>
         {candidates.map(s => {
           const waiting = issuedFor(s.partner_id)
           const move = waiting.reduce((n, x) => n + signedAmount(x), 0)
           return (
             <tr key={s.id}>
-              <Td><span style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>{s.id}</span></Td>
-              <Td>{s.partner_name}</Td>
-              <Td>{s.period}</Td>
-              <Td right>
+              <Td kind="id"><span className="c-mono">{s.id}</span></Td>
+              <Td kind="text">{s.partner_name}</Td>
+              <Td kind="date">{s.period}</Td>
+              <Td kind="num">
                 <strong style={{ color: move >= 0 ? 'var(--success)' : 'var(--danger)' }}>
                   {move >= 0 ? '+' : '−'}{fmtIn(Math.abs(move), s.currency)}
                 </strong>
-                <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                <div className="c-sub">
                   {waiting.length} note{waiting.length === 1 ? '' : 's'}
                 </div>
               </Td>
-              <Td right>
-                <Btn size="sm" variant="secondary" disabled={busy === s.id} onClick={() => void land(s.id)}>
-                  {busy === s.id ? 'Landing…' : 'Apply now'}
-                </Btn>
+              <Td>
+                <RowActions label={s.id} actions={[
+                  { id: 'apply', label: busy === s.id ? 'Landing…' : 'Apply now', variant: 'secondary', srOnly: s.id,
+                    disabled: busy === s.id, onClick: () => void land(s.id) },
+                ]} />
               </Td>
             </tr>
           )
@@ -410,18 +391,18 @@ function PolicyTab({ book, policy }: { book: NoteBook; policy: NotePolicy }) {
         <Table headers={['Reason', 'Direction', 'Reference', 'What it is for']}>
           {[...reasonsFor(book.reasons, 'credit'), ...reasonsFor(book.reasons, 'debit')].map(r => (
             <tr key={r.id}>
-              <Td><strong style={{ fontSize: 'var(--text-sm)' }}>{r.label}</strong></Td>
-              <Td>
+              <Td kind="text"><strong>{r.label}</strong></Td>
+              <Td kind="status">
                 <StatusPill status={r.kind === 'credit' ? 'healthy' : 'degraded'}
                             label={r.kind === 'credit' ? 'We pay more' : 'We recover'} />
               </Td>
-              <Td style={{ maxWidth: '22ch' }}>
-                <span style={{ fontSize: 'var(--text-xs)', color: r.needs_ref ? 'var(--text)' : 'var(--text-tertiary)' }}>
+              <Td kind="text" style={{ maxWidth: '22ch' }}>
+                <span className={r.needs_ref ? undefined : 'c-sub'}>
                   {r.needs_ref ? r.ref_label : 'Not demanded'}
                 </span>
               </Td>
-              <Td style={{ maxWidth: '58ch' }}>
-                <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+              <Td kind="text" style={{ maxWidth: '58ch' }}>
+                <span className="c-sub" style={{ lineHeight: 1.6 }}>
                   {r.guidance}
                 </span>
               </Td>
@@ -439,17 +420,17 @@ function Threshold({ icon, label, value, note }: {
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '12px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-secondary)' }}>
-        {icon}<span style={{ fontSize: 'var(--text-xs)', fontWeight: 700 }}>{label}</span>
+        {icon}<span style={{ fontWeight: 700 }}>{label}</span>
       </div>
       <div style={{ fontSize: 'var(--text-lg)', fontWeight: 800, margin: '5px 0 4px' }}>{value}</div>
-      <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.55 }}>{note}</div>
+      <div className="c-sub" style={{ lineHeight: 1.55 }}>{note}</div>
     </div>
   )
 }
 
 function Note({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div style={{ fontSize: 'var(--text-xs)', lineHeight: 1.65, color: 'var(--text-secondary)' }}>
+    <div className="c-sub" style={{ lineHeight: 1.65 }}>
       <strong style={{ color: 'var(--text)' }}>{label}. </strong>{children}
     </div>
   )

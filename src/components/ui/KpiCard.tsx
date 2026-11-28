@@ -29,8 +29,8 @@ export function KpiCard({ label, value, delta, icon, children, unit, context, va
   breakdown?: { label: string; value: string }[]
   /** A short status line for a count, e.g. "2 overdue, 1 due today". */
   status?: string
-  /** Colours the value: `warning` for something waiting, `success` for something healthy. */
-  tone?: 'warning' | 'success'
+  /** Colours the value: `warning` for something waiting, `success` for something healthy, `danger` for money or risk owed. */
+  tone?: 'warning' | 'success' | 'danger'
 }) {
   const Icon = delta?.direction === 'up' ? ArrowUpRight : delta?.direction === 'down' ? ArrowDownRight : Minus
   return (

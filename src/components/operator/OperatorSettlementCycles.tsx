@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Play } from 'lucide-react'
 import {
   SectionCard, Table, Td, StatusPill, EmptyState, Btn, Modal,
-  FormField, TextInput, TextArea, Select, toast, fmtInt,
+  FormField, TextInput, TextArea, Select, toast, fmtInt, RowActions, FieldRow,
 } from './shared'
 import { Callout } from '../OnboardingJourney'
 import { useMarket } from '../../lib/MarketContext'
@@ -60,41 +60,41 @@ export function SettlementCycles() {
         title="Agreed settlement cycles"
         subtitle="What each partner signed. The run reads these rather than a default, so a change here changes when they are paid.">
         {book.due.length === 0 ? <EmptyState message="No partner has an agreed cycle" /> : (
-          <Table headers={['Partner', 'Cycle', 'Terms', 'Last closed', 'Next closes', 'State', '']}>
+          <Table headers={['Partner', 'Cycle', 'Terms', 'Last closed', 'Next closes', 'State', 'Actions']}>
             {book.due.map(d => {
               const t = book.terms.find(x => x.partner_id === d.partner_id)
               return (
                 <tr key={d.partner_id}>
-                  <Td>
-                    <div style={{ fontWeight: 600 }}>{d.partner_name}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono, monospace)' }}>
+                  <Td kind="text">
+                    <div style={{ fontWeight: 600 }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={d.partner_name}>{d.partner_name}</span></div>
+                    <div className="c-sub c-mono">
                       {d.partner_id}{d.contract_ref ? ` · ${d.contract_ref}` : ''}
                     </div>
                   </Td>
-                  <Td>
+                  <Td nowrap>
                     <div style={{ fontWeight: 600 }}>{FREQUENCY_LABEL[d.frequency]}</div>
                     {d.frequency !== 'monthly' && (
-                      <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                      <div className="c-sub">
                         {d.align === 'anniversary' ? 'from the contract month' : 'calendar boundary'}
                       </div>
                     )}
                   </Td>
-                  <Td style={{ fontSize: 'var(--text-xs)', maxWidth: '260px' }}>
+                  <Td kind="text" style={{ maxWidth: '260px' }}>
                     net {d.pay_within_days}
-                    {t && holdLine(t) && <div style={{ color: 'var(--text-tertiary)' }}>{holdLine(t)}</div>}
-                    {t && minimumLine(t) && <div style={{ color: 'var(--text-tertiary)' }}>{minimumLine(t)}</div>}
+                    {t && holdLine(t) && <div className="c-sub">{holdLine(t)}</div>}
+                    {t && minimumLine(t) && <div className="c-sub">{minimumLine(t)}</div>}
                   </Td>
-                  <Td right style={{ fontSize: 'var(--text-xs)' }}>
+                  <Td kind="date">
                     {d.closed_on
-                      ? <>{periodLabel(d.frequency, d.period_start!)}<div style={{ color: 'var(--text-tertiary)' }}>closed {d.closed_on}</div></>
-                      : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
+                      ? <>{periodLabel(d.frequency, d.period_start!)}<div className="c-sub">closed {d.closed_on}</div></>
+                      : <span className="c-sub">—</span>}
                   </Td>
-                  <Td right style={{ fontSize: 'var(--text-xs)' }}>{d.next_close ?? '—'}</Td>
-                  <Td right><StateChip state={d.state} /></Td>
-                  <Td right>
-                    <Btn size="sm" variant="secondary" onClick={() => setEditing(t ?? null)} disabled={!t}>
-                      Edit
-                    </Btn>
+                  <Td kind="date">{d.next_close ?? '—'}</Td>
+                  <Td kind="status"><StateChip state={d.state} /></Td>
+                  <Td>
+                    <RowActions label={d.partner_name} actions={[
+                      { id: 'edit', label: 'Edit', variant: 'secondary', srOnly: d.partner_name, disabled: !t, onClick: () => setEditing(t ?? null) },
+                    ]} />
                   </Td>
                 </tr>
               )
@@ -143,29 +143,29 @@ function AccruingCard({ rows }: { rows: AccruingRow[] }) {
           const stuck = wouldPay > 0 && wouldPay < r.minimum_payout
           return (
             <tr key={r.partner_id}>
-              <Td>{r.partner_name}</Td>
-              <Td right style={{ fontSize: 'var(--text-xs)' }}>
+              <Td kind="text"><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={r.partner_name}>{r.partner_name}</span></Td>
+              <Td kind="date">
                 {periodLabel(r.frequency, r.period_start)}
-                <div style={{ color: 'var(--text-tertiary)' }}>{r.period_start} to {r.period_end}</div>
+                <div className="c-sub">{r.period_start} to {r.period_end}</div>
               </Td>
-              <Td right style={{ fontSize: 'var(--text-xs)' }}>
+              <Td kind="date">
                 {r.closed_on}
-                <div style={{ color: 'var(--text-tertiary)' }}>due {r.due_on}</div>
+                <div className="c-sub">due {r.due_on}</div>
               </Td>
-              <Td right>{fmtInt(r.lines)}</Td>
-              <Td right>{fmtIn(r.gross, 'USD')}</Td>
-              <Td right style={{ fontWeight: 700 }}>{fmtIn(r.net, 'USD')}</Td>
-              <Td right>
+              <Td kind="num">{fmtInt(r.lines)}</Td>
+              <Td kind="num">{fmtIn(r.gross, 'USD')}</Td>
+              <Td kind="num" style={{ fontWeight: 700 }}>{fmtIn(r.net, 'USD')}</Td>
+              <Td kind="num">
                 {r.held_back > 0
                   ? <span style={{ color: 'var(--warning)' }}>{fmtIn(r.held_back, 'USD')}</span>
-                  : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
+                  : <span className="c-sub">—</span>}
                 {r.hold_days > 0 && r.held_back === 0 && (
-                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                  <div className="c-sub">
                     nothing inside the {r.hold_days}-day window yet
                   </div>
                 )}
               </Td>
-              <Td right>
+              <Td kind="num">
                 {stuck ? (
                   <span style={{ color: 'var(--warning)' }}>
                     carries — under {r.minimum_payout.toFixed(2)} {r.payout_currency}
@@ -213,14 +213,14 @@ export function SettlementRuns() {
             <Play size={14} /> {busy ? 'Running…' : 'Run now'}
           </Btn>
         }>
-        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+        <FieldRow>
           <div style={{ minWidth: '180px' }}>
-            <FormField label="As at"
+            <FormField compact label="As at"
                        hint="A run is idempotent — running the same date twice finds the first run's statements rather than paying twice.">
               <TextInput type="date" value={asOf} onChange={e => setAsOf(e.target.value)} />
             </FormField>
           </div>
-        </div>
+        </FieldRow>
 
         {/* Named skips. "Three partners were skipped" is not something anybody
             can act on, which is why the run records who and why. */}
@@ -246,22 +246,22 @@ export function SettlementRuns() {
           <Table headers={['Run', 'Date', 'Kind', 'By', 'Considered', 'Settled', 'Passed over', 'Status']}>
             {book.runs.map(r => (
               <tr key={r.id}>
-                <Td style={{ fontFamily: 'var(--font-mono, monospace)', fontSize: 'var(--text-xs)' }}>{r.id}</Td>
-                <Td right>{r.ran_on}</Td>
-                <Td right style={{ fontSize: 'var(--text-xs)' }}>{r.kind}</Td>
-                <Td right style={{ fontSize: 'var(--text-xs)' }}>{r.ran_by}</Td>
-                <Td right>{fmtInt(r.considered)}</Td>
-                <Td right style={{ fontWeight: 700 }}>{fmtInt(r.settled)}</Td>
-                <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '360px' }}>
+                <Td kind="id"><span className="c-mono">{r.id}</span></Td>
+                <Td kind="date">{r.ran_on}</Td>
+                <Td kind="text">{r.kind}</Td>
+                <Td kind="text">{r.ran_by}</Td>
+                <Td kind="num">{fmtInt(r.considered)}</Td>
+                <Td kind="num" style={{ fontWeight: 700 }}>{fmtInt(r.settled)}</Td>
+                <Td kind="text" style={{ maxWidth: '360px' }}>
                   {(r.skipped ?? []).length === 0
-                    ? <span style={{ color: 'var(--text-tertiary)' }}>nobody</span>
+                    ? <span className="c-sub">nobody</span>
                     : (r.skipped ?? []).map(s => (
-                        <div key={s.partner_id} style={{ color: 'var(--text-secondary)' }}>
+                        <div key={s.partner_id} className="c-sub">
                           <strong>{s.partner}</strong> — {s.reason}
                         </div>
                       ))}
                 </Td>
-                <Td right><StatusPill status={r.status === 'complete' ? 'healthy' : 'degraded'} label={r.status} /></Td>
+                <Td kind="status"><StatusPill status={r.status === 'complete' ? 'healthy' : 'degraded'} label={r.status} /></Td>
               </tr>
             ))}
           </Table>
@@ -425,24 +425,24 @@ export function WithholdingPositions() {
         <Table headers={['Market', 'Statute', 'On', 'Resident', 'Non-resident', 'With a treaty', 'From']}>
           {book.rules.filter(r => r.applies_to === 'partner-payout').map(r => (
             <tr key={r.id}>
-              <Td style={{ fontWeight: 600 }}>{r.market}</Td>
-              <Td style={{ fontSize: 'var(--text-xs)' }}>
+              <Td kind="text" style={{ fontWeight: 600 }}>{r.market}</Td>
+              <Td kind="text">
                 <div style={{ fontWeight: 600 }}>{r.label}</div>
-                <div style={{ color: 'var(--text-tertiary)' }}>{r.statute}</div>
+                <div className="c-sub">{r.statute}</div>
               </Td>
-              <Td right style={{ fontSize: 'var(--text-xs)' }}>
+              <Td kind="text">
                 {r.basis === 'gross' ? 'the whole sale'
                   : r.basis === 'commission' ? 'our commission'
                   : 'the net supply'}
               </Td>
-              <Td right style={{ fontWeight: 700 }}>{r.resident_rate}%</Td>
-              <Td right>{r.non_resident_rate}%</Td>
-              <Td right>
+              <Td kind="num" style={{ fontWeight: 700 }}>{r.resident_rate}%</Td>
+              <Td kind="num">{r.non_resident_rate}%</Td>
+              <Td kind="num">
                 {r.treaty_rate != null
                   ? `${r.treaty_rate}%`
-                  : <span style={{ color: 'var(--text-tertiary)' }}>no relief published</span>}
+                  : <span className="c-sub">no relief published</span>}
               </Td>
-              <Td right style={{ fontSize: 'var(--text-xs)' }}>{r.effective_from}</Td>
+              <Td kind="date">{r.effective_from}</Td>
             </tr>
           ))}
         </Table>
@@ -458,25 +458,23 @@ export function WithholdingPositions() {
               { ...payee, tax_id: p.tax_id, treaty_expires: p.treaty_expires }, p.market, today)
             return (
               <tr key={p.partner_id}>
-                <Td>
-                  <div style={{ fontWeight: 600 }}>{p.partner_name}</div>
-                  <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono, monospace)' }}>
-                    {p.partner_id}
-                  </div>
+                <Td kind="text">
+                  <div style={{ fontWeight: 600 }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={p.partner_name}>{p.partner_name}</span></div>
+                  <div className="c-sub c-mono">{p.partner_id}</div>
                 </Td>
-                <Td right>{p.market}</Td>
-                <Td right>
+                <Td kind="text">{p.market}</Td>
+                <Td kind="text">
                   {p.tax_residence ?? '—'}
                   {p.tax_residence === p.market && (
-                    <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>domestic</div>
+                    <div className="c-sub">domestic</div>
                   )}
                 </Td>
-                <Td right style={{ fontSize: 'var(--text-xs)' }}>
+                <Td kind="text">
                   {p.tax_id
                     ? <>{p.tax_label} {p.tax_id}</>
                     : <span style={{ color: 'var(--warning)' }}>none on file</span>}
                 </Td>
-                <Td right style={{ fontSize: 'var(--text-xs)', maxWidth: '460px', color: 'var(--text-secondary)' }}>
+                <Td kind="text" style={{ maxWidth: '460px' }}>
                   {positionLine(book.rules, p.market, payee, today)}
                   {warnings.map(w => (
                     <div key={w} style={{ color: 'var(--warning)', marginTop: '3px' }}>{w}</div>
