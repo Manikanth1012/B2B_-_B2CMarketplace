@@ -130,7 +130,19 @@ describe('filterNights', () => {
   ]
   const all = { from: '', to: '', job: 'all', status: 'all' as const }
 
-  it('lists the ten jobs run_nightly runs', () => expect(JOB_NAMES).toHaveLength(10))
+  it('lists the eleven jobs run_nightly runs, reminders first', () => {
+    expect(JOB_NAMES).toHaveLength(11)
+    expect(JOB_NAMES[0]).toBe('reminders')
+    expect(JOB_NAMES[1]).toBe('agreements')
+    expect(JOB_NAMES[10]).toBe('settlements')
+  })
+  it('reminders', () => {
+    expect(summarise('reminders', { sent: 3, already_sent: 1, skipped: 2 })).toBe('3 reminders sent, 1 already sent, 2 skipped')
+    expect(summarise('reminders', { sent: 2, delivered: 1, suppressed: 2, already_sent: 0, deferred: 1, skipped: 0 }))
+      .toBe('2 reminders sent, 1 delivered in-app, 2 not sent (no gateway), 1 held for tomorrow')
+    expect(summarise('reminders', { sent: 1, already_sent: 0, skipped: 0 })).toBe('1 reminder sent')
+    expect(summarise('reminders', { sent: 0, already_sent: 0, skipped: 0 })).toBe('No reminders due')
+  })
 
   it('keeps everything with no filters', () => {
     expect(filterSummary(filterNights(nights(rows), all))).toBe('3 nights · 5 runs')

@@ -64,9 +64,9 @@ export function nights(rows: JobLogRow[]): Night[] {
     })
 }
 
-/** The ten jobs run_nightly runs, by the names the log carries. */
+/** The eleven jobs run_nightly runs, in order, by the names the log carries. */
 export const JOB_NAMES = [
-  'agreements', 'enterprise subscriptions', 'subscriptions', 'documents', 'payments',
+  'reminders', 'agreements', 'enterprise subscriptions', 'subscriptions', 'documents', 'payments',
   'bundle selections', 'baskets', 'invoices', 'risk', 'settlements',
 ] as const
 
@@ -82,7 +82,7 @@ export interface JobFilters {
 export const ALL_JOBS = 'all'
 
 /* Supabase caps a response at 1000 rows by default (max_rows), whatever .limit asks, so
-   the cap is 1000: 90 nights of ten jobs is about 900, and the capped note is honest. */
+   the cap is 1000: 90 nights of eleven jobs is about 990, and the capped note is honest. */
 export const JOB_LOG_LIMIT = 1000
 
 /** With no date bound the screen shows this many of the newest nights. */
@@ -213,6 +213,18 @@ export function summarise(job: string, result: unknown): string {
       if (n === 0) return 'No accounts to score'
       return `${plural(n, 'account')} scored, ${count(o, 'review') ?? 0} to review, ${count(o, 'high') ?? 0} high`
     }
+    case 'reminders':
+      /* run_reminders (20261127400000): {sent, already_sent, skipped, deferred,
+         delivered, suppressed, …}. Suppressed: logged, but no gateway carries
+         the channel yet. */
+      return join([
+        c('sent', n => `${plural(n, 'reminder')} sent`),
+        c('delivered', n => `${n} delivered in-app`),
+        c('suppressed', n => `${n} not sent (no gateway)`),
+        c('already_sent', n => `${n} already sent`),
+        c('deferred', n => `${n} held for tomorrow`),
+        c('skipped', n => `${n} skipped`),
+      ], 'No reminders due')
     default:
       return 'Done'
   }
