@@ -199,9 +199,9 @@ export function OperatorRenewals() {
             <Table headers={['Subscription', 'Seller', 'Customer', 'Due', 'Late', 'Cycle', 'Band', 'Actions']}>
               {watchPage.rows.map(w => (
                 <tr key={w.ref}>
-                  <Td kind="id">
-                    {w.ref}
-                    <div className="c-sub">{w.product_name}</div>
+                  <Td>
+                    <div style={{ whiteSpace: 'nowrap' }}>{w.ref}</div>
+                    <div className="c-sub"><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={w.product_name}>{w.product_name}</span></div>
                   </Td>
                   <Td clamp>{w.vendor}</Td>
                   <Td clamp>{w.customer ?? '—'}</Td>
@@ -238,9 +238,9 @@ export function OperatorRenewals() {
             <Table headers={['Subscription', 'Covers', 'Raised by', 'Their reference', 'Amount', 'On a bill']}>
               {chargePage.rows.map(c => (
                 <tr key={c.id}>
-                  <Td kind="id">
-                    {c.ref}
-                    <div className="c-sub">{c.product_name}</div>
+                  <Td>
+                    <div style={{ whiteSpace: 'nowrap' }}>{c.ref}</div>
+                    <div className="c-sub"><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={c.product_name}>{c.product_name}</span></div>
                   </Td>
                   <Td kind="date">{c.period_start} to {c.period_end}</Td>
                   <Td nowrap>

@@ -553,7 +553,8 @@ export interface RowAction {
   id?: string
   /** Words for a screen reader only, after the label ("Open" + " Meera's basket"). */
   srOnly?: string
-  /** For a button that opens something in place: sets `aria-expanded`. */
+  /** For a button that opens something in place: sets `aria-expanded`. Applies
+      to inline buttons only; an action that overflows into More has no expanded state. */
   expanded?: boolean
 }
 
@@ -597,7 +598,7 @@ export function RowActions({ actions, max = 2, label }: {
         <span onClick={e => e.stopPropagation()} onKeyDown={keepFromRow} className="c-row-actions__more">
           <Menu label={label ? `More actions for ${label}` : 'More actions'}
             triggerClassName="c-btn c-btn--tertiary c-btn--sm c-btn--icon"
-            items={rest.map(a => ({ label: a.label, onSelect: a.onClick, disabled: a.disabled || a.loading, danger: a.variant === 'danger', icon: a.icon }))}>
+            items={rest.map(a => ({ label: a.label, onSelect: a.onClick, disabled: a.disabled || a.loading, danger: a.variant === 'danger', icon: a.icon, srOnly: a.srOnly }))}>
             <MoreHorizontal size={16} aria-hidden="true" />
           </Menu>
         </span>

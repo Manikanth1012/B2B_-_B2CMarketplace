@@ -168,7 +168,7 @@ export function OperatorCatalogue({ focus = null }: { focus?: string | null } = 
           { id: 'rules', label: 'Dependencies', count: snap.rules.length },
         ]} />
 
-      <div role="tabpanel" id={`cat-panel-${tab}`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div role="tabpanel" id={`cat-panel-${tab}`} aria-labelledby={`cat-panel-${tab}-tab`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {tab === 'queue' && (
         <SectionCard title="Review queue" subtitle="Decisions are visible to the seller with the reason you give">
           {queue.length === 0 ? <EmptyState message="Nothing is waiting" /> : (

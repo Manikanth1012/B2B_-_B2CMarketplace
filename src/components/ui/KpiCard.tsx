@@ -77,21 +77,30 @@ export function KpiRow({ children, label }: { children: ReactNode; label?: strin
 }
 
 /**
- * Money held in several currencies, as a card wants it (rule 9): the largest
- * currency by amount is the headline, the rest a `breakdown`. Amounts in
- * different currencies are not comparable, so "largest" only decides which one
- * leads; nothing is added together.
+ * Money held in several currencies, as a card wants it (rule 9): one currency
+ * is the headline, the rest a `breakdown`; nothing is added together.
+ *
+ * Which one leads: with `toBase` (a converter into one currency at rates the
+ * screen has already loaded) the largest converted amount, so rupees do not
+ * outrank dollars merely for having more digits. Without it the largest
+ * nominal amount, which is only a tie-break across currencies and says nothing
+ * about worth. The headline's code is returned as `unit` so a "$" is never
+ * ambiguous; pass it to the card.
  */
 export function groupsToKpi(
   groups: readonly { currency: string; total: { amount: number } }[],
   fmt: (amount: number, currency: string) => string,
   empty = '—',
-): { value: string; breakdown?: { label: string; value: string }[] } {
+  toBase?: (amount: number, currency: string) => number,
+): { value: string; unit?: string; breakdown?: { label: string; value: string }[] } {
   if (groups.length === 0) return { value: empty }
-  const sorted = [...groups].sort((a, b) => b.total.amount - a.total.amount)
+  const rank = (g: { currency: string; total: { amount: number } }) =>
+    toBase ? toBase(g.total.amount, g.currency) : g.total.amount
+  const sorted = [...groups].sort((a, b) => rank(b) - rank(a))
   const [head, ...rest] = sorted
   return {
     value: fmt(head.total.amount, head.currency),
+    unit: head.currency,
     breakdown: rest.length ? rest.map(g => ({ label: g.currency, value: fmt(g.total.amount, g.currency) })) : undefined,
   }
 }

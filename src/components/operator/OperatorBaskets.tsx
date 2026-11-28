@@ -134,7 +134,7 @@ export function OperatorBaskets() {
 
       {data && (
         <BentoCard as="article" headingLevel={2} title={tab === 'business' ? 'Business baskets' : 'Shopper baskets'}>
-          <div id={`op-baskets-panel-${tab}`} role="tabpanel">
+          <div id={`op-baskets-panel-${tab}`} aria-labelledby={`op-baskets-panel-${tab}-tab`} role="tabpanel">
             <div role="group" aria-label="Show" className="op-baskets__filters">
               {(['all', 'pending', 'abandoned'] as const).map(f => (
                 <button key={f} type="button" aria-pressed={filter === f} className="op-baskets__filter"

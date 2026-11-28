@@ -117,7 +117,7 @@ export function OperatorNumbers() {
       <Tabs ariaLabel="Numbers views" panelIdPrefix="numbers-panel-" value={tab} onChange={id => setTab(id as Tab)}
         tabs={TABS} />
 
-      <div role="tabpanel" id={`numbers-panel-${tab}`}>
+      <div role="tabpanel" id={`numbers-panel-${tab}`} aria-labelledby={`numbers-panel-${tab}-tab`}>
       {tab === 'blocks' && <BlocksTab book={book} />}
       {tab === 'allocated' && <AllocatedTab onChanged={reload} />}
       {tab === 'esim' && <EsimTab book={book} onChanged={reload} />}

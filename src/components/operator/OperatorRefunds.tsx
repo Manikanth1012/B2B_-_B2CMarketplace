@@ -5,6 +5,7 @@ import {
 } from './shared'
 import { Tabs } from '../ui/Tabs'
 import { KpiCard, KpiRow, groupsToKpi } from '../ui/KpiCard'
+import { rankingIn, formatGroups } from '../../lib/money'
 import { StatusBadge } from '../ui/StatusBadge'
 import { Callout } from '../OnboardingJourney'
 import { loadAllRefunds, escalateRefund, markRefundPaid } from '../../lib/refundRepo'
@@ -38,7 +39,7 @@ export function OperatorRefunds() {
   /* The marketplace's book spans every market, so nothing here is added up
      across currencies — the rollups are grouped and each row is drawn in the
      money it is in. */
-  const { fmtIn } = useMarket()
+  const { fmtIn, book: moneyBook } = useMarket()
   const reload = useCallback(async () => setBook(await loadAllRefunds()), [])
   useEffect(() => { void reload() }, [reload])
 
@@ -56,14 +57,16 @@ export function OperatorRefunds() {
   const late = ordered.filter(r =>
     r.state === 'requested' && policy && sla(r, policy, now).level === 'overdue')
   const mine = ordered.filter(r => ownership(r).owner === 'marketplace' && !STATES[r.state].final)
-  const atStake = groupsToKpi(stats.atStakeBy, fmtIn)
-  const refunded = groupsToKpi(stats.refundedBy, fmtIn)
+  const home = moneyBook.currencies.find(c => c.is_reporting)?.code ?? 'USD'
+  const rank = rankingIn(home, moneyBook.rates, now.toISOString().slice(0, 10))
+  const atStake = groupsToKpi(stats.atStakeBy, fmtIn, '—', rank)
+  const refunded = groupsToKpi(stats.refundedBy, fmtIn, '—', rank)
   const rows = tab === 'attention' ? late : tab === 'mine' ? mine : ordered
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <PageHeader title="Refunds"
-        description={`Every refund on the platform, whoever sold it. ${stats.open} open · ${stats.atStakeBy.length ? stats.atStakeBy.map(g => fmtIn(g.total.amount, g.currency)).join(' · ') : '—'} at stake · ${stats.overdue} past the answer somebody owes.`} />
+        description={`Every refund on the platform, whoever sold it. ${stats.open} open · ${formatGroups(stats.atStakeBy, fmtIn)} at stake · ${stats.overdue} past the answer somebody owes.`} />
 
       {book.loadError && <Callout tone="danger" title="Some of this page did not load">{book.loadError}</Callout>}
 
@@ -75,14 +78,13 @@ export function OperatorRefunds() {
 
       <KpiRow label="Refunds summary">
         <KpiCard variant={stats.overdue > 0 ? 'risk' : 'ops'} label="Past the deadline" value={String(stats.overdue)}
-                 tone={stats.overdue > 0 ? 'warning' : undefined}
                  status={slow.length > 0 ? `across ${slow.length} sellers` : 'Nobody is late'} />
         <KpiCard variant="ops" label="On this desk" value={String(mine.length)}
                  tone={mine.length > 0 ? 'warning' : undefined}
                  status="Escalated, first-party or bundled" />
-        <KpiCard variant="money" label="At stake" value={atStake.value} breakdown={atStake.breakdown}
+        <KpiCard variant="money" label="At stake" unit={atStake.unit} value={atStake.value} breakdown={atStake.breakdown}
                  context="If every open request is granted" />
-        <KpiCard variant="money" label="Refunded to date" value={refunded.value} breakdown={refunded.breakdown}
+        <KpiCard variant="money" label="Refunded to date" unit={refunded.unit} value={refunded.value} breakdown={refunded.breakdown}
                  context={`across ${stats.decided} decided`} />
       </KpiRow>
 
@@ -94,7 +96,7 @@ export function OperatorRefunds() {
           { id: 'all', label: 'Everything', count: book.refunds.length },
         ]} />
 
-      <div role="tabpanel" id={`refunds-panel-${tab}`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div role="tabpanel" id={`refunds-panel-${tab}`} aria-labelledby={`refunds-panel-${tab}-tab`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {tab === 'sellers' ? (
         slow.length === 0 ? (
           <Callout tone="success" title="Every seller is answering inside the SLA">

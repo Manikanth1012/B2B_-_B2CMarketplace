@@ -315,7 +315,7 @@ export function OperatorPartners({ focus = null }: { focus?: string | null } = {
               }))} />
           </div>
 
-          <div role="tabpanel" id={`seller-panel-${tab}`} style={{ padding: '18px 20px' }}>
+          <div role="tabpanel" id={`seller-panel-${tab}`} aria-labelledby={`seller-panel-${tab}-tab`} style={{ padding: '18px 20px' }}>
             {detail?.loadError && <Callout tone="danger" title="Part of this record did not load">{detail.loadError}</Callout>}
 
             {tab === 'overview' && (

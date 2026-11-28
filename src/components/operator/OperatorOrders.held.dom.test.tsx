@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event'
 
 vi.mock('../../lib/supabase', () => ({ supabase: {} }))
 vi.mock('../../lib/MarketContext', () => ({
-  useMarket: () => ({ fmtIn: (n: number, c: string) => `${c} ${n.toFixed(2)}` }),
+  useMarket: () => ({ fmtIn: (n: number, c: string) => `${c} ${n.toFixed(2)}`, book: { currencies: [], rates: [] } }),
 }))
 vi.mock('../../lib/riskRepo', () => ({ orderScores: async () => new Map() }))
 const book = vi.hoisted(() => ({ value: null as unknown }))

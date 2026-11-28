@@ -21,6 +21,7 @@ import {
 import type { OrderRow, Severity } from '../../lib/orderOps'
 import { STATE_LABEL as COM_LABEL, STATE_TONE as COM_TONE } from '../../lib/com'
 import { useMarket } from '../../lib/MarketContext'
+import { rankingIn } from '../../lib/money'
 import { groupBySelection } from '../../lib/bundles'
 import { useBundleNames } from '../bundles/useBundleNames'
 
@@ -72,14 +73,14 @@ export function OperatorOrders() {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       <PageHeader
         title="Orders"
-        description="Every order across retail, business accounts and guest checkout, in one place. The marketplace moves an order along; it does not rewrite what it cost or who bought it, and a refund is the way to change those.">
-        <Tabs ariaLabel="Order views" panelIdPrefix="orders-panel-" value={tab} onChange={id => setTab(id as 'exceptions' | 'all')}
-          tabs={[{ id: 'exceptions', label: 'Needs somebody' }, { id: 'all', label: 'The whole book' }]} />
-      </PageHeader>
+        description="Every order across retail, business accounts and guest checkout, in one place. The marketplace moves an order along; it does not rewrite what it cost or who bought it, and a refund is the way to change those." />
 
       <Rollup book={book} today={today} />
 
-      <div role="tabpanel" id={`orders-panel-${tab}`}>
+      <Tabs ariaLabel="Order views" panelIdPrefix="orders-panel-" value={tab} onChange={id => setTab(id as 'exceptions' | 'all')}
+        tabs={[{ id: 'exceptions', label: 'Needs somebody' }, { id: 'all', label: 'The whole book' }]} />
+
+      <div role="tabpanel" id={`orders-panel-${tab}`} aria-labelledby={`orders-panel-${tab}-tab`}>
       {tab === 'exceptions' && <Exceptions book={book} today={today} onOpen={setOpen} />}
       {tab === 'all' && <Register book={book} today={today} onOpen={setOpen} />}
       </div>
@@ -99,7 +100,9 @@ function Rollup({ book, today }: { book: OrderBook; today: string }) {
   const { fmtIn } = useMarket()
   const r = rollup(book.orders, book.lines, book.pushes, today)
 
-  const money = groupsToKpi(r.value, fmtIn)
+  const { book: moneyBook } = useMarket()
+  const home = moneyBook.currencies.find(c => c.is_reporting)?.code ?? 'USD'
+  const money = groupsToKpi(r.value, fmtIn, '—', rankingIn(home, moneyBook.rates, today))
 
   return (
     <KpiRow label="Order summary">
@@ -108,10 +111,9 @@ function Rollup({ book, today }: { book: OrderBook; today: string }) {
       {/* Four currencies trade here, so this is several figures. A single total
           across them would be a quantity of nothing, and it would look entirely
           reasonable on the screen. The largest leads; the rest are listed. */}
-      <KpiCard variant="money" label="Open order value" value={money.value} breakdown={money.breakdown}
+      <KpiCard variant="money" label="Open order value" unit={money.unit} value={money.value} breakdown={money.breakdown}
         context="Each market in its own money" />
       <KpiCard variant={r.wrong > 0 ? 'risk' : 'ops'} label="Saying something untrue" value={fmtInt(r.wrong)}
-        tone={r.wrong > 0 ? 'warning' : undefined}
         status={r.wrong === 0 ? 'Nothing is misreporting itself' : 'A customer has been told something false'} />
       <KpiCard variant="ops" label="Needs somebody" value={fmtInt(r.exceptions)}
         tone={r.exceptions > 0 ? 'warning' : undefined}
@@ -148,7 +150,7 @@ function Exceptions({ book, today, onOpen }: {
           const age = ageInDays(o, today)
           return (
             <tr key={o.id}>
-              <Td kind="id">
+              <Td nowrap>
                 <strong className="c-mono">{o.order_ref}</strong>
                 <div className="c-sub">
                   {o.market} · {o.placed_date ?? 'undated'}{age !== null ? ` · ${age}d old` : ''}

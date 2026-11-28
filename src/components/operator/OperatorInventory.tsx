@@ -148,7 +148,7 @@ export function OperatorInventory() {
           { id: 'warehouses', label: 'Warehouses' },
         ]} />
 
-      <div role="tabpanel" id={`inventory-panel-${tab}`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div role="tabpanel" id={`inventory-panel-${tab}`} aria-labelledby={`inventory-panel-${tab}-tab`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {/* What needs doing, worst first. A line that is out with 2,000 units
           landing on Friday needs nothing from anybody, and showing it beside one
           that is out with nothing on order teaches people to ignore both. */}

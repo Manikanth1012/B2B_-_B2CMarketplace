@@ -143,7 +143,7 @@ export function OperatorRewards() {
           { id: 'currencies', label: 'What is owed, and where', count: owed?.gross.length ?? 0 },
         ]} />
 
-      <div role="tabpanel" id={`rewards-panel-${tab}`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      <div role="tabpanel" id={`rewards-panel-${tab}`} aria-labelledby={`rewards-panel-${tab}-tab`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {tab === 'proposals' && (
         pending.length === 0 ? (
           <Callout tone="success" title="Nothing waiting">

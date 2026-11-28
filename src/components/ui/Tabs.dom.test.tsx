@@ -29,6 +29,12 @@ describe('Tabs', () => {
     expect(screen.getByText('2')).toBeTruthy()
   })
 
+  it('reads a count into the accessible name, and ids each tab for its panel', () => {
+    render(<Tabs tabs={[{ id: 'x', label: 'Shoppers', count: 1 }]} value="x" onChange={() => {}} ariaLabel="S" panelIdPrefix="p-" />)
+    const t = screen.getByRole('tab', { name: 'Shoppers (1)' })
+    expect(t.id).toBe('p-x-tab')
+  })
+
   it('arrows, Home and End move focus and select, skipping disabled tabs', async () => {
     const user = userEvent.setup()
     render(<Host />)

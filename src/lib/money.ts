@@ -360,6 +360,19 @@ export function totalIn(
   return { total: money(amount, target), asOf, missing }
 }
 
+/**
+ * A converter for ranking only: an amount into `target` at the rates loaded,
+ * at `asOf`. A currency with no rate ranks last (0) rather than being guessed.
+ */
+export function rankingIn(
+  target: string, rates: readonly Rate[], asOf: string,
+): (amount: number, currency: string) => number {
+  return (amount, currency) => {
+    const r = rateOn(rates, currency, target, asOf)
+    return r ? (currency === target ? amount : amount * r.rate) : 0
+  }
+}
+
 /* --------------------------------------------------------- formatting --- */
 
 /**
