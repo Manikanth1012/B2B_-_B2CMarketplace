@@ -472,6 +472,15 @@ create table if not exists public.notification_schedule_log (
   unique (step_id, subject_id, anchor_date)
 );
 
+/* due_on arrived late in this file's drafting. Should a table exist from an
+   earlier draft, give it the column, fill it from what each row already says,
+   then hold it to the same rule as a fresh table. A no-op otherwise. */
+alter table public.notification_schedule_log add column if not exists due_on date;
+update public.notification_schedule_log
+   set due_on = anchor_date + offset_days
+ where due_on is null;
+alter table public.notification_schedule_log alter column due_on set not null;
+
 comment on table public.notification_schedule_log is
   'One row per schedule step, subject and anchor date: sent (with the notification_log ids), or why not. Written only by run_reminders.';
 
