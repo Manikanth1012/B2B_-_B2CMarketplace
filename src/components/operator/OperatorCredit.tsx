@@ -1,9 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { ShieldCheck, TriangleAlert, Lock, Landmark } from 'lucide-react'
 import {
-  SectionCard, StatCard, EmptyState, Btn, StatusPill, Table, Td, toast,
-  Modal, FormField, TextArea, fmtInt,
+  SectionCard, EmptyState, Btn, StatusPill, Table, Td, toast,
+  Modal, FormField, TextArea, fmtInt, PageHeader, RowActions,
 } from './shared'
+import { Tabs } from '../ui/Tabs'
+import { KpiCard, KpiRow, groupsToKpi } from '../ui/KpiCard'
 import { Callout } from '../OnboardingJourney'
 import { StatusBadge } from '../ui/StatusBadge'
 import { accountBands } from '../../lib/riskRepo'
@@ -16,7 +18,7 @@ import {
   creditBook, creditProblems,
 } from '../../lib/credit'
 import type { Position } from '../../lib/credit'
-import { formatGroups } from '../../lib/money'
+import { rankingIn } from '../../lib/money'
 import { useMarket } from '../../lib/MarketContext'
 
 /* Who we are exposed to, and what we hold against it.
@@ -63,21 +65,13 @@ export function OperatorCredit() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div>
-        <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>
-          Credit &amp; exposure
-        </h1>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px', maxWidth: '84ch' }}>
-          Two risks running opposite ways. A business account owes us between the order and the
-          payment, so we set a limit. A seller is owed by us, and their refunds and adjustments can
-          exceed their sales, so we hold security. A retail shopper pays at checkout and is neither.
-        </p>
-      </div>
+      <PageHeader title="Credit & exposure"
+        description="Two risks running opposite ways. A business account owes us between the order and the payment, so we set a limit. A seller is owed by us, and their refunds and adjustments can exceed their sales, so we hold security. A retail shopper pays at checkout and is neither." />
 
       {problems.length > 0 && (
         <Callout tone="danger" title={`${problems.length} thing${problems.length === 1 ? '' : 's'} the credit file disagrees with itself about`}>
           <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            {problems.map((p, i) => <li key={i} style={{ fontSize: 'var(--text-xs)', lineHeight: 1.6 }}>{p}</li>)}
+            {problems.map((p, i) => <li key={i} style={{ lineHeight: 1.6 }}>{p}</li>)}
           </ul>
         </Callout>
       )}
@@ -86,21 +80,13 @@ export function OperatorCredit() {
 
       {book.held.length > 0 && <Held book={book} onRelease={setReleasing} />}
 
-      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-        {([['buyers', 'Who owes us'], ['sellers', 'What we hold']] as const).map(([id, label]) => (
-          <button key={id} onClick={() => setTab(id)}
-            style={{
-              padding: '7px 14px', borderRadius: 'var(--radius-md)', fontSize: 'var(--text-sm)',
-              fontWeight: 600, cursor: 'pointer',
-              border: `1px solid ${tab === id ? 'var(--primary)' : 'var(--border)'}`,
-              background: tab === id ? 'var(--primary-soft)' : 'var(--surface)',
-              color: tab === id ? 'var(--primary)' : 'var(--text-secondary)',
-            }}>{label}</button>
-        ))}
-      </div>
+      <Tabs ariaLabel="Credit views" panelIdPrefix="credit-panel-" value={tab} onChange={id => setTab(id as 'buyers' | 'sellers')}
+        tabs={[{ id: 'buyers', label: 'Who owes us' }, { id: 'sellers', label: 'What we hold' }]} />
 
-      {tab === 'buyers' && <Buyers book={book} today={today} />}
-      {tab === 'sellers' && <Sellers book={book} />}
+      <div role="tabpanel" id={`credit-panel-${tab}`} aria-labelledby={`credit-panel-${tab}-tab`}>
+        {tab === 'buyers' && <Buyers book={book} today={today} />}
+        {tab === 'sellers' && <Sellers book={book} />}
+      </div>
 
       {releasing && (
         <ReleaseDialog id={releasing} book={book}
@@ -114,25 +100,29 @@ export function OperatorCredit() {
 /* ---------------------------------------------------------------- the rollup -- */
 
 function Rollup({ book, today }: { book: CreditBook; today: string }) {
-  const { fmtIn } = useMarket()
+  const { fmtIn, book: moneyBook } = useMarket()
   const b = creditBook(book.positions, book.assessments, today)
+  /* Ranking only: which currency leads the card. Nothing is added across
+     currencies, and rates already loaded are all that is read. */
+  const home = moneyBook.currencies.find(c => c.is_reporting)?.code ?? 'USD'
+  const rank = rankingIn(home, moneyBook.rates, today)
+  /* Several figures, never one. The book trades in four currencies and a
+     single "total exposure" across them would be a quantity of nothing. */
+  const exposed = groupsToKpi(b.exposed, fmtIn, '—', rank)
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-      {/* Several figures, never one. The book trades in four currencies and a
-          single "total exposure" across them would be a quantity of nothing. */}
-      <StatCard label="Owed and committed" value={formatGroups(b.exposed, fmtIn)}
-        sublabel={`Across ${fmtInt(b.accounts)} accounts, each in its own money`} />
-      <StatCard label="Over their limit" value={fmtInt(b.over)}
-        sublabel={b.over === 0 ? 'Nobody is past their limit' : 'Their next requisition is held'}
-        color={b.over > 0 ? 'var(--danger)' : undefined} />
-      <StatCard label="Near the limit" value={fmtInt(b.nearLimit)}
-        sublabel="Four fifths used or more"
-        color={b.nearLimit > 0 ? 'var(--warning)' : undefined} />
-      <StatCard label="Reviews overdue" value={fmtInt(b.unreviewed)}
-        sublabel={b.noLimit > 0 ? `${fmtInt(b.noLimit)} trading with no limit at all` : 'Every account has a limit'}
-        color={b.unreviewed > 0 || b.noLimit > 0 ? 'var(--warning)' : undefined} />
-    </div>
+    <KpiRow label="Credit summary">
+      <KpiCard variant="money" label="Owed and committed" unit={exposed.unit} value={exposed.value} breakdown={exposed.breakdown}
+        context={`Across ${fmtInt(b.accounts)} accounts, each in its own money`} />
+      <KpiCard variant={b.over > 0 ? 'risk' : 'ops'} label="Over their limit" value={fmtInt(b.over)}
+        status={b.over === 0 ? 'Nobody is past their limit' : 'Their next requisition is held'} />
+      <KpiCard variant="ops" label="Near the limit" value={fmtInt(b.nearLimit)}
+        tone={b.nearLimit > 0 ? 'warning' : undefined}
+        status="Four fifths used or more" />
+      <KpiCard variant="ops" label="Reviews overdue" value={fmtInt(b.unreviewed)}
+        tone={b.unreviewed > 0 || b.noLimit > 0 ? 'warning' : undefined}
+        status={b.noLimit > 0 ? `${fmtInt(b.noLimit)} trading with no limit at all` : 'Every account has a limit'} />
+    </KpiRow>
   )
 }
 
@@ -143,24 +133,26 @@ function Held({ book, onRelease }: { book: CreditBook; onRelease: (id: string) =
   return (
     <SectionCard title="Purchases held on credit"
       subtitle="Held, not refused. A buyer at their limit is a customer whose finance team should be told — refusing sends them elsewhere and approving quietly is how a receivables book gets away from you.">
-      <Table headers={['Requisition', 'Account', { label: 'Amount', align: 'right' }, 'Why it is held', { label: '', align: 'right' }]}>
+      <Table headers={['Requisition', 'Account', 'Amount', 'Why it is held', 'Actions']}>
         {book.held.map(h => (
           <tr key={h.id}>
+            <Td kind="id">
+              <strong className="c-mono">{h.id}</strong>
+              <div className="c-sub">{h.raised_on}</div>
+            </Td>
+            <Td kind="text" style={{ maxWidth: '28ch' }}>
+              <div>{h.account_id}</div>
+              <div className="c-sub">{h.title}</div>
+            </Td>
+            <Td kind="num"><strong>{fmtIn(h.amount, h.currency)}</strong></Td>
+            <Td kind="text" style={{ maxWidth: '54ch' }}>
+              <span className="c-td__clamp" style={{ WebkitLineClamp: 3 }} title={h.credit_note ?? undefined}>{h.credit_note}</span>
+            </Td>
             <Td>
-              <strong style={{ fontFamily: 'var(--font-mono)', fontSize: 'var(--text-xs)' }}>{h.id}</strong>
-              <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{h.raised_on}</div>
+              <RowActions label={h.id} actions={[
+                { id: 'release', label: 'Release', variant: 'primary', srOnly: h.id, onClick: () => onRelease(h.id) },
+              ]} />
             </Td>
-            <Td style={{ maxWidth: '28ch' }}>
-              <div style={{ fontSize: 'var(--text-xs)' }}>{h.account_id}</div>
-              <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', lineHeight: 1.5 }}>{h.title}</div>
-            </Td>
-            <Td right><strong>{fmtIn(h.amount, h.currency)}</strong></Td>
-            <Td style={{ maxWidth: '54ch' }}>
-              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                {h.credit_note}
-              </span>
-            </Td>
-            <Td right><Btn size="sm" onClick={() => onRelease(h.id)}>Release</Btn></Td>
           </tr>
         ))}
       </Table>
@@ -192,72 +184,69 @@ function Buyers({ book, today }: { book: CreditBook; today: string }) {
           const pr = pressure(p)
           return (
             <tr key={p.account_id}>
-              <Td style={{ maxWidth: '24ch' }}>
-                <strong style={{ fontSize: 'var(--text-sm)' }}>{p.company}</strong>
-                <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
-                  {p.account_id}
-                </div>
+              <Td kind="text" style={{ maxWidth: '24ch' }}>
+                <div style={{ fontWeight: 600 }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={p.company}>{p.company}</span></div>
+                <div className="c-sub c-mono">{p.account_id}</div>
                 {risk.has(p.account_id) && (
                   <div style={{ marginTop: '3px' }}>
                     <StatusBadge tone={bandTone(risk.get(p.account_id)!.band)}>Risk: {RISK_BAND_LABEL[risk.get(p.account_id)!.band]}</StatusBadge>
                   </div>
                 )}
                 {p.deposit_held > 0 && (
-                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                  <div className="c-sub" style={{ marginTop: '2px' }}>
                     {fmtIn(p.deposit_held, p.currency)} deposit held
                   </div>
                 )}
               </Td>
 
-              <Td right>
+              <Td kind="num">
                 <strong style={{ color: isOver(p) ? 'var(--danger)' : undefined }}>
                   {fmtIn(p.exposure, p.currency)}
                 </strong>
-                <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>
+                <div className="c-sub">
                   {fmtIn(p.owed, p.currency)} owed
                   {p.committed > 0 && <> · {fmtIn(p.committed, p.currency)} committed</>}
                 </div>
               </Td>
 
-              <Td right>
+              <Td kind="num">
                 {p.credit_limit > 0
                   ? <>
                       {fmtIn(p.credit_limit, p.currency)}
-                      <div style={{ fontSize: '10px', color: isOver(p) ? 'var(--danger)' : 'var(--text-tertiary)' }}>
+                      <div className={isOver(p) ? undefined : 'c-sub'} style={isOver(p) ? { color: 'var(--danger)' } : undefined}>
                         {isOver(p)
                           ? `${fmtIn(Math.abs(p.headroom), p.currency)} over`
                           : `${fmtIn(p.headroom, p.currency)} left`}
                       </div>
                     </>
-                  : <span style={{ fontSize: 'var(--text-xs)', color: 'var(--danger)' }}>none set</span>}
+                  : <span style={{ color: 'var(--danger)' }}>none set</span>}
               </Td>
 
-              <Td>
+              <Td kind="status">
                 <StatusPill status={PRESSURE_TONE[pr]}
                   label={Number.isFinite(u) ? `${Math.round(u * 100)}%` : 'no limit'} />
               </Td>
 
-              <Td style={{ maxWidth: '16ch' }}>
+              <Td kind="text" nowrap style={{ maxWidth: '16ch' }}>
                 {a
                   ? <div style={{
-                      fontSize: 'var(--text-xs)',
-                      color: reviewOverdue(a, today) ? 'var(--danger)' : 'var(--text-secondary)',
+                      color: reviewOverdue(a, today) ? 'var(--danger)' : undefined,
                       fontWeight: reviewOverdue(a, today) ? 700 : 400,
                     }}>
                       {reviewOverdue(a, today)
                         ? `${-reviewIn(a, today)} days overdue`
                         : `in ${reviewIn(a, today)} days`}
                     </div>
-                  : <span style={{ fontSize: '10px', color: 'var(--danger)' }}>never assessed</span>}
+                  : <span style={{ color: 'var(--danger)' }}>never assessed</span>}
               </Td>
 
-              <Td style={{ maxWidth: '46ch' }}>
+              <Td kind="text" style={{ maxWidth: '46ch' }}>
                 {a && <StatusPill status={BAND_TONE[a.band]} label={BAND_LABEL[a.band]} />}
-                <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '3px', lineHeight: 1.5 }}>
+                <div className="c-sub" style={{ marginTop: '3px', lineHeight: 1.5 }}>
                   {positionLine(p, fmtIn)}
                 </div>
                 {a && (
-                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '3px', lineHeight: 1.5 }}>
+                  <div className="c-sub" style={{ marginTop: '3px', lineHeight: 1.5 }}>
                     {BAND_MEANING[a.band]}
                   </div>
                 )}
@@ -288,7 +277,7 @@ function Sellers({ book }: { book: CreditBook }) {
   return (
     <SectionCard title="Sellers, and what is held against them"
       subtitle="Nobody extends credit to a seller. The exposure runs the other way: their refunds, chargebacks and debit notes can exceed their sales in a period, and then we are out of pocket with nothing to draw on.">
-      <Table headers={['Seller', { label: 'We owe them', align: 'right' }, { label: 'We hold', align: 'right' }, { label: 'Uncovered', align: 'right' }, 'Why']}>
+      <Table headers={['Seller', 'We owe them', 'We hold', 'Uncovered', 'Why']}>
         {rows.map(s => {
           const sec = book.security.find(x => x.partner_id === s.partner_id)
           const a = live.get(s.partner_id) ?? null
@@ -297,33 +286,31 @@ function Sellers({ book }: { book: CreditBook }) {
             : { held: 0, unpaid: s.unpaid, uncovered: s.unpaid, covered: false, currency: s.currency }
           return (
             <tr key={s.partner_id}>
-              <Td style={{ maxWidth: '22ch' }}>
-                <strong style={{ fontSize: 'var(--text-sm)' }}>{s.name}</strong>
-                <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)' }}>
-                  {s.partner_id}
-                </div>
+              <Td kind="text" style={{ maxWidth: '22ch' }}>
+                <div style={{ fontWeight: 600 }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={s.name}>{s.name}</span></div>
+                <div className="c-sub c-mono">{s.partner_id}</div>
                 {a && <div style={{ marginTop: '3px' }}><StatusPill status={BAND_TONE[a.band]} label={BAND_LABEL[a.band]} /></div>}
               </Td>
-              <Td right>{fmtIn(s.unpaid, s.currency)}</Td>
-              <Td right>
+              <Td kind="num">{fmtIn(s.unpaid, s.currency)}</Td>
+              <Td kind="num">
                 {cover.held > 0
                   ? <strong>{fmtIn(cover.held, cover.currency)}</strong>
-                  : <span style={{ color: 'var(--text-tertiary)' }}>—</span>}
+                  : <span className="c-sub">—</span>}
                 {sec && sec.reserve_pct > 0 && (
-                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)' }}>{sec.reserve_pct}% rolling</div>
+                  <div className="c-sub">{sec.reserve_pct}% rolling</div>
                 )}
               </Td>
-              <Td right>
+              <Td kind="num">
                 <span style={{ color: cover.uncovered > 0 ? 'var(--warning)' : 'var(--success)' }}>
                   {cover.uncovered > 0 ? fmtIn(cover.uncovered, cover.currency) : 'covered'}
                 </span>
               </Td>
-              <Td style={{ maxWidth: '52ch' }}>
-                <div style={{ fontSize: 'var(--text-xs)', lineHeight: 1.55 }}>
+              <Td kind="text" style={{ maxWidth: '52ch' }}>
+                <div style={{ lineHeight: 1.55 }}>
                   {sec ? securityLine(sec, fmtIn) : 'Never assessed.'}
                 </div>
                 {a && (
-                  <div style={{ fontSize: '10px', color: 'var(--text-tertiary)', marginTop: '3px', lineHeight: 1.5 }}>
+                  <div className="c-sub" style={{ marginTop: '3px', lineHeight: 1.5 }}>
                     {a.evidence}
                   </div>
                 )}
