@@ -178,7 +178,7 @@ export function OperatorMarkets() {
         <KpiCard variant="ops" label="Currencies accepted" value={String(new Set(accepted.map(a => a.currency)).size)}
                  status={[...new Set(accepted.map(a => a.currency))].sort().join(' · ')} />
         <KpiCard variant="ops" label="Sellers on record" value={String(sellers.length)}
-                 status={`Across ${markets.length} ${markets.length === 1 ? 'market' : 'markets'}`} />
+                 status={`${new Set(cells.filter(c => c.state === 'approved').map(c => c.partner_id)).size} trading somewhere`} />
         <KpiCard variant="ops" label="Market requests waiting" value={String(waiting.length)}
                  tone={waiting.length ? 'warning' : undefined}
                  status={waiting.length ? 'Nobody can trade until these are decided' : 'Nothing outstanding'} />

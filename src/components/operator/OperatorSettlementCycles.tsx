@@ -215,14 +215,12 @@ export function SettlementRuns() {
         }>
         <FieldRow>
           <div style={{ minWidth: '180px' }}>
-            <FormField compact label="As at">
+            <FormField compact label="As at"
+                       hint="A run is idempotent — running the same date twice finds the first run's statements rather than paying twice.">
               <TextInput type="date" value={asOf} onChange={e => setAsOf(e.target.value)} />
             </FormField>
           </div>
         </FieldRow>
-        <div className="c-sub" style={{ marginTop: '6px' }}>
-          A run is idempotent — running the same date twice finds the first run's statements rather than paying twice.
-        </div>
 
         {/* Named skips. "Three partners were skipped" is not something anybody
             can act on, which is why the run records who and why. */}

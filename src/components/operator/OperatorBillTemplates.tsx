@@ -652,7 +652,8 @@ function Assignments({ book, onChanged }: { book: BillTemplateBook; onChanged: (
         <div style={{ padding: '16px 20px 4px', borderTop: '1px solid var(--border-light)' }}>
           <FieldRow>
             <FormField compact label="Counterparty">
-              <TextInput value={party} onChange={e => setParty(e.target.value.toUpperCase())} placeholder="PTR-1003" />
+              <TextInput value={party} onChange={e => setParty(e.target.value.toUpperCase())} placeholder="PTR-1003"
+                aria-describedby="exception-hint" />
             </FormField>
             <FormField compact label="Template">
               <Select value={partyTemplate} onChange={e => setPartyTemplate(e.target.value)}>
@@ -661,7 +662,7 @@ function Assignments({ book, onChanged }: { book: BillTemplateBook; onChanged: (
               </Select>
             </FormField>
             <FormField compact label="Why">
-              <TextInput value={why} onChange={e => setWhy(e.target.value)}
+              <TextInput value={why} onChange={e => setWhy(e.target.value)} aria-describedby="exception-hint"
                 placeholder="Registered where the regulator prescribes the format." />
             </FormField>
             <Btn disabled={!party.trim() || !partyTemplate || !why.trim()}
@@ -679,7 +680,7 @@ function Assignments({ book, onChanged }: { book: BillTemplateBook; onChanged: (
               <Plus size={14} style={{ marginRight: 6 }} />Add exception
             </Btn>
           </FieldRow>
-          <div className="c-sub" style={{ marginTop: '6px' }}>
+          <div id="exception-hint" className="c-sub" style={{ marginTop: '6px' }}>
             A seller or account id, e.g. PTR-1003. An exception without a reason is one nobody dares remove later.
           </div>
         </div>

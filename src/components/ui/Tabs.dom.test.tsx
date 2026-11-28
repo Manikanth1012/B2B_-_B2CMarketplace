@@ -58,4 +58,10 @@ describe('Tabs', () => {
     await user.click(screen.getByRole('tab', { name: 'Rules' }))
     expect(screen.getByRole('tab', { name: 'Rules' }).getAttribute('aria-selected')).toBe('true')
   })
+
+  it('formats a large count with separators, visibly and for a screen reader', () => {
+    render(<Tabs tabs={[{ id: 'p', label: 'Postings', count: 1234 }]} value="p" onChange={() => {}} ariaLabel="Views" />)
+    expect(screen.getByText('1,234')).toBeTruthy()
+    expect(screen.getByText('(1,234)')).toBeTruthy()
+  })
 })

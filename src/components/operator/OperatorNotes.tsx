@@ -217,6 +217,11 @@ function Queue({ book, policy, reload, onVoid, onResolve }: {
                         Voided: {n.void_reason}
                       </div>
                     )}
+                    {!sig.ok && n.state !== 'disputed' && (
+                      <div className="c-sub" style={{ marginTop: '4px', lineHeight: 1.5 }}>
+                        {sig.reason}
+                      </div>
+                    )}
                     {missing.length > 0 && n.state === 'draft' && (
                       <ul style={{ margin: '5px 0 0', paddingLeft: '16px' }}>
                         {missing.map((m, i) => (
@@ -281,11 +286,6 @@ function Queue({ book, policy, reload, onVoid, onResolve }: {
                       { id: 'void', label: 'Void', variant: 'secondary', srOnly: n.id, disabled: !voidable.ok,
                         title: voidable.ok ? `Can be voided until ${voidable.until}` : voidable.reason, onClick: () => onVoid(n) },
                     ]} />
-                    {!sig.ok && n.state !== 'disputed' && (
-                      <div className="c-sub" style={{ maxWidth: '26ch', marginLeft: 'auto', textAlign: 'right', lineHeight: 1.4 }}>
-                        {sig.reason}
-                      </div>
-                    )}
                   </Td>
                 </tr>
               )

@@ -119,19 +119,17 @@ export function OperatorWallets() {
           currency by currency, sits under it. Nothing is added or converted here. */}
       <KpiRow label="Wallet summary">
         <KpiCard variant="money" label={`Held in wallets, in ${home}`} unit={held.total.currency}
-                 value={fmtIn(held.total.amount, held.total.currency)}
-                 breakdown={groupRows(book.totalBy)}
+                 value={`≈ ${fmtIn(held.total.amount, held.total.currency)}`}
                  context={`Across ${book.accounts} accounts in ${book.currencies.length} ${book.currencies.length === 1 ? 'currency' : 'currencies'} · at ${AS_OF} rates`} />
         <KpiCard variant="money" label="The customer's own money" unit={heldCash.total.currency}
-                 value={fmtIn(heldCash.total.amount, heldCash.total.currency)}
-                 breakdown={groupRows(book.cashBy)}
+                 value={`≈ ${fmtIn(heldCash.total.amount, heldCash.total.currency)}`} tone="danger"
                  context="Top-ups and refunds — refundable on request" />
         <KpiCard variant="money" label="Credit we issued" unit={heldPromo.total.currency}
-                 value={fmtIn(heldPromo.total.amount, heldPromo.total.currency)} tone="success"
+                 value={`≈ ${fmtIn(heldPromo.total.amount, heldPromo.total.currency)}`} tone="success"
                  breakdown={groupRows(book.promoBy)}
                  context="Rewards and goodwill — spendable, not refundable" />
         <KpiCard variant="money" label="Dormant" unit={book.dormant === 0 ? undefined : heldDormant.total.currency}
-                 value={book.dormant === 0 ? 'None' : fmtIn(heldDormant.total.amount, heldDormant.total.currency)}
+                 value={book.dormant === 0 ? 'None' : `≈ ${fmtIn(heldDormant.total.amount, heldDormant.total.currency)}`}
                  tone={book.dormant > 0 ? 'warning' : undefined}
                  breakdown={book.dormant === 0 ? undefined : groupRows(book.dormantBy)}
                  context={book.dormant === 0

@@ -51,8 +51,8 @@ export function Tabs({ tabs, value, onChange, ariaLabel, panelIdPrefix }: {
           {t.label}
           {t.count !== undefined && (
             <>
-              <span className="ui-tab__count" aria-hidden="true">{t.count}</span>
-              <span className="sr-only">({t.count})</span>
+              <span className="ui-tab__count" aria-hidden="true">{t.count.toLocaleString()}</span>
+              <span className="sr-only">({t.count.toLocaleString()})</span>
             </>
           )}
         </button>
