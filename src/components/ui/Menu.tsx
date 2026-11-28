@@ -164,6 +164,9 @@ export function Menu({ items, label, children, triggerClassName, align = 'end' }
             <button key={it.label} ref={el => { itemRefs.current[i] = el }} type="button" role="menuitem"
               tabIndex={i === active ? 0 : -1} aria-disabled={it.disabled || undefined}
               aria-describedby={it.hint ? `${menuId}-hint-${i}` : undefined}
+              /* The name is the label alone: the hint is shown inside the item
+                 but belongs to its description, so it is not read twice. */
+              aria-label={it.hint ? `${it.label}${it.srOnly ? ` ${it.srOnly}` : ''}` : undefined}
               className={['ui-dd__opt', 'ui-menu__item', i === active && 'is-active', it.danger && 'ui-menu__item--danger', it.disabled && 'is-disabled'].filter(Boolean).join(' ')}
               onMouseEnter={() => setActive(i)}
               onClick={() => run(it)}>

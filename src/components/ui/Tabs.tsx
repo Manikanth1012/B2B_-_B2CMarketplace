@@ -51,8 +51,10 @@ export function Tabs({ tabs, value, onChange, ariaLabel, panelIdPrefix }: {
           {t.label}
           {t.count !== undefined && (
             <>
-              <span className="ui-tab__count" aria-hidden="true">{t.count.toLocaleString()}</span>
-              <span className="sr-only">({t.count.toLocaleString()})</span>
+              {/* en-US grouping, as the rest of the console's counts: the machine's
+                  locale would print 1.234 on some browsers. */}
+              <span className="ui-tab__count" aria-hidden="true">{t.count.toLocaleString('en-US')}</span>
+              <span className="sr-only">({t.count.toLocaleString('en-US')})</span>
             </>
           )}
         </button>
