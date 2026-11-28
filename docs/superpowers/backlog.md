@@ -194,7 +194,10 @@ Spec `docs/superpowers/specs/2026-11-27-alignment-sweep-and-dashboards-design.md
 - [x] Part 3, operator group 1 (merged): Onboarding, Accounts, Sellers, Catalogue Review — PageHeader, FilterBar,
   shared Table/Td kinds, RowActions (optional stable `id` per action), Tabs with tab panels, KpiRow (new `tone`
   warning/success).
-- [ ] Operator groups 2–4 (Commerce; Finance; Service + Platform + Governance); dashboards (operator, partner, enterprise); partner/enterprise screens; storefront.
+- [x] Part 4, operator group 2 Commerce (merged): Orders, Baskets, Renewals, Inventory, Numbers, Refunds, Rewards;
+  shared: tab names "Name (n)" and tab ids/aria-labelledby, KPI headline ranked by converted value when every
+  currency has a rate (else nominal), `groupsToKpi`, `.c-sub`/`.c-mono`, RowAction srOnly/expanded.
+- [ ] Operator groups 3–4 (Finance; Service + Platform + Governance); dashboards (operator, partner, enterprise); partner/enterprise screens; storefront.
 - Deferred minors: Donut has no keyboard focus (hidden table covers screen readers); a Menu whose items are all
   disabled looks dead; `Td clamp` hover title only for plain-string children; menu arrow keys bubble to the row.
 
