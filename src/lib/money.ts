@@ -362,14 +362,16 @@ export function totalIn(
 
 /**
  * A converter for ranking only: an amount into `target` at the rates loaded,
- * at `asOf`. A currency with no rate ranks last (0) rather than being guessed.
+ * at `asOf`. A currency with no rate gives NaN rather than a guess, and
+ * groupsToKpi then ranks the whole card by nominal amount instead.
  */
 export function rankingIn(
   target: string, rates: readonly Rate[], asOf: string,
 ): (amount: number, currency: string) => number {
   return (amount, currency) => {
+    if (currency === target) return amount
     const r = rateOn(rates, currency, target, asOf)
-    return r ? (currency === target ? amount : amount * r.rate) : 0
+    return r ? amount * r.rate : NaN
   }
 }
 

@@ -94,8 +94,13 @@ export function groupsToKpi(
   toBase?: (amount: number, currency: string) => number,
 ): { value: string; unit?: string; breakdown?: { label: string; value: string }[] } {
   if (groups.length === 0) return { value: empty }
+  /* Converted only when every currency converts: one missing rate (or the rates
+     still loading) would otherwise rank that currency last and make the order a
+     guess, so the whole card falls back to nominal instead. */
+  const converted = toBase ? groups.map(g => toBase(g.total.amount, g.currency)) : null
+  const useConverted = !!converted && converted.every(v => Number.isFinite(v))
   const rank = (g: { currency: string; total: { amount: number } }) =>
-    toBase ? toBase(g.total.amount, g.currency) : g.total.amount
+    useConverted ? converted![groups.indexOf(g as typeof groups[number])] : g.total.amount
   const sorted = [...groups].sort((a, b) => rank(b) - rank(a))
   const [head, ...rest] = sorted
   return {

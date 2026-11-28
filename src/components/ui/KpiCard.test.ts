@@ -17,6 +17,12 @@ describe('groupsToKpi', () => {
     expect(r.value).toBe('USD 90000')
     expect(r.unit).toBe('USD')
   })
+  it('falls back to nominal for the whole card when any currency has no rate (or rates are still loading)', () => {
+    const partial = (a: number, c: string) => (c === 'USD' ? a : NaN)
+    const r = groupsToKpi([g('USD', 90000), g('INR', 400000), g('KES', 5)], fmt, '—', partial)
+    expect(r.value).toBe('INR 400000')
+    expect(r.breakdown?.map(b => b.label)).toEqual(['USD', 'KES'])
+  })
   it('says dash for nothing', () => {
     expect(groupsToKpi([], fmt)).toEqual({ value: '—' })
   })
