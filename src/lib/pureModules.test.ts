@@ -70,8 +70,13 @@ describe('the unit suite runs without credentials', () => {
     expect(tests.length).toBeGreaterThan(30)
   })
 
+  /* A test that replaces `./supabase` with `vi.mock` never builds the real
+     client, whatever it imports (remindersRepo.test.ts does, to check a repo's
+     queries without a database). */
+  const mocksSupabase = (file: string) => /vi\.mock\(\s*['"]\.\/supabase['"]/.test(readFileSync(file, 'utf8'))
+
   it.each(tests.map(t => [short(t), t]))('%s reaches no Supabase client', (_name, file) => {
-    const chain = chainToSupabase(file as string)
+    const chain = mocksSupabase(file as string) ? null : chainToSupabase(file as string)
     expect(
       chain,
       chain ? `imports ./supabase via:\n    ${chain.map(short).join('\n      -> ')}` : '',

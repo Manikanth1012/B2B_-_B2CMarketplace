@@ -463,6 +463,9 @@ export function missingTemplates(rules: Rule[], templates: Template[]): { rule: 
 export const PLACEHOLDERS = [
   'recipient', 'order', 'listing', 'partner', 'buyer', 'amount', 'due',
   'reason', 'link', 'marketplace',
+  /* A scheduled step's (spec 19, run_reminders): the anchor date, the days
+     from today to it (negative once it has passed), and a basket's lines. */
+  'anchor_date', 'days_left', 'items',
 ] as const
 
 export function placeholdersIn(text: string): string[] {
@@ -512,6 +515,9 @@ export const SAMPLE: Record<string, string> = {
   reason: 'Two units short on a delivery of eight',
   link: 'https://aventa.example/o/881489',
   marketplace: 'Aventa',
+  anchor_date: '04 Dec 2026',
+  days_left: '7',
+  items: '3',
 }
 
 /* ------------------------------------------------------------------- log -- */
