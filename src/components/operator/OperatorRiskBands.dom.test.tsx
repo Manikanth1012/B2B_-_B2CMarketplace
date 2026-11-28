@@ -5,7 +5,10 @@ import { cleanup, render, screen } from '@testing-library/react'
 
 vi.mock('../../lib/supabase', () => ({ supabase: {} }))
 vi.mock('../../lib/MarketContext', () => ({
-  useMarket: () => ({ fmtIn: (n: number, c: string) => `${c} ${n.toFixed(2)}` }),
+  useMarket: () => ({
+    fmtIn: (n: number, c: string) => `${c} ${n.toFixed(2)}`,
+    book: { currencies: [], rates: [] },
+  }),
 }))
 vi.mock('../../lib/riskRepo', () => ({
   accountBands: async () => new Map([['ENT-1', { score: 75, band: 'high' }]]),
