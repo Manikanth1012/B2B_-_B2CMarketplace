@@ -551,6 +551,11 @@ export interface RowAction {
       whatever moved into it, and a second Enter would fire that instead. A
       label that toggles (Journey / Hide) keeps one `id` so its focus survives. */
   id?: string
+  /** Words for a screen reader only, after the label ("Open" + " Meera's basket"). */
+  srOnly?: string
+  /** For a button that opens something in place: sets `aria-expanded`. Applies
+      to inline buttons only; an action that overflows into More has no expanded state. */
+  expanded?: boolean
 }
 
 /**
@@ -584,15 +589,16 @@ export function RowActions({ actions, max = 2, label }: {
     <div className="c-row-actions">
       {inline.map((a, i) => (
         <Btn key={a.id ?? `#${i}`} size="sm" variant={a.variant ?? 'tertiary'} disabled={a.disabled} loading={a.loading}
+          aria-expanded={a.expanded}
           onClick={e => { e.stopPropagation(); a.onClick() }} onKeyDown={keepFromRow}>
-          {a.icon}{a.label}
+          {a.icon}{a.label}{a.srOnly && <span className="sr-only"> {a.srOnly}</span>}
         </Btn>
       ))}
       {rest.length > 0 && (
         <span onClick={e => e.stopPropagation()} onKeyDown={keepFromRow} className="c-row-actions__more">
           <Menu label={label ? `More actions for ${label}` : 'More actions'}
             triggerClassName="c-btn c-btn--tertiary c-btn--sm c-btn--icon"
-            items={rest.map(a => ({ label: a.label, onSelect: a.onClick, disabled: a.disabled || a.loading, danger: a.variant === 'danger', icon: a.icon }))}>
+            items={rest.map(a => ({ label: a.label, onSelect: a.onClick, disabled: a.disabled || a.loading, danger: a.variant === 'danger', icon: a.icon, srOnly: a.srOnly }))}>
             <MoreHorizontal size={16} aria-hidden="true" />
           </Menu>
         </span>

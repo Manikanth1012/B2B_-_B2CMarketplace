@@ -23,6 +23,8 @@ export interface MenuItem {
   /** Printed in the danger colour: a destructive command. */
   danger?: boolean
   icon?: React.ReactNode
+  /** Words for a screen reader only, after the label. */
+  srOnly?: string
 }
 
 const GAP = 4
@@ -161,7 +163,7 @@ export function Menu({ items, label, children, triggerClassName, align = 'end' }
               onMouseEnter={() => { if (!it.disabled) setActive(i) }}
               onClick={() => run(it)}>
               {it.icon && <span className="ui-menu__icon" aria-hidden="true">{it.icon}</span>}
-              <span className="ui-dd__label">{it.label}</span>
+              <span className="ui-dd__label">{it.label}{it.srOnly && <span className="sr-only"> {it.srOnly}</span>}</span>
             </button>
           ))}
         </div>,

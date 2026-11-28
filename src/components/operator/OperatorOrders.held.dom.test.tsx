@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event'
 
 vi.mock('../../lib/supabase', () => ({ supabase: {} }))
 vi.mock('../../lib/MarketContext', () => ({
-  useMarket: () => ({ fmtIn: (n: number, c: string) => `${c} ${n.toFixed(2)}` }),
+  useMarket: () => ({ fmtIn: (n: number, c: string) => `${c} ${n.toFixed(2)}`, book: { currencies: [], rates: [] } }),
 }))
 vi.mock('../../lib/riskRepo', () => ({ orderScores: async () => new Map() }))
 const book = vi.hoisted(() => ({ value: null as unknown }))
@@ -36,7 +36,7 @@ afterEach(cleanup)
 async function open(ref: string) {
   const user = userEvent.setup()
   render(<OperatorOrders />)
-  await user.click(await screen.findByRole('button', { name: 'The whole book' }))
+  await user.click(await screen.findByRole('tab', { name: 'The whole book' }))
   const row = screen.getByText(ref).closest('tr')!
   await user.click(within(row).getByRole('button', { name: 'Open' }))
   return screen.findByRole('dialog')

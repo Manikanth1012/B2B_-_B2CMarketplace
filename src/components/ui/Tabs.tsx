@@ -41,6 +41,7 @@ export function Tabs({ tabs, value, onChange, ariaLabel, panelIdPrefix }: {
       {tabs.map(t => (
         <button key={t.id} type="button" role="tab"
           ref={el => { refs.current[t.id] = el }}
+          id={panelIdPrefix ? `${panelIdPrefix}${t.id}-tab` : undefined}
           className="ui-tab" disabled={t.disabled}
           aria-selected={t.id === value}
           aria-controls={panelIdPrefix ? `${panelIdPrefix}${t.id}` : undefined}
@@ -48,7 +49,12 @@ export function Tabs({ tabs, value, onChange, ariaLabel, panelIdPrefix }: {
           onClick={() => onChange(t.id)}
           onKeyDown={e => move(e, t.id)}>
           {t.label}
-          {t.count !== undefined && <span className="ui-tab__count">{t.count}</span>}
+          {t.count !== undefined && (
+            <>
+              <span className="ui-tab__count" aria-hidden="true">{t.count}</span>
+              <span className="sr-only">({t.count})</span>
+            </>
+          )}
         </button>
       ))}
     </div>

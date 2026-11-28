@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { RefreshCw, PhoneCall, Play, Store, Landmark } from 'lucide-react'
 import { Pager, usePaging } from '../Pager'
 import {
-  StatCard, SectionCard, Table, Td, StatusPill, Btn, EmptyState, Modal, FormField,
-  TextInput, fmtInt, fmtDate, toast,
+  SectionCard, Table, Td, StatusPill, Btn, EmptyState, Modal, FormField,
+  TextInput, fmtInt, fmtDate, toast, PageHeader, RowActions,
 } from './shared'
+import { KpiCard, KpiRow } from '../ui/KpiCard'
 import { Callout } from '../OnboardingJourney'
 import { useMarket } from '../../lib/MarketContext'
 import { loadRenewalDesk, reportRenewal, runRenewals } from '../../lib/renewalsRepo'
@@ -108,21 +109,21 @@ export function OperatorRenewals() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      {/* Every console screen opens with one h1; this one had none (spec 5 sweep). */}
-      <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Renewals</h1>
+      <PageHeader title="Renewals"
+        description="What Aventa renews itself, and what sellers renew and have yet to report." />
       {desk.loadError && <Callout tone="danger" title="Some of this did not load">{desk.loadError}</Callout>}
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
-        <StatCard label="We renew" value={fmtInt(ours.length)}
-          sublabel="Active subscriptions Aventa sells" />
-        <StatCard label="A seller renews" value={fmtInt(theirs.length)}
-          sublabel="Their date, their money, their report" />
-        <StatCard label="Due for us today" value={fmtInt(preview.charge.length)}
-          sublabel={preview.charge.length ? 'The run will raise these' : 'Nothing of ours is due'} />
-        <StatCard label="Waiting on a vendor" value={fmtInt(watch.length)}
-          sublabel={worst ? `Oldest is ${worst} day${worst === 1 ? '' : 's'} late` : 'Every vendor is current'}
-          color={watch.length ? 'var(--warning)' : undefined} />
-      </div>
+      <KpiRow label="Renewals summary">
+        <KpiCard variant="ops" label="We renew" value={fmtInt(ours.length)}
+          status="Active subscriptions Aventa sells" />
+        <KpiCard variant="ops" label="A seller renews" value={fmtInt(theirs.length)}
+          status="Their date, their money, their report" />
+        <KpiCard variant="ops" label="Due for us today" value={fmtInt(preview.charge.length)}
+          status={preview.charge.length ? 'The run will raise these' : 'Nothing of ours is due'} />
+        <KpiCard variant="ops" label="Waiting on a vendor" value={fmtInt(watch.length)}
+          tone={watch.length ? 'warning' : undefined}
+          status={worst ? `Oldest is ${worst} day${worst === 1 ? '' : 's'} late` : 'Every vendor is current'} />
+      </KpiRow>
 
       <Callout tone="info" title="Two kinds of renewal, and only one of them is a run">
         Aventa's own lines — Freedom, Family Safety, Digital Life, IoT Connect — are billed by the marketplace, so
@@ -138,39 +139,39 @@ export function OperatorRenewals() {
           {running ? <><RefreshCw size={12} className="spin" /> Running</> : <><Play size={12} /> Run for {fmtDate(TODAY)}</>}
         </Btn>}
       >
-        <div style={{ padding: '16px 20px', display: 'flex', gap: '28px', flexWrap: 'wrap', fontSize: 'var(--text-sm)' }}>
+        <div style={{ padding: '16px 20px', display: 'flex', gap: '28px', flexWrap: 'wrap' }}>
           <div>
-            <div style={{ color: 'var(--text-tertiary)', fontSize: 'var(--text-xs)' }}>To raise</div>
+            <div className="c-sub">To raise</div>
             <div style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>{fmtInt(preview.charge.length)}</div>
           </div>
           <div>
-            <div style={{ color: 'var(--text-tertiary)', fontSize: 'var(--text-xs)' }}>Dates to move</div>
+            <div className="c-sub">Dates to move</div>
             <div style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>{fmtInt(preview.roll.length)}</div>
           </div>
           <div>
-            <div style={{ color: 'var(--text-tertiary)', fontSize: 'var(--text-xs)' }}>Will not renew</div>
+            <div className="c-sub">Will not renew</div>
             <div style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>{fmtInt(preview.skip.length)}</div>
           </div>
           <div>
-            <div style={{ color: 'var(--text-tertiary)', fontSize: 'var(--text-xs)' }}>Not ours to renew</div>
+            <div className="c-sub">Not ours to renew</div>
             <div style={{ fontWeight: 700, fontSize: 'var(--text-lg)' }}>{fmtInt(preview.awaiting.length)}</div>
           </div>
         </div>
 
         {preview.charge.length > 0 && (
-          <Table headers={['Subscription', 'Covers', { label: 'Amount', align: 'right' }]}>
+          <Table headers={['Subscription', 'Covers', 'Amount']}>
             {preview.charge.map(c => (
               <tr key={c.subscription_id}>
-                <Td style={{ fontSize: 'var(--text-xs)' }}>{c.ref}</Td>
-                <Td style={{ fontSize: 'var(--text-xs)' }}>{c.period_start} to {c.period_end}</Td>
-                <Td right>{fmtIn(c.amount, c.currency)}</Td>
+                <Td kind="id">{c.ref}</Td>
+                <Td kind="date">{c.period_start} to {c.period_end}</Td>
+                <Td kind="num">{fmtIn(c.amount, c.currency)}</Td>
               </tr>
             ))}
           </Table>
         )}
 
         {preview.skip.length > 0 && (
-          <div style={{ padding: '0 20px 16px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.7 }}>
+          <div style={{ padding: '0 20px 16px', color: 'var(--slate-600)', lineHeight: 1.7 }}>
             {preview.skip.map(s => <div key={s.ref}><strong>{s.ref}</strong> — {s.why}</div>)}
           </div>
         )}
@@ -178,7 +179,7 @@ export function OperatorRenewals() {
         {outcome && (
           <div style={{
             margin: '0 20px 16px', padding: '12px 14px', borderRadius: 'var(--radius)',
-            background: 'var(--success-bg)', fontSize: 'var(--text-sm)', lineHeight: 1.6,
+            background: 'var(--success-bg)', lineHeight: 1.6,
           }}>
             <strong>Ran for {outcome.ran_on}.</strong> {fmtInt(outcome.charged)} raised,
             {' '}{fmtInt(outcome.already)} already on file, {fmtInt(outcome.rolled)} dates moved.
@@ -195,32 +196,30 @@ export function OperatorRenewals() {
           <EmptyState message="Every seller is current. Nothing is waiting on a report." />
         ) : (
           <>
-            <Table headers={[
-              'Subscription', 'Seller', 'Customer', 'Due', { label: 'Late', align: 'right' },
-              { label: 'Cycle', align: 'right' }, '', '',
-            ]}>
+            <Table headers={['Subscription', 'Seller', 'Customer', 'Due', 'Late', 'Cycle', 'Band', 'Actions']}>
               {watchPage.rows.map(w => (
                 <tr key={w.ref}>
-                  <Td style={{ fontSize: 'var(--text-xs)' }}>
-                    {w.ref}
-                    <div style={{ color: 'var(--text-tertiary)' }}>{w.product_name}</div>
-                  </Td>
-                  <Td style={{ fontSize: 'var(--text-xs)' }}>{w.vendor}</Td>
-                  <Td style={{ fontSize: 'var(--text-xs)' }}>{w.customer ?? '—'}</Td>
-                  <Td style={{ fontSize: 'var(--text-xs)' }}>{w.due}</Td>
-                  <Td right>{fmtInt(w.days_late)} day{w.days_late === 1 ? '' : 's'}</Td>
-                  <Td right>{fmtIn(w.price, w.currency)}</Td>
-                  <Td><StatusPill status={BAND_TONE[w.band] ?? 'pending'} label={BAND_LABEL[w.band] ?? w.band} /></Td>
                   <Td>
-                    <Btn variant="secondary" size="sm" onClick={() => openReport(w)}>
-                      <PhoneCall size={12} /> Record their report
-                    </Btn>
+                    <div style={{ whiteSpace: 'nowrap' }}>{w.ref}</div>
+                    <div className="c-sub"><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={w.product_name}>{w.product_name}</span></div>
+                  </Td>
+                  <Td clamp>{w.vendor}</Td>
+                  <Td clamp>{w.customer ?? '—'}</Td>
+                  <Td kind="date">{w.due}</Td>
+                  <Td kind="num">{fmtInt(w.days_late)} day{w.days_late === 1 ? '' : 's'}</Td>
+                  <Td kind="num">{fmtIn(w.price, w.currency)}</Td>
+                  <Td kind="status"><StatusPill status={BAND_TONE[w.band] ?? 'pending'} label={BAND_LABEL[w.band] ?? w.band} /></Td>
+                  <Td>
+                    <RowActions label={w.ref} actions={[{
+                      id: 'report', label: 'Record their report', variant: 'secondary', icon: <PhoneCall size={12} />,
+                      onClick: () => openReport(w),
+                    }]} />
                   </Td>
                 </tr>
               ))}
             </Table>
             <div style={{ padding: '0 18px 12px' }}><Pager page={watchPage} noun="subscriptions" /></div>
-            <div style={{ padding: '0 20px 16px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.7 }}>
+            <div style={{ padding: '0 20px 16px', color: 'var(--slate-600)', lineHeight: 1.7 }}>
               A seller reports their own renewals from their console. Recording one here is for when they tell us by
               email or on a call — the row says the marketplace filed it on their behalf rather than pretending they did.
             </div>
@@ -236,26 +235,23 @@ export function OperatorRenewals() {
           <EmptyState message="No renewal has been raised yet." />
         ) : (
           <>
-            <Table headers={[
-              'Subscription', 'Covers', 'Raised by', 'Their reference',
-              { label: 'Amount', align: 'right' }, 'On a bill',
-            ]}>
+            <Table headers={['Subscription', 'Covers', 'Raised by', 'Their reference', 'Amount', 'On a bill']}>
               {chargePage.rows.map(c => (
                 <tr key={c.id}>
-                  <Td style={{ fontSize: 'var(--text-xs)' }}>
-                    {c.ref}
-                    <div style={{ color: 'var(--text-tertiary)' }}>{c.product_name}</div>
+                  <Td>
+                    <div style={{ whiteSpace: 'nowrap' }}>{c.ref}</div>
+                    <div className="c-sub"><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={c.product_name}>{c.product_name}</span></div>
                   </Td>
-                  <Td style={{ fontSize: 'var(--text-xs)' }}>{c.period_start} to {c.period_end}</Td>
-                  <Td style={{ fontSize: 'var(--text-xs)' }}>
+                  <Td kind="date">{c.period_start} to {c.period_end}</Td>
+                  <Td nowrap>
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
-                      {c.source === 'vendor' ? <Store size={11} /> : <Landmark size={11} />}
+                      {c.source === 'vendor' ? <Store size={12} /> : <Landmark size={12} />}
                       {c.reported_by ?? (c.source === 'vendor' ? 'A seller' : 'Renewal run')}
                     </span>
                   </Td>
-                  <Td style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{c.vendor_ref ?? '—'}</Td>
-                  <Td right>{fmtIn(c.amount, c.currency)}</Td>
-                  <Td style={{ fontSize: 'var(--text-xs)' }}>{c.bill_id ?? 'Waiting for one'}</Td>
+                  <Td kind="id"><span className="c-sub">{c.vendor_ref ?? '—'}</span></Td>
+                  <Td kind="num">{fmtIn(c.amount, c.currency)}</Td>
+                  <Td nowrap>{c.bill_id ?? 'Waiting for one'}</Td>
                 </tr>
               ))}
             </Table>
@@ -277,7 +273,7 @@ export function OperatorRenewals() {
       >
         {reporting && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div style={{ fontSize: 'var(--text-sm)', lineHeight: 1.6, color: 'var(--text-secondary)' }}>
+            <div style={{ lineHeight: 1.6, color: 'var(--slate-600)' }}>
               The cycle starting <strong>{reporting.due}</strong> on {reporting.product_name}, for{' '}
               {reporting.customer ?? 'the customer'}. It is {reporting.days_late} day
               {reporting.days_late === 1 ? '' : 's'} past the date and this is the only cycle that can be reported —
@@ -293,7 +289,7 @@ export function OperatorRenewals() {
               hint="Leave as it is unless the seller took a different amount from the one on file.">
               <TextInput value={amount} onChange={e => setAmount(e.target.value)} inputMode="decimal" />
             </FormField>
-            <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)', lineHeight: 1.7 }}>
+            <div style={{ color: 'var(--slate-600)', lineHeight: 1.7 }}>
               Recording this moves {reporting.ref} on by one cycle. It does not take any money — the charge waits
               for the bill covering its period, the same way a wholesale charge waits for its settlement.
             </div>

@@ -2,7 +2,8 @@ import { Fragment, useEffect, useMemo, useState } from 'react'
 import { ShoppingBasket } from 'lucide-react'
 import { BentoCard } from '../ui/BentoCard'
 import { StatusBadge } from '../ui/StatusBadge'
-import { Btn, EmptyState, Table, Td, fmtDateTime } from './shared'
+import { Btn, EmptyState, Table, Td, fmtDateTime, PageHeader, RowActions } from './shared'
+import { Tabs } from '../ui/Tabs'
 import { Callout } from '../OnboardingJourney'
 import { useMarket } from '../../lib/MarketContext'
 import { loadWatchedBaskets, remindBasketOwner } from '../../lib/basketRepo'
@@ -106,13 +107,18 @@ export function OperatorBaskets() {
 
   return (
     <div className="op-baskets">
-      <div>
-        <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Baskets</h1>
-        <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-          What buyers have collected and not yet bought. Pending: changed in the last {IDLE_DAYS} days. Abandoned: left
-          for {IDLE_DAYS} days or more. Baskets untouched for 90 days are cleared by the nightly run.
-        </p>
-      </div>
+      <PageHeader
+        title="Baskets"
+        description={`What buyers have collected and not yet bought. Pending: changed in the last ${IDLE_DAYS} days. Abandoned: left for ${IDLE_DAYS} days or more. Baskets untouched for 90 days are cleared by the nightly run.`}>
+        {data && (
+          <Tabs ariaLabel="Whose baskets" panelIdPrefix="op-baskets-panel-" value={tab}
+            onChange={id => { setTab(id as Tab); setOpenId(null); setSaid(null) }}
+            tabs={[
+              { id: 'business', label: 'Business', count: rows.business.length },
+              { id: 'shoppers', label: 'Shoppers', count: rows.shoppers.length },
+            ]} />
+        )}
+      </PageHeader>
 
       {problem?.missing && (
         <Callout tone="info" title="Baskets are not set up yet">
@@ -128,17 +134,7 @@ export function OperatorBaskets() {
 
       {data && (
         <BentoCard as="article" headingLevel={2} title={tab === 'business' ? 'Business baskets' : 'Shopper baskets'}>
-          <div role="tablist" aria-label="Whose baskets" className="op-baskets__tabs">
-            {(['business', 'shoppers'] as const).map(t => (
-              <button key={t} type="button" role="tab" id={`op-baskets-tab-${t}`} aria-selected={tab === t}
-                aria-controls="op-baskets-panel" className="op-baskets__tab"
-                onClick={() => { setTab(t); setOpenId(null); setSaid(null) }}>
-                {t === 'business' ? 'Business' : 'Shoppers'} ({rows[t].length})
-              </button>
-            ))}
-          </div>
-
-          <div id="op-baskets-panel" role="tabpanel" aria-labelledby={`op-baskets-tab-${tab}`}>
+          <div id={`op-baskets-panel-${tab}`} aria-labelledby={`op-baskets-panel-${tab}-tab`} role="tabpanel">
             <div role="group" aria-label="Show" className="op-baskets__filters">
               {(['all', 'pending', 'abandoned'] as const).map(f => (
                 <button key={f} type="button" aria-pressed={filter === f} className="op-baskets__filter"
@@ -154,7 +150,7 @@ export function OperatorBaskets() {
                   ? (tab === 'business' ? 'No business buyer has a basket open.' : 'No shopper has a basket open.')
                   : `No ${filter === 'all' ? '' : `${IDLE_LABEL[filter as IdleState].toLowerCase()} `}baskets.`} />
             ) : (
-              <Table headers={['Owner', { label: 'Lines', align: 'right' }, { label: 'Value', align: 'right' }, 'Last change', 'State', { label: 'Stock flags', align: 'right' }, 'Last reminder', '']}>
+              <Table headers={['Owner', 'Lines', 'Value', 'Last change', 'State', 'Stock flags', 'Last reminder', 'Actions']}>
                 {shown.map(r => {
                   const open = openId === r.id
                   const reminded = sent.get(`${r.kind}:${r.id}`) ?? r.remindedAt
@@ -162,25 +158,26 @@ export function OperatorBaskets() {
                     <Fragment key={`${r.kind}:${r.id}`}>
                       <tr>
                         <Td>
-                          <div style={{ fontWeight: 600 }}>{r.owner}</div>
+                          <div style={{ fontWeight: 600 }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={r.owner}>{r.owner}</span></div>
                           <div className="op-baskets__sub">{r.email ?? 'No email on file'}{r.account ? ` · ${r.account}` : ''}</div>
                         </Td>
-                        <Td right>{r.lineCount}</Td>
-                        <Td right>
+                        <Td kind="num">{r.lineCount}</Td>
+                        <Td kind="num">
                           {money(r)}
                           {r.unpriced > 0 && <div className="op-baskets__sub">{r.unpriced} not priced</div>}
                         </Td>
-                        <Td>{fmtDateTime(r.lastChange || null)}</Td>
-                        <Td>
+                        <Td kind="date">{fmtDateTime(r.lastChange || null)}</Td>
+                        <Td kind="status">
                           <StatusBadge tone={r.state === 'abandoned' ? 'warning' : 'info'}>{IDLE_LABEL[r.state]}</StatusBadge>
                         </Td>
-                        <Td right>{r.flags === 0 ? 'None' : r.flags}</Td>
-                        <Td>{reminded ? fmtDateTime(reminded) : 'Never'}</Td>
+                        <Td kind="num">{r.flags === 0 ? 'None' : r.flags}</Td>
+                        <Td kind="date">{reminded ? fmtDateTime(reminded) : 'Never'}</Td>
                         <Td>
-                          <Btn variant="secondary" size="sm" className="op-baskets__btn" aria-expanded={open}
-                            onClick={() => { setOpenId(open ? null : r.id); setSaid(null) }}>
-                            {open ? 'Close' : 'Open'}<span className="sr-only"> {r.owner}&rsquo;s basket</span>
-                          </Btn>
+                          <RowActions label={r.owner} actions={[{
+                            id: 'toggle', label: open ? 'Close' : 'Open', variant: 'secondary',
+                            srOnly: `${r.owner}’s basket`, expanded: open,
+                            onClick: () => { setOpenId(open ? null : r.id); setSaid(null) },
+                          }]} />
                         </Td>
                       </tr>
                       {open && (

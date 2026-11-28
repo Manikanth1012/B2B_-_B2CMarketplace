@@ -165,7 +165,7 @@ export function OperatorAccounts({ onNavigate }: { onNavigate?: (v: OperatorView
         </div>
       )}
 
-      <div role="tabpanel" id={`acct-panel-${tab}`}>
+      <div role="tabpanel" id={`acct-panel-${tab}`} aria-labelledby={`acct-panel-${tab}-tab`}>
       {tab === 'business' ? (
         <SectionCard title="Business accounts"
           subtitle="Whoever needs something doing about them, first.">

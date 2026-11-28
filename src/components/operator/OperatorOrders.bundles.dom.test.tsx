@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event'
 
 vi.mock('../../lib/supabase', () => ({ supabase: {} }))
 vi.mock('../../lib/MarketContext', () => ({
-  useMarket: () => ({ fmtIn: (n: number, c: string) => `${c} ${n.toFixed(2)}` }),
+  useMarket: () => ({ fmtIn: (n: number, c: string) => `${c} ${n.toFixed(2)}`, book: { currencies: [], rates: [] } }),
 }))
 const book = vi.hoisted(() => ({ value: null as unknown }))
 vi.mock('../../lib/orderOpsRepo', () => ({
@@ -46,7 +46,7 @@ describe('OperatorOrders, bundles', () => {
     }
     const user = userEvent.setup()
     render(<OperatorOrders />)
-    await user.click(await screen.findByRole('button', { name: 'The whole book' }))
+    await user.click(await screen.findByRole('tab', { name: 'The whole book' }))
 
     const row = screen.getByText('ORD-77').closest('tr')!
     expect(await within(row).findByText('Bundle: Home office (Router, eSIM plan), Cable')).toBeTruthy()
