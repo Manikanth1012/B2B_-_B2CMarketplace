@@ -3,9 +3,12 @@ import {
   Download, Lock, Plus, TriangleAlert as AlertTriangle, CircleCheck as CheckCircle, Settings,
 } from 'lucide-react'
 import {
-  SectionCard, StatCard, Btn, Modal, FormField, TextInput, TextArea, Select,
-  Table, Td, toast, fmtMoney, fmtInt,
+  SectionCard, Btn, Modal, FormField, TextInput, TextArea, Select,
+  Table, Td, toast, fmtMoney, fmtInt, PageHeader, RowActions,
 } from './shared'
+import { Tabs } from '../ui/Tabs'
+import { KpiCard, KpiRow } from '../ui/KpiCard'
+import { StatusBadge } from '../ui/StatusBadge'
 import { AuditPanel } from './AuditPanel'
 import { loadLedgerConsistency } from '../../lib/moneyRepo'
 import { Callout } from '../OnboardingJourney'
@@ -99,23 +102,16 @@ export function OperatorLedger() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>General ledger</h1>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            Where every charge lands, and the proof that the two sides agree.
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <Select value={viewing ?? ''} onChange={e => setPeriod(e.target.value)} style={{ width: 'auto' }}>
+      <PageHeader title="General ledger" description="Where every charge lands, and the proof that the two sides agree."
+        actions={<>
+          <Select aria-label="Period" value={viewing ?? ''} onChange={e => setPeriod(e.target.value)} style={{ width: 'auto' }}>
             {book.periods.map(p => (
               <option key={p.id} value={p.id}>{p.label}{p.status === 'open' ? ' — open' : ''}</option>
             ))}
           </Select>
           <Btn variant="secondary" onClick={download}><Download size={14} /> Export journal</Btn>
           <Btn variant="secondary" onClick={() => setJournal(true)}><Plus size={14} /> Journal entry</Btn>
-        </div>
-      </div>
+        </>} />
 
       {book.loadError && <Callout tone="danger" title="Some of the ledger did not load">{book.loadError}</Callout>}
 
@@ -125,19 +121,18 @@ export function OperatorLedger() {
         is why the mapping below is configuration with a stated reason rather than something buried in code.
       </Callout>
 
-      <div className="stat-row">
-        <StatCard label="Passed through" value={`$${fmtMoney(money.passedThrough)}`}
-                  sublabel="Collected on sellers’ behalf — not income" />
-        <StatCard label="Actually earned" value={`$${fmtMoney(money.revenue)}`}
-                  sublabel={`Commission, fees and advertising, less $${fmtMoney(money.contra)} given back`}
-                  color="var(--success)" />
-        <StatCard label="Owed to sellers" value={`$${fmtMoney(money.sellerNet)}`}
-                  sublabel={`Approved this period · $${fmtMoney(money.taxCollected)} tax collected for the authority`} />
-        <StatCard label="Trial balance"
-                  value={tb.balanced ? 'Balanced' : `Out by $${fmtMoney(Math.abs(tb.difference))}`}
-                  sublabel={`${fmtInt(rows.length)} entries · $${fmtMoney(tb.dr)} each side`}
-                  color={tb.balanced ? 'var(--success)' : 'var(--danger)'} />
-      </div>
+      <KpiRow label="Ledger summary">
+        <KpiCard variant="money" label="Passed through" value={`$${fmtMoney(money.passedThrough)}`}
+                 context="Collected on sellers’ behalf — not income" />
+        <KpiCard variant="money" label="Actually earned" value={`$${fmtMoney(money.revenue)}`} tone="success"
+                 context={`Commission, fees and advertising, less $${fmtMoney(money.contra)} given back`} />
+        <KpiCard variant="money" label="Owed to sellers" value={`$${fmtMoney(money.sellerNet)}`}
+                 context={`Approved this period · $${fmtMoney(money.taxCollected)} tax collected for the authority`} />
+        <KpiCard variant={tb.balanced ? 'ops' : 'risk'} label="Trial balance"
+                 value={tb.balanced ? 'Balanced' : `Out by $${fmtMoney(Math.abs(tb.difference))}`}
+                 tone={tb.balanced ? 'success' : undefined}
+                 status={`${fmtInt(rows.length)} entries · $${fmtMoney(tb.dr)} each side`} />
+      </KpiRow>
 
       {failing.length === 0 ? (
         <Callout tone="success" title={`All ${checks.length} reconciliations pass for ${current?.label ?? 'this period'}`}>
@@ -161,23 +156,16 @@ export function OperatorLedger() {
         </Callout>
       )}
 
-      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-        {([
-          ['balance', `Trial balance (${tb.rows.length})`],
-          ['mapping', `Charge mapping (${book.charges.length})`],
-          ['postings', `Postings (${fmtInt(rows.length)})`],
-          ['chart', `Chart of accounts (${book.accounts.length})`],
-          ['periods', `Periods (${book.periods.length})`],
-        ] as const).map(([id, label]) => (
-          <button key={id} onClick={() => setTab(id)} style={{
-            padding: '8px 15px', borderRadius: 'var(--radius)', cursor: 'pointer',
-            fontSize: 'var(--text-sm)', fontWeight: 600, border: '1px solid var(--border)',
-            background: tab === id ? 'var(--brand-navy)' : 'white',
-            color: tab === id ? 'white' : 'var(--text-secondary)',
-          }}>{label}</button>
-        ))}
-      </div>
+      <Tabs ariaLabel="Ledger views" panelIdPrefix="ledger-panel-" value={tab} onChange={id => setTab(id as Tab)}
+        tabs={[
+          { id: 'balance', label: 'Trial balance', count: tb.rows.length },
+          { id: 'mapping', label: 'Charge mapping', count: book.charges.length },
+          { id: 'postings', label: 'Postings', count: rows.length },
+          { id: 'chart', label: 'Chart of accounts', count: book.accounts.length },
+          { id: 'periods', label: 'Periods', count: book.periods.length },
+        ]} />
 
+      <div role="tabpanel" id={`ledger-panel-${tab}`} aria-labelledby={`ledger-panel-${tab}-tab`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {/* Above the trial balance, because a trial balance that foots is not
           evidence that the figures feeding it were derived from anything. */}
       {tab === 'balance' && (
@@ -195,24 +183,24 @@ export function OperatorLedger() {
           <Table headers={['Account', 'Type', 'Debit', 'Credit', 'Movement']}>
             {balancePage.rows.map(r => (
               <tr key={r.code}>
-                <Td>
+                <Td kind="text">
                   <div style={{ fontWeight: 600 }}>{r.code}</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                  <div className="c-sub">
                     {r.account?.name ?? 'Not in the chart'}
                   </div>
                 </Td>
-                <Td style={{ fontSize: 'var(--text-xs)' }}>{r.account?.type ?? '—'}</Td>
-                <Td right>{r.dr ? `$${fmtMoney(r.dr)}` : '—'}</Td>
-                <Td right>{r.cr ? `$${fmtMoney(r.cr)}` : '—'}</Td>
-                <Td right><strong>${fmtMoney(r.movement)}</strong></Td>
+                <Td kind="text" nowrap>{r.account?.type ?? '—'}</Td>
+                <Td kind="num">{r.dr ? `$${fmtMoney(r.dr)}` : '—'}</Td>
+                <Td kind="num">{r.cr ? `$${fmtMoney(r.cr)}` : '—'}</Td>
+                <Td kind="num"><strong>${fmtMoney(r.movement)}</strong></Td>
               </tr>
             ))}
             <tr style={{ borderTop: '2px solid var(--border)' }}>
-              <Td><strong>Total</strong></Td>
+              <Td kind="text"><strong>Total</strong></Td>
               <Td>{''}</Td>
-              <Td right><strong>${fmtMoney(tb.dr)}</strong></Td>
-              <Td right><strong>${fmtMoney(tb.cr)}</strong></Td>
-              <Td right><strong>${fmtMoney(tb.difference)}</strong></Td>
+              <Td kind="num"><strong>${fmtMoney(tb.dr)}</strong></Td>
+              <Td kind="num"><strong>${fmtMoney(tb.cr)}</strong></Td>
+              <Td kind="num"><strong>${fmtMoney(tb.difference)}</strong></Td>
             </tr>
           </Table>
           <Pager page={balancePage} noun="accounts" />
@@ -222,29 +210,29 @@ export function OperatorLedger() {
       {tab === 'mapping' && (
         <SectionCard title="Charge mapping"
                      subtitle="One row per thing that can happen commercially, and where it posts">
-          <Table headers={['Charge', 'Debit', 'Credit', 'Entries', 'Value', '']}>
+          <Table headers={['Charge', 'Debit', 'Credit', 'Entries', 'Value', 'Actions']}>
             {mappingPage.rows.map(c => {
               const m = book.mapping.find(x => x.charge_id === c.id)
               const ps = rows.filter(p => p.charge_id === c.id)
               const value = ps.reduce((a, p) => a + Number(p.amount), 0)
               return (
                 <tr key={c.id}>
-                  <Td>
+                  <Td kind="text">
                     <div style={{ fontWeight: 600 }}>{c.label}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{c.charge_group} · {c.id}</div>
+                    <div className="c-sub">{c.charge_group} · {c.id}</div>
                   </Td>
-                  <Td style={{ fontSize: 'var(--text-xs)' }}>
+                  <Td kind="text">
                     {m ? `${m.dr} ${book.accounts.find(a => a.code === m.dr)?.name ?? ''}` : <Warn>Unmapped</Warn>}
                   </Td>
-                  <Td style={{ fontSize: 'var(--text-xs)' }}>
+                  <Td kind="text">
                     {m ? `${m.cr} ${book.accounts.find(a => a.code === m.cr)?.name ?? ''}` : <Warn>Unmapped</Warn>}
                   </Td>
-                  <Td right>{ps.length || '—'}</Td>
-                  <Td right>{value ? `$${fmtMoney(value)}` : '—'}</Td>
-                  <Td right>
-                    <Btn variant="secondary" size="sm" onClick={() => setEditing(c)}>
-                      <Settings size={12} /> Configure
-                    </Btn>
+                  <Td kind="num">{ps.length || '—'}</Td>
+                  <Td kind="num">{value ? `$${fmtMoney(value)}` : '—'}</Td>
+                  <Td>
+                    <RowActions label={c.label} actions={[
+                      { id: 'configure', label: 'Configure', variant: 'secondary', srOnly: c.label, icon: <Settings size={12} />, onClick: () => setEditing(c) },
+                    ]} />
                   </Td>
                 </tr>
               )
@@ -260,29 +248,29 @@ export function OperatorLedger() {
           <Table headers={['Entry', 'Charge', 'Reference', 'Debit', 'Credit', 'Amount']}>
             {postingsPage.rows.map(p => (
               <tr key={p.id}>
-                <Td>
-                  <div style={{ fontWeight: 600, fontSize: 'var(--text-xs)' }}>{p.id}</div>
-                  <div style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+                <Td kind="id">
+                  <div style={{ fontWeight: 600 }}>{p.id}</div>
+                  <div className="c-sub">
                     {p.when_date}{p.source === 'manual' ? ' · manual' : ''}
                   </div>
                 </Td>
-                <Td style={{ fontSize: 'var(--text-xs)' }}>
+                <Td kind="text">
                   {book.charges.find(c => c.id === p.charge_id)?.label ?? p.charge_id}
-                  {p.memo && <div style={{ color: 'var(--text-tertiary)' }}>{p.memo}</div>}
+                  {p.memo && <div className="c-sub">{p.memo}</div>}
                 </Td>
-                <Td style={{ fontSize: 'var(--text-xs)' }}>
+                <Td kind="text">
                   {p.ref}
-                  {p.partner_id && <div style={{ color: 'var(--text-tertiary)' }}>{p.partner_id}</div>}
+                  {p.partner_id && <div className="c-sub">{p.partner_id}</div>}
                 </Td>
-                <Td style={{ fontSize: 'var(--text-xs)' }}>{p.dr}</Td>
-                <Td style={{ fontSize: 'var(--text-xs)' }}>{p.cr}</Td>
-                <Td right><strong>${fmtMoney(Number(p.amount))}</strong></Td>
+                <Td kind="text" nowrap>{p.dr}</Td>
+                <Td kind="text" nowrap>{p.cr}</Td>
+                <Td kind="num"><strong>${fmtMoney(Number(p.amount))}</strong></Td>
               </tr>
             ))}
           </Table>
           <Pager page={postingsPage} noun="postings" />
           {rows.length > 200 && (
-            <div style={{ padding: '12px 20px', fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>
+            <div className="c-sub" style={{ padding: '12px 20px' }}>
               Showing the first 200 of {fmtInt(rows.length)}. Export the journal for the whole period.
             </div>
           )}
@@ -307,12 +295,12 @@ export function OperatorLedger() {
                 const use = accountUse(a.code, book.mapping, book.postings)
                 return (
                   <tr key={a.code}>
-                    <Td><strong>{a.code}</strong></Td>
-                    <Td>{a.name}{a.system && <span style={{ color: 'var(--text-tertiary)', fontWeight: 500 }}> · built in</span>}</Td>
-                    <Td style={{ fontSize: 'var(--text-xs)' }}>{a.type}</Td>
-                    <Td right>{use.charges || <Warn>none</Warn>}</Td>
-                    <Td right>{use.postings || '—'}</Td>
-                    <Td style={{ fontSize: 'var(--text-xs)', color: 'var(--text-tertiary)' }}>{a.note}</Td>
+                    <Td kind="id"><strong>{a.code}</strong></Td>
+                    <Td kind="text">{a.name}{a.system && <span className="c-sub"> · built in</span>}</Td>
+                    <Td kind="text" nowrap>{a.type}</Td>
+                    <Td kind="num">{use.charges || <Warn>none</Warn>}</Td>
+                    <Td kind="num">{use.postings || '—'}</Td>
+                    <Td kind="text"><span className="c-sub">{a.note}</span></Td>
                   </tr>
                 )
               })}
@@ -335,19 +323,14 @@ export function OperatorLedger() {
                 const ps = book.postings.filter(x => x.period === p.id)
                 return (
                   <tr key={p.id}>
-                    <Td><strong>{p.label}</strong></Td>
-                    <Td right>{fmtInt(ps.length)}</Td>
-                    <Td right>${fmtMoney(ps.reduce((a, x) => a + Number(x.amount), 0))}</Td>
-                    <Td style={{ fontSize: 'var(--text-xs)' }}>
+                    <Td kind="text"><strong>{p.label}</strong></Td>
+                    <Td kind="num">{fmtInt(ps.length)}</Td>
+                    <Td kind="num">${fmtMoney(ps.reduce((a, x) => a + Number(x.amount), 0))}</Td>
+                    <Td kind="date">
                       {p.closed_on ? `${p.closed_on} by ${p.closed_by}` : '—'}
                     </Td>
-                    <Td right>
-                      <span style={{
-                        padding: '2px 10px', borderRadius: 'var(--radius-full)',
-                        fontSize: 'var(--text-xs)', fontWeight: 700,
-                        background: p.status === 'open' ? 'var(--success-bg)' : 'var(--bg-alt)',
-                        color: p.status === 'open' ? 'var(--success)' : 'var(--text-tertiary)',
-                      }}>{p.status}</span>
+                    <Td kind="status">
+                      <StatusBadge tone={p.status === 'open' ? 'success' : 'neutral'} icon={null}>{p.status}</StatusBadge>
                     </Td>
                   </tr>
                 )
@@ -360,6 +343,8 @@ export function OperatorLedger() {
           </Callout>
         </>
       )}
+
+      </div>
 
       {editing && (
         <MappingModal charge={editing} book={book} openPeriodId={open?.id ?? null}
@@ -383,7 +368,7 @@ export function OperatorLedger() {
 }
 
 function Warn({ children }: { children: React.ReactNode }) {
-  return <span style={{ color: 'var(--warning)', fontWeight: 700, fontSize: 'var(--text-xs)' }}>{children}</span>
+  return <span style={{ color: 'var(--warning)', fontWeight: 700 }}>{children}</span>
 }
 
 function MappingModal({ charge, book, openPeriodId, onClose, onDone }: {
