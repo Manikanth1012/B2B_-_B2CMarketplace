@@ -553,6 +553,9 @@ export interface RowAction {
   id?: string
   /** Words for a screen reader only, after the label ("Open" + " Meera's basket"). */
   srOnly?: string
+  /** Hover text for an inline button, e.g. why it is disabled. An action that
+      overflows into More has none. */
+  title?: string
   /** For a button that opens something in place: sets `aria-expanded`. Applies
       to inline buttons only; an action that overflows into More has no expanded state. */
   expanded?: boolean
@@ -589,7 +592,7 @@ export function RowActions({ actions, max = 2, label }: {
     <div className="c-row-actions">
       {inline.map((a, i) => (
         <Btn key={a.id ?? `#${i}`} size="sm" variant={a.variant ?? 'tertiary'} disabled={a.disabled} loading={a.loading}
-          aria-expanded={a.expanded}
+          aria-expanded={a.expanded} title={a.title}
           onClick={e => { e.stopPropagation(); a.onClick() }} onKeyDown={keepFromRow}>
           {a.icon}{a.label}{a.srOnly && <span className="sr-only"> {a.srOnly}</span>}
         </Btn>

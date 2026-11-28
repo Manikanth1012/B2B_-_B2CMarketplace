@@ -412,18 +412,11 @@ function Ladders(
                     </Td>
                     <Td kind="num">{on.length || <span className="c-sub">—</span>}</Td>
                     <Td>
-                      {/* Icon-only delete with a hover reason when it is not allowed:
-                          kept as buttons (RowActions has no title), in the shared row layout. */}
-                      <div className="c-row-actions">
-                        <Btn size="sm" variant="secondary" onClick={() => onEdit(l)}>
-                          <Pencil size={12} style={{ marginRight: 4 }} />Edit<span className="sr-only"> {l.name}</span>
-                        </Btn>
-                        <Btn size="sm" variant="danger" disabled={!del.ok} title={del.ok ? undefined : del.reason}
-                          aria-label={`Delete ${l.name}`}
-                          onClick={() => setConfirming(l)}>
-                          <Trash2 size={12} />
-                        </Btn>
-                      </div>
+                      <RowActions label={l.name} actions={[
+                        { id: 'edit', label: 'Edit', variant: 'secondary', srOnly: l.name, icon: <Pencil size={12} />, onClick: () => onEdit(l) },
+                        { id: 'delete', label: 'Delete', variant: 'danger', srOnly: l.name, icon: <Trash2 size={12} />,
+                          disabled: !del.ok, title: del.ok ? undefined : del.reason, onClick: () => setConfirming(l) },
+                      ]} />
                     </Td>
                   </tr>
                 )
