@@ -40,6 +40,12 @@ describe('reminders on a schedule and basket windows, as a migration', () => {
     expect(last).toContain("is distinct from 'deferred' then")
     expect(last).toContain('a deferred reminder was not sent once the throttle allowed it')
     expect(last).toContain('removing a step took its schedule history with it')
+    expect(last).toContain('a deferred reminder whose step is off did not expire')
+    /* The proof runs on a rule and step of its own, never on the seeded ones. */
+    expect(last).toContain("values ('nr-selfcheck-b-clr', 'enterprise', 'basket.clearing'")
+    expect(last).toContain("values ('nrs-selfcheck-m1', 'nr-selfcheck-b-clr', -1, array['email', 'whatsapp'], true, 1);")
+    expect(last).not.toContain("'nrs-b-bsk-clearing-m1'")
+    expect(last).not.toMatch(/update public\.notification_rule_steps s set enabled = false where s\.enabled;/)
     expect(last).toContain("if sqlerrm not like '%can only be scheduled up to the day itself%' then raise; end if;")
     expect(last).toContain("if sqlerrm not like '%no seller is on an agreement%' then raise; end if;")
     expect(last).toContain('perform count(*) from public.reminder_subjects(v_pair[1], v_pair[2], current_date);')
@@ -50,7 +56,7 @@ describe('reminders on a schedule and basket windows, as a migration', () => {
       expect(last).toContain(pair)
     }
     /* n−1 of clearing: one row, then none again, and none while off. */
-    expect(last).toContain("l.step_id = 'nrs-b-bsk-clearing-m1' and l.subject_id = v_basket and l.anchor_date = current_date + 1")
+    expect(last).toContain("l.step_id = 'nrs-selfcheck-m1' and l.subject_id = v_basket and l.anchor_date = current_date + 1")
     expect(last).toContain("if v_n <> 1 then")
     expect(last).toContain("(v_res ->> 'sent')::integer <> 0 or (v_res ->> 'already_sent')::integer < 1")
     expect(last).toContain("a step that is off sent something")
@@ -144,6 +150,7 @@ describe('reminders on a schedule and basket windows, as a migration', () => {
     expect(code).toContain('create table if not exists public.notification_schedule_log')
     expect(code).toContain('step_id          text references public.notification_rule_steps(id) on delete set null,')
     expect(code).toContain('step_label       text not null,')
+    expect(code).toContain('due_on           date not null,')
     expect(code).toContain("check (outcome in ('claimed', 'sent', 'deferred', 'expired', 'skipped_preference', 'skipped_no_template'))")
     expect(code).toContain('unique (step_id, subject_id, anchor_date)')
     expect(code).toContain('revoke insert, update, delete on public.notification_schedule_log from authenticated;')
@@ -156,7 +163,7 @@ describe('reminders on a schedule and basket windows, as a migration', () => {
     expect(r).toContain('where s.enabled and r.enabled and e.anchor is not null')
     expect(r).toContain('v_anchor := p_as_of - st.offset_days;')
     /* Claimed first, then sent: a second run, or one alongside, finds the row. */
-    expect(r).toContain("c.s_subject, c.anchor, p_as_of, 'claimed', c.s_recipient, c.s_user, c.s_partner, c.s_ref) on conflict do nothing returning id into v_log;")
+    expect(r).toContain("c.s_subject, c.anchor, c.anchor + st.offset_days, p_as_of, 'claimed', c.s_recipient, c.s_user, c.s_partner, c.s_ref) on conflict do nothing returning id into v_log;")
     expect(r.indexOf("'claimed', c.s_recipient")).toBeLessThan(r.indexOf('insert into public.notification_log'))
     expect(r).toContain('if v_log is null then n_already := n_already + 1; continue; end if;')
     expect(r).toContain("set outcome = 'claimed', updated_at = now() where h.id = c.log_id and h.outcome = 'deferred' returning h.id into v_log;")
@@ -167,7 +174,10 @@ describe('reminders on a schedule and basket windows, as a migration', () => {
     expect(r).toContain("when 'digest — weekly' then 7")
     expect(r).toContain("and h.subject_id = c.s_subject and h.user_id is not distinct from c.s_user")
     expect(r).toContain("and l.state in ('delivered', 'sent', 'queued') and (l.sent_at at time zone 'utc')::date > p_as_of - rr.v_days) then v_outcome := 'deferred';")
-    expect(r).toContain("h.anchor_date + st.offset_days < p_as_of - 7")
+    /* Deferred rows expire when their step goes or is off, when they are more than 7 days past due (kept on the
+       row), or when a reminder before the date meets the date. */
+    expect(r).toContain('c.s_subject, c.anchor, c.anchor + st.offset_days, p_as_of')
+    expect(r).toContain("where h.outcome = 'deferred' and (h.step_id is null or not exists (select 1 from public.notification_rule_steps s join public.notification_rules r on r.id = s.rule_id where s.id = h.step_id and s.enabled and r.enabled) or (h.offset_days < 0 and h.anchor_date <= p_as_of) or h.due_on < p_as_of - 7);")
     /* The columns enquiry_send writes, and its states. */
     expect(r).toContain('insert into public.notification_log (id, rule_id, kind_id, channel_id, persona, recipient, user_id, partner_id, subject, body, sent_at, state, detail, cost, ref)')
     expect(r).toContain("case when v_k = 'inapp' then 'delivered' else 'suppressed' end")
@@ -230,7 +240,7 @@ describe('reminders on a schedule and basket windows, as a migration', () => {
     expect(seed).not.toMatch(/on conflict \(/)
     expect(seed.match(/on conflict do nothing;/g)?.length).toBe(4)
     expect(seed).toContain("where coalesce(current_setting('aventa.seed_basket_rules', true), '') = 'on' and not exists (select 1 from public.notification_rules r where r.id = v.id or (r.persona = v.persona and r.event_id = v.event_id))")
-    expect(seed).toContain('and not exists (select 1 from public.notification_rule_steps s where s.rule_id = v.rule_id)')
+    expect(seed).toContain("where coalesce(current_setting('aventa.seed_basket_rules', true), '') = 'on' and exists (select 1 from public.notification_rules r where r.id = v.rule_id and v.kinds <@ r.kinds) and not exists (select 1 from public.notification_rule_steps s where s.rule_id = v.rule_id)")
     expect(seed).toContain('where s.id = v.step_id and s.created_at = now() and v.kind_id = any (s.kinds))')
     expect(seed).toContain('or (t.step_id = v.step_id and t.kind_id = v.kind_id)')
     expect(code).toContain("select set_config('aventa.seed_basket_rules',")

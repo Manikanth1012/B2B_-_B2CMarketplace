@@ -457,6 +457,8 @@ create table if not exists public.notification_schedule_log (
      id, '<invoice>/<member>', … (reminder_subjects). */
   subject_id       text not null,
   anchor_date      date not null,
+  /* anchor_date + offset_days when the row was made: the day it was due. */
+  due_on           date not null,
   sent_on          date not null,
   outcome          text not null check (outcome in ('claimed', 'sent', 'deferred', 'expired', 'skipped_preference', 'skipped_no_template')),
   detail           text,
@@ -696,9 +698,12 @@ revoke all on function public.reminder_subjects(text, text, date) from public, a
  *
  * For each step that is on, of a rule that is on, on a dated event:
  *
- *   1. Deferred rows of the step (held back by the throttle on an earlier
- *      night) are tried again while their subject still has that anchor and
- *      they were due no more than 7 days ago; otherwise they are 'expired'.
+ *   1. Deferred rows (held back by the throttle on an earlier night) are
+ *      tried again while their step and rule are on, their subject still has
+ *      that anchor, they were due (due_on, kept on the row) no more than 7
+ *      days ago, and, for a reminder before the date, the date has not yet
+ *      come; otherwise they are 'expired'. A late one is filled in as of the
+ *      day it actually goes: {days_left} counts from that day.
  *   2. The subjects whose anchor + offset is `p_as_of` (anchor =
  *      p_as_of − offset). Each is claimed first, by inserting its
  *      notification_schedule_log row ('claimed'; unique per step, subject
@@ -770,6 +775,29 @@ begin
     raise exception 'Reminders cannot be sent as of %: that day has not come yet.', coalesce(p_as_of::text, 'no date');
   end if;
 
+  /* Deferred rows that can no longer go: the step was removed or is off
+     (or its rule is), it was due more than 7 days ago, or it was a reminder
+     before the date and the date has come (its wording, "clears tomorrow",
+     would no longer be true). */
+  update public.notification_schedule_log h
+     set outcome = 'expired', updated_at = now(),
+         detail = coalesce(h.detail || ' ', '') || 'Expired on ' || to_char(p_as_of, 'DD Mon YYYY') || ': '
+                  || case when h.step_id is null then 'its step was removed.'
+                          when not exists (select 1 from public.notification_rule_steps s
+                                             join public.notification_rules r on r.id = s.rule_id
+                                            where s.id = h.step_id and s.enabled and r.enabled) then 'its step or rule is off.'
+                          when h.offset_days < 0 and h.anchor_date <= p_as_of then 'the date it was a reminder for has come.'
+                          else 'it was due on ' || to_char(h.due_on, 'DD Mon YYYY') || ', more than 7 days ago.' end
+   where h.outcome = 'deferred'
+     and (h.step_id is null
+          or not exists (select 1 from public.notification_rule_steps s
+                           join public.notification_rules r on r.id = s.rule_id
+                          where s.id = h.step_id and s.enabled and r.enabled)
+          or (h.offset_days < 0 and h.anchor_date <= p_as_of)
+          or h.due_on < p_as_of - 7);
+  get diagnostics v_n = row_count;
+  n_expired := n_expired + v_n;
+
   for st in
     select s.id, s.rule_id, s.offset_days, s.kinds, r.persona, r.event_id, r.kinds as rule_kinds,
            r.throttle, r.mandatory, r.name as rule_name
@@ -788,15 +816,14 @@ begin
                   else 0
                 end;
 
-    /* 1. Deferred rows that can no longer be sent. */
+    /* 1. Deferred rows of this step whose subject no longer has that date. */
     update public.notification_schedule_log h
        set outcome = 'expired', updated_at = now(),
            detail = coalesce(h.detail || ' ', '') || 'Expired on ' || to_char(p_as_of, 'DD Mon YYYY')
-                    || ': no longer due, or its date moved.'
+                    || ': its date moved, or it is gone.'
      where h.step_id = st.id and h.outcome = 'deferred'
-       and (h.anchor_date + st.offset_days < p_as_of - 7
-            or not exists (select 1 from public.reminder_subjects(st.event_id, st.persona, h.anchor_date) s
-                            where s.s_subject = h.subject_id));
+       and not exists (select 1 from public.reminder_subjects(st.event_id, st.persona, h.anchor_date) s
+                        where s.s_subject = h.subject_id);
     get diagnostics v_n = row_count;
     n_expired := n_expired + v_n;
 
@@ -818,11 +845,11 @@ begin
         returning h.id into v_log;
       else
         insert into public.notification_schedule_log
-          (step_id, rule_id, event_id, offset_days, step_label, subject_id, anchor_date, sent_on, outcome,
+          (step_id, rule_id, event_id, offset_days, step_label, subject_id, anchor_date, due_on, sent_on, outcome,
            recipient, user_id, partner_id, ref)
         values
           (st.id, st.rule_id, st.event_id, st.offset_days, public.reminder_step_label(st.offset_days),
-           c.s_subject, c.anchor, p_as_of, 'claimed', c.s_recipient, c.s_user, c.s_partner, c.s_ref)
+           c.s_subject, c.anchor, c.anchor + st.offset_days, p_as_of, 'claimed', c.s_recipient, c.s_user, c.s_partner, c.s_ref)
         on conflict do nothing
         returning id into v_log;
       end if;
@@ -1059,7 +1086,8 @@ on conflict do nothing;
 
 /* The spec's default steps: abandoned n+0 in-app; clearing n−7 email;
    clearing n−1 email and WhatsApp. All off. Only for a seeded rule that is
-   still there and had no steps before this run. */
+   still there, only on the run that seeds the rules (a rule the operator
+   has since emptied of steps stays empty), and only while it has none. */
 insert into public.notification_rule_steps (id, rule_id, offset_days, kinds, enabled, sort_order)
 select v.id, v.rule_id, v.offset_days, v.kinds, false, v.sort_order
   from (values
@@ -1070,7 +1098,8 @@ select v.id, v.rule_id, v.offset_days, v.kinds, false, v.sort_order
     ('NRS-B-BSK-CLEARING-M7', 'NR-B-BSK-CLEARING',  -7, array['email'],             1),
     ('NRS-B-BSK-CLEARING-M1', 'NR-B-BSK-CLEARING',  -1, array['email', 'whatsapp'], 2)
   ) as v(id, rule_id, offset_days, kinds, sort_order)
- where exists (select 1 from public.notification_rules r where r.id = v.rule_id and v.kinds <@ r.kinds)
+ where coalesce(current_setting('aventa.seed_basket_rules', true), '') = 'on'
+   and exists (select 1 from public.notification_rules r where r.id = v.rule_id and v.kinds <@ r.kinds)
    and not exists (select 1 from public.notification_rule_steps s where s.rule_id = v.rule_id)
    and not exists (select 1 from public.notification_rule_steps s where s.id = v.id)
 on conflict do nothing;
@@ -1398,38 +1427,38 @@ begin
         v_when, public.basket_anchor('basket.clearing', v_when, v_win.abandoned_after_days, v_win.clear_after_days);
     end if;
 
-    /* Only the business clearing rule and its n−1 step are on, as seeded
-       (whatever the operator has since made of them). */
-    update public.notification_rule_steps s set enabled = false where s.enabled;
+    /* A rule and n−1 step of the self-check's own, so the proof never
+       depends on the seeded rows (the operator may have changed or removed
+       them). Every rule on a dated event is switched off first: a step on a
+       rule that is off never runs, and switching rules (not steps) off fires
+       no step guard. */
     update public.notification_rules r set enabled = false
      where r.enabled and exists (select 1 from public.notification_events e where e.id = r.event_id and e.anchor is not null);
-    update public.notification_rules r
-       set enabled = true, throttle = 'Every time', mandatory = false, kinds = array['email', 'whatsapp']
-     where r.id = 'NR-B-BSK-CLEARING';
-    update public.notification_rule_steps s
-       set enabled = true, offset_days = -1, kinds = array['email', 'whatsapp']
-     where s.id = 'NRS-B-BSK-CLEARING-M1';
+    insert into public.notification_rules (id, persona, event_id, name, audience, kinds, throttle,
+                                           severity, enabled, mandatory, why, last_sent, sort_order)
+    values ('NR-SELFCHECK-B-CLR', 'enterprise', 'basket.clearing', 'Self-check: basket clearing', 'The basket''s owner',
+            array['email', 'whatsapp'], 'Every time', 'normal', true, false, 'Self-check.', null, 999);
+    insert into public.notification_rule_steps (id, rule_id, offset_days, kinds, enabled, sort_order)
+    values ('NRS-SELFCHECK-M1', 'NR-SELFCHECK-B-CLR', -1, array['email', 'whatsapp'], true, 1);
     insert into public.notification_step_templates (step_id, kind_id, subject, body) values
-      ('NRS-B-BSK-CLEARING-M1', 'email', 'Your requisition basket clears tomorrow', 'It clears on {anchor_date}.'),
-      ('NRS-B-BSK-CLEARING-M1', 'whatsapp', 'Your requisition basket clears tomorrow', 'It clears on {anchor_date}.')
-    on conflict (step_id, kind_id) do nothing;
-    delete from public.notification_preferences p where p.rule_id = 'NR-B-BSK-CLEARING';
+      ('NRS-SELFCHECK-M1', 'email', 'Your requisition basket clears tomorrow', 'It clears on {anchor_date}.'),
+      ('NRS-SELFCHECK-M1', 'whatsapp', 'Your requisition basket clears tomorrow', 'It clears on {anchor_date}.');
     delete from public.notification_schedule_log l where l.subject_id = v_basket;
 
     v_res := public.run_reminders(current_date);
     select count(*) into v_n from public.notification_schedule_log l
-     where l.step_id = 'NRS-B-BSK-CLEARING-M1' and l.subject_id = v_basket and l.anchor_date = current_date + 1;
+     where l.step_id = 'NRS-SELFCHECK-M1' and l.subject_id = v_basket and l.anchor_date = current_date + 1;
     if v_n <> 1 then
       raise exception 'a basket at n−1 of clearing has % schedule-log rows, not 1 (%)', v_n, v_res;
     end if;
     select l.outcome, l.notification_ids into v_row from public.notification_schedule_log l
-     where l.step_id = 'NRS-B-BSK-CLEARING-M1' and l.subject_id = v_basket;
+     where l.step_id = 'NRS-SELFCHECK-M1' and l.subject_id = v_basket;
     v_ids := v_row.notification_ids;
     if v_row.outcome <> 'sent' or cardinality(v_ids) <> 2 then
       raise exception 'the n−1 reminder was %, with % messages, not sent on email and WhatsApp', v_row.outcome, cardinality(v_ids);
     end if;
     select count(*) into v_n from public.notification_log nl
-     where nl.id = any (v_ids) and nl.rule_id = 'NR-B-BSK-CLEARING' and nl.user_id = v_ent.user_id
+     where nl.id = any (v_ids) and nl.rule_id = 'NR-SELFCHECK-B-CLR' and nl.user_id = v_ent.user_id
        and nl.persona = 'enterprise' and nl.subject not like '%{%'
        and nl.body not like '%{anchor_date}%';
     if v_n <> 2 then
@@ -1440,14 +1469,14 @@ begin
     end if;
 
     /* Again: nothing. */
-    select count(*) into v_m from public.notification_log nl where nl.rule_id = 'NR-B-BSK-CLEARING';
+    select count(*) into v_m from public.notification_log nl where nl.rule_id = 'NR-SELFCHECK-B-CLR';
     v_res := public.run_reminders(current_date);
     if (v_res ->> 'sent')::integer <> 0 or (v_res ->> 'already_sent')::integer < 1 then
       raise exception 'a second run sent % (already sent %)', v_res ->> 'sent', v_res ->> 'already_sent';
     end if;
     select count(*) into v_n from public.notification_schedule_log l where l.subject_id = v_basket;
     if v_n <> 1 then raise exception 'a second run left % schedule-log rows for the basket, not 1', v_n; end if;
-    select count(*) into v_n from public.notification_log nl where nl.rule_id = 'NR-B-BSK-CLEARING';
+    select count(*) into v_n from public.notification_log nl where nl.rule_id = 'NR-SELFCHECK-B-CLR';
     if v_n <> v_m then raise exception 'a second run wrote % messages again', v_n - v_m; end if;
 
     /* The throttle, by day: once a day, two in-app steps for the same
@@ -1456,11 +1485,11 @@ begin
        count). The next night, the deferred one goes. */
     update public.notification_rules r
        set throttle = 'At most once a day', kinds = array['inapp', 'email', 'whatsapp']
-     where r.id = 'NR-B-BSK-CLEARING';
-    update public.notification_rule_steps s set enabled = false where s.rule_id = 'NR-B-BSK-CLEARING';
+     where r.id = 'NR-SELFCHECK-B-CLR';
+    update public.notification_rule_steps s set enabled = false where s.rule_id = 'NR-SELFCHECK-B-CLR';
     insert into public.notification_rule_steps (id, rule_id, offset_days, kinds, enabled, sort_order) values
-      ('NRS-SELFCHECK-A', 'NR-B-BSK-CLEARING', -1, array['inapp'], true, 98),
-      ('NRS-SELFCHECK-B', 'NR-B-BSK-CLEARING', -1, array['inapp'], true, 99);
+      ('NRS-SELFCHECK-A', 'NR-SELFCHECK-B-CLR', -1, array['inapp'], true, 98),
+      ('NRS-SELFCHECK-B', 'NR-SELFCHECK-B-CLR', -1, array['inapp'], true, 99);
     insert into public.notification_step_templates (step_id, kind_id, subject, body) values
       ('NRS-SELFCHECK-A', 'inapp', 'Clears {days_left}', 'Your basket clears on {anchor_date}.'),
       ('NRS-SELFCHECK-B', 'inapp', 'Clears {days_left}', 'Your basket clears on {anchor_date}.');
@@ -1489,6 +1518,21 @@ begin
       raise exception 'a deferred reminder was not sent once the throttle allowed it (%)', v_res;
     end if;
 
+    /* A deferred row whose step is switched off expires on the next run. */
+    update public.notification_schedule_log l set outcome = 'deferred'
+     where l.step_id = 'NRS-SELFCHECK-B' and l.subject_id = v_basket;
+    update public.notification_rule_steps s set enabled = false where s.id = 'NRS-SELFCHECK-B';
+    v_res := public.run_reminders(current_date);
+    if (select l.outcome from public.notification_schedule_log l
+         where l.step_id = 'NRS-SELFCHECK-B' and l.subject_id = v_basket) is distinct from 'expired'
+       or (v_res ->> 'expired')::integer < 1 then
+      raise exception 'a deferred reminder whose step is off did not expire (%)', v_res;
+    end if;
+    if (select l.due_on from public.notification_schedule_log l
+         where l.step_id = 'NRS-SELFCHECK-B' and l.subject_id = v_basket) is distinct from current_date then
+      raise exception 'the schedule log does not keep the day a reminder was due';
+    end if;
+
     /* A step removed keeps its history. */
     delete from public.notification_rule_steps s where s.id = 'NRS-SELFCHECK-A';
     if not exists (select 1 from public.notification_schedule_log l
@@ -1501,12 +1545,12 @@ begin
     /* The guard: no step after the day where the date moves on or the
        subject goes, and none on a seller's agreement rule. */
     begin
-      insert into public.notification_rule_steps (rule_id, offset_days, kinds) values ('NR-B-BSK-CLEARING', 1, array['inapp']);
+      insert into public.notification_rule_steps (rule_id, offset_days, kinds) values ('NR-SELFCHECK-B-CLR', 1, array['inapp']);
       raise exception 'a step a day after a basket is cleared was accepted';
     exception when raise_exception then
       if sqlerrm not like '%can only be scheduled up to the day itself%' then raise; end if;
     end;
-    insert into public.notification_rule_steps (rule_id, offset_days, kinds) values ('NR-B-BSK-CLEARING', 0, array['inapp']);
+    insert into public.notification_rule_steps (rule_id, offset_days, kinds) values ('NR-SELFCHECK-B-CLR', 0, array['inapp']);
     insert into public.notification_rules (id, persona, event_id, name, audience, kinds, throttle,
                                            severity, enabled, mandatory, why, last_sent, sort_order)
     values ('NR-SELFCHECK-P-AGR', 'partner', 'agreement.notice', 'Self-check', 'Seller admin', array['inapp'],
@@ -1520,14 +1564,14 @@ begin
 
     /* Off: nothing, as a step and as a rule. */
     delete from public.notification_schedule_log l where l.subject_id = v_basket;
-    update public.notification_rule_steps s set enabled = false where s.rule_id = 'NR-B-BSK-CLEARING';
+    update public.notification_rule_steps s set enabled = false where s.rule_id = 'NR-SELFCHECK-B-CLR';
     v_res := public.run_reminders(current_date);
     if (v_res ->> 'sent')::integer <> 0 or (v_res ->> 'steps')::integer <> 0
        or exists (select 1 from public.notification_schedule_log l where l.subject_id = v_basket) then
       raise exception 'a step that is off sent something (%)', v_res;
     end if;
-    update public.notification_rule_steps s set enabled = true where s.id = 'NRS-B-BSK-CLEARING-M1';
-    update public.notification_rules r set enabled = false where r.id = 'NR-B-BSK-CLEARING';
+    update public.notification_rule_steps s set enabled = true where s.id = 'NRS-SELFCHECK-M1';
+    update public.notification_rules r set enabled = false where r.id = 'NR-SELFCHECK-B-CLR';
     v_res := public.run_reminders(current_date);
     if (v_res ->> 'sent')::integer <> 0
        or exists (select 1 from public.notification_schedule_log l where l.subject_id = v_basket) then
