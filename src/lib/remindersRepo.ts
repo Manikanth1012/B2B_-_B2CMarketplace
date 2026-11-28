@@ -91,6 +91,17 @@ export async function removeBasketSettings(market: string): Promise<Kept<number>
   }
 }
 
+/** Every market's code, for adding rules to a market that has none of its own. */
+export async function loadMarketCodes(): Promise<Kept<string[]>> {
+  try {
+    const { data, error } = await supabase.from('markets').select('code').order('sort_order')
+    if (error) return fail(error)
+    return { ok: true, value: ((data ?? []) as Record<string, unknown>[]).map(r => String(r.code)) }
+  } catch (e) {
+    return fail(e)
+  }
+}
+
 /* -------------------------------------------------------------- steps -- */
 
 export interface StepTemplate {
@@ -249,20 +260,25 @@ export interface ScheduleLogRow {
   user_id: string | null
   ref: string | null
   created_at: string
+  /** When the row was last written: for a sent row, when the send finished. */
+  updated_at: string | null
 }
 
-const LOG = 'id, step_id, step_label, rule_id, event_id, offset_days, subject_id, anchor_date, due_on, sent_on, outcome, detail, notification_ids, recipient, user_id, ref, created_at'
+const LOG = 'id, step_id, step_label, rule_id, event_id, offset_days, subject_id, anchor_date, due_on, sent_on, outcome, detail, notification_ids, recipient, user_id, ref, created_at, updated_at'
 
 export const SCHEDULE_LOG_LIMIT = 500
 
 /** What the night sent (or why not), newest first. */
-export async function loadScheduleLog(f: { ruleId?: string; stepId?: string; subjectId?: string; limit?: number } = {}):
+export async function loadScheduleLog(f: { ruleId?: string; stepId?: string; subjectId?: string; limit?: number;
+  /** Server-side: only these events. */ events?: readonly string[]; /** Server-side: only this outcome. */ outcome?: ScheduleOutcome } = {}):
   Promise<Kept<ScheduleLogRow[]>> {
   try {
     let q = supabase.from('notification_schedule_log').select(LOG)
     if (f.ruleId) q = q.eq('rule_id', f.ruleId)
     if (f.stepId) q = q.eq('step_id', f.stepId)
     if (f.subjectId) q = q.eq('subject_id', f.subjectId)
+    if (f.events) q = q.in('event_id', [...f.events])
+    if (f.outcome) q = q.eq('outcome', f.outcome)
     const { data, error } = await q.order('created_at', { ascending: false }).limit(f.limit ?? SCHEDULE_LOG_LIMIT)
     if (error) return fail(error)
     const rows = ((data ?? []) as Record<string, unknown>[]).map(r => ({
@@ -272,7 +288,7 @@ export async function loadScheduleLog(f: { ruleId?: string; stepId?: string; sub
       due_on: String(r.due_on ?? ''),
       sent_on: String(r.sent_on), outcome: String(r.outcome) as ScheduleOutcome, detail: str(r.detail),
       notification_ids: ((r.notification_ids ?? []) as unknown[]).map(String),
-      recipient: str(r.recipient), user_id: str(r.user_id), ref: str(r.ref), created_at: String(r.created_at),
+      recipient: str(r.recipient), user_id: str(r.user_id), ref: str(r.ref), created_at: String(r.created_at), updated_at: str(r.updated_at),
     }))
     return { ok: true, value: rows }
   } catch (e) {

@@ -152,6 +152,8 @@ export interface BusinessBasketRow {
   currency: string
   updated_at: string
   reminded_at: string | null
+  /** The account's home market (basket_settings key); null when not read. */
+  market: string | null
   lines: WatchedLine[]
 }
 
@@ -162,7 +164,7 @@ export interface ShopperCartLine extends WatchedLine {
   created_at: string | null
 }
 
-export interface ShopperOwner { name: string; email: string | null; currency: string | null }
+export interface ShopperOwner { name: string; email: string | null; currency: string | null; market: string | null }
 
 export interface WatchedBaskets {
   business: BusinessBasketRow[]
@@ -171,6 +173,8 @@ export interface WatchedBaskets {
   shoppers: Map<string, ShopperOwner>
   /** When each shopper was last reminded. */
   cartReminders: Map<string, string>
+  /** The accounts or profiles could not be read, so no basket knows its market. */
+  marketsUnread?: boolean
 }
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v))
@@ -184,11 +188,11 @@ export async function loadWatchedBaskets(): Promise<Kept<WatchedBaskets>> {
         .select('id, account_id, user_id, currency, updated_at, reminded_at, lines:requisition_basket_lines(id, product_id, name, quantity, unit_price, stock_note, was_quantity, bundle_selection_id, sort_order)')
         .order('updated_at', { ascending: false }),
       supabase.from('enterprise_users').select('user_id, account_id, name, email'),
-      supabase.from('enterprise_accounts').select('id, company'),
+      supabase.from('enterprise_accounts').select('id, company, market'),
       supabase.from('cart_items')
         .select('id, user_id, product_id, quantity, saved, created_at, updated_at, stock_note, was_quantity, bundle_selection_id, product:products(name, price, currency)'),
       supabase.from('cart_reminders').select('user_id, reminded_at'),
-      supabase.from('consumer_profile').select('user_id, name, email, currency'),
+      supabase.from('consumer_profile').select('user_id, name, email, currency, market'),
     ])
     const first = [bk.error, cart.error, reminders.error].find(Boolean)
     if (first) return fail(first)
@@ -198,7 +202,11 @@ export async function loadWatchedBaskets(): Promise<Kept<WatchedBaskets>> {
       if (m.user_id) people.set(`${m.user_id}|${m.account_id}`, { name: String(m.name ?? ''), email: str(m.email) })
     }
     const company = new Map<string, string>()
-    for (const a of (accounts.data ?? []) as Record<string, unknown>[]) company.set(String(a.id), String(a.company ?? a.id))
+    const accountMarket = new Map<string, string | null>()
+    for (const a of (accounts.data ?? []) as Record<string, unknown>[]) {
+      company.set(String(a.id), String(a.company ?? a.id))
+      accountMarket.set(String(a.id), str(a.market))
+    }
 
     const business: BusinessBasketRow[] = ((bk.data ?? []) as Record<string, unknown>[]).map(b => {
       const who = people.get(`${b.user_id}|${b.account_id}`)
@@ -212,14 +220,15 @@ export async function loadWatchedBaskets(): Promise<Kept<WatchedBaskets>> {
       return {
         id: String(b.id), user_id: String(b.user_id), owner: who?.name || 'Unknown buyer', email: who?.email ?? null,
         account: company.get(String(b.account_id)) ?? String(b.account_id), currency: String(b.currency),
-        updated_at: String(b.updated_at), reminded_at: str(b.reminded_at), lines,
+        updated_at: String(b.updated_at), reminded_at: str(b.reminded_at),
+        market: accountMarket.get(String(b.account_id)) ?? null, lines,
       }
     })
 
     const shoppers = new Map<string, ShopperOwner>()
     for (const p of (profiles.data ?? []) as Record<string, unknown>[]) {
       if (p.user_id && !shoppers.has(String(p.user_id))) {
-        shoppers.set(String(p.user_id), { name: String(p.name ?? ''), email: str(p.email), currency: str(p.currency) })
+        shoppers.set(String(p.user_id), { name: String(p.name ?? ''), email: str(p.email), currency: str(p.currency), market: str(p.market) })
       }
     }
 
@@ -262,7 +271,7 @@ export async function loadWatchedBaskets(): Promise<Kept<WatchedBaskets>> {
       if (r.user_id && at && !at.startsWith('-')) cartReminders.set(String(r.user_id), at)
     }
 
-    return { ok: true, value: { business, cartLines, shoppers, cartReminders } }
+    return { ok: true, value: { business, cartLines, shoppers, cartReminders, marketsUnread: !!(accounts.error || profiles.error) } }
   } catch (e) {
     return fail(e)
   }

@@ -28,6 +28,14 @@ describe('OperatorJobs', () => {
     expect(screen.getByText(/select public\.run_nightly\(\);/)).toBeTruthy()
   })
 
+  it('reads the reminders job counts in the row', async () => {
+    load.mockResolvedValue({ ok: true, value: [row('reminders', {
+      result: { sent: 4, delivered: 1, suppressed: 3, already_sent: 2, deferred: 1, expired: 1, skipped: 0 } })] })
+    render(<OperatorJobs />)
+    expect(await screen.findByText('reminders')).toBeTruthy()
+    expect(screen.getByText('4 reminders sent, 1 delivered in-app, 3 not sent (no gateway), 2 already sent, 1 held for tomorrow, 1 held too long, dropped')).toBeTruthy()
+  })
+
   it('shows a failed job with its full error', async () => {
     load.mockResolvedValue({ ok: true, value: [row('agreements'), row('settlements', { ok: false, error: 'deadlock detected (40P01)' })] })
     render(<OperatorJobs />)

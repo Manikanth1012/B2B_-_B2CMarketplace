@@ -140,6 +140,8 @@ describe('filterNights', () => {
     expect(summarise('reminders', { sent: 3, already_sent: 1, skipped: 2 })).toBe('3 reminders sent, 1 already sent, 2 skipped')
     expect(summarise('reminders', { sent: 2, delivered: 1, suppressed: 2, already_sent: 0, deferred: 1, skipped: 0 }))
       .toBe('2 reminders sent, 1 delivered in-app, 2 not sent (no gateway), 1 held for tomorrow')
+    expect(summarise('reminders', { sent: 1, already_sent: 2, deferred: 0, expired: 3, skipped: 0 }))
+      .toBe('1 reminder sent, 2 already sent, 3 held too long, dropped')
     expect(summarise('reminders', { sent: 1, already_sent: 0, skipped: 0 })).toBe('1 reminder sent')
     expect(summarise('reminders', { sent: 0, already_sent: 0, skipped: 0 })).toBe('No reminders due')
   })

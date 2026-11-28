@@ -31,6 +31,8 @@ export interface NotificationEvent {
   personas: Persona[]
   category: string
   sort_order: number
+  /** Spec 19: the date a dated event is computed from (null for an ordinary event). */
+  anchor?: string | null
 }
 
 export interface Rule {

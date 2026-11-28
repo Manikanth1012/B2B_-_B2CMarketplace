@@ -3,12 +3,17 @@ import { ShoppingBasket } from 'lucide-react'
 import { BentoCard } from '../ui/BentoCard'
 import { StatusBadge } from '../ui/StatusBadge'
 import { Btn, EmptyState, Table, Td, fmtDateTime, PageHeader, RowActions } from './shared'
+import { BasketRulesDrawer } from './BasketRulesDrawer'
 import { Tabs } from '../ui/Tabs'
 import { Callout } from '../OnboardingJourney'
 import { useMarket } from '../../lib/MarketContext'
 import { loadWatchedBaskets, remindBasketOwner } from '../../lib/basketRepo'
 import type { WatchedBaskets, WatchedLine } from '../../lib/basketRepo'
-import { IDLE_DAYS, IDLE_LABEL, basketValue, cartsByUser, flagCount, idleState } from '../../lib/baskets'
+import { IDLE_LABEL, basketValue, cartsByUser, flagCount, idleState } from '../../lib/baskets'
+import { loadBasketSettings, loadMarketCodes, loadScheduleLog } from '../../lib/remindersRepo'
+import type { BasketSettings } from '../../lib/remindersRepo'
+import { DEFAULT_BASKET_WINDOW, basketStateFor, windowFor } from '../../lib/reminders'
+import type { BasketWindow } from '../../lib/reminders'
 import type { IdleState } from '../../lib/baskets'
 
 /* Baskets the marketplace is keeping (spec 11, decision 2c): business buyers'
@@ -33,28 +38,40 @@ interface Row {
   unpriced: number
   currency: string | null
   lastChange: string
+  market: string | null
   state: IdleState
   flags: number
   remindedAt: string | null
   lines: WatchedLine[]
 }
 
-function rowsOf(w: WatchedBaskets, now: Date): { business: Row[]; shoppers: Row[] } {
+/* Pending or Abandoned on the rules of the basket's market (its own row, else the
+   default); without the settings table it is the old seven days. A basket nearing clearing is still Abandoned on this screen. */
+function stateOn(rules: BasketSettings[] | null, market: string | null, lastChange: string, now: Date): IdleState {
+  if (!rules) return idleState(lastChange, now)
+  return basketStateFor(lastChange, windowFor(rules, market), now) === 'pending' ? 'pending' : 'abandoned'
+}
+
+/* The newest of a manual and a scheduled reminder. */
+const later = (a: string | null, b: string | null): string | null =>
+  a && b ? (Date.parse(a) >= Date.parse(b) ? a : b) : (a ?? b)
+
+function rowsOf(w: WatchedBaskets, now: Date, rules: BasketSettings[] | null, scheduled: Map<string, string>): { business: Row[]; shoppers: Row[] } {
   const business: Row[] = w.business.map(b => ({
     kind: 'requisition', id: b.id, owner: b.owner, email: b.email, account: b.account,
     lineCount: b.lines.length,
     value: basketValue(b.lines.map(l => ({ quantity: l.quantity, unit_price: l.unit_price ?? 0 }))),
     unpriced: b.lines.filter(l => l.unit_price === null).length,
-    currency: b.currency, lastChange: b.updated_at, state: idleState(b.updated_at, now),
-    flags: flagCount(b.lines), remindedAt: b.reminded_at, lines: b.lines,
+    currency: b.currency, lastChange: b.updated_at, market: b.market, state: stateOn(rules, b.market, b.updated_at, now),
+    flags: flagCount(b.lines), remindedAt: later(b.reminded_at, scheduled.get(b.id) ?? null), lines: b.lines,
   }))
   const shoppers: Row[] = cartsByUser(w.cartLines).map(c => {
     const who = w.shoppers.get(c.user_id)
     return {
       kind: 'cart', id: c.user_id, owner: who?.name || 'Unknown shopper', email: who?.email ?? null, account: null,
       lineCount: c.lineCount, value: c.value, unpriced: c.unpriced, currency: who?.currency ?? null,
-      lastChange: c.lastChange, state: idleState(c.lastChange, now), flags: c.flags,
-      remindedAt: w.cartReminders.get(c.user_id) ?? null, lines: c.lines,
+      lastChange: c.lastChange, market: who?.market ?? null, state: stateOn(rules, who?.market ?? null, c.lastChange, now), flags: c.flags,
+      remindedAt: later(w.cartReminders.get(c.user_id) ?? null, scheduled.get(`cart:${c.user_id}`) ?? null), lines: c.lines,
     }
   })
   return { business, shoppers }
@@ -73,6 +90,45 @@ export function OperatorBaskets() {
   /* Reminders sent from this screen, so the row shows them without a re-read. */
   const [sent, setSent] = useState<Map<string, string>>(new Map())
 
+  /* Spec 19: the rules the baskets are judged by, and what the night has sent.
+     Both come from tables the migration adds; missing, the screen keeps working
+     on the old seven days and the manual reminder alone. */
+  const [settings, setSettings] = useState<BasketSettings[] | null>(null)
+  const [rulesMissing, setRulesMissing] = useState(false)
+  const [scheduled, setScheduled] = useState<Map<string, string>>(new Map())
+  const [rulesOpen, setRulesOpen] = useState(false)
+  const [marketCodes, setMarketCodes] = useState<string[]>([])
+
+  const loadRules = async () => {
+    const r = await loadBasketSettings()
+    if (r.ok) { setSettings(r.value); setRulesMissing(false) } else setRulesMissing(r.missing)
+    return r.ok
+  }
+
+  useEffect(() => {
+    let live = true
+    void loadBasketSettings().then(r => {
+      if (!live) return
+      if (r.ok) setSettings(r.value); else setRulesMissing(r.missing)
+    })
+    /* "Last reminder" is the later of the manual one and the latest scheduled
+       send for that owner (a sent row in the schedule log, newest 500). */
+    void loadMarketCodes().then(r => { if (live && r.ok) setMarketCodes(r.value) })
+    void loadScheduleLog({ events: ['basket.abandoned', 'basket.clearing'], outcome: 'sent' }).then(r => {
+      if (!live || !r.ok) return
+      const m = new Map<string, string>()
+      for (const l of r.value) {
+        if (l.outcome !== 'sent') continue
+        /* When the send finished; the bare day only if the row has no time. */
+        const at = l.updated_at ?? l.sent_on
+        const had = m.get(l.subject_id)
+        if (!had || Date.parse(at) > Date.parse(had)) m.set(l.subject_id, at)
+      }
+      setScheduled(m)
+    })
+    return () => { live = false }
+  }, [])
+
   useEffect(() => {
     let live = true
     void loadWatchedBaskets().then(r => {
@@ -84,7 +140,14 @@ export function OperatorBaskets() {
   }, [])
 
   const now = useMemo(() => new Date(), [data])
-  const rows = useMemo(() => (data ? rowsOf(data, now) : { business: [], shoppers: [] }), [data, now])
+  const win = useMemo<BasketWindow | null>(() => (settings ? windowFor(settings, 'default') : null), [settings])
+  const rows = useMemo(() => (data ? rowsOf(data, now, settings, scheduled) : { business: [], shoppers: [] }),
+    [data, now, settings, scheduled])
+  const eff = win ?? DEFAULT_BASKET_WINDOW
+  const days = (n: number) => `${n} ${n === 1 ? 'day' : 'days'}`
+  const perMarket = (settings ?? []).some(s => s.market !== 'default' && win
+    && (s.pending_days !== win.pending_days || s.abandoned_after_days !== win.abandoned_after_days
+      || s.clear_after_days !== win.clear_after_days))
   const list = rows[tab]
   const shown = list.filter(r => filter === 'all' || r.state === filter)
   const counts = {
@@ -109,7 +172,8 @@ export function OperatorBaskets() {
     <div className="op-baskets">
       <PageHeader
         title="Baskets"
-        description={`What buyers have collected and not yet bought. Pending: changed in the last ${IDLE_DAYS} days. Abandoned: left for ${IDLE_DAYS} days or more. Baskets untouched for 90 days are cleared by the nightly run.`}>
+        description={`What buyers have collected and not yet bought. Pending: changed in the last ${days(eff.pending_days)}. Abandoned: left for ${days(eff.abandoned_after_days)} or more. Baskets untouched for ${days(eff.clear_after_days)} are cleared by the nightly run.${perMarket ? ' These are the default rules; some markets have their own.' : ''}`}
+        actions={settings && data ? <Btn variant="secondary" onClick={() => setRulesOpen(true)}>Basket rules</Btn> : undefined}>
         {data && (
           <Tabs ariaLabel="Whose baskets" panelIdPrefix="op-baskets-panel-" value={tab}
             onChange={id => { setTab(id as Tab); setOpenId(null); setSaid(null) }}
@@ -126,6 +190,15 @@ export function OperatorBaskets() {
           Until it is, a business buyer&rsquo;s basket is kept only in the page they have open, and is lost when they
           reload or close it.
         </Callout>
+      )}
+      {rulesMissing && data && (
+        <Callout tone="info" title="Basket rules and scheduled reminders">
+          Scheduled reminders arrive with migration 20261127400000. Until it is applied, baskets are judged on the
+          fixed 7 and 90 days and only the manual reminder is shown.
+        </Callout>
+      )}
+      {data?.marketsUnread && (
+        <p role="status" className="op-baskets__note">Markets could not be read; baskets are judged by the default rules.</p>
       )}
       {problem && !problem.missing && (
         <div role="alert" className="op-baskets__error">The baskets could not be read: {problem.error}</div>
@@ -221,6 +294,11 @@ export function OperatorBaskets() {
             )}
           </div>
         </BentoCard>
+      )}
+
+      {settings && rulesOpen && (
+        <BasketRulesDrawer open onClose={() => setRulesOpen(false)} settings={settings} markets={marketCodes}
+          baskets={[...rows.business, ...rows.shoppers]} onSaved={loadRules} />
       )}
     </div>
   )

@@ -12,6 +12,15 @@ vi.mock('../../lib/basketRepo', () => ({
   remindBasketOwner: (kind: string, id: string) => repo.remind(kind, id),
 }))
 
+/* The migration's tables are not there: Baskets keeps working on the fixed 7 and 90 days. */
+vi.mock('../../lib/remindersRepo', () => ({
+  loadBasketSettings: async () => ({ ok: false, missing: true, error: 'relation "public.basket_settings" does not exist' }),
+  loadScheduleLog: async () => ({ ok: false, missing: true, error: 'does not exist' }),
+  loadMarketCodes: async () => ({ ok: false, missing: true, error: 'does not exist' }),
+  saveBasketSettings: vi.fn(),
+  removeBasketSettings: vi.fn(),
+}))
+
 import { OperatorBaskets } from './OperatorBaskets'
 
 const ago = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString()
