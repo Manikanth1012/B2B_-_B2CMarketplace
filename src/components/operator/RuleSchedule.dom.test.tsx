@@ -133,6 +133,21 @@ describe('Schedule editor', () => {
     expect(rem.add).toHaveBeenCalledTimes(1)
   })
 
+  it('reloads the list when the modal is cancelled after a step was made but its wording failed', async () => {
+    rem.add.mockResolvedValue({ ok: true, value: step('NEW', -3, ['inapp'], []) })
+    rem.saveT.mockResolvedValue({ ok: false, missing: false, error: 'boom' })
+    const user = userEvent.setup()
+    const changed = mount([])
+    await user.click(screen.getByRole('button', { name: /Add step/ }))
+    fireEvent.change(screen.getByLabelText('In-app subject'), { target: { value: 'Due' } })
+    fireEvent.change(screen.getByLabelText('In-app message'), { target: { value: 'Soon' } })
+    await user.click(screen.getByRole('button', { name: 'Save step' }))
+    await screen.findByText(/inapp: boom/)
+    expect(changed).not.toHaveBeenCalled()
+    await user.click(screen.getByRole('button', { name: 'Cancel' }))
+    expect(changed).toHaveBeenCalledTimes(1)
+  })
+
   it('will not save a step that is on with no wording, and shows a dropped channel to remove', async () => {
     const user = userEvent.setup()
     mount([step('S1', -1, ['inapp', 'email', 'sms'], ['inapp'], true)])

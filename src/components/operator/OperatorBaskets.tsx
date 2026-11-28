@@ -119,7 +119,8 @@ export function OperatorBaskets() {
       const m = new Map<string, string>()
       for (const l of r.value) {
         if (l.outcome !== 'sent') continue
-        const at = l.sent_on
+        /* When the send finished; the bare day only if the row has no time. */
+        const at = l.updated_at ?? l.sent_on
         const had = m.get(l.subject_id)
         if (!had || Date.parse(at) > Date.parse(had)) m.set(l.subject_id, at)
       }
@@ -195,6 +196,9 @@ export function OperatorBaskets() {
           Scheduled reminders arrive with migration 20261127400000. Until it is applied, baskets are judged on the
           fixed 7 and 90 days and only the manual reminder is shown.
         </Callout>
+      )}
+      {data?.marketsUnread && (
+        <p role="status" className="op-baskets__note">Markets could not be read; baskets are judged by the default rules.</p>
       )}
       {problem && !problem.missing && (
         <div role="alert" className="op-baskets__error">The baskets could not be read: {problem.error}</div>

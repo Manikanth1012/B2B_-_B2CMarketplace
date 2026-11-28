@@ -50,6 +50,11 @@ export function BasketRulesDrawer({ open, onClose, settings, markets, baskets, o
   const base = dflt ? toWindow(toDraft(dflt)) : DEFAULT_BASKET_WINDOW
   const own = new Set(settings.map(s => s.market))
 
+  /* What the default will be once saved: a market put back on the default, or an unsaved
+     market's neighbours, are previewed against it. */
+  const dDraft = dflt ? drafts[dflt.market] ?? toDraft(dflt) : null
+  const draftBase = dDraft && !blank(dDraft) && validateBasketWindow(toWindow(dDraft)).ok ? toWindow(dDraft) : base
+
   const rows = useMemo(() => {
     const list = [
       ...settings.map(s => ({ market: s.market, saved: toDraft(s) as Draft | null })),
@@ -63,11 +68,11 @@ export function BasketRulesDrawer({ open, onClose, settings, markets, baskets, o
       const changed = saved === null || !same(d, saved)
       /* The window these baskets were judged by, and the one they would be. */
       const before = saved ? toWindow(saved) : base
-      const after = removed ? base : w
+      const after = removed ? draftBase : w
       return { market, saved, d, w, check, changed, removed, before, after }
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [settings, added, drafts, reset])
+  }, [settings, added, drafts, reset, draftBase])
 
   const invalid = rows.filter(r => !r.removed && r.changed && !r.check.ok)
   const dirty = rows.some(r => r.removed || r.changed)
@@ -78,7 +83,7 @@ export function BasketRulesDrawer({ open, onClose, settings, markets, baskets, o
     .filter(r => (r.removed || r.changed) && (r.removed || r.check.ok))
     .map(r => {
       const mine = baskets.filter(b => (r.market === 'default'
-        ? !own.has(b.market ?? '') : b.market === r.market))
+        ? !own.has(b.market ?? '') && !added.includes(b.market ?? '') : b.market === r.market))
       return { market: r.market, count: mine.length, effect: basketRuleEffect(mine, r.before, r.after, new Date()) }
     }),
   // eslint-disable-next-line react-hooks/exhaustive-deps

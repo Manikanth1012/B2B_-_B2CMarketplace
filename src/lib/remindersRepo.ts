@@ -260,9 +260,11 @@ export interface ScheduleLogRow {
   user_id: string | null
   ref: string | null
   created_at: string
+  /** When the row was last written: for a sent row, when the send finished. */
+  updated_at: string | null
 }
 
-const LOG = 'id, step_id, step_label, rule_id, event_id, offset_days, subject_id, anchor_date, due_on, sent_on, outcome, detail, notification_ids, recipient, user_id, ref, created_at'
+const LOG = 'id, step_id, step_label, rule_id, event_id, offset_days, subject_id, anchor_date, due_on, sent_on, outcome, detail, notification_ids, recipient, user_id, ref, created_at, updated_at'
 
 export const SCHEDULE_LOG_LIMIT = 500
 
@@ -286,7 +288,7 @@ export async function loadScheduleLog(f: { ruleId?: string; stepId?: string; sub
       due_on: String(r.due_on ?? ''),
       sent_on: String(r.sent_on), outcome: String(r.outcome) as ScheduleOutcome, detail: str(r.detail),
       notification_ids: ((r.notification_ids ?? []) as unknown[]).map(String),
-      recipient: str(r.recipient), user_id: str(r.user_id), ref: str(r.ref), created_at: String(r.created_at),
+      recipient: str(r.recipient), user_id: str(r.user_id), ref: str(r.ref), created_at: String(r.created_at), updated_at: str(r.updated_at),
     }))
     return { ok: true, value: rows }
   } catch (e) {

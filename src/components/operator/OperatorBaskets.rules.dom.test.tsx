@@ -82,7 +82,7 @@ describe('Baskets: rules from settings', () => {
   })
 
   it('shows a scheduled reminder as the last reminder', async () => {
-    rem.log.mockResolvedValue({ ok: true, value: [{ subject_id: 'B-1', outcome: 'sent', sent_on: ago(0.2).slice(0, 10) }] })
+    rem.log.mockResolvedValue({ ok: true, value: [{ subject_id: 'B-1', outcome: 'sent', sent_on: ago(0.2).slice(0, 10), updated_at: ago(0.2) }] })
     render(<OperatorBaskets />)
     const vikram = (await screen.findByText('Vikram Rao')).closest('tr')!
     await vi.waitFor(() => expect(within(vikram).queryByText('Never')).toBeNull())
@@ -143,6 +143,25 @@ describe('Baskets: rules from settings', () => {
     expect(alert).toBeTruthy()
     expect(screen.getByText(/Saved: Default/)).toBeTruthy()
     expect(rem.settings).toHaveBeenCalled()
+  })
+
+  it('counts an unsaved market’s baskets under that market only, not under Default', async () => {
+    const user = userEvent.setup()
+    render(<OperatorBaskets />)
+    await user.click(await screen.findByRole('button', { name: 'Basket rules' }))
+    chooseOption(screen.getByRole('combobox', { name: 'Market to add rules for' }), 'AE')
+    await user.click(screen.getByRole('button', { name: 'Add rules for a market' }))
+    fireEvent.change(num('Default pending days'), { target: { value: '2' } })
+    fireEvent.change(num('Default abandoned after days'), { target: { value: '2' } })
+    fireEvent.change(num('Default clear after days'), { target: { value: '8' } })
+    expect(screen.getByTestId('basket-rules-effect-default').closest('li')!.textContent).toMatch(/\(0 baskets on screen\)/)
+    expect(screen.getByTestId('basket-rules-effect-AE').closest('li')!.textContent).toMatch(/\(2 baskets on screen\)/)
+  })
+
+  it('says quietly when the markets could not be read', async () => {
+    repo.load.mockResolvedValue({ ok: true, value: { ...DATA, marketsUnread: true } })
+    render(<OperatorBaskets />)
+    expect(await screen.findByText('Markets could not be read; baskets are judged by the default rules.')).toBeTruthy()
   })
 
   it('asks the schedule log only for sent basket reminders', async () => {

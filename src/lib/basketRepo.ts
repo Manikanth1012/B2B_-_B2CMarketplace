@@ -173,6 +173,8 @@ export interface WatchedBaskets {
   shoppers: Map<string, ShopperOwner>
   /** When each shopper was last reminded. */
   cartReminders: Map<string, string>
+  /** The accounts or profiles could not be read, so no basket knows its market. */
+  marketsUnread?: boolean
 }
 
 const str = (v: unknown): string | null => (v === null || v === undefined ? null : String(v))
@@ -269,7 +271,7 @@ export async function loadWatchedBaskets(): Promise<Kept<WatchedBaskets>> {
       if (r.user_id && at && !at.startsWith('-')) cartReminders.set(String(r.user_id), at)
     }
 
-    return { ok: true, value: { business, cartLines, shoppers, cartReminders } }
+    return { ok: true, value: { business, cartLines, shoppers, cartReminders, marketsUnread: !!(accounts.error || profiles.error) } }
   } catch (e) {
     return fail(e)
   }

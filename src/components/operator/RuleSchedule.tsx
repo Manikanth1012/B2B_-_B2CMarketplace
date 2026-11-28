@@ -158,7 +158,7 @@ export function ScheduleSection({ rule, event, kinds, steps, onChanged }: {
 
       {editing && (
         <StepModal rule={rule} event={event} kinds={kinds} step={editing.step}
-          onClose={() => setEditing(null)}
+          onClose={created => { setEditing(null); if (created) void onChanged() }}
           onSaved={async note => { setEditing(null); await report(true, note) }} />
       )}
       <ConfirmDialog open={!!removing} onClose={() => setRemoving(null)} danger confirmLabel="Remove step"
@@ -175,7 +175,8 @@ type Words = Record<string, { subject: string; body: string }>
 
 function StepModal({ rule, event, kinds, step, onClose, onSaved }: {
   rule: Rule; event: NotificationEvent; kinds: Kind[]; step: RuleStep | null
-  onClose: () => void; onSaved: (note: string) => Promise<void>
+  /** `created`: a new step was made before the modal closed without finishing, so the list must reload. */
+  onClose: (created: boolean) => void; onSaved: (note: string) => Promise<void>
 }) {
   const [offsetText, setOffsetText] = useState(step ? String(step.offset_days) : '-1')
   const [chosen, setChosen] = useState<KindId[]>(step ? step.kinds : orderKinds(rule.kinds).slice(0, 1))
@@ -237,9 +238,9 @@ function StepModal({ rule, event, kinds, step, onClose, onSaved }: {
   }
 
   return (
-    <Modal open onClose={onClose} title={made ? `Edit step: ${stepLabel(made.offset_days)}` : `New step on ${rule.name}`}
+    <Modal open onClose={() => onClose(!!made && !step)} title={made ? `Edit step: ${stepLabel(made.offset_days)}` : `New step on ${rule.name}`}
       footer={<>
-        <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
+        <Btn variant="secondary" size="sm" onClick={() => onClose(!!made && !step)}>Cancel</Btn>
         <Btn size="sm" onClick={() => { void submit() }} disabled={busy || !!blocked}>{busy ? 'Saving…' : 'Save step'}</Btn>
       </>}>
       <FormField label="Days from the date"
