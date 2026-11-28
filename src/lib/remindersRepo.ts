@@ -183,7 +183,8 @@ export async function updateStep(id: string, patch: Partial<StepInput>): Promise
   }
 }
 
-/** A step gone, with its templates. Its schedule log goes too (on delete cascade). */
+/** A step gone, with its templates. What it sent stays in the schedule log: the rows keep their step label and
+    offset, and their step_id goes null (on delete set null). */
 export async function removeStep(id: string): Promise<Kept<number>> {
   try {
     const { data, error } = await supabase.from('notification_rule_steps').delete().eq('id', id).select('id')
@@ -224,11 +225,15 @@ export async function removeStepTemplate(id: string): Promise<Kept<number>> {
 
 /* ------------------------------------------------------ schedule log -- */
 
-export type ScheduleOutcome = 'sent' | 'skipped_preference' | 'skipped_throttle' | 'skipped_no_template'
+/** 'claimed' only while a run is sending it; 'deferred' when the rule's throttle held it back for another night;
+    'expired' when a deferred one could no longer be sent. */
+export type ScheduleOutcome = 'claimed' | 'sent' | 'deferred' | 'expired' | 'skipped_preference' | 'skipped_no_template'
 
 export interface ScheduleLogRow {
   id: number
-  step_id: string
+  /** Null once the step has been removed; the label and offset still say what it was. */
+  step_id: string | null
+  step_label: string
   rule_id: string
   event_id: string
   offset_days: number
@@ -244,7 +249,7 @@ export interface ScheduleLogRow {
   created_at: string
 }
 
-const LOG = 'id, step_id, rule_id, event_id, offset_days, subject_id, anchor_date, sent_on, outcome, detail, notification_ids, recipient, user_id, ref, created_at'
+const LOG = 'id, step_id, step_label, rule_id, event_id, offset_days, subject_id, anchor_date, sent_on, outcome, detail, notification_ids, recipient, user_id, ref, created_at'
 
 export const SCHEDULE_LOG_LIMIT = 500
 
@@ -259,7 +264,8 @@ export async function loadScheduleLog(f: { ruleId?: string; stepId?: string; sub
     const { data, error } = await q.order('created_at', { ascending: false }).limit(f.limit ?? SCHEDULE_LOG_LIMIT)
     if (error) return fail(error)
     const rows = ((data ?? []) as Record<string, unknown>[]).map(r => ({
-      id: Number(r.id), step_id: String(r.step_id), rule_id: String(r.rule_id), event_id: String(r.event_id),
+      id: Number(r.id), step_id: str(r.step_id), step_label: String(r.step_label ?? ''),
+      rule_id: String(r.rule_id), event_id: String(r.event_id),
       offset_days: Number(r.offset_days), subject_id: String(r.subject_id), anchor_date: String(r.anchor_date),
       sent_on: String(r.sent_on), outcome: String(r.outcome) as ScheduleOutcome, detail: str(r.detail),
       notification_ids: ((r.notification_ids ?? []) as unknown[]).map(String),

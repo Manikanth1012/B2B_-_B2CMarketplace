@@ -3,7 +3,7 @@ import {
   addDays, daysBetween, utcDay, dueOn, anchorFor, stepDueOn, stepsDueOn,
   offsetCode, stepLabel, stepLabelWithCode, parseOffset, validateStep, missingStepTemplates,
   validateBasketWindow, windowFor, abandonedOn, clearsOn, basketStateFor, basketWindowLine,
-  DEFAULT_BASKET_WINDOW,
+  DEFAULT_BASKET_WINDOW, daysLeftText, latestOffset, canSchedule, NO_STEPS_AFTER_THE_DAY,
 } from './reminders'
 
 const W = DEFAULT_BASKET_WINDOW
@@ -78,7 +78,32 @@ describe('step labels', () => {
   })
 })
 
+describe('days left, in words', () => {
+  it('reads naturally either side of the day', () => {
+    expect(daysLeftText(7)).toBe('in 7 days')
+    expect(daysLeftText(1)).toBe('in 1 day')
+    expect(daysLeftText(0)).toBe('today')
+    expect(daysLeftText(-1)).toBe('1 day ago')
+    expect(daysLeftText(-2)).toBe('2 days ago')
+  })
+})
+
 describe('steps', () => {
+  it('goes no later than the day itself where the date moves on or the subject goes', () => {
+    expect(NO_STEPS_AFTER_THE_DAY).toEqual(['subscription.renewal', 'agreement.notice', 'basket.clearing'])
+    expect(latestOffset('basket.clearing')).toBe(0)
+    expect(latestOffset('invoice.due')).toBe(30)
+    expect(validateStep({ offset_days: 0, kinds: ['email'] }, ['email'], 'basket.clearing')).toEqual({ ok: true })
+    expect(validateStep({ offset_days: 1, kinds: ['email'] }, ['email'], 'subscription.renewal').ok).toBe(false)
+    expect(validateStep({ offset_days: 3, kinds: ['email'] }, ['email'], 'invoice.due')).toEqual({ ok: true })
+    expect(validateStep({ offset_days: 3, kinds: ['email'] }, ['email'], 'basket.abandoned')).toEqual({ ok: true })
+  })
+  it('refuses a seller’s agreement notice, which nobody could receive', () => {
+    expect(canSchedule('agreement.notice', 'partner').ok).toBe(false)
+    expect(canSchedule('agreement.notice', 'enterprise').ok).toBe(true)
+    expect(validateStep({ offset_days: -7, kinds: ['email'] }, ['email'], 'agreement.notice', 'partner').ok).toBe(false)
+  })
+
   it('keeps a step to ±30 days and to the rule’s channels', () => {
     expect(validateStep({ offset_days: -1, kinds: ['email', 'whatsapp'] }, ['email', 'whatsapp'])).toEqual({ ok: true })
     expect(validateStep({ offset_days: -31, kinds: ['email'] }, ['email']).ok).toBe(false)
@@ -111,7 +136,10 @@ describe('basket windows', () => {
     expect(windowFor([], 'IN')).toEqual(W)
   })
   it('dates abandonment and clearing as the database does', () => {
-    expect(abandonedOn('2026-11-20T10:00:00Z', W)).toBe('2026-11-27')
+    /* The first night after seven whole days: never before the screen says Abandoned. */
+    expect(abandonedOn('2026-11-20T10:00:00Z', W)).toBe('2026-11-28')
+    expect(abandonedOn('2026-11-20T00:00:00Z', W)).toBe('2026-11-28')
+    expect(basketStateFor('2026-11-20T23:59:59Z', W, '2026-11-28T00:30:00Z')).toBe('abandoned')
     expect(clearsOn('2026-11-20T10:00:00Z', W)).toBe('2027-02-19')
     expect(clearsOn('2026-11-20T00:00:00Z', W)).toBe('2027-02-19')
     expect(abandonedOn('?', W)).toBeNull()

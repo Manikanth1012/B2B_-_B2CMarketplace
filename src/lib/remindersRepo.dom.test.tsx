@@ -124,7 +124,7 @@ describe('steps and their templates', () => {
 describe('the schedule log', () => {
   it('reads newest first, filtered, capped', async () => {
     db.results.push({ data: [{
-      id: 7, step_id: 'NRS-1', rule_id: 'NR-B-BSK-CLEARING', event_id: 'basket.clearing', offset_days: -1,
+      id: 7, step_id: 'NRS-1', step_label: '1 day before (n−1)', rule_id: 'NR-B-BSK-CLEARING', event_id: 'basket.clearing', offset_days: -1,
       subject_id: 'B-1', anchor_date: '2026-11-29', sent_on: '2026-11-28', outcome: 'sent', detail: null,
       notification_ids: ['NL-REM-1', 'NL-REM-2'], recipient: 'Vikram Shah', user_id: 'U-1', ref: 'B-1', created_at: '2026-11-28T00:30:05Z',
     }], error: null })
@@ -134,5 +134,15 @@ describe('the schedule log', () => {
     expect(op(0, 'order')).toEqual(['created_at', { ascending: false }])
     expect(op(0, 'limit')).toEqual([20])
     expect(r.ok && r.value[0]).toMatchObject({ outcome: 'sent', anchor_date: '2026-11-29', notification_ids: ['NL-REM-1', 'NL-REM-2'] })
+  })
+
+  it('keeps the history of a removed step, by its label', async () => {
+    db.results.push({ data: [{
+      id: 8, step_id: null, step_label: '7 days before (n−7)', rule_id: 'NR-B-BSK-CLEARING', event_id: 'basket.clearing',
+      offset_days: -7, subject_id: 'B-1', anchor_date: '2026-12-05', sent_on: '2026-11-28', outcome: 'deferred', detail: 'held back',
+      notification_ids: null, recipient: null, user_id: null, ref: null, created_at: '2026-11-28T00:30:05Z',
+    }], error: null })
+    const r = await loadScheduleLog()
+    expect(r.ok && r.value[0]).toMatchObject({ step_id: null, step_label: '7 days before (n−7)', outcome: 'deferred', notification_ids: [] })
   })
 })

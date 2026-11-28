@@ -81,6 +81,15 @@ export function stepDueOn<S extends StepLike>(steps: readonly S[], anchor: strin
 
 /* -------------------------------------------------------------- labels -- */
 
+/** {days_left} in words, as reminder_days_left fills it: 'in 7 days', 'in 1 day', 'today', '1 day ago', '2 days ago'. */
+export function daysLeftText(days: number): string {
+  if (days === 0) return 'today'
+  if (days === 1) return 'in 1 day'
+  if (days > 1) return `in ${days} days`
+  if (days === -1) return '1 day ago'
+  return `${-days} days ago`
+}
+
 const MINUS = '−'
 
 /** 'n−7', 'n+0', 'n+2'. */
@@ -112,11 +121,40 @@ export function parseOffset(text: string): number | null {
 
 export interface StepDraft { offset_days: number; kinds: readonly string[] }
 
-/** What the database's guard_rule_step refuses, said first. */
-export function validateStep(step: StepDraft, ruleKinds: readonly string[]): Check {
+/**
+ * Dated events whose date moves on, or whose subject is gone, once the day
+ * has passed: a subscription renews and its next renewal moves, an agreement
+ * past its notice deadline renews or ends, a cleared basket is gone. A step
+ * on one of these goes at most on the day itself (n+0); the reminders job
+ * runs first in the night, so n+0 still finds its subject.
+ */
+export const NO_STEPS_AFTER_THE_DAY: readonly string[] = ['subscription.renewal', 'agreement.notice', 'basket.clearing']
+
+/** The latest offset a step on `eventId` may have: 0 for the events above, else MAX_OFFSET. */
+export function latestOffset(eventId: string): number {
+  return NO_STEPS_AFTER_THE_DAY.includes(eventId) ? 0 : MAX_OFFSET
+}
+
+/** Whether a rule for `persona` on `eventId` can have steps at all: a seller is never on an agreement. */
+export function canSchedule(eventId: string, persona: string): Check {
+  if (eventId === 'agreement.notice' && persona === 'partner') {
+    return { ok: false, reason: 'An agreement’s notice deadline is the business account’s. No seller is on an agreement, so this would reach nobody' }
+  }
+  return { ok: true }
+}
+
+/** What the database's guard_rule_step refuses, said first. Pass the rule's event (and persona) to apply its limits. */
+export function validateStep(step: StepDraft, ruleKinds: readonly string[], eventId?: string, persona?: string): Check {
   if (!Number.isInteger(step.offset_days)) return { ok: false, reason: 'The offset is a whole number of days' }
   if (step.offset_days < MIN_OFFSET || step.offset_days > MAX_OFFSET) {
     return { ok: false, reason: `A step goes from 30 days before to 30 days after, not ${stepLabel(step.offset_days)}` }
+  }
+  if (eventId && step.offset_days > latestOffset(eventId)) {
+    return { ok: false, reason: `This date moves on, or its subject is gone, once it has passed, so a step ${stepLabel(step.offset_days)} would never send. Use the day itself at the latest` }
+  }
+  if (eventId && persona) {
+    const can = canSchedule(eventId, persona)
+    if (!can.ok) return can
   }
   if (step.kinds.length === 0) return { ok: false, reason: 'A step that goes nowhere sends nothing. Pick at least one channel' }
   const foreign = step.kinds.filter(k => !ruleKinds.includes(k))
@@ -169,10 +207,12 @@ export function windowFor<W extends BasketWindow & { market: string }>(rows: rea
   return rows.find(r => r.market === market) ?? rows.find(r => r.market === 'default') ?? DEFAULT_BASKET_WINDOW
 }
 
-/** The day a basket becomes abandoned: last change + abandoned_after_days (UTC), as basket_anchor. */
+/** The first night a basket is abandoned, as basket_anchor: the day of its last change + abandoned_after_days + 1
+    (UTC). By then it has been untouched for the whole number of days, so an n+0 reminder never goes before the
+    screen says Abandoned. */
 export function abandonedOn(lastChange: string, s: BasketWindow): string | null {
-  const t = Date.parse(lastChange)
-  return Number.isNaN(t) ? null : fromDayNumber(Math.floor((t + s.abandoned_after_days * DAY_MS) / DAY_MS))
+  const day = utcDay(lastChange)
+  return day === null ? null : addDays(day, s.abandoned_after_days + 1)
 }
 
 /** The night that clears a basket: the day of its last change + clear_after_days + 1 (UTC), as basket_anchor. */

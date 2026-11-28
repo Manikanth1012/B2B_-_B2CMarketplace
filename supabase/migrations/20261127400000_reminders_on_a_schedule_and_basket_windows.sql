@@ -24,19 +24,26 @@
  *
  *   4. Steps. `notification_rule_steps` puts a rule on a dated event on a
  *      schedule: an offset (n−30 … n+30), a subset of the rule's channels, on
- *      or off. What a step says is in `notification_step_templates`, one per
- *      step and channel. `notification_schedule_log` records what each step
- *      did for each subject and anchor date, once (unique).
+ *      or off; never after the day for subscription.renewal,
+ *      agreement.notice or basket.clearing, whose date moves on or whose
+ *      subject is gone once it passes. What a step says is in
+ *      `notification_step_templates`, one per step and channel.
+ *      `notification_schedule_log` records what each step did for each
+ *      subject and anchor date, once (unique), and keeps it when the step is
+ *      removed.
  *
  *   5. `run_reminders(p_as_of)`: every step that is on, of a rule that is on,
  *      sent to every subject whose anchor + offset is `p_as_of`, once; the
- *      rule's throttle and mandatory flag and the recipient's preferences
- *      respected; logged in `notification_log` as the event path logs
- *      (`enquiry_send`, 20261105100000). The night's eleventh job,
- *      `reminders`.
+ *      rule's throttle (by day; a subject held back is deferred and tried
+ *      again) and mandatory flag and the recipient's preferences respected;
+ *      logged in `notification_log` as the event path logs (`enquiry_send`,
+ *      20261105100000). The night's eleventh job, `reminders`, run first so
+ *      no other job has moved a date before it reads it.
  *
  *   6. One rule per basket event and persona (shopper, business buyer), with
- *      the spec's default steps and templates, every one of them off.
+ *      the spec's default steps and templates, every one of them off. Seeded
+ *      once: a re-run neither breaks on, nor puts back, what the operator
+ *      has since changed or removed.
  *
  *   7. The help: the Baskets article and the Scheduled jobs article.
  *
@@ -155,13 +162,15 @@ drop trigger if exists basket_settings_audit on public.basket_settings;
 create trigger basket_settings_audit after insert or update or delete on public.basket_settings
   for each row execute function public.audit_basket_settings();
 
-/* Today's numbers, for the default and every market, so nothing moves. */
+/* Today's numbers, for the default and every market, so nothing moves.
+   Once: on a later run the table has rows, and a market the operator has
+   put back on the default is not given its own row again. */
 select set_config('aventa.seeding', 'on', true);
 insert into public.basket_settings (market, pending_days, abandoned_after_days, clear_after_days, updated_by)
-select 'default', 7, 7, 90, 'Seeded by 20261127400000'
-union all
-select m.code, 7, 7, 90, 'Seeded by 20261127400000' from public.markets m
-on conflict (market) do nothing;
+select v.market, 7, 7, 90, 'Seeded by 20261127400000'
+  from (select 'default'::text as market union all select m.code from public.markets m) v
+ where not exists (select 1 from public.basket_settings s)
+on conflict do nothing;
 select set_config('aventa.seeding', '', true);
 
 alter table public.basket_settings enable row level security;
@@ -192,7 +201,11 @@ revoke all on function public.basket_window(text) from public, anon;
 grant execute on function public.basket_window(text) to authenticated;
 
 /* The date a basket's event falls on, from its last change (UTC):
-     basket.abandoned  the day it has been untouched for abandoned_after_days;
+     basket.abandoned  the first night on which it has been untouched for
+                       abandoned_after_days whole days: a basket last changed
+                       on day D, at any time, is abandoned by 00:00 of
+                       D + abandoned_after_days + 1, so an n+0 reminder never
+                       goes before the Baskets screen says Abandoned;
      basket.clearing   the night that clears it. The night clears a basket
                        whose last change is before (night − clear_after_days)
                        at 00:00, so a basket last changed on day D is cleared
@@ -200,7 +213,7 @@ grant execute on function public.basket_window(text) to authenticated;
 create or replace function public.basket_anchor(p_event text, p_last timestamptz, p_abandoned integer, p_clear integer)
 returns date language sql immutable set search_path = public as $$
   select case p_event
-           when 'basket.abandoned' then ((p_last + make_interval(days => p_abandoned)) at time zone 'UTC')::date
+           when 'basket.abandoned' then (p_last at time zone 'UTC')::date + p_abandoned + 1
            when 'basket.clearing'  then (p_last at time zone 'UTC')::date + p_clear + 1
          end
 $$;
@@ -276,6 +289,14 @@ alter table public.notification_events add column if not exists anchor text;
 comment on column public.notification_events.anchor is
   'Null for an ordinary event. Otherwise the date the event is measured from, per subject, which the nightly reminders job computes: a rule on this event can have steps (notification_rule_steps) at n−30 … n+30 days.';
 
+/* Whether this is the run that creates the dated events: the basket rules
+   are seeded only then (section 6), so a rule the operator removed later is
+   never put back by running this again. */
+select set_config('aventa.seed_basket_rules',
+                  case when exists (select 1 from public.notification_events e where e.id in ('basket.abandoned', 'basket.clearing'))
+                       then 'off' else 'on' end,
+                  true);
+
 insert into public.notification_events (id, label, description, personas, category, sort_order, anchor) values
   ('basket.abandoned',     'A basket becomes abandoned',
    'Nobody has changed the basket for the market''s abandoned-after days (Basket rules).',
@@ -320,16 +341,24 @@ comment on table public.notification_rule_steps is
 create index if not exists notification_rule_steps_rule_idx on public.notification_rule_steps(rule_id, sort_order);
 
 /* A step belongs to a rule on a dated event, and sends only on channels the
-   rule carries. */
+   rule carries. After the day (n+1 and later) only where the anchor stays
+   put once it has passed: a renewal moves the next renewal date on, an
+   agreement past its notice deadline is renewed or ends, and a cleared
+   basket is gone, so a step after any of those would never find its
+   subject. And no step on a rule nobody it could be about can receive: an
+   agreement has no seller on it, so a seller's agreement.notice rule has no
+   subjects. */
 create or replace function public.guard_rule_step() returns trigger
 language plpgsql security definer set search_path = public as $$
 <<gs>>
 declare
-  v_kinds  text[];
-  v_name   text;
-  v_anchor text;
+  v_kinds   text[];
+  v_name    text;
+  v_anchor  text;
+  v_event   text;
+  v_persona text;
 begin
-  select r.kinds, r.name, e.anchor into v_kinds, v_name, v_anchor
+  select r.kinds, r.name, e.anchor, e.id, r.persona into v_kinds, v_name, v_anchor, v_event, v_persona
     from public.notification_rules r
     join public.notification_events e on e.id = r.event_id
    where r.id = new.rule_id;
@@ -344,6 +373,12 @@ begin
   end if;
   if not (new.kinds <@ v_kinds) then
     raise exception 'A step can only send on the channels its rule uses (%).', array_to_string(v_kinds, ', ');
+  end if;
+  if new.offset_days > 0 and v_event in ('subscription.renewal', 'agreement.notice', 'basket.clearing') then
+    raise exception '"%" can only be scheduled up to the day itself: once the date has passed it moves on or the subject is gone, so a step % days after would never send.', v_name, new.offset_days;
+  end if;
+  if v_event = 'agreement.notice' and v_persona = 'partner' then
+    raise exception 'An agreement''s notice deadline is the business account''s: no seller is on an agreement, so "%" would never reach anybody.', v_name;
   end if;
   new.updated_at := now();
   return new;
@@ -404,19 +439,26 @@ create trigger notification_step_templates_guard before insert or update on publ
   for each row execute function public.guard_step_template();
 
 /* What each step did, once per subject and anchor date: a re-run of the
-   night finds the row and sends nothing again. */
+   night finds the row and sends nothing again. The row is claimed first
+   (outcome 'claimed', inside the run's own transaction) and then finished,
+   so two runs at once cannot both send. A subject the rule's throttle holds
+   back is 'deferred' and tried again on the following nights for up to 7
+   days after it was due, then 'expired'. A removed step leaves its history:
+   step_id goes null and the label and offset stay. */
 create table if not exists public.notification_schedule_log (
   id               bigint generated always as identity primary key,
-  step_id          text not null references public.notification_rule_steps(id) on delete cascade,
+  step_id          text references public.notification_rule_steps(id) on delete set null,
   rule_id          text not null,
   event_id         text not null,
   offset_days      integer not null,
+  /* The step as it read when it ran: '1 day before (n−1)'. */
+  step_label       text not null,
   /* What the reminder is about, for one recipient: 'cart:<user>', a basket
      id, '<invoice>/<member>', … (reminder_subjects). */
   subject_id       text not null,
   anchor_date      date not null,
   sent_on          date not null,
-  outcome          text not null check (outcome in ('sent', 'skipped_preference', 'skipped_throttle', 'skipped_no_template')),
+  outcome          text not null check (outcome in ('claimed', 'sent', 'deferred', 'expired', 'skipped_preference', 'skipped_no_template')),
   detail           text,
   notification_ids text[] not null default array[]::text[],
   recipient        text,
@@ -424,6 +466,7 @@ create table if not exists public.notification_schedule_log (
   partner_id       text,
   ref              text,
   created_at       timestamptz not null default now(),
+  updated_at       timestamptz not null default now(),
   unique (step_id, subject_id, anchor_date)
 );
 
@@ -432,6 +475,8 @@ comment on table public.notification_schedule_log is
 
 create index if not exists notification_schedule_log_sent_idx on public.notification_schedule_log(sent_on desc);
 create index if not exists notification_schedule_log_subject_idx on public.notification_schedule_log(subject_id, sent_on desc);
+create index if not exists notification_schedule_log_deferred_idx on public.notification_schedule_log(step_id)
+  where outcome = 'deferred';
 
 /* ------------------------------------------------------------ policies -- */
 
@@ -495,9 +540,42 @@ end $$;
 
 revoke all on function public.reminder_fill(text, jsonb) from public, anon, authenticated;
 
+/* {days_left}, in words: 'in 7 days', 'in 1 day', 'today', '1 day ago',
+   '2 days ago'. Mirrors daysLeftText in src/lib/reminders.ts. */
+create or replace function public.reminder_days_left(p_days integer)
+returns text language sql immutable set search_path = public as $$
+  select case
+           when p_days is null then ''
+           when p_days = 0 then 'today'
+           when p_days = 1 then 'in 1 day'
+           when p_days > 1 then 'in ' || p_days || ' days'
+           when p_days = -1 then '1 day ago'
+           else (-p_days) || ' days ago'
+         end
+$$;
+
+revoke all on function public.reminder_days_left(integer) from public, anon;
+grant execute on function public.reminder_days_left(integer) to authenticated;
+
+/* A step's offset as the schedule log keeps it: '7 days before (n−7)',
+   'on the day (n+0)', '2 days after (n+2)'. Mirrors stepLabelWithCode. */
+create or replace function public.reminder_step_label(p_offset integer)
+returns text language sql immutable set search_path = public as $$
+  select case
+           when p_offset = 0 then 'on the day (n+0)'
+           when p_offset < 0 then (-p_offset) || case when p_offset = -1 then ' day' else ' days' end
+                                  || ' before (n' || chr(8722) || (-p_offset) || ')'
+           else p_offset || case when p_offset = 1 then ' day' else ' days' end || ' after (n+' || p_offset || ')'
+         end
+$$;
+
+revoke all on function public.reminder_step_label(integer) from public, anon;
+grant execute on function public.reminder_step_label(integer) to authenticated;
+
 /**
  * Who a dated event concerns on `p_anchor`, for a rule aimed at
- * `p_persona`: one row per subject and recipient.
+ * `p_persona`: one row per subject and recipient. {amount} is in the money
+ * it is billed in (money_text).
  *
  *   basket.abandoned / basket.clearing
  *     consumer    a shopper's cart (lines not saved for later), from the
@@ -511,9 +589,9 @@ revoke all on function public.reminder_fill(text, jsonb) from public, anon, auth
  *                         business subscription's renews, to the
  *                         procurement lead(s)
  *   agreement.notice      enterprise: an active agreement's ends_on less its
- *                         notice_days, to the procurement lead(s). The
- *                         partner persona has no subjects: an
- *                         enterprise_contract has no seller on it.
+ *                         notice_days, to the procurement lead(s). A seller
+ *                         is never on an agreement (guard_rule_step refuses
+ *                         a partner step).
  *   quote.expiry          enterprise: a priced quote's valid_until, to the
  *                         member who asked
  */
@@ -556,8 +634,10 @@ begin
   elsif p_event = 'invoice.due' and p_persona = 'enterprise' then
     return query
     select (i.id || '/' || u.id)::text, p_anchor, u.user_id, null::text, u.name::text, i.id::text,
-           jsonb_build_object('order', i.id, 'amount', i.total::text, 'listing', i.period)
+           jsonb_build_object('order', i.id, 'listing', i.period,
+                              'amount', public.money_text(i.total, coalesce(i.currency, a.currency)))
       from public.enterprise_invoices i
+      join public.enterprise_accounts a on a.id = i.account_id
       join public.enterprise_users u on u.account_id = i.account_id
      where i.due = p_anchor
        and i.status in ('open', 'overdue')
@@ -568,9 +648,10 @@ begin
     return query
     select ('sub:' || s.id::text)::text, p_anchor, s.user_id, null::text,
            coalesce(cp.name, au.email::text, 'Subscriber')::text, coalesce(s.ref, s.id::text)::text,
-           jsonb_build_object('listing', s.product_name, 'amount', s.price::text)
+           jsonb_build_object('listing', s.product_name,
+                              'amount', public.money_text(s.price, coalesce(s.currency, cp.currency, 'USD')))
       from public.subscriptions s
-      left join lateral (select p.name from public.consumer_profile p
+      left join lateral (select p.name, p.currency from public.consumer_profile p
                           where p.user_id = s.user_id order by p.id limit 1) cp on true
       left join auth.users au on au.id = s.user_id
      where s.status = 'active' and s.auto_renew and s.next_renewal = p_anchor and s.user_id is not null;
@@ -578,8 +659,10 @@ begin
   elsif p_event = 'subscription.renewal' and p_persona = 'enterprise' then
     return query
     select (es.id || '/' || u.id)::text, p_anchor, u.user_id, null::text, u.name::text, es.id::text,
-           jsonb_build_object('listing', es.name, 'amount', es.monthly::text)
+           jsonb_build_object('listing', es.name,
+                              'amount', public.money_text(es.monthly, coalesce(es.currency, a.currency)))
       from public.enterprise_subscriptions es
+      join public.enterprise_accounts a on a.id = es.account_id
       join public.enterprise_users u on u.account_id = es.account_id
      where es.status = 'active' and es.auto_renew and es.renews = p_anchor
        and u.status = 'active' and u.user_id is not null and u.role = 'procurement-lead';
@@ -611,38 +694,51 @@ revoke all on function public.reminder_subjects(text, text, date) from public, a
 /**
  * The night's reminders, as of `p_as_of` (UTC).
  *
- * For each step that is on, of a rule that is on, on a dated event: the
- * subjects whose anchor + offset is `p_as_of` (so the anchor is
- * p_as_of − offset). A subject already in notification_schedule_log for the
- * step and anchor date is skipped. Otherwise:
+ * For each step that is on, of a rule that is on, on a dated event:
+ *
+ *   1. Deferred rows of the step (held back by the throttle on an earlier
+ *      night) are tried again while their subject still has that anchor and
+ *      they were due no more than 7 days ago; otherwise they are 'expired'.
+ *   2. The subjects whose anchor + offset is `p_as_of` (anchor =
+ *      p_as_of − offset). Each is claimed first, by inserting its
+ *      notification_schedule_log row ('claimed'; unique per step, subject
+ *      and anchor date): a subject already there is already sent, and two
+ *      runs at once cannot both send.
+ *
+ * Then, per claimed subject:
  *   - the channels are the step's, kept to the rule's;
  *   - the recipient's preference for the rule (their own, else their
  *     seller account's): switched off skips it, unless the rule is mandatory;
  *     its channels narrow the step's, and a mandatory rule whose channels a
  *     preference would leave empty still sends on the step's;
- *   - the rule's throttle: 'At most once an hour', '… once a day',
- *     'Digest — once a day' or 'Digest — weekly' skips a recipient this rule
- *     has told anything (any notification_log row not failed) in that
- *     window; 'Every time' never skips;
+ *   - the rule's throttle, by UTC day, per rule and subject (so per
+ *     recipient): 'At most once a day' and 'Digest — once a day' hold back a
+ *     subject this rule already reached today, 'Digest — weekly' one reached
+ *     in the last 7 days. Only messages that went (delivered, sent, queued)
+ *     count, never one suppressed for want of a gateway. A held-back subject
+ *     is 'deferred', not dropped. 'Every time' and 'At most once an hour'
+ *     never hold back: the job runs once a night;
  *   - one notification_log row per channel with a step template, as
  *     enquiry_send writes them: in-app delivered, any other channel
  *     suppressed with "No gateway is connected for <kind>";
- *   - one notification_schedule_log row, whatever happened.
+ *   - the claimed row finished: sent, deferred, skipped_preference or
+ *     skipped_no_template.
  *
  * Returns {ran_on, steps, sent, already_sent, skipped, skipped_preference,
- * skipped_throttle, skipped_no_template, messages}.
+ * skipped_no_template, deferred, expired, messages, delivered, suppressed}.
  */
 create or replace function public.run_reminders(p_as_of date default current_date)
 returns jsonb language plpgsql security definer set search_path = public as $$
 <<rr>>
 declare
   st          record;
-  sub         record;
+  c           record;
   v_pref      record;
   v_has_pref  boolean;
   v_tpl       record;
   v_anchor    date;
-  v_window    interval;
+  v_days      integer;
+  v_log       bigint;
   v_kinds     text[];
   v_narrow    text[];
   v_k         text;
@@ -655,13 +751,17 @@ declare
   v_body      text;
   v_max       integer;
   v_id        text;
+  v_n         integer;
   n_steps     integer := 0;
   n_sent      integer := 0;
   n_already   integer := 0;
   n_pref      integer := 0;
-  n_throttle  integer := 0;
   n_template  integer := 0;
+  n_deferred  integer := 0;
+  n_expired   integer := 0;
   n_messages  integer := 0;
+  n_delivered integer := 0;
+  n_suppress  integer := 0;
 begin
   if public.current_persona() is distinct from 'operator' and not public.is_scheduler() then
     raise exception 'Only the schedule, or the marketplace, sends the reminders.';
@@ -679,18 +779,54 @@ begin
      where s.enabled and r.enabled and e.anchor is not null
      order by r.sort_order, r.id, s.sort_order, s.offset_days, s.id
   loop
-    n_steps := n_steps + 1;
+    n_steps  := n_steps + 1;
     v_anchor := p_as_of - st.offset_days;
-    v_window := case st.throttle
-                  when 'At most once an hour' then interval '1 hour'
-                  when 'At most once a day'   then interval '1 day'
-                  when 'Digest — once a day'  then interval '1 day'
-                  when 'Digest — weekly'      then interval '7 days'
+    v_days   := case st.throttle
+                  when 'At most once a day'  then 1
+                  when 'Digest — once a day' then 1
+                  when 'Digest — weekly'     then 7
+                  else 0
                 end;
 
-    for sub in select * from public.reminder_subjects(st.event_id, st.persona, rr.v_anchor) loop
-      if exists (select 1 from public.notification_schedule_log l
-                  where l.step_id = st.id and l.subject_id = sub.s_subject and l.anchor_date = rr.v_anchor) then
+    /* 1. Deferred rows that can no longer be sent. */
+    update public.notification_schedule_log h
+       set outcome = 'expired', updated_at = now(),
+           detail = coalesce(h.detail || ' ', '') || 'Expired on ' || to_char(p_as_of, 'DD Mon YYYY')
+                    || ': no longer due, or its date moved.'
+     where h.step_id = st.id and h.outcome = 'deferred'
+       and (h.anchor_date + st.offset_days < p_as_of - 7
+            or not exists (select 1 from public.reminder_subjects(st.event_id, st.persona, h.anchor_date) s
+                            where s.s_subject = h.subject_id));
+    get diagnostics v_n = row_count;
+    n_expired := n_expired + v_n;
+
+    /* 1 and 2: deferred rows to try again, then today's subjects. */
+    for c in
+      select h.id as log_id, h.anchor_date as anchor, s.s_subject, s.s_user, s.s_partner, s.s_recipient, s.s_ref, s.s_fields
+        from public.notification_schedule_log h
+       cross join lateral public.reminder_subjects(st.event_id, st.persona, h.anchor_date) s
+       where h.step_id = st.id and h.outcome = 'deferred' and s.s_subject = h.subject_id
+      union all
+      select null::bigint, rr.v_anchor, s.s_subject, s.s_user, s.s_partner, s.s_recipient, s.s_ref, s.s_fields
+        from public.reminder_subjects(st.event_id, st.persona, rr.v_anchor) s
+    loop
+      v_log := null;
+      if c.log_id is not null then
+        update public.notification_schedule_log h
+           set outcome = 'claimed', updated_at = now()
+         where h.id = c.log_id and h.outcome = 'deferred'
+        returning h.id into v_log;
+      else
+        insert into public.notification_schedule_log
+          (step_id, rule_id, event_id, offset_days, step_label, subject_id, anchor_date, sent_on, outcome,
+           recipient, user_id, partner_id, ref)
+        values
+          (st.id, st.rule_id, st.event_id, st.offset_days, public.reminder_step_label(st.offset_days),
+           c.s_subject, c.anchor, p_as_of, 'claimed', c.s_recipient, c.s_user, c.s_partner, c.s_ref)
+        on conflict do nothing
+        returning id into v_log;
+      end if;
+      if v_log is null then
         n_already := n_already + 1;
         continue;
       end if;
@@ -706,8 +842,8 @@ begin
       select p.enabled, p.kinds into v_pref
         from public.notification_preferences p
        where p.rule_id = st.rule_id
-         and ((sub.s_user is not null and p.user_id = sub.s_user)
-              or (sub.s_partner is not null and p.scope = 'partner' and p.partner_id = sub.s_partner))
+         and ((c.s_user is not null and p.user_id = c.s_user)
+              or (c.s_partner is not null and p.scope = 'partner' and p.partner_id = c.s_partner))
        order by (p.scope = 'user') desc, p.id
        limit 1;
       v_has_pref := found;
@@ -728,23 +864,29 @@ begin
         end if;
       end if;
 
-      if v_outcome = 'sent' and v_window is not null
-         and exists (select 1 from public.notification_log l
-                      where l.rule_id = st.rule_id
-                        and l.state <> 'failed'
-                        and l.sent_at > now() - rr.v_window
-                        and ((sub.s_user is not null and l.user_id = sub.s_user)
-                             or (sub.s_user is null and sub.s_partner is not null and l.partner_id = sub.s_partner))) then
-        v_outcome := 'skipped_throttle';
-        v_detail  := format('"%s" is sent %s, and this recipient was told within it.', st.rule_name, lower(st.throttle));
+      /* The throttle, by day: held back, and tried again tomorrow. */
+      if v_outcome = 'sent' and v_days > 0
+         and exists (select 1
+                       from public.notification_schedule_log h
+                       join public.notification_log l on l.id = any (h.notification_ids)
+                      where h.rule_id = st.rule_id
+                        and h.subject_id = c.s_subject
+                        and h.user_id is not distinct from c.s_user
+                        and h.id <> rr.v_log
+                        and h.outcome = 'sent'
+                        and l.state in ('delivered', 'sent', 'queued')
+                        and (l.sent_at at time zone 'UTC')::date > p_as_of - rr.v_days) then
+        v_outcome := 'deferred';
+        v_detail  := format('"%s" is sent %s, and this recipient was reached within it on %s; held back to try again.',
+                            st.rule_name, lower(st.throttle), to_char(p_as_of, 'DD Mon YYYY'));
       end if;
 
       if v_outcome = 'sent' then
-        v_fields := coalesce(sub.s_fields, '{}'::jsonb) || jsonb_build_object(
-                      'recipient',   coalesce(sub.s_recipient, ''),
-                      'anchor_date', to_char(rr.v_anchor, 'DD Mon YYYY'),
-                      'due',         to_char(rr.v_anchor, 'DD Mon YYYY'),
-                      'days_left',   (rr.v_anchor - p_as_of)::text,
+        v_fields := coalesce(c.s_fields, '{}'::jsonb) || jsonb_build_object(
+                      'recipient',   coalesce(c.s_recipient, ''),
+                      'anchor_date', to_char(c.anchor, 'DD Mon YYYY'),
+                      'due',         to_char(c.anchor, 'DD Mon YYYY'),
+                      'days_left',   public.reminder_days_left(c.anchor - p_as_of),
                       'marketplace', 'Aventa',
                       'link',        '');
 
@@ -768,13 +910,18 @@ begin
             (id, rule_id, kind_id, channel_id, persona, recipient, user_id, partner_id,
              subject, body, sent_at, state, detail, cost, ref)
           values
-            (v_id, st.rule_id, v_k, null, st.persona, coalesce(sub.s_recipient, 'Recipient'), sub.s_user, sub.s_partner,
+            (v_id, st.rule_id, v_k, null, st.persona, coalesce(c.s_recipient, 'Recipient'), c.s_user, c.s_partner,
              v_subject, v_body, now(),
              case when v_k = 'inapp' then 'delivered' else 'suppressed' end,
              case when v_k = 'inapp' then null else 'No gateway is connected for ' || v_k end,
-             0, sub.s_ref);
+             0, c.s_ref);
           v_ids := v_ids || v_id;
           n_messages := n_messages + 1;
+          if v_k = 'inapp' then
+            n_delivered := n_delivered + 1;
+          else
+            n_suppress := n_suppress + 1;
+          end if;
         end loop;
 
         if cardinality(v_kinds) = 0 then
@@ -788,20 +935,18 @@ begin
         end if;
       end if;
 
-      insert into public.notification_schedule_log
-        (step_id, rule_id, event_id, offset_days, subject_id, anchor_date, sent_on, outcome, detail,
-         notification_ids, recipient, user_id, partner_id, ref)
-      values
-        (st.id, st.rule_id, st.event_id, st.offset_days, sub.s_subject, rr.v_anchor, p_as_of, v_outcome, v_detail,
-         v_ids, sub.s_recipient, sub.s_user, sub.s_partner, sub.s_ref)
-      on conflict (step_id, subject_id, anchor_date) do nothing;
+      update public.notification_schedule_log h
+         set outcome = v_outcome, detail = v_detail, notification_ids = v_ids, sent_on = p_as_of,
+             recipient = c.s_recipient, user_id = c.s_user, partner_id = c.s_partner, ref = c.s_ref,
+             updated_at = now()
+       where h.id = rr.v_log;
 
       if v_outcome = 'sent' then
         n_sent := n_sent + 1;
+      elsif v_outcome = 'deferred' then
+        n_deferred := n_deferred + 1;
       elsif v_outcome = 'skipped_preference' then
         n_pref := n_pref + 1;
-      elsif v_outcome = 'skipped_throttle' then
-        n_throttle := n_throttle + 1;
       else
         n_template := n_template + 1;
       end if;
@@ -809,15 +954,20 @@ begin
   end loop;
 
   return jsonb_build_object('ran_on', p_as_of, 'steps', n_steps, 'sent', n_sent, 'already_sent', n_already,
-                            'skipped', n_pref + n_throttle + n_template,
-                            'skipped_preference', n_pref, 'skipped_throttle', n_throttle,
-                            'skipped_no_template', n_template, 'messages', n_messages);
+                            'skipped', n_pref + n_template,
+                            'skipped_preference', n_pref, 'skipped_no_template', n_template,
+                            'deferred', n_deferred, 'expired', n_expired,
+                            'messages', n_messages, 'delivered', n_delivered, 'suppressed', n_suppress);
 end $$;
 
 revoke all on function public.run_reminders(date) from public, anon, authenticated;
 
 /* `run_nightly`, copied from 20261126100000 (its latest definition). Changed
-   only: the `reminders` job, last, so eleven. */
+   only: the `reminders` job, first, so eleven. First because the jobs after
+   it move the dates reminders are measured from: agreements renew past
+   their notice deadline, subscriptions move their next renewal on, and the
+   baskets job clears baskets. Run first, an n+0 step still finds its
+   subject on the day itself. The other ten keep their order. */
 create or replace function public.run_nightly(p_as_of date default current_date)
 returns jsonb language plpgsql security definer set search_path = public as $$
 declare
@@ -831,10 +981,11 @@ begin
     raise exception 'Only the schedule, or the marketplace, runs the night.';
   end if;
 
-  foreach j in array array['agreements', 'enterprise subscriptions', 'subscriptions', 'documents', 'payments', 'bundle selections', 'baskets', 'invoices', 'risk', 'settlements', 'reminders'] loop
+  foreach j in array array['reminders', 'agreements', 'enterprise subscriptions', 'subscriptions', 'documents', 'payments', 'bundle selections', 'baskets', 'invoices', 'risk', 'settlements'] loop
     t0 := clock_timestamp(); res := null; err := null;
     begin
       res := case j
+        when 'reminders'                then public.run_reminders(p_as_of)
         when 'agreements'               then public.auto_renew_contracts(p_as_of, 'Nightly schedule')
         when 'enterprise subscriptions' then public.renew_enterprise_subscriptions(p_as_of, 'Nightly schedule')
         when 'subscriptions'            then public.renew_subscriptions(p_as_of, 'Nightly schedule')
@@ -845,7 +996,6 @@ begin
         when 'invoices'                 then public.run_invoicing(p_as_of)
         when 'risk'                     then public.refresh_account_risk(p_as_of)
         when 'settlements'              then public.settle_to_date(p_as_of)
-        when 'reminders'                then public.run_reminders(p_as_of)
       end;
     exception when others then
       err := format('%s (%s)', sqlerrm, sqlstate);
@@ -862,24 +1012,36 @@ revoke all on function public.run_nightly(date) from public, anon, authenticated
 
 /* ===================================================== 6. the seed -- */
 
-/* One rule per basket event and persona, off. `do nothing` on conflict, so a
-   rule, step or template the operator has since edited stays as they left
-   it. */
+/* Seeded once. A BEFORE INSERT guard fires before ON CONFLICT is looked at,
+   so nothing here leans on ON CONFLICT: each row goes in only where nothing
+   with its id, or its natural key, is there yet. And nothing the operator
+   has since removed comes back: the rules only on the run that created the
+   basket events (`aventa.seed_basket_rules`, set in section 3), a rule's
+   steps only while it has none, and a step's templates only on the run that
+   created the step. */
+
+/* One rule per basket event and persona, off. */
 insert into public.notification_rules (id, persona, event_id, name, audience, kinds, throttle,
-                                       severity, enabled, mandatory, why, last_sent, sort_order) values
-  ('NR-C-BSK-ABANDONED', 'consumer', 'basket.abandoned', 'Your basket is waiting', 'You',
-   array['inapp'], 'Every time', 'low', false, false,
-   'A nudge on the day a basket counts as abandoned. In-app only: it is a reminder, not a sales call.', null, 40),
-  ('NR-C-BSK-CLEARING', 'consumer', 'basket.clearing', 'Your basket is about to be cleared', 'You',
-   array['email', 'whatsapp'], 'Every time', 'normal', false, false,
-   'Clearing a basket nobody warned you about loses what you chose. A week ahead, then the day before.', null, 41),
-  ('NR-B-BSK-ABANDONED', 'enterprise', 'basket.abandoned', 'Your requisition basket is waiting', 'The basket''s owner',
-   array['inapp'], 'Every time', 'low', false, false,
-   'A requisition left half-built is usually a purchase somebody is still waiting on.', null, 42),
-  ('NR-B-BSK-CLEARING', 'enterprise', 'basket.clearing', 'Your requisition basket is about to be cleared', 'The basket''s owner',
-   array['email', 'whatsapp'], 'Every time', 'normal', false, false,
-   'Lines, quotes and bundle choices go with the basket. A week ahead, then the day before.', null, 43)
-on conflict (id) do nothing;
+                                       severity, enabled, mandatory, why, last_sent, sort_order)
+select v.id, v.persona, v.event_id, v.name, v.audience, v.kinds, 'Every time', v.severity, false, false, v.why, null, v.sort_order
+  from (values
+    ('NR-C-BSK-ABANDONED', 'consumer', 'basket.abandoned', 'Your basket is waiting', 'You',
+     array['inapp'], 'low',
+     'A nudge on the day a basket counts as abandoned. In-app only: it is a reminder, not a sales call.', 40),
+    ('NR-C-BSK-CLEARING', 'consumer', 'basket.clearing', 'Your basket is about to be cleared', 'You',
+     array['email', 'whatsapp'], 'normal',
+     'Clearing a basket nobody warned you about loses what you chose. A week ahead, then the day before.', 41),
+    ('NR-B-BSK-ABANDONED', 'enterprise', 'basket.abandoned', 'Your requisition basket is waiting', 'The basket''s owner',
+     array['inapp'], 'low',
+     'A requisition left half-built is usually a purchase somebody is still waiting on.', 42),
+    ('NR-B-BSK-CLEARING', 'enterprise', 'basket.clearing', 'Your requisition basket is about to be cleared', 'The basket''s owner',
+     array['email', 'whatsapp'], 'normal',
+     'Lines, quotes and bundle choices go with the basket. A week ahead, then the day before.', 43)
+  ) as v(id, persona, event_id, name, audience, kinds, severity, why, sort_order)
+ where coalesce(current_setting('aventa.seed_basket_rules', true), '') = 'on'
+   and not exists (select 1 from public.notification_rules r
+                    where r.id = v.id or (r.persona = v.persona and r.event_id = v.event_id))
+on conflict do nothing;
 
 /* Every rule has a template for every channel it claims (the Rules screen
    flags one that does not), even though these rules send only by schedule. */
@@ -889,26 +1051,39 @@ select r.id || '-' || k, r.id, k, r.name,
   from public.notification_rules r
   join public.notification_events e on e.id = r.event_id
  cross join lateral unnest(r.kinds) k
- where r.id in ('NR-C-BSK-ABANDONED', 'NR-C-BSK-CLEARING', 'NR-B-BSK-ABANDONED', 'NR-B-BSK-CLEARING')
-on conflict (id) do nothing;
+ where coalesce(current_setting('aventa.seed_basket_rules', true), '') = 'on'
+   and r.id in ('NR-C-BSK-ABANDONED', 'NR-C-BSK-CLEARING', 'NR-B-BSK-ABANDONED', 'NR-B-BSK-CLEARING')
+   and not exists (select 1 from public.notification_templates t
+                    where t.id = r.id || '-' || k or (t.rule_id = r.id and t.kind_id = k))
+on conflict do nothing;
 
 /* The spec's default steps: abandoned n+0 in-app; clearing n−7 email;
-   clearing n−1 email and WhatsApp. All off. */
-insert into public.notification_rule_steps (id, rule_id, offset_days, kinds, enabled, sort_order) values
-  ('NRS-C-BSK-ABANDONED-0', 'NR-C-BSK-ABANDONED',  0, array['inapp'],             false, 1),
-  ('NRS-C-BSK-CLEARING-M7', 'NR-C-BSK-CLEARING',  -7, array['email'],             false, 1),
-  ('NRS-C-BSK-CLEARING-M1', 'NR-C-BSK-CLEARING',  -1, array['email', 'whatsapp'], false, 2),
-  ('NRS-B-BSK-ABANDONED-0', 'NR-B-BSK-ABANDONED',  0, array['inapp'],             false, 1),
-  ('NRS-B-BSK-CLEARING-M7', 'NR-B-BSK-CLEARING',  -7, array['email'],             false, 1),
-  ('NRS-B-BSK-CLEARING-M1', 'NR-B-BSK-CLEARING',  -1, array['email', 'whatsapp'], false, 2)
-on conflict (id) do nothing;
+   clearing n−1 email and WhatsApp. All off. Only for a seeded rule that is
+   still there and had no steps before this run. */
+insert into public.notification_rule_steps (id, rule_id, offset_days, kinds, enabled, sort_order)
+select v.id, v.rule_id, v.offset_days, v.kinds, false, v.sort_order
+  from (values
+    ('NRS-C-BSK-ABANDONED-0', 'NR-C-BSK-ABANDONED',  0, array['inapp'],             1),
+    ('NRS-C-BSK-CLEARING-M7', 'NR-C-BSK-CLEARING',  -7, array['email'],             1),
+    ('NRS-C-BSK-CLEARING-M1', 'NR-C-BSK-CLEARING',  -1, array['email', 'whatsapp'], 2),
+    ('NRS-B-BSK-ABANDONED-0', 'NR-B-BSK-ABANDONED',  0, array['inapp'],             1),
+    ('NRS-B-BSK-CLEARING-M7', 'NR-B-BSK-CLEARING',  -7, array['email'],             1),
+    ('NRS-B-BSK-CLEARING-M1', 'NR-B-BSK-CLEARING',  -1, array['email', 'whatsapp'], 2)
+  ) as v(id, rule_id, offset_days, kinds, sort_order)
+ where exists (select 1 from public.notification_rules r where r.id = v.rule_id and v.kinds <@ r.kinds)
+   and not exists (select 1 from public.notification_rule_steps s where s.rule_id = v.rule_id)
+   and not exists (select 1 from public.notification_rule_steps s where s.id = v.id)
+on conflict do nothing;
 
-insert into public.notification_step_templates (id, step_id, kind_id, subject, body) values
+/* What each seeded step says. Only for a step this run created. */
+insert into public.notification_step_templates (id, step_id, kind_id, subject, body)
+select v.id, v.step_id, v.kind_id, v.subject, v.body
+  from (values
   ('NRS-C-BSK-ABANDONED-0-inapp', 'NRS-C-BSK-ABANDONED-0', 'inapp',
    'Your basket is waiting',
    'You left {items} item(s) in your basket. Check out when you are ready, or remove what you no longer want.'),
   ('NRS-C-BSK-CLEARING-M7-email', 'NRS-C-BSK-CLEARING-M7', 'email',
-   'Your basket clears in {days_left} days',
+   'Your basket clears {days_left}',
    'Hello {recipient},' || E'\n\n' ||
    'Nobody has changed your basket for a while, so it will be cleared on {anchor_date}.' || E'\n\n' ||
    'Open it before then to keep what is in it: any change keeps it for longer. Anything you saved for later stays either way.'),
@@ -924,7 +1099,7 @@ insert into public.notification_step_templates (id, step_id, kind_id, subject, b
    'Your requisition basket is waiting',
    'You left {items} item(s) in your requisition basket. Open it to raise the requisition, or clear it.'),
   ('NRS-B-BSK-CLEARING-M7-email', 'NRS-B-BSK-CLEARING-M7', 'email',
-   'Your requisition basket clears in {days_left} days',
+   'Your requisition basket clears {days_left}',
    'Hello {recipient},' || E'\n\n' ||
    'Nobody has changed your requisition basket for a while, so it will be cleared on {anchor_date}, with its lines, quotes and bundle choices.' || E'\n\n' ||
    'Open it before then to keep it: any change keeps it for longer.'),
@@ -936,7 +1111,12 @@ insert into public.notification_step_templates (id, step_id, kind_id, subject, b
   ('NRS-B-BSK-CLEARING-M1-whatsapp', 'NRS-B-BSK-CLEARING-M1', 'whatsapp',
    'Your requisition basket clears tomorrow',
    'Hello {recipient}, your {marketplace} requisition basket will be cleared tomorrow ({anchor_date}). Open it today to keep it.')
-on conflict (id) do nothing;
+  ) as v(id, step_id, kind_id, subject, body)
+ where exists (select 1 from public.notification_rule_steps s
+                where s.id = v.step_id and s.created_at = now() and v.kind_id = any (s.kinds))
+   and not exists (select 1 from public.notification_step_templates t
+                    where t.id = v.id or (t.step_id = v.step_id and t.kind_id = v.kind_id))
+on conflict do nothing;
 
 /* ================================================================= help === */
 
@@ -945,9 +1125,9 @@ on conflict (id) do nothing;
 update kb_articles
    set body = replace(replace(replace(body::text,
                 'A basket is Pending while it has been changed in the last 7 days, and Abandoned once nobody has touched it for 7 days or more.',
-                'A basket is Pending while it has been changed recently, and Abandoned once nobody has touched it for a number of days. Both numbers, and when the night clears a basket, are operator settings per market (Basket rules on this screen): 7, 7 and 90 days unless somebody changes them.'),
+                'A basket is Abandoned once nobody has touched it for a number of days, and the night clears it after a larger number. Both are operator settings per market (Basket rules on this screen): 7 and 90 days unless somebody changes them. Basket rules also hold the pending days, which only set how this screen describes Pending (changed in the last 7 days): until a basket is abandoned it counts as pending whatever that number says.'),
                 'At most one a day per basket: a second within 24 hours is refused, and the screen says when the next may go.',
-                'At most one a day per basket: a second within 24 hours is refused, and the screen says when the next may go. Reminders can also go by themselves: on Notifications, the basket rules have steps such as 7 days and 1 day before a basket is cleared. They are all off until somebody turns them on.'),
+                'At most one a day per basket: a second within 24 hours is refused, and the screen says when the next may go. Reminders can also go by themselves: on Notifications, the basket rules have steps such as 7 days and 1 day before a basket is cleared. They are all off until somebody turns them on, and a step on a basket being cleared can be set up to the day itself, never after it, because by then the basket is gone.'),
                 'The night clears a basket nobody has touched for 90 days',
                 'The night clears a basket nobody has touched for the clear-after days in Basket rules (90 unless changed)')::jsonb,
        updated = to_char(current_date, 'DD Mon YYYY')
@@ -955,8 +1135,8 @@ update kb_articles
    and jsonb_typeof(body) = 'array'
    and body::text not like '%Basket rules on this screen%';
 
-/* The Scheduled jobs article: eleven jobs, the baskets sentence, and the
-   reminders job. */
+/* The Scheduled jobs article: eleven jobs, the reminders job first, and the
+   baskets sentence. */
 update kb_articles
    set body = replace(replace(replace(replace(body::text,
                 'runs ten jobs, one after the other',
@@ -965,12 +1145,12 @@ update kb_articles
                 '"The eleven jobs"'),
                 'baskets nobody has touched for 90 days are cleared.',
                 'baskets nobody has touched for their market''s clear-after days (Basket rules, 90 unless changed) are cleared.'),
-                'Settlements: every closed period not yet settled is settled, oldest first.',
-                'Settlements: every closed period not yet settled is settled, oldest first. Reminders: every scheduled step of a notification rule that is switched on, such as 1 day before a basket is cleared, is sent to everyone whose date it is today, once; running the night again sends nothing twice.')::jsonb,
+                'Agreements: an agreement with auto-renew on whose notice deadline has passed',
+                'Reminders, first, before any job below moves a date: every scheduled step of a notification rule that is switched on, such as 1 day before a basket is cleared, is sent to everyone whose date it is today, once; running the night again sends nothing twice, and somebody the rule''s limit holds back is tried again the next night. Agreements: an agreement with auto-renew on whose notice deadline has passed')::jsonb,
        updated = to_char(current_date, 'DD Mon YYYY')
  where view = 'op-jobs'
    and jsonb_typeof(body) = 'array'
-   and body::text not like '%Reminders: every scheduled step%';
+   and body::text not like '%Reminders, first, before any job below moves a date%';
 
 /* ============================================================ self-check === */
 
@@ -994,6 +1174,8 @@ declare
   v_op     uuid;
   v_cons   uuid;
   v_prod   text;
+  v_pair   text[];
+  v_seed   boolean := coalesce(current_setting('aventa.seed_basket_rules', true), '') = 'on';
 begin
   if not public.is_scheduler() then
     raise exception 'This session (%) is not one the schedule runs as, so the dry run below would be refused.', session_user;
@@ -1026,6 +1208,7 @@ begin
                                'public.guard_basket_settings()', 'public.audit_basket_settings()',
                                'public.guard_rule_step()', 'public.guard_step_template()',
                                'public.reminder_fill(text,jsonb)', 'public.reminder_subjects(text,text,date)',
+                               'public.reminder_days_left(integer)', 'public.reminder_step_label(integer)',
                                'public.run_reminders(date)', 'public.run_baskets_night(date)', 'public.run_nightly(date)'] loop
     if to_regprocedure(v_sig) is null then raise exception '% is missing', v_sig; end if;
   end loop;
@@ -1041,14 +1224,55 @@ begin
   if pg_get_functiondef('public.run_baskets_night(date)'::regprocedure) like '%p_as_of - 90%' then
     raise exception 'the baskets night still clears at a hard-coded 90 days';
   end if;
+  if (select c.is_nullable from information_schema.columns c
+       where c.table_schema = 'public' and c.table_name = 'notification_schedule_log' and c.column_name = 'step_id') <> 'YES'
+     or not exists (select 1 from pg_constraint
+                     where conrelid = 'public.notification_schedule_log'::regclass and contype = 'f'
+                       and pg_get_constraintdef(oid) like 'FOREIGN KEY (step_id)%ON DELETE SET NULL') then
+    raise exception 'removing a step would take its schedule history with it';
+  end if;
+
+  /* The words the templates are filled with. */
+  if public.reminder_days_left(2) <> 'in 2 days' or public.reminder_days_left(1) <> 'in 1 day'
+     or public.reminder_days_left(0) <> 'today' or public.reminder_days_left(-1) <> '1 day ago'
+     or public.reminder_days_left(-2) <> '2 days ago' then
+    raise exception 'days left reads %, %, %, %, %', public.reminder_days_left(2), public.reminder_days_left(1),
+      public.reminder_days_left(0), public.reminder_days_left(-1), public.reminder_days_left(-2);
+  end if;
+  if public.reminder_step_label(-7) <> '7 days before (n' || chr(8722) || '7)'
+     or public.reminder_step_label(0) <> 'on the day (n+0)' or public.reminder_step_label(1) <> '1 day after (n+1)' then
+    raise exception 'a step reads %, %, %', public.reminder_step_label(-7), public.reminder_step_label(0), public.reminder_step_label(1);
+  end if;
+  if public.basket_anchor('basket.abandoned', timestamptz '2026-11-20 10:00+00', 7, 90) <> date '2026-11-28'
+     or public.basket_anchor('basket.abandoned', timestamptz '2026-11-20 00:00+00', 7, 90) <> date '2026-11-28'
+     or public.basket_anchor('basket.clearing', timestamptz '2026-11-20 10:00+00', 7, 90) <> date '2027-02-19' then
+    raise exception 'a basket last changed on 20 Nov 2026 is abandoned on % and cleared on %',
+      public.basket_anchor('basket.abandoned', timestamptz '2026-11-20 10:00+00', 7, 90),
+      public.basket_anchor('basket.clearing', timestamptz '2026-11-20 10:00+00', 7, 90);
+  end if;
+
+  /* Every branch of reminder_subjects runs, for every event and persona a
+     rule can be aimed at. */
+  foreach v_pair slice 1 in array array[
+      array['basket.abandoned', 'consumer'], array['basket.abandoned', 'enterprise'],
+      array['basket.clearing', 'consumer'], array['basket.clearing', 'enterprise'],
+      array['invoice.due', 'enterprise'],
+      array['subscription.renewal', 'consumer'], array['subscription.renewal', 'enterprise'],
+      array['agreement.notice', 'enterprise'], array['quote.expiry', 'enterprise']] loop
+    perform count(*) from public.reminder_subjects(v_pair[1], v_pair[2], current_date);
+    perform count(*) from public.reminder_subjects(v_pair[1], v_pair[2], current_date + 1);
+  end loop;
 
   /* Nothing moves: the default and every market at 7, 7 and 90. */
   if not exists (select 1 from public.basket_settings s where s.market = 'default') then
     raise exception 'there are no default basket rules';
   end if;
-  select count(*) into v_n from public.markets m
-   where not exists (select 1 from public.basket_settings s where s.market = m.code);
-  if v_n > 0 then raise exception '% markets have no basket rules', v_n; end if;
+  /* On the run that seeds them, every market has its own row. */
+  if exists (select 1 from public.basket_settings s where s.updated_at = now()) then
+    select count(*) into v_n from public.markets m
+     where not exists (select 1 from public.basket_settings s where s.market = m.code);
+    if v_n > 0 then raise exception '% markets have no basket rules', v_n; end if;
+  end if;
   /* Rows this run seeded (stamped with the transaction's time); a later run
      leaves the operator's numbers alone and so does not judge them. */
   select count(*) into v_n from public.basket_settings s
@@ -1067,37 +1291,44 @@ begin
    where e.anchor is not null
      and e.id in ('basket.abandoned', 'basket.clearing', 'invoice.due', 'subscription.renewal', 'agreement.notice', 'quote.expiry');
   if v_n <> 6 then raise exception '% of the six dated events have an anchor', v_n; end if;
-  select count(*) into v_n from public.notification_rules r
-   where r.id in ('NR-C-BSK-ABANDONED', 'NR-C-BSK-CLEARING', 'NR-B-BSK-ABANDONED', 'NR-B-BSK-CLEARING');
-  if v_n <> 4 then raise exception '% of the four basket reminder rules are there', v_n; end if;
+  /* On the run that seeds them: the four rules, their six steps, all off,
+     a template for every channel. A later run judges only what it adds,
+     and adds nothing the operator removed. */
+  if v_seed then
+    select count(*) into v_n from public.notification_rules r
+     where r.id in ('NR-C-BSK-ABANDONED', 'NR-C-BSK-CLEARING', 'NR-B-BSK-ABANDONED', 'NR-B-BSK-CLEARING')
+       and not r.enabled;
+    if v_n <> 4 then raise exception '% of the four basket reminder rules are there, and off', v_n; end if;
+    select count(*) into v_n from public.notification_rule_steps s where s.id like 'NRS-_-BSK-%' and s.created_at = now();
+    if v_n <> 6 then raise exception '% of the six default basket steps were seeded', v_n; end if;
+    select count(*) into v_n
+      from public.notification_rules r, unnest(r.kinds) k
+     where r.id like 'NR-_-BSK-%'
+       and not exists (select 1 from public.notification_templates t where t.rule_id = r.id and t.kind_id = k);
+    if v_n > 0 then raise exception '% basket rule channels have no rule template', v_n; end if;
+  end if;
   /* Seeded off: a step this run added is off. (A later run of the migration
      leaves whatever the operator has since turned on alone.) */
   if exists (select 1 from public.notification_rule_steps s
               where s.id like 'NRS-_-BSK-%' and s.created_at = now() and s.enabled) then
     raise exception 'a seeded basket step is on; nothing may start sending by itself';
   end if;
-  select count(*) into v_n from public.notification_rule_steps s where s.id like 'NRS-_-BSK-%';
-  if v_n < 6 then raise exception 'only % of the six default basket steps are there', v_n; end if;
   select count(*) into v_n
     from public.notification_rule_steps s, unnest(s.kinds) k
-   where not exists (select 1 from public.notification_step_templates t where t.step_id = s.id and t.kind_id = k);
-  if v_n > 0 then raise exception '% step channels have no template, so they would send nothing', v_n; end if;
-  select count(*) into v_n
-    from public.notification_rules r, unnest(r.kinds) k
-   where r.id like 'NR-_-BSK-%'
-     and not exists (select 1 from public.notification_templates t where t.rule_id = r.id and t.kind_id = k);
-  if v_n > 0 then raise exception '% basket rule channels have no rule template', v_n; end if;
+   where s.created_at = now()
+     and not exists (select 1 from public.notification_step_templates t where t.step_id = s.id and t.kind_id = k);
+  if v_n > 0 then raise exception '% seeded step channels have no template, so they would send nothing', v_n; end if;
 
   /* The help. */
   if exists (select 1 from kb_articles where view = 'op-baskets' and body::text like '%touched it for 7 days or more%') then
     raise exception 'the Baskets article still says the windows are fixed at 7 days';
   end if;
-  if exists (select 1 from kb_articles where view = 'op-jobs' and body::text not like '%Reminders: every scheduled step%') then
+  if exists (select 1 from kb_articles where view = 'op-jobs' and body::text not like '%Reminders, first, before any job below moves a date%') then
     raise exception 'the Scheduled jobs article does not mention the reminders job';
   end if;
 
-  /* The night, now with eleven jobs, dry-run and rolled back. Every seeded
-     step is off, so the reminders job sends nothing. */
+  /* The night, now with eleven jobs, reminders first, dry-run and rolled
+     back. */
   begin
     dry := public.run_nightly(current_date);
     select l.result into v_res from public.scheduled_job_log l
@@ -1115,11 +1346,17 @@ begin
   if jsonb_array_length(dry -> 'jobs') <> 11 then
     raise exception 'the dry run ran % jobs, not 11', jsonb_array_length(dry -> 'jobs');
   end if;
-  if (dry -> 'jobs' -> 10 ->> 'job') is distinct from 'reminders' then
-    raise exception 'the eleventh job of the night is %, not reminders', dry -> 'jobs' -> 10 ->> 'job';
+  if (dry -> 'jobs' -> 0 ->> 'job') is distinct from 'reminders' then
+    raise exception 'the first job of the night is %, not reminders', dry -> 'jobs' -> 0 ->> 'job';
   end if;
-  if v_res is null or not (v_res ? 'sent' and v_res ? 'already_sent' and v_res ? 'skipped') then
-    raise exception 'the reminders job reported %, not sent, already_sent and skipped', v_res;
+  if (dry -> 'jobs' -> 1 ->> 'job') is distinct from 'agreements'
+     or (dry -> 'jobs' -> 10 ->> 'job') is distinct from 'settlements' then
+    raise exception 'after reminders the night runs % … %, not agreements … settlements',
+      dry -> 'jobs' -> 1 ->> 'job', dry -> 'jobs' -> 10 ->> 'job';
+  end if;
+  if v_res is null or not (v_res ? 'sent' and v_res ? 'already_sent' and v_res ? 'skipped'
+                           and v_res ? 'deferred' and v_res ? 'delivered' and v_res ? 'suppressed') then
+    raise exception 'the reminders job reported %, not sent, already_sent, skipped, deferred, delivered and suppressed', v_res;
   end if;
 
   /* Rolled back: a business basket whose clearing night is tomorrow (n−1
@@ -1213,9 +1450,77 @@ begin
     select count(*) into v_n from public.notification_log nl where nl.rule_id = 'NR-B-BSK-CLEARING';
     if v_n <> v_m then raise exception 'a second run wrote % messages again', v_n - v_m; end if;
 
+    /* The throttle, by day: once a day, two in-app steps for the same
+       basket. The first goes; the second is deferred, not dropped (the n−1
+       messages above were suppressed for want of a gateway, and do not
+       count). The next night, the deferred one goes. */
+    update public.notification_rules r
+       set throttle = 'At most once a day', kinds = array['inapp', 'email', 'whatsapp']
+     where r.id = 'NR-B-BSK-CLEARING';
+    update public.notification_rule_steps s set enabled = false where s.rule_id = 'NR-B-BSK-CLEARING';
+    insert into public.notification_rule_steps (id, rule_id, offset_days, kinds, enabled, sort_order) values
+      ('NRS-SELFCHECK-A', 'NR-B-BSK-CLEARING', -1, array['inapp'], true, 98),
+      ('NRS-SELFCHECK-B', 'NR-B-BSK-CLEARING', -1, array['inapp'], true, 99);
+    insert into public.notification_step_templates (step_id, kind_id, subject, body) values
+      ('NRS-SELFCHECK-A', 'inapp', 'Clears {days_left}', 'Your basket clears on {anchor_date}.'),
+      ('NRS-SELFCHECK-B', 'inapp', 'Clears {days_left}', 'Your basket clears on {anchor_date}.');
+    v_res := public.run_reminders(current_date);
+    select l.outcome, l.notification_ids into v_row from public.notification_schedule_log l
+     where l.step_id = 'NRS-SELFCHECK-A' and l.subject_id = v_basket;
+    if v_row.outcome is distinct from 'sent' or cardinality(v_row.notification_ids) <> 1 then
+      raise exception 'the first step of a once-a-day rule was %, not sent (% messages)', v_row.outcome, cardinality(v_row.notification_ids);
+    end if;
+    v_ids := v_row.notification_ids;
+    if not exists (select 1 from public.notification_log nl where nl.id = any (v_ids)
+                    and nl.state = 'delivered' and nl.subject = 'Clears in 1 day') then
+      raise exception 'the in-app reminder was not delivered with its days left in words';
+    end if;
+    if (select l.outcome from public.notification_schedule_log l
+         where l.step_id = 'NRS-SELFCHECK-B' and l.subject_id = v_basket) is distinct from 'deferred' then
+      raise exception 'the second step of a once-a-day rule on the same night was not deferred';
+    end if;
+    if (v_res ->> 'deferred')::integer < 1 or (v_res ->> 'delivered')::integer < 1 then
+      raise exception 'the run reported % deferred and % delivered', v_res ->> 'deferred', v_res ->> 'delivered';
+    end if;
+    update public.notification_log nl set sent_at = nl.sent_at - interval '1 day' where nl.id = any (v_ids);
+    v_res := public.run_reminders(current_date);
+    if (select l.outcome from public.notification_schedule_log l
+         where l.step_id = 'NRS-SELFCHECK-B' and l.subject_id = v_basket) is distinct from 'sent' then
+      raise exception 'a deferred reminder was not sent once the throttle allowed it (%)', v_res;
+    end if;
+
+    /* A step removed keeps its history. */
+    delete from public.notification_rule_steps s where s.id = 'NRS-SELFCHECK-A';
+    if not exists (select 1 from public.notification_schedule_log l
+                    where l.step_id is null and l.subject_id = v_basket and l.offset_days = -1
+                      and l.step_label = '1 day before (n' || chr(8722) || '1)' and l.outcome = 'sent') then
+      raise exception 'removing a step took its schedule history with it';
+    end if;
+    delete from public.notification_rule_steps s where s.id = 'NRS-SELFCHECK-B';
+
+    /* The guard: no step after the day where the date moves on or the
+       subject goes, and none on a seller's agreement rule. */
+    begin
+      insert into public.notification_rule_steps (rule_id, offset_days, kinds) values ('NR-B-BSK-CLEARING', 1, array['inapp']);
+      raise exception 'a step a day after a basket is cleared was accepted';
+    exception when raise_exception then
+      if sqlerrm not like '%can only be scheduled up to the day itself%' then raise; end if;
+    end;
+    insert into public.notification_rule_steps (rule_id, offset_days, kinds) values ('NR-B-BSK-CLEARING', 0, array['inapp']);
+    insert into public.notification_rules (id, persona, event_id, name, audience, kinds, throttle,
+                                           severity, enabled, mandatory, why, last_sent, sort_order)
+    values ('NR-SELFCHECK-P-AGR', 'partner', 'agreement.notice', 'Self-check', 'Seller admin', array['inapp'],
+            'Every time', 'normal', false, false, 'Self-check.', null, 999);
+    begin
+      insert into public.notification_rule_steps (rule_id, offset_days, kinds) values ('NR-SELFCHECK-P-AGR', -7, array['inapp']);
+      raise exception 'a step on a seller''s agreement notice rule was accepted';
+    exception when raise_exception then
+      if sqlerrm not like '%no seller is on an agreement%' then raise; end if;
+    end;
+
     /* Off: nothing, as a step and as a rule. */
     delete from public.notification_schedule_log l where l.subject_id = v_basket;
-    update public.notification_rule_steps s set enabled = false where s.id = 'NRS-B-BSK-CLEARING-M1';
+    update public.notification_rule_steps s set enabled = false where s.rule_id = 'NR-B-BSK-CLEARING';
     v_res := public.run_reminders(current_date);
     if (v_res ->> 'sent')::integer <> 0 or (v_res ->> 'steps')::integer <> 0
        or exists (select 1 from public.notification_schedule_log l where l.subject_id = v_basket) then

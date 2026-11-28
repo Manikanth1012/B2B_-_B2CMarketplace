@@ -64,10 +64,10 @@ export function nights(rows: JobLogRow[]): Night[] {
     })
 }
 
-/** The eleven jobs run_nightly runs, by the names the log carries. */
+/** The eleven jobs run_nightly runs, in order, by the names the log carries. */
 export const JOB_NAMES = [
-  'agreements', 'enterprise subscriptions', 'subscriptions', 'documents', 'payments',
-  'bundle selections', 'baskets', 'invoices', 'risk', 'settlements', 'reminders',
+  'reminders', 'agreements', 'enterprise subscriptions', 'subscriptions', 'documents', 'payments',
+  'bundle selections', 'baskets', 'invoices', 'risk', 'settlements',
 ] as const
 
 export interface JobFilters {
@@ -214,10 +214,15 @@ export function summarise(job: string, result: unknown): string {
       return `${plural(n, 'account')} scored, ${count(o, 'review') ?? 0} to review, ${count(o, 'high') ?? 0} high`
     }
     case 'reminders':
-      /* run_reminders (20261127400000): {sent, already_sent, skipped, …}. */
+      /* run_reminders (20261127400000): {sent, already_sent, skipped, deferred,
+         delivered, suppressed, …}. Suppressed: logged, but no gateway carries
+         the channel yet. */
       return join([
         c('sent', n => `${plural(n, 'reminder')} sent`),
+        c('delivered', n => `${n} delivered in-app`),
+        c('suppressed', n => `${n} not sent (no gateway)`),
         c('already_sent', n => `${n} already sent`),
+        c('deferred', n => `${n} held for tomorrow`),
         c('skipped', n => `${n} skipped`),
       ], 'No reminders due')
     default:
