@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { chooseOption } from '../ui/Dropdown.testing'
 
 vi.mock('../../lib/supabase', () => ({ supabase: {} }))
 vi.mock('../../lib/MarketContext', () => ({
@@ -14,7 +15,8 @@ vi.mock('../../lib/basketRepo', () => ({
 const rem = vi.hoisted(() => ({ settings: vi.fn(), log: vi.fn(), save: vi.fn(), remove: vi.fn() }))
 vi.mock('../../lib/remindersRepo', () => ({
   loadBasketSettings: () => rem.settings(),
-  loadScheduleLog: () => rem.log(),
+  loadScheduleLog: (f: unknown) => rem.log(f),
+  loadMarketCodes: async () => ({ ok: true, value: ['IN', 'KE', 'AE'] }),
   saveBasketSettings: (m: string, w: unknown) => rem.save(m, w),
   removeBasketSettings: (m: string) => rem.remove(m),
 }))
@@ -27,12 +29,12 @@ const line = { id: 'L-1', product_id: 'SKU-1', name: 'Gateway', quantity: 2, uni
 const DATA = {
   business: [
     { id: 'B-1', user_id: 'U-1', owner: 'Vikram Rao', email: 'v@acme.test', account: 'Acme', currency: 'INR',
-      updated_at: ago(1), reminded_at: null, lines: [line] },
+      updated_at: ago(1), reminded_at: null, market: 'AE', lines: [line] },
     { id: 'B-2', user_id: 'U-2', owner: 'Meera Iyer', email: 'm@acme.test', account: 'Acme', currency: 'INR',
-      updated_at: ago(9), reminded_at: null, lines: [{ ...line, id: 'L-2' }] },
+      updated_at: ago(9), reminded_at: null, market: 'IN', lines: [{ ...line, id: 'L-2' }] },
   ],
   cartLines: [{ ...line, id: 'C-1', name: 'Router', user_id: 'S-1', saved: false, updated_at: ago(2), created_at: ago(2) }],
-  shoppers: new Map([['S-1', { name: 'Priya Raman', email: 'p@example.com', currency: 'INR' }]]),
+  shoppers: new Map([['S-1', { name: 'Priya Raman', email: 'p@example.com', currency: 'INR', market: 'AE' }]]),
   cartReminders: new Map(),
 }
 const row = (market: string, p = 7, a = 7, c = 90) => ({
@@ -71,7 +73,8 @@ describe('Baskets: rules from settings', () => {
     fireEvent.change(num('Default pending days'), { target: { value: '2' } })
     fireEvent.change(num('Default abandoned after days'), { target: { value: '2' } })
     fireEvent.change(num('Default clear after days'), { target: { value: '8' } })
-    expect(screen.getByTestId('basket-rules-effect').textContent).toBe('1 basket becomes abandoned, 1 would be cleared tonight')
+    expect(screen.queryByTestId('basket-rules-effect-IN')).toBeNull()
+    expect(screen.getByTestId('basket-rules-effect-default').textContent).toBe('1 basket becomes abandoned')
 
     await user.click(screen.getByRole('button', { name: 'Save rules' }))
     expect(rem.save).toHaveBeenCalledWith('default', { pending_days: 2, abandoned_after_days: 2, clear_after_days: 8 })
@@ -79,7 +82,7 @@ describe('Baskets: rules from settings', () => {
   })
 
   it('shows a scheduled reminder as the last reminder', async () => {
-    rem.log.mockResolvedValue({ ok: true, value: [{ subject_id: 'B-1', outcome: 'sent', created_at: ago(0.2) }] })
+    rem.log.mockResolvedValue({ ok: true, value: [{ subject_id: 'B-1', outcome: 'sent', sent_on: ago(0.2).slice(0, 10) }] })
     render(<OperatorBaskets />)
     const vikram = (await screen.findByText('Vikram Rao')).closest('tr')!
     await vi.waitFor(() => expect(within(vikram).queryByText('Never')).toBeNull())
@@ -94,5 +97,57 @@ describe('Baskets: rules from settings', () => {
     expect(screen.getByText('Vikram Rao')).toBeTruthy()
     expect(screen.getByText(/Pending: changed in the last 7 days/)).toBeTruthy()
     expect(screen.queryByRole('button', { name: 'Basket rules' })).toBeNull()
+  })
+
+  it('previews a market row on the baskets of that market, and judges each basket by its market', async () => {
+    const user = userEvent.setup()
+    render(<OperatorBaskets />)
+    /* Meera (IN, 9 days) is Abandoned on IN's 7 days; Vikram (AE, 1 day) is Pending. */
+    await user.click(await screen.findByRole('button', { name: 'Basket rules' }))
+    fireEvent.change(num('IN pending days'), { target: { value: '2' } })
+    fireEvent.change(num('IN abandoned after days'), { target: { value: '2' } })
+    fireEvent.change(num('IN clear after days'), { target: { value: '8' } })
+    expect(screen.getByTestId('basket-rules-effect-IN').textContent).toBe('1 would be cleared tonight')
+    expect(screen.queryByTestId('basket-rules-effect-default')).toBeNull()
+  })
+
+  it('adds rules for a market that has none, and lists every invalid row', async () => {
+    rem.save.mockImplementation(async (m: string) => ({ ok: true, value: row(m) }))
+    const user = userEvent.setup()
+    render(<OperatorBaskets />)
+    await user.click(await screen.findByRole('button', { name: 'Basket rules' }))
+    chooseOption(screen.getByRole('combobox', { name: 'Market to add rules for' }), 'KE')
+    await user.click(screen.getByRole('button', { name: 'Add rules for a market' }))
+    /* Only the markets without a row are offered: IN has one, KE and AE do not. */
+    fireEvent.change(num('KE pending days'), { target: { value: '300' } })
+    fireEvent.change(num('Default pending days'), { target: { value: '0' } })
+    const alert = screen.getByRole('alert')
+    expect(within(alert).getAllByRole('listitem')).toHaveLength(2)
+    fireEvent.change(num('Default pending days'), { target: { value: '7' } })
+    fireEvent.change(num('KE pending days'), { target: { value: '7' } })
+    await user.click(screen.getByRole('button', { name: 'Save rules' }))
+    expect(rem.save).toHaveBeenCalledWith('KE', { pending_days: 7, abandoned_after_days: 7, clear_after_days: 90 })
+  })
+
+  it('reloads after a partial save and says which row failed', async () => {
+    rem.save.mockImplementation(async (m: string, w: { pending_days: number }) =>
+      m === 'IN' ? { ok: false, missing: false, error: 'permission denied' } : { ok: true, value: row(m, w.pending_days) })
+    const user = userEvent.setup()
+    render(<OperatorBaskets />)
+    await user.click(await screen.findByRole('button', { name: 'Basket rules' }))
+    fireEvent.change(num('Default pending days'), { target: { value: '5' } })
+    fireEvent.change(num('IN pending days'), { target: { value: '5' } })
+    rem.settings.mockClear()
+    await user.click(screen.getByRole('button', { name: 'Save rules' }))
+    const alert = await screen.findByText(/IN: permission denied/)
+    expect(alert).toBeTruthy()
+    expect(screen.getByText(/Saved: Default/)).toBeTruthy()
+    expect(rem.settings).toHaveBeenCalled()
+  })
+
+  it('asks the schedule log only for sent basket reminders', async () => {
+    render(<OperatorBaskets />)
+    await screen.findByText('Vikram Rao')
+    expect(rem.log).toHaveBeenCalledWith({ events: ['basket.abandoned', 'basket.clearing'], outcome: 'sent' })
   })
 })

@@ -208,7 +208,7 @@ function RulesTab({ book, persona, onPersona, onEdit, onReload, silent, schedule
   const toggle = async (r: Rule) => {
     /* A dated rule with a step that says nothing on a channel it sends on cannot be turned on. */
     if (!r.enabled) {
-      const block = scheduleBlock(r, schedule.steps)
+      const block = scheduleBlock(r, schedule.steps, datedRules.includes(r) ? schedule.error : null)
       if (block) { toast(block, 'error'); return }
     }
     const res = await setRuleEnabled(r, !r.enabled)
@@ -340,7 +340,8 @@ function RuleModal({ book, rule, isNew, schedule, onClose, onSaved }: {
     : book.events.filter(e => e.personas.includes(form.persona))
   const baseCheck = validateRule(form, book.events, book.gateways)
   /* Turning a dated rule on is refused while one of its steps says nothing on a channel. */
-  const stepBlock = form.enabled && !rule.enabled ? scheduleBlock(form, schedule.steps) : null
+  const stepBlock = form.enabled && !rule.enabled
+    ? scheduleBlock(form, schedule.steps, book.events.find(e => e.id === form.event_id)?.anchor ? schedule.error : null) : null
   const check = baseCheck.ok && stepBlock ? { ok: false as const, reason: stepBlock } : baseCheck
   const impact = isNew ? [] : ruleChangeImpact(rule, form, book.preferences)
   const ev = book.events.find(e => e.id === form.event_id)

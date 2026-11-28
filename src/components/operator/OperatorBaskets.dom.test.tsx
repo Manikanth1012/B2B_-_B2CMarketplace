@@ -16,6 +16,7 @@ vi.mock('../../lib/basketRepo', () => ({
 vi.mock('../../lib/remindersRepo', () => ({
   loadBasketSettings: async () => ({ ok: false, missing: true, error: 'relation "public.basket_settings" does not exist' }),
   loadScheduleLog: async () => ({ ok: false, missing: true, error: 'does not exist' }),
+  loadMarketCodes: async () => ({ ok: false, missing: true, error: 'does not exist' }),
   saveBasketSettings: vi.fn(),
   removeBasketSettings: vi.fn(),
 }))

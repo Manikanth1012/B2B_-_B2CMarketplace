@@ -36,15 +36,17 @@ export const NO_SCHEDULE: ScheduleState = { steps: [], missing: false, error: nu
 
 export const MIGRATION_NOTICE = 'Scheduled reminders arrive with migration 20261127400000.'
 
-/** Why a rule cannot be turned on yet: a step with nothing written for a channel it sends on. Null when it can. */
-export function scheduleBlock(rule: Pick<Rule, 'id' | 'name'>, steps: readonly RuleStep[]): string | null {
+/** Why a dated rule cannot be turned on yet: a step that is on with nothing written for a channel it sends on
+    (a step that is off never sends, so it does not block), or the steps could not be read. Null when it can. */
+export function scheduleBlock(rule: Pick<Rule, 'id' | 'name'>, steps: readonly RuleStep[], loadError?: string | null): string | null {
+  if (loadError) return `${rule.name} cannot be turned on: its schedule could not be read (${loadError}). Reload and try again.`
   const bad = steps
-    .filter(s => s.rule_id === rule.id)
+    .filter(s => s.rule_id === rule.id && s.enabled)
     .map(s => ({ s, m: missingStepTemplates(s, s.templates) }))
     .filter(x => x.m.length > 0)
   if (bad.length === 0) return null
   const where = bad.map(x => `${stepLabel(x.s.offset_days)} on ${x.m.join(', ')}`).join('; ')
-  return `${rule.name} has a schedule step with nothing written (${where}). Write it, or remove the step, before turning the rule on.`
+  return `${rule.name} has a schedule step that is on with nothing written (${where}). Write it, or turn the step off, before turning the rule on.`
 }
 
 export function ScheduleSection({ rule, event, kinds, steps, onChanged }: {
@@ -87,7 +89,14 @@ export function ScheduleSection({ rule, event, kinds, steps, onChanged }: {
     if (!made.ok) { setSaid(made.error); toast(made.error, 'error'); return }
     for (const t of s.templates) {
       const r = await saveStepTemplate({ step_id: made.value.id, kind_id: t.kind_id, subject: t.subject, body: t.body, edited_by: ACTOR })
-      if (!r.ok) { setSaid(r.error); toast(r.error, 'error'); return }
+      if (!r.ok) {
+        /* The copy exists, so show it: the operator finishes it with Edit rather than copying again. */
+        const text = `The copy was made but its wording on ${t.kind_id} was not saved: ${r.error}. Edit the copy to write it.`
+        setSaid(text)
+        toast(text, 'error')
+        await onChanged()
+        return
+      }
     }
     await report(true, `Copied ${stepLabel(s.offset_days)}. The copy is off until you turn it on.`)
   }
@@ -174,11 +183,14 @@ function StepModal({ rule, event, kinds, step, onClose, onSaved }: {
     Object.fromEntries((step?.templates ?? []).map(t => [t.kind_id, { subject: t.subject, body: t.body }])))
   const [busy, setBusy] = useState(false)
   const [problem, setProblem] = useState<string | null>(null)
+  /* Once the step exists (the first save made it) a retry updates it rather than adding another. */
+  const [made, setMade] = useState<RuleStep | null>(step)
 
   const last = latestOffset(event.id)
   const offset = offsetText.trim() === '' ? NaN : Number(offsetText)
   const check = validateStep({ offset_days: offset, kinds: chosen }, rule.kinds, event.id, rule.persona)
-  const saved = useMemo(() => new Map((step?.templates ?? []).map(t => [t.kind_id as string, t])), [step])
+  const saved = useMemo(() => new Map((made?.templates ?? []).map(t => [t.kind_id as string, t])), [made])
+  const isOn = !!made?.enabled
 
   const say = (k: KindId) => words[k] ?? { subject: '', body: '' }
   const setWord = (k: KindId, patch: Partial<{ subject: string; body: string }>) => {
@@ -193,30 +205,39 @@ function StepModal({ rule, event, kinds, step, onClose, onSaved }: {
     .filter(x => x.w.subject.trim() !== '' || x.w.body.trim() !== '')
     .map(x => ({ k: x.k, c: validateTemplate({ ...x.w, kind_id: x.k }, kinds) }))
     .find(x => !x.c.ok)
-  const blocked = !check.ok ? check.reason : wordProblem && !wordProblem.c.ok ? `${wordProblem.k}: ${wordProblem.c.reason}` : null
+  const unwritten = chosen.filter(k => say(k).subject.trim() === '' || say(k).body.trim() === '')
+  const needWords = isOn && unwritten.length > 0
+    ? `Write the wording for ${unwritten.join(', ')}, or turn the step off first.` : null
+  const blocked = !check.ok ? check.reason : needWords ? needWords : wordProblem && !wordProblem.c.ok ? `${wordProblem.k}: ${wordProblem.c.reason}` : null
 
   const submit = async () => {
     setBusy(true)
     setProblem(null)
     const base = { offset_days: offset, kinds: chosen }
-    const made = step ? await updateStep(step.id, base) : await addStep(rule.id, { ...base, enabled: false })
-    if (!made.ok) { setBusy(false); setProblem(made.error); return }
-    const id = made.value.id
+    const res = made ? await updateStep(made.id, base) : await addStep(rule.id, { ...base, enabled: false })
+    if (!res.ok) { setBusy(false); setProblem(res.error); return }
+    setMade(res.value)
+    const id = res.value.id
     for (const k of chosen) {
       const w = say(k)
       if (w.subject.trim() === '' && w.body.trim() === '') continue
       const r = await saveStepTemplate({ step_id: id, kind_id: k, subject: w.subject, body: w.body, edited_by: ACTOR })
-      if (!r.ok) { setBusy(false); setProblem(`${k}: ${r.error}`); return }
+      if (!r.ok) { setBusy(false); setProblem(`${k}: ${r.error}. The step itself is saved; try again.`); return }
+      setMade(m => (m ? { ...m, templates: [...m.templates.filter(t => t.kind_id !== k), r.value] } : m))
     }
     for (const [k, t] of saved) {
-      if (!chosen.includes(k as KindId)) await removeStepTemplate(t.id)
+      if (!chosen.includes(k as KindId)) {
+        const r = await removeStepTemplate(t.id)
+        if (!r.ok) { setBusy(false); setProblem(`${k}: ${r.error}. The step itself is saved; try again.`); return }
+        setMade(m => (m ? { ...m, templates: m.templates.filter(x => x.id !== t.id) } : m))
+      }
     }
     setBusy(false)
     await onSaved(step ? `${stepLabel(offset)} saved` : `${stepLabel(offset)} added. It is off until you turn it on.`)
   }
 
   return (
-    <Modal open onClose={onClose} title={step ? `Edit step: ${stepLabel(step.offset_days)}` : `New step on ${rule.name}`}
+    <Modal open onClose={onClose} title={made ? `Edit step: ${stepLabel(made.offset_days)}` : `New step on ${rule.name}`}
       footer={<>
         <Btn variant="secondary" size="sm" onClick={onClose}>Cancel</Btn>
         <Btn size="sm" onClick={() => { void submit() }} disabled={busy || !!blocked}>{busy ? 'Saving…' : 'Save step'}</Btn>
@@ -234,6 +255,11 @@ function StepModal({ rule, event, kinds, step, onClose, onSaved }: {
           {orderKinds(rule.kinds).map(k => (
             <Btn key={k} variant={chosen.includes(k) ? 'primary' : 'secondary'} size="sm" aria-pressed={chosen.includes(k)}
               onClick={() => flip(k)}>{kinds.find(x => x.id === k)?.label ?? k}</Btn>
+          ))}
+          {chosen.filter(k => !rule.kinds.includes(k)).map(k => (
+            <Btn key={k} variant="danger" size="sm" aria-pressed onClick={() => flip(k)}>
+              {kinds.find(x => x.id === k)?.label ?? k}: no longer on the rule, remove
+            </Btn>
           ))}
         </div>
       </FormField>

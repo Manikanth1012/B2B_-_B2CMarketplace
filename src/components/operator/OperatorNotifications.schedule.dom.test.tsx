@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 vi.mock('../../lib/supabase', () => ({ supabase: {} }))
@@ -34,7 +34,7 @@ describe('Notifications rules: schedule', () => {
   it('shows a Schedule only on the dated rule, and refuses to resume it while a step says nothing', async () => {
     h.cfg.mockResolvedValue(book)
     h.steps.mockResolvedValue({ ok: true, value: [
-      { id: 'S1', rule_id: 'NR-C', offset_days: -1, kinds: ['inapp', 'email'], enabled: false, sort_order: 0,
+      { id: 'S1', rule_id: 'NR-C', offset_days: -1, kinds: ['inapp', 'email'], enabled: true, sort_order: 0,
         templates: [{ id: 'T1', step_id: 'S1', kind_id: 'inapp', subject: 's', body: 'b', edited_by: null, edited_on: null }] }] })
     const user = userEvent.setup()
     render(<OperatorNotifications />)
@@ -52,5 +52,16 @@ describe('Notifications rules: schedule', () => {
     expect(await screen.findByText(/Scheduled reminders arrive with migration 20261127400000/)).toBeTruthy()
     expect(screen.getByText('Basket clearing soon')).toBeTruthy()
     expect(screen.queryByText(/^Schedule:/)).toBeNull()
+  })
+
+  it('will not resume a dated rule while its schedule could not be read', async () => {
+    h.cfg.mockResolvedValue(book)
+    h.steps.mockResolvedValue({ ok: false, missing: false, error: 'timeout' })
+    const user = userEvent.setup()
+    render(<OperatorNotifications />)
+    await screen.findByText('Basket clearing soon')
+    const row = screen.getByText('Basket clearing soon').closest('tr')!
+    await user.click(within(row).getByRole('button', { name: 'Resume' }))
+    expect(h.enable).not.toHaveBeenCalled()
   })
 })

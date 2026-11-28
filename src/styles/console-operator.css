@@ -163,9 +163,9 @@
 .op-rules__num { width: 88px; text-align: right; }
 .op-rules__chips { display: flex; gap: 4px; flex-wrap: wrap; }
 .op-rules__chipset { display: flex; gap: 8px; flex-wrap: wrap; }
+.op-rules__list { margin: 4px 0 0 16px; padding: 0; }
 .op-rules__code { color: var(--text-tertiary); font-size: var(--text-xs); margin-left: 6px; }
 .op-rules__flag { color: var(--danger); font-size: var(--text-xs); font-weight: 600; }
-.op-rules__head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 12px 18px 0; }
 .op-rules__ph { display: flex; gap: 6px; flex-wrap: wrap; }
 .op-rules__preview { padding: 12px 14px; border-radius: var(--radius-md); background: var(--bg-alt); border: 1px solid var(--border); }
 .op-rules__preview-subject { font-size: var(--text-sm); font-weight: 700; color: var(--text); }
