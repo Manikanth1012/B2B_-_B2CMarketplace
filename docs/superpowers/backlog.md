@@ -181,7 +181,7 @@ scope, to confirm with the user when it starts:
 - notification log history;
 - enough volume to make the dashboards, reports and charts meaningful.
 
-## Spec 19 — scheduled reminders (n−x / n+x) and configurable basket windows (2026-11-27; part 1 merged 2026-11-28, migration 20261127400000 to apply; part 2 UI next)
+## Spec 19 — scheduled reminders (n−x / n+x) and configurable basket windows (2026-11-27; part 1 merged 2026-11-28, migration 20261127400000 applied 2026-11-28 and verified; part 2 UI in progress)
 
 Spec `docs/superpowers/specs/2026-11-27-scheduled-reminders-and-basket-windows-design.md`. User chose "general,
 baskets first". Basket windows (pending / abandoned / cleared days) become per-market settings. Notification rules on
