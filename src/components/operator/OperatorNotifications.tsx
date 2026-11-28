@@ -9,6 +9,9 @@ import {
   Table, Td, EmptyState, toast, fmtInt, StatusPill, FilterBar, DateRangeFilter,
 } from './shared'
 import { Callout } from '../OnboardingJourney'
+import { MIGRATION_NOTICE, NO_SCHEDULE, ScheduleSection, scheduleBlock } from './RuleSchedule'
+import type { ScheduleState } from './RuleSchedule'
+import { loadSteps } from '../../lib/remindersRepo'
 import {
   loadConfiguration, saveRule, setRuleEnabled, deleteRule, saveTemplate,
   saveIntegration, setGatewaySecret, testGateway, saveRate,
@@ -58,7 +61,19 @@ export function OperatorNotifications() {
   const [editing, setEditing] = useState<{ rule: Rule; isNew: boolean } | null>(null)
   const [wording, setWording] = useState<Template | null>(null)
 
-  const reload = useCallback(async () => setBook(await loadConfiguration()), [])
+  /* Spec 19: the steps of rules on dated events. Before the migration the table is
+     not there; the rest of the screen carries on and the Schedule says so. */
+  const [schedule, setSchedule] = useState<ScheduleState>(NO_SCHEDULE)
+
+  const reloadSchedule = useCallback(async () => {
+    const r = await loadSteps()
+    setSchedule(r.ok ? { steps: r.value, missing: false, error: null }
+      : { steps: [], missing: r.missing, error: r.missing ? null : r.error })
+  }, [])
+  const reload = useCallback(async () => {
+    setBook(await loadConfiguration())
+    await reloadSchedule()
+  }, [reloadSchedule])
   useEffect(() => { void reload() }, [reload])
 
   if (!book) return <div style={{ textAlign: 'center', padding: '40px' }}><div className="spinner" style={{ margin: '0 auto' }} /></div>
@@ -149,7 +164,8 @@ export function OperatorNotifications() {
       {tab === 'rules' && (
         <RulesTab book={book} persona={persona} onPersona={setPersona}
                   onEdit={r => setEditing({ rule: { ...r }, isNew: false })}
-                  onReload={reload} silent={silent} />
+                  onReload={reload} silent={silent}
+                  schedule={schedule} onSchedule={reloadSchedule} />
       )}
       {tab === 'wording' && <WordingTab book={book} onEdit={setWording} />}
       {tab === 'channels' && <ChannelsTab book={book} onReload={reload} />}
@@ -157,7 +173,7 @@ export function OperatorNotifications() {
       {tab === 'history' && <HistoryTab book={book} />}
 
       {editing && (
-        <RuleModal book={book} rule={editing.rule} isNew={editing.isNew}
+        <RuleModal book={book} rule={editing.rule} isNew={editing.isNew} schedule={schedule}
                    onClose={() => setEditing(null)}
                    onSaved={async () => { setEditing(null); await reload() }} />
       )}
@@ -172,7 +188,9 @@ export function OperatorNotifications() {
 
 /* ----------------------------------------------------------------- rules --- */
 
-function RulesTab({ book, persona, onPersona, onEdit, onReload, silent }: {
+function RulesTab({ book, persona, onPersona, onEdit, onReload, silent, schedule, onSchedule }: {
+  schedule: ScheduleState
+  onSchedule: () => Promise<void>
   book: NotificationBook
   persona: Persona
   onPersona: (p: Persona) => void
@@ -185,7 +203,14 @@ function RulesTab({ book, persona, onPersona, onEdit, onReload, silent }: {
   const rulesPage = usePaging(rules, { resetKey: persona })
   const events = new Map(book.events.map(e => [e.id, e]))
 
+  const datedRules = rules.filter(r => !!events.get(r.event_id)?.anchor)
+
   const toggle = async (r: Rule) => {
+    /* A dated rule with a step that says nothing on a channel it sends on cannot be turned on. */
+    if (!r.enabled) {
+      const block = scheduleBlock(r, schedule.steps)
+      if (block) { toast(block, 'error'); return }
+    }
     const res = await setRuleEnabled(r, !r.enabled)
     toast(res.ok ? res.note ?? 'Saved' : res.reason, res.ok ? 'success' : 'error')
     if (res.ok) await onReload()
@@ -267,6 +292,17 @@ function RulesTab({ book, persona, onPersona, onEdit, onReload, silent }: {
         )}
       </SectionCard>
 
+      {datedRules.length > 0 && schedule.missing && (
+        <Callout tone="info" title="Reminder schedules">{MIGRATION_NOTICE} Until the migration is applied, rules on dated events send only when their event happens.</Callout>
+      )}
+      {datedRules.length > 0 && schedule.error && (
+        <Callout tone="danger" title="The schedules could not be read">{schedule.error}</Callout>
+      )}
+      {!schedule.missing && !schedule.error && datedRules.map(r => (
+        <ScheduleSection key={r.id} rule={r} event={events.get(r.event_id)!} kinds={book.kinds}
+          steps={schedule.steps.filter(s => s.rule_id === r.id)} onChanged={onSchedule} />
+      ))}
+
       {silent.length > 0 && (
         <SectionCard title="On, but has never sent anything"
                      subtitle="Either the event does not happen or the rule is aimed at the wrong thing. Both are worth knowing.">
@@ -293,8 +329,8 @@ function KindChip({ kind, bad, muted }: { kind: KindId; bad?: boolean; muted?: b
   )
 }
 
-function RuleModal({ book, rule, isNew, onClose, onSaved }: {
-  book: NotificationBook; rule: Rule; isNew: boolean; onClose: () => void; onSaved: () => Promise<void>
+function RuleModal({ book, rule, isNew, schedule, onClose, onSaved }: {
+  schedule: ScheduleState; book: NotificationBook; rule: Rule; isNew: boolean; onClose: () => void; onSaved: () => Promise<void>
 }) {
   const [form, setForm] = useState<Rule>(rule)
   const [busy, setBusy] = useState(false)
@@ -302,7 +338,10 @@ function RuleModal({ book, rule, isNew, onClose, onSaved }: {
   const choices = isNew
     ? availableEvents(book.events, book.rules, form.persona)
     : book.events.filter(e => e.personas.includes(form.persona))
-  const check = validateRule(form, book.events, book.gateways)
+  const baseCheck = validateRule(form, book.events, book.gateways)
+  /* Turning a dated rule on is refused while one of its steps says nothing on a channel. */
+  const stepBlock = form.enabled && !rule.enabled ? scheduleBlock(form, schedule.steps) : null
+  const check = baseCheck.ok && stepBlock ? { ok: false as const, reason: stepBlock } : baseCheck
   const impact = isNew ? [] : ruleChangeImpact(rule, form, book.preferences)
   const ev = book.events.find(e => e.id === form.event_id)
 

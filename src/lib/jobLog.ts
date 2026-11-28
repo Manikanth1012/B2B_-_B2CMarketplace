@@ -215,7 +215,7 @@ export function summarise(job: string, result: unknown): string {
     }
     case 'reminders':
       /* run_reminders (20261127400000): {sent, already_sent, skipped, deferred,
-         delivered, suppressed, …}. Suppressed: logged, but no gateway carries
+         expired, delivered, suppressed, …}. Suppressed: logged, but no gateway carries
          the channel yet. */
       return join([
         c('sent', n => `${plural(n, 'reminder')} sent`),
@@ -223,6 +223,7 @@ export function summarise(job: string, result: unknown): string {
         c('suppressed', n => `${n} not sent (no gateway)`),
         c('already_sent', n => `${n} already sent`),
         c('deferred', n => `${n} held for tomorrow`),
+        c('expired', n => `${n} held too long, dropped`),
         c('skipped', n => `${n} skipped`),
       ], 'No reminders due')
     default:
