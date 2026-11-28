@@ -3,8 +3,11 @@ import { Plus, Trash2, Pencil, ArrowLeft, ArrowUp, ArrowDown, Lock } from 'lucid
 import { supabase } from '../../lib/supabase'
 import {
   SectionCard, Table, Td, StatusPill, EmptyState, fmtDate, Btn, Modal,
-  FormField, TextInput, TextArea, Select, toast, ConfirmDialog, StatCard, FilterBar,
+  FormField, TextInput, TextArea, Select, toast, ConfirmDialog, FilterBar, PageHeader, RowActions,
 } from './shared'
+import { Tabs } from '../ui/Tabs'
+import { KpiCard, KpiRow, groupsToKpi } from '../ui/KpiCard'
+import { StatusBadge } from '../ui/StatusBadge'
 import { Callout } from '../OnboardingJourney'
 import { Pager, usePaging } from '../Pager'
 import {
@@ -17,7 +20,7 @@ import {
 } from '../../lib/dunning'
 import type { Ladder, Step, Case, Audience } from '../../lib/dunning'
 import { useMarket } from '../../lib/MarketContext'
-import { byCurrency, formatGroups, money } from '../../lib/money'
+import { byCurrency, formatGroups, money, rankingIn } from '../../lib/money'
 
 /* Collections showed which ladder a case was running on and gave nobody a way
    to see what that ladder was. The steps were an array inside a click handler
@@ -75,32 +78,18 @@ export function OperatorDunning() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap' }}>
-        <div>
-          <h1 style={{ fontSize: 'var(--text-2xl)', fontWeight: 800, color: 'var(--text)' }}>Collections</h1>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--text-tertiary)', marginTop: '4px' }}>
-            {active.length} active {active.length === 1 ? 'case' : 'cases'} · {formatGroups(outstanding, fmtIn, 'nothing')} outstanding
-            {soonest !== undefined && (soonest >= 0
-              ? ` · soonest interruption in ${soonest} ${soonest === 1 ? 'day' : 'days'}`
-              : ` · one account is ${Math.abs(soonest)} days past its interruption date`)}
-          </p>
-        </div>
-        {tab === 'ladders' && <Btn onClick={() => setEditing('new')}><Plus size={14} style={{ marginRight: 6 }} />New ladder</Btn>}
-      </div>
+      <PageHeader title="Collections"
+        description={`${active.length} active ${active.length === 1 ? 'case' : 'cases'} · ${formatGroups(outstanding, fmtIn, 'nothing')} outstanding${soonest !== undefined && (soonest >= 0
+          ? ` · soonest interruption in ${soonest} ${soonest === 1 ? 'day' : 'days'}`
+          : ` · one account is ${Math.abs(soonest)} days past its interruption date`)}`}
+        actions={tab === 'ladders' ? <Btn onClick={() => setEditing('new')}><Plus size={14} style={{ marginRight: 6 }} />New ladder</Btn> : undefined} />
 
-      <div style={{ display: 'flex', gap: '4px', borderBottom: '1px solid var(--border)' }}>
-        {([['cases', `Cases (${book.cases.length})`], ['ladders', `Ladders (${book.ladders.length})`]] as const).map(([id, label]) => (
-          <button key={id} onClick={() => setTab(id)} style={{
-            padding: '8px 14px', border: 'none', background: 'none', cursor: 'pointer',
-            fontSize: 'var(--text-sm)', fontWeight: tab === id ? 700 : 500,
-            color: tab === id ? 'var(--brand-navy)' : 'var(--text-tertiary)',
-            borderBottom: `2px solid ${tab === id ? 'var(--brand-navy)' : 'transparent'}`,
-            marginBottom: '-1px',
-          }}>{label}</button>
-        ))}
-      </div>
+      <Tabs ariaLabel="Collections views" panelIdPrefix="collections-panel-" value={tab} onChange={id => setTab(id as 'cases' | 'ladders')}
+        tabs={[{ id: 'cases', label: 'Cases', count: book.cases.length }, { id: 'ladders', label: 'Ladders', count: book.ladders.length }]} />
 
+      <div role="tabpanel" id={`collections-panel-${tab}`} aria-labelledby={`collections-panel-${tab}-tab`} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
       {tab === 'cases' ? <Cases book={book} onChanged={reload} /> : <Ladders book={book} onEdit={setEditing} onChanged={reload} />}
+      </div>
     </div>
   )
 }
@@ -115,6 +104,8 @@ function Cases({ book, onChanged }: { book: DunningBook; onChanged: () => Promis
      chased in shillings — but the default should be right more often than not. */
   const reporting = moneyBook.currencies.find(c => c.is_reporting)?.code ?? 'USD'
   const homeMarket = moneyBook.markets.find(m => m.is_default)?.currency ?? reporting
+  /* Ranking only, from rates already loaded: which currency leads a card. */
+  const rank = rankingIn(reporting, moneyBook.rates, new Date().toISOString().slice(0, 10))
   const [q, setQ] = useState('')
   const [aud, setAud] = useState('all')
   const [statSel, setStat] = useState('all')
@@ -207,19 +198,17 @@ function Cases({ book, onChanged }: { book: DunningBook; onChanged: () => Promis
 
   return (
     <>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+      <KpiRow label="Collections summary">
         {AUDIENCES.map(a => {
           const mine = book.cases.filter(c => c.account_type === a && c.status === 'active')
+          const n = new Set(mine.map(c => c.ladder_id)).size
+          const owed = groupsToKpi(byCurrency(mine.map(c => money(Number(c.amount), c.currency))), fmtIn, '—', rank)
           return (
-            <StatCard key={a} label={AUDIENCE_LABEL[a]}
-              value={formatGroups(byCurrency(mine.map(c => money(Number(c.amount), c.currency))), fmtIn, '—')}
-              sublabel={(() => {
-                const n = new Set(mine.map(c => c.ladder_id)).size
-                return `${mine.length} active · ${n} ${n === 1 ? 'ladder' : 'ladders'} in use`
-              })()} />
+            <KpiCard key={a} variant="money" label={AUDIENCE_LABEL[a]} unit={owed.unit} value={owed.value} breakdown={owed.breakdown}
+              context={`${mine.length} active · ${n} ${n === 1 ? 'ladder' : 'ladders'} in use`} />
           )
         })}
-      </div>
+      </KpiRow>
 
       <SectionCard title="Dunning cases"
         subtitle="Which ladder a case runs on is resolved from the account, not chosen by a collector"
@@ -239,7 +228,7 @@ function Cases({ book, onChanged }: { book: DunningBook; onChanged: () => Promis
           </FilterBar>
         )}
         {book.cases.length === 0 ? <EmptyState message="No dunning cases" /> : shown.length === 0 ? <EmptyState message="No cases match these filters" /> : (
-          <Table headers={['Account', 'Audience', 'Amount', 'Age', 'On this ladder', 'Step', 'What happens next', 'Status', '']}>
+          <Table headers={['Account', 'Audience', 'Amount', 'Age', 'On this ladder', 'Step', 'What happens next', 'Status', 'Actions']}>
             {page.rows.map(c => {
               const l = ladderOf(c)
               const mine = stepsOn(c.ladder_id ?? '', book.steps)
@@ -248,45 +237,45 @@ function Cases({ book, onChanged }: { book: DunningBook; onChanged: () => Promis
               const drifted = resolved && resolved.id !== c.ladder_id
               return (
                 <tr key={c.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                  <Td>
-                    <div style={{ fontWeight: 600 }}>{c.account_name}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{c.reason}</div>
+                  <Td kind="text" style={{ maxWidth: '26ch' }}>
+                    <div style={{ fontWeight: 600 }}><span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={c.account_name}>{c.account_name}</span></div>
+                    <div className="c-sub">{c.reason}</div>
                   </Td>
-                  <Td>
+                  <Td kind="text" nowrap>
                     {AUDIENCE_LABEL[c.account_type as Audience] ?? c.account_type}
-                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>
+                    <div className="c-sub">
                       {tierLabel(c.account_type as Audience, c.tier)}
                     </div>
                   </Td>
-                  <Td right style={{ fontWeight: 700, color: 'var(--danger)' }}>{fmtIn(Number(c.amount), c.currency)}</Td>
-                  <Td right style={{ color: c.age_days > 30 ? 'var(--danger)' : c.age_days > 14 ? 'var(--warning)' : 'var(--text)' }}>
+                  <Td kind="num" style={{ fontWeight: 700, color: 'var(--danger)' }}>{fmtIn(Number(c.amount), c.currency)}</Td>
+                  <Td kind="num" style={{ color: c.age_days > 30 ? 'var(--danger)' : c.age_days > 14 ? 'var(--warning)' : 'var(--text)' }}>
                     {c.age_days}d
                   </Td>
-                  <Td>
+                  <Td kind="text">
                     {l?.name ?? '—'}
                     {drifted && (
-                      <div style={{ fontSize: '11px', color: 'var(--warning)' }}>
+                      <div style={{ color: 'var(--warning)' }}>
                         their tier now resolves to {resolved!.name}
                       </div>
                     )}
                   </Td>
-                  <Td right>{c.step}/{mine.length || '?'}<div style={{ fontSize: '11px', color: 'var(--text-tertiary)' }}>{currentStep(c, book.steps)?.name ?? c.step_name}</div></Td>
-                  <Td>
-                    <div style={{ fontSize: 'var(--text-xs)' }}>{caseState(c, book.steps, l)}</div>
-                    <div style={{ fontSize: '11px', color: cut !== null && cut <= 3 ? 'var(--danger)' : 'var(--text-tertiary)' }}>
+                  <Td kind="num">{c.step}/{mine.length || '?'}<div className="c-sub">{currentStep(c, book.steps)?.name ?? c.step_name}</div></Td>
+                  <Td kind="text">
+                    <div>{caseState(c, book.steps, l)}</div>
+                    <div className={cut !== null && cut <= 3 ? undefined : 'c-sub'} style={cut !== null && cut <= 3 ? { color: 'var(--danger)' } : undefined}>
                       {cut === null
                         ? (l?.withhold_settlement ? 'Settlement withheld — never suspended' : 'Never suspended')
                         : cut >= 0 ? `Service stops in ${cut} ${cut === 1 ? 'day' : 'days'}` : `Past the interruption date by ${Math.abs(cut)}`}
                     </div>
                   </Td>
-                  <Td right><StatusPill status={c.status} /></Td>
-                  <Td right>
-                    <div style={{ display: 'flex', gap: '5px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                      {c.status === 'active' && <Btn variant="secondary" size="sm" onClick={() => void advance(c)}>Advance</Btn>}
-                      {c.status === 'active' && <Btn variant="secondary" size="sm" onClick={() => setPromising(c)}>Promise</Btn>}
-                      {drifted && <Btn variant="secondary" size="sm" onClick={() => void act(() => reresolveCase({ c, ladders: book.ladders, actor: ACTOR }))}>Re-resolve</Btn>}
-                      {c.status === 'active' && <Btn variant="success" size="sm" onClick={() => void close(c)}>Close</Btn>}
-                    </div>
+                  <Td kind="status"><StatusPill status={c.status} /></Td>
+                  <Td>
+                    <RowActions label={c.account_name} actions={[
+                      c.status === 'active' && { id: 'advance', label: 'Advance', variant: 'secondary', srOnly: c.account_name, onClick: () => void advance(c) },
+                      c.status === 'active' && { id: 'promise', label: 'Promise', variant: 'secondary', srOnly: c.account_name, onClick: () => setPromising(c) },
+                      drifted && { id: 'reresolve', label: 'Re-resolve', variant: 'secondary', srOnly: c.account_name, onClick: () => void act(() => reresolveCase({ c, ladders: book.ladders, actor: ACTOR })) },
+                      c.status === 'active' && { id: 'close', label: 'Close', variant: 'success', srOnly: c.account_name, onClick: () => void close(c) },
+                    ]} />
                   </Td>
                 </tr>
               )
@@ -388,7 +377,7 @@ function Ladders(
         return (
           <SectionCard key={a} title={AUDIENCE_LABEL[a]}
             subtitle={`${mine.length} ${mine.length === 1 ? 'ladder' : 'ladders'} · the default applies to anyone with no ladder of their own`}>
-            <Table headers={['Ladder', 'Applies to', 'Grace', 'Steps', 'Service stops', 'On it now', '']}>
+            <Table headers={['Ladder', 'Applies to', 'Grace', 'Steps', 'Service stops', 'On it now', 'Actions']}>
               {mine.map(l => {
                 const steps = stepsOn(l.id, book.steps)
                 const on = casesOn(l.id, book.cases)
@@ -396,34 +385,41 @@ function Ladders(
                 const warn = warningsFor(l, book.steps).filter(w => w.level === 'warn')
                 return (
                   <tr key={l.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                    <Td>
+                    <Td kind="text" style={{ maxWidth: '52ch' }}>
                       <div style={{ fontWeight: 600 }}>
-                        {l.name}
-                        {l.system && <span style={pillStyle}>Built in</span>}
-                        {l.tier === null && <span style={{ ...pillStyle, background: 'var(--info-bg)', color: 'var(--info)' }}>Default</span>}
+                        <span className="c-td__clamp" style={{ WebkitLineClamp: 2 }} title={l.name}>{l.name}</span>
                       </div>
-                      <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', maxWidth: '52ch' }}>{l.note}</div>
+                      {(l.system || l.tier === null) && (
+                        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", margin: "2px 0" }}>
+                          {l.system && <StatusBadge tone="neutral" icon={null}>Built in</StatusBadge>}
+                          {l.tier === null && <StatusBadge tone="info" icon={null}>Default</StatusBadge>}
+                        </div>
+                      )}
+                      <div className="c-sub">{l.note}</div>
                       {warn.length > 0 && (
-                        <div style={{ fontSize: '11px', color: 'var(--warning)', marginTop: 3 }}>
+                        <div style={{ color: 'var(--warning)', marginTop: 3 }}>
                           {warn.length} thing{warn.length === 1 ? '' : 's'} worth a second look
                         </div>
                       )}
                     </Td>
-                    <Td>{tierLabel(a, l.tier)}</Td>
-                    <Td right>{l.grace_days}d</Td>
-                    <Td right>{steps.length}</Td>
-                    <Td>
+                    <Td kind="text" nowrap>{tierLabel(a, l.tier)}</Td>
+                    <Td kind="num">{l.grace_days}d</Td>
+                    <Td kind="num">{steps.length}</Td>
+                    <Td kind="text" nowrap>
                       {l.suspend_on_day === null
-                        ? <span style={{ color: 'var(--text-tertiary)' }}>{l.withhold_settlement ? 'Never — settlement withheld' : 'Never'}</span>
+                        ? <span className="c-sub">{l.withhold_settlement ? 'Never — settlement withheld' : 'Never'}</span>
                         : `Day ${l.suspend_on_day}`}
                     </Td>
-                    <Td right>{on.length || <span style={{ color: 'var(--text-tertiary)' }}>—</span>}</Td>
-                    <Td right>
-                      <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                    <Td kind="num">{on.length || <span className="c-sub">—</span>}</Td>
+                    <Td>
+                      {/* Icon-only delete with a hover reason when it is not allowed:
+                          kept as buttons (RowActions has no title), in the shared row layout. */}
+                      <div className="c-row-actions">
                         <Btn size="sm" variant="secondary" onClick={() => onEdit(l)}>
-                          <Pencil size={12} style={{ marginRight: 4 }} />Edit
+                          <Pencil size={12} style={{ marginRight: 4 }} />Edit<span className="sr-only"> {l.name}</span>
                         </Btn>
                         <Btn size="sm" variant="danger" disabled={!del.ok} title={del.ok ? undefined : del.reason}
+                          aria-label={`Delete ${l.name}`}
                           onClick={() => setConfirming(l)}>
                           <Trash2 size={12} />
                         </Btn>
@@ -504,11 +500,9 @@ function LadderEditor(
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-        <Btn variant="secondary" size="sm" onClick={onCancel}><ArrowLeft size={13} style={{ marginRight: 5 }} />Back</Btn>
-        <h2 style={{ fontSize: 'var(--text-xl)', fontWeight: 800 }}>{ladder ? ladder.name : 'New ladder'}</h2>
-        {ladder?.system && <span style={pillStyle}><Lock size={10} style={{ verticalAlign: '-1px', marginRight: 3 }} />Built in</span>}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+      <div><Btn variant="secondary" size="sm" onClick={onCancel}><ArrowLeft size={13} style={{ marginRight: 5 }} />Back</Btn></div>
+      <PageHeader level={2} title={<>{ladder ? ladder.name : 'New ladder'}{ladder?.system && <>{' '}<StatusBadge tone="neutral" icon={<Lock size={10} aria-hidden="true" />}>Built in</StatusBadge></>}</>}
+        actions={<>
           <Btn variant="secondary" size="sm" onClick={onCancel}>Cancel</Btn>
           <Btn size="sm" disabled={saving || !verdict.ok} onClick={async () => {
             setSaving(true)
@@ -518,8 +512,7 @@ function LadderEditor(
             toast(res.note ?? 'Saved')
             await onDone()
           }}>{saving ? 'Saving…' : ladder ? 'Save' : 'Create it'}</Btn>
-        </div>
-      </div>
+        </>} />
 
       {!verdict.ok && <Callout tone="danger" title="This cannot be saved yet">{(verdict as { ok: false; reason: string }).reason}</Callout>}
       {verdict.ok && <Callout tone="success" title="What this ladder promises">{verdict.note}</Callout>}
@@ -574,7 +567,7 @@ function LadderEditor(
           <TextArea rows={2} value={draft.note} onChange={e => set('note', e.target.value)} />
         </FormField>
         {draft.audience === 'partner' && (
-          <label style={{ display: 'flex', gap: '8px', alignItems: 'center', fontSize: 'var(--text-sm)', color: 'var(--text-secondary)' }}>
+          <label className="c-sub" style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <input type="checkbox" checked={draft.withhold_settlement}
               onChange={e => set('withhold_settlement', e.target.checked)} />
             Withhold settlement against the debt
@@ -588,35 +581,33 @@ function LadderEditor(
           {steps.length === 0 ? (
             <EmptyState message="No steps. An account resolved onto this ladder is an account nobody chases." />
           ) : (
-            <Table headers={['#', 'Step', 'Day', 'Channel', 'What it does', '']}>
+            <Table headers={['#', 'Step', 'Day', 'Channel', 'What it does', 'Actions']}>
               {steps.map((s, i) => (
                 <tr key={s.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
-                  <Td right>{s.step_no}</Td>
-                  <Td>
+                  <Td kind="num">{s.step_no}</Td>
+                  <Td kind="text" style={{ maxWidth: '54ch' }}>
                     <div style={{ fontWeight: 600 }}>{s.name}</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-tertiary)', maxWidth: '54ch' }}>{s.note}</div>
+                    <div className="c-sub">{s.note}</div>
                   </Td>
-                  <Td right>day {s.day}</Td>
-                  <Td>{s.channel}</Td>
+                  <Td kind="num">day {s.day}</Td>
+                  <Td kind="text" nowrap>{s.channel}</Td>
+                  <Td kind="status">
+                    <StatusBadge tone={s.action === 'suspend' ? 'danger' : s.action === 'withhold' ? 'warning' : 'neutral'} icon={null}>{s.action}</StatusBadge>
+                  </Td>
                   <Td>
-                    <span style={{
-                      ...pillStyle, marginLeft: 0,
-                      background: s.action === 'suspend' ? 'var(--danger-bg)' : s.action === 'withhold' ? 'var(--warning-bg)' : 'var(--bg-alt)',
-                      color: s.action === 'suspend' ? 'var(--danger)' : s.action === 'withhold' ? 'var(--warning)' : 'var(--text-secondary)',
-                    }}>{s.action}</span>
-                  </Td>
-                  <Td right>
-                    <div style={{ display: 'flex', gap: '5px', justifyContent: 'flex-end' }}>
-                      <Btn size="sm" variant="secondary" disabled={i === 0}
+                    {/* Icon-only reorder, edit and remove controls stay as buttons,
+                        in the shared row layout, each with its own accessible name. */}
+                    <div className="c-row-actions">
+                      <Btn size="sm" variant="secondary" disabled={i === 0} aria-label={`Move ${s.name} up`}
                         onClick={() => void act(() => moveStep({ step: s, ladder, steps: book.steps, delta: -1, actor: ACTOR }))}>
                         <ArrowUp size={11} />
                       </Btn>
-                      <Btn size="sm" variant="secondary" disabled={i === steps.length - 1}
+                      <Btn size="sm" variant="secondary" disabled={i === steps.length - 1} aria-label={`Move ${s.name} down`}
                         onClick={() => void act(() => moveStep({ step: s, ladder, steps: book.steps, delta: 1, actor: ACTOR }))}>
                         <ArrowDown size={11} />
                       </Btn>
-                      <Btn size="sm" variant="secondary" onClick={() => setStepModal(s)}><Pencil size={11} /></Btn>
-                      <Btn size="sm" variant="danger" onClick={() => setRemoving(s)}><Trash2 size={11} /></Btn>
+                      <Btn size="sm" variant="secondary" aria-label={`Edit ${s.name}`} onClick={() => setStepModal(s)}><Pencil size={11} /></Btn>
+                      <Btn size="sm" variant="danger" aria-label={`Remove ${s.name}`} onClick={() => setRemoving(s)}><Trash2 size={11} /></Btn>
                     </div>
                   </Td>
                 </tr>
@@ -717,10 +708,4 @@ function StepModal(
       {!check.ok && <Callout tone="danger" title="This step cannot go on this ladder">{check.reason}</Callout>}
     </Modal>
   )
-}
-
-const pillStyle: React.CSSProperties = {
-  marginLeft: 8, padding: '1px 7px', borderRadius: 'var(--radius-full)',
-  background: 'var(--bg-alt)', color: 'var(--text-tertiary)',
-  fontSize: '10px', fontWeight: 700,
 }
