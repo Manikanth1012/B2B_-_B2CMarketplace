@@ -207,7 +207,11 @@ Spec `docs/superpowers/specs/2026-11-27-alignment-sweep-and-dashboards-design.md
 - [x] Part 4, operator group 2 Commerce (merged): Orders, Baskets, Renewals, Inventory, Numbers, Refunds, Rewards;
   shared: tab names "Name (n)" and tab ids/aria-labelledby, KPI headline ranked by converted value when every
   currency has a rate (else nominal), `groupsToKpi`, `.c-sub`/`.c-mono`, RowAction srOnly/expanded.
-- [ ] Operator groups 3–4 (Finance; Service + Platform + Governance); dashboards (operator, partner, enterprise); partner/enterprise screens; storefront.
+- [x] Part 5, operator group 3 Finance (merged): Settlement Runs, Revenue share, Credit, Collections, Wallets, Notes,
+  Ledger, Bill templates, Markets; KpiCard `tone="danger"`; Menu items carry a visible hint and stay focusable when
+  disabled; tab counts in en-US grouping. Logged: the Wallets drawer is not a dialog and its rows are not
+  keyboard-openable (pre-existing, WCAG 2.1.1) — own task.
+- [ ] Operator group 4 (Service + Platform + Governance); dashboards (operator, partner, enterprise); partner/enterprise screens; storefront.
 - Deferred minors: Donut has no keyboard focus (hidden table covers screen readers); a Menu whose items are all
   disabled looks dead; `Td clamp` hover title only for plain-string children; menu arrow keys bubble to the row.
 
