@@ -51,7 +51,7 @@ and baskets are the first to.
   | Event | Anchor date | Audience |
   |---|---|---|
   | `basket.abandoned` | last change + abandoned_after_days | shopper / business basket owner |
-  | `basket.clearing` | last change + clear_after_days | shopper / business basket owner |
+  | `basket.clearing` | the night the basket is cleared: day of last change + clear_after_days + 1 (matches the nightly cut, so "clears tomorrow" at n−1 is true) | shopper / business basket owner |
   | `invoice.due` | invoice due date | business buyer (finance) |
   | `subscription.renewal` | next renewal date | consumer / business |
   | `agreement.notice` | agreement notice deadline | business buyer, seller |
@@ -95,6 +95,20 @@ and baskets are the first to.
   - "Last reminder" shows the latest sent step, manual or scheduled;
   - the manual "Remind" stays.
 - **Scheduled jobs.** The new job shows there with its counts (sent, skipped as already sent, skipped by preference).
+
+## Decisions taken during review (2026-11-28)
+
+- **Job order.** `reminders` runs **first** in the nightly run, before the agreement, subscription and basket jobs
+  move or remove the dates it reads. The other ten jobs keep their relative order.
+- **Offsets after the date** (n+x, x > 0) are refused for `subscription.renewal`, `agreement.notice` and
+  `basket.clearing`, because once the date passes the subject renews, is superseded or is cleared. n+0 stays
+  allowed.
+- **Throttle** is applied per rule, recipient and subject, counted in days. A message suppressed for lack of a
+  gateway does not count toward it. A throttled reminder is retried and never lost.
+- **Seeds are four rules**, not one per event, because a rule has one persona: shopper and business, abandoned and
+  clearing. All of them are off.
+- **`pending_days` is display only.** It sets the Pending/Abandoned labels; the nightly clearing uses
+  `clear_after_days`.
 
 ## What does not change
 
