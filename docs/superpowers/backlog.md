@@ -138,6 +138,16 @@ the lines added up (read-only) with the saving, and "Apply % off to all" fills t
 `bundle-line-prices`; migration `20261127300000_a_bundle_line_carries_its_price.sql` (`product_components.unit_price`,
 with DB guards: per line floor..price, operator only, lines add up on insert/update/delete and on bundle price edits) — applied by the user 2026-11-28 (column verified readable). Also fixed: createBundle and composePack now set floor_price/list_price (NOT NULL since 20260731130000 — both inserts were refused before).
 
+## Spec 20 — global bill sections and adverts on bills (2026-11-28, queued after spec 19)
+
+Spec `docs/superpowers/specs/2026-11-28-bill-sections-and-bill-adverts-design.md`. User: "cannot see page to configure the
+mandatory/optional sections of the template at global level; also do not see the place for banner/advertisement".
+- A Sections tab on Bill Templates, with three rules per section: Required by law (masthead, parties, tax, summary) /
+  Mandatory / Optional. Plus label, note, audiences and default order.
+- A Bill adverts tab: placements of storefront banners on bills, by market, audience, dates and priority, never on
+  dunning or final notices.
+- Claude decided the details (user: "take best decisions").
+
 ## Follow-ups for specs 13, 14 and 17 (2026-11-28, queued right after spec 19)
 
 The user asked (2026-11-28) to keep specs 13, 14 and 17 in the work list. Their main work is merged and the migrations are applied. What is still open is ticked off in each spec's section below. It will be done as one follow-up spec, on its own branch, with one migration:
