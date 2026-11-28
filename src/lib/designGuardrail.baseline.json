@@ -1,8 +1,8 @@
 {
   "total": {
-    "fontSize": 278,
-    "hex": 113,
-    "radius": 60
+    "fontSize": 213,
+    "hex": 103,
+    "radius": 59
   },
   "files": {
     "components/AccountView.tsx": {
@@ -181,9 +181,9 @@
       "radius": 2
     },
     "components/operator/OperatorBillTemplates.tsx": {
-      "fontSize": 2,
-      "hex": 6,
-      "radius": 1
+      "fontSize": 0,
+      "hex": 1,
+      "radius": 0
     },
     "components/operator/OperatorClearance.tsx": {
       "fontSize": 0,
@@ -205,11 +205,6 @@
       "hex": 0,
       "radius": 1
     },
-    "components/operator/OperatorCredit.tsx": {
-      "fontSize": 11,
-      "hex": 0,
-      "radius": 0
-    },
     "components/operator/OperatorDashboard.tsx": {
       "fontSize": 6,
       "hex": 0,
@@ -225,22 +220,7 @@
       "hex": 0,
       "radius": 0
     },
-    "components/operator/OperatorDunning.tsx": {
-      "fontSize": 9,
-      "hex": 0,
-      "radius": 0
-    },
     "components/operator/OperatorKnowledge.tsx": {
-      "fontSize": 8,
-      "hex": 0,
-      "radius": 0
-    },
-    "components/operator/OperatorMarkets.tsx": {
-      "fontSize": 11,
-      "hex": 0,
-      "radius": 0
-    },
-    "components/operator/OperatorNotes.tsx": {
       "fontSize": 8,
       "hex": 0,
       "radius": 0
@@ -248,11 +228,6 @@
     "components/operator/OperatorNotifications.tsx": {
       "fontSize": 0,
       "hex": 3,
-      "radius": 0
-    },
-    "components/operator/OperatorRevenueShare.tsx": {
-      "fontSize": 0,
-      "hex": 4,
       "radius": 0
     },
     "components/operator/OperatorReviews.tsx": {
@@ -265,25 +240,10 @@
       "hex": 1,
       "radius": 0
     },
-    "components/operator/OperatorSettlement.tsx": {
-      "fontSize": 3,
-      "hex": 0,
-      "radius": 0
-    },
-    "components/operator/OperatorSettlementCycles.tsx": {
-      "fontSize": 5,
-      "hex": 0,
-      "radius": 0
-    },
     "components/operator/OperatorShelves.tsx": {
       "fontSize": 4,
       "hex": 0,
       "radius": 4
-    },
-    "components/operator/OperatorWallets.tsx": {
-      "fontSize": 16,
-      "hex": 1,
-      "radius": 0
     },
     "components/operator/PartnerMarkets.tsx": {
       "fontSize": 7,
